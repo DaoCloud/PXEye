@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <title>PXEye · 基础设施控制台</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/live.css?v=0.21.0" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="主导航">
+        <a class="brand" href="#topology"
+          ><span class="brand-mark"><img src="/pxeye.svg" alt="" /></span
+          ><span
+            >PXEye<span class="brand-caption">NICo 基础设施控制台</span></span
+          ></a
+        >
+        <div class="workspace">
+          <span class="workspace-mark">OS</span>
+          <div>物理装机站点<span id="site-label">正在连接服务</span></div>
+          <span class="connection-dot" aria-label="服务连接"></span>
+        </div>
+        <nav id="navigation"></nav>
+        <div class="sidebar-bottom">
+          <span class="avatar">OP</span>
+          <div>基础设施运维<span id="operator">需要登录</span></div>
+        </div>
+      </aside>
+      <div class="workspace-main">
+        <header class="topbar">
+          <div class="breadcrumb">
+            <span>基础设施</span><span>/</span
+            ><strong id="breadcrumb">安装任务</strong>
+          </div>
+        </header>
+        <main id="main" aria-label="工作区" aria-live="polite"></main>
+        <footer class="app-footer">
+          <span>PXEye · See it. Plan it. Boot it.</span>
+        </footer>
+      </div>
+    </div>
+    <div id="overlay-root"></div>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script src="/shared/ui_runtime.js"></script>
+    <script src="/shared/live.js"></script>
+    <script src="/pages/onboarding.js"></script>
+    <script src="/pages/management.js?v=0.21.0"></script>
+    <script src="/pages/profiles.js"></script>
+    <script src="/pages/hardware.js?v=0.21.0"></script>
+    <script src="/pages/instances.js"></script>
+    <script src="/pages/equipment.js?v=0.21.0"></script>
+    <script src="/pages/topology.js"></script>
+    <script src="/pages/management_addresses.js"></script>
+    <script src="/main.js"></script>
+  </body>
+</html>

@@ -1,0 +1,114 @@
+"""Read bounded, plain XLSX inventory data into the existing CSV import path."""
+
+import base64
+import binascii
+import csv
+import io
+import posixpath
+import re
+import zipfile
+from xml.etree import ElementTree as ET
+
+NS = {"s": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+
+
+def workbook_csv(encoded):
+    if not isinstance(encoded, str) or len(encoded) > 1400000:
+        raise ValueError("Excel 最大 1 MiB。")
+    try:
+        data = base64.b64decode(encoded, validate=True)
+        if len(data) > 1024 * 1024:
+            raise ValueError("Excel 最大 1 MiB。")
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            entries = archive.infolist()
+            if (
+                len(entries) > 200
+                or len({e.filename for e in entries}) != len(entries)
+                or sum(e.file_size for e in entries) > 12 * 1024 * 1024
+            ):
+                raise ValueError("Excel 内容过大，请减少行数后导入。")
+
+            def xml(name):
+                raw = archive.read(name)
+                if b"<!DOCTYPE" in raw.upper() or b"<!ENTITY" in raw.upper():
+                    raise ValueError("Excel 包含不支持的 XML 内容。")
+                return ET.fromstring(raw)
+
+            workbook = xml("xl/workbook.xml")
+            sheets = workbook.findall("s:sheets/s:sheet", NS)
+            if not sheets:
+                raise ValueError("Excel 中没有设备清单。")
+            sheet = next((s for s in sheets if s.get("name") == "设备清单"), sheets[0])
+            rel_id = sheet.get("{" + REL + "}id")
+            relations = xml("xl/_rels/workbook.xml.rels")
+            relation = next((r for r in relations if r.get("Id") == rel_id), None)
+            if relation is None or relation.get("TargetMode") == "External":
+                raise ValueError("无法读取 Excel 工作表。")
+            target = relation.get("Target", "")
+            name = posixpath.normpath(
+                target.lstrip("/") if target.startswith("/") else "xl/" + target
+            )
+            if not name.startswith("xl/worksheets/"):
+                raise ValueError("无法读取 Excel 工作表。")
+            strings = []
+            if "xl/sharedStrings.xml" in archive.namelist():
+                strings = [
+                    "".join(t.text or "" for t in s.iter("{" + NS["s"] + "}t"))
+                    for s in xml("xl/sharedStrings.xml").findall("s:si", NS)
+                ]
+            rows = []
+            for row in xml(name).findall("s:sheetData/s:row", NS):
+                if len(rows) >= 5001:
+                    raise ValueError("Excel 最多支持 5000 台设备。")
+                cells = {}
+                for cell in row.findall("s:c", NS):
+                    ref = re.fullmatch(r"([A-Z]{1,3})[1-9][0-9]*", cell.get("r", ""))
+                    if not ref:
+                        raise ValueError("Excel 单元格位置无效。")
+                    col = 0
+                    for ch in ref[1]:
+                        col = col * 26 + ord(ch) - 64
+                    if col > 64 or col in cells:
+                        raise ValueError("Excel 列数超出范围或存在重复单元格。")
+                    if cell.find("s:f", NS) is not None:
+                        raise ValueError("设备清单不支持公式，请改为文本值。")
+                    kind = cell.get("t", "")
+                    value = cell.findtext("s:v", "", NS)
+                    if kind == "s":
+                        if not value.isascii() or not value.isdecimal():
+                            raise ValueError("Excel 文本索引无效。")
+                        value = strings[int(value)]
+                    elif kind == "inlineStr":
+                        value = "".join(
+                            t.text or ""
+                            for t in cell.findall("s:is/s:t", NS) + cell.findall("s:is/s:r/s:t", NS)
+                        )
+                    elif kind == "b":
+                        value = "true" if value == "1" else "false"
+                    elif kind in {"e", "d"}:
+                        raise ValueError("设备清单包含错误值或日期，请改为文本。")
+                    cells[col] = value
+                if any(v.strip() for v in cells.values()):
+                    rows.append(cells)
+            if not rows:
+                raise ValueError("Excel 中没有设备清单。")
+            width = max(rows[0])
+            if any(max(r) > width for r in rows):
+                raise ValueError("Excel 数据超出表头列范围。")
+            output = io.StringIO(newline="")
+            csv.writer(output).writerows(
+                [[r.get(c, "") for c in range(1, width + 1)] for r in rows]
+            )
+            return output.getvalue()
+    except (
+        binascii.Error,
+        zipfile.BadZipFile,
+        KeyError,
+        ET.ParseError,
+        IndexError,
+        TypeError,
+        RuntimeError,
+        NotImplementedError,
+    ):
+        raise ValueError("无法读取 Excel，请使用下载的 .xlsx 模板。") from None

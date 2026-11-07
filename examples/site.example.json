@@ -1,0 +1,27 @@
+{
+  "site": {
+    "name": "PXEye Lab",
+    "namespace": "pxeye",
+    "deployment": "pxeye"
+  },
+  "core_url": "https://nico-api.nico-system.svc.cluster.local:1079",
+  "cli": "/usr/local/bin/nico-admin-cli",
+  "grpcurl": "/usr/local/bin/grpcurl",
+  "network": {},
+  "devices": [],
+  "materials": [],
+  "first_install_profiles": [],
+  "os_library": {
+    "directory": "/materials",
+    "public_base_url": "http://pxe.example.test/os-library",
+    "verification_base_url": "http://nico-pxe.nico-system.svc.cluster.local/os-library",
+    "sources": [
+      {
+        "id": "local-iso",
+        "name": "Local ISO directory",
+        "directory": "/iso-sources"
+      }
+    ]
+  },
+  "task_timeout_seconds": 2400
+}

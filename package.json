@@ -1,0 +1,16 @@
+{
+  "name": "pxeye-ui-tools",
+  "private": true,
+  "version": "0.21.0",
+  "scripts": {
+    "format": "prettier --write 'src/pxeye/web/**/*.js' 'src/pxeye/web/**/*.css' 'src/pxeye/web/**/*.html' 'tools/*.cjs'",
+    "format:check": "prettier --check 'src/pxeye/web/**/*.js' 'src/pxeye/web/**/*.css' 'src/pxeye/web/**/*.html' 'tools/*.cjs'",
+    "docs:screenshots": "node tools/render-doc-screenshots.cjs",
+    "check:structure": "node tools/check-ui-structure.cjs"
+  },
+  "devDependencies": {
+    "acorn": "8.15.0",
+    "playwright": "1.56.1",
+    "prettier": "3.6.2"
+  }
+}

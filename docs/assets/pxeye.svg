@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">PXEye icon</title>
+  <desc id="desc">Connected lenses contain a network topology and power control.</desc>
+  <rect width="256" height="256" rx="56" fill="#153d31"/>
+  <g transform="translate(0 20)">
+  <!-- Cable-shaped brow and glasses: visibility across the infrastructure. -->
+  <path d="M34 91c17-15 38-23 62-23 11 0 22 2 32 6 10-4 21-6 32-6 24 0 45 8 62 23" fill="none" stroke="#dcefe5" stroke-width="12" stroke-linecap="round"/>
+  <circle cx="82" cy="122" r="42" fill="#1f5946" stroke="#dcefe5" stroke-width="12"/>
+  <circle cx="174" cy="122" r="42" fill="#1f5946" stroke="#dcefe5" stroke-width="12"/>
+  <path d="M124 110c3-8 11-13 20-13s17 5 20 13M47 148 34 171m175-23 13 23" fill="none" stroke="#dcefe5" stroke-width="12" stroke-linecap="round"/>
+  <!-- Common network topology: PXE/DHCP discovery. -->
+  <g fill="none" stroke="#70d99d" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M82 103v13M82 116 64 137M82 116l18 21"/>
+  </g>
+  <rect x="75" y="94" width="14" height="14" rx="3" fill="#70d99d"/>
+  <circle cx="64" cy="138" r="8" fill="#70d99d"/>
+  <circle cx="100" cy="138" r="8" fill="#70d99d"/>
+  <!-- Power control: BMC-driven startup and boot. -->
+  <path d="M174 98v27" fill="none" stroke="#70d99d" stroke-width="9" stroke-linecap="round"/>
+  <path d="M158 107a23 23 0 1 0 32 0" fill="none" stroke="#70d99d" stroke-width="9" stroke-linecap="round"/>
+  </g>
+</svg>

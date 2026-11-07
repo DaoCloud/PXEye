@@ -1,0 +1,781 @@
+{
+  "/api/session": {
+    "csrf": "local-view-only"
+  },
+  "/api/resources": {
+    "site": {
+      "name": "Grace Blackwell Cluster"
+    },
+    "devices": [
+      {
+        "id": "gb200-r01-c01",
+        "serial": "GB2C24110001",
+        "bmc_ip": "10.251.1.11",
+        "bmc_ip_address": "10.251.1.11",
+        "bmc_mac_address": "02:40:10:00:00:01",
+        "management_ip": "10.252.1.11",
+        "executable": true,
+        "instance_id": "instance-gb200-r01-c01",
+        "machine_id": "machine-gb200-r01-c01",
+        "os_release": "Ubuntu Server 24.04 LTS",
+        "cpu_architecture": "aarch64",
+        "intent": {
+          "hostname": "gb200-r01-c01"
+        }
+      },
+      {
+        "id": "gb200-r01-c02",
+        "serial": "GB2C24110002",
+        "bmc_ip": "10.251.1.12",
+        "bmc_ip_address": "10.251.1.12",
+        "bmc_mac_address": "02:40:10:00:00:02",
+        "management_ip": "10.252.1.12",
+        "executable": true,
+        "instance_id": "instance-gb200-r01-c02",
+        "machine_id": "machine-gb200-r01-c02",
+        "os_release": "Ubuntu Server 24.04 LTS",
+        "cpu_architecture": "aarch64",
+        "intent": {
+          "hostname": "gb200-r01-c02"
+        }
+      },
+      {
+        "id": "gb200-r01-c03",
+        "serial": "GB2C24110003",
+        "bmc_ip": "10.251.1.13",
+        "bmc_ip_address": "10.251.1.13",
+        "bmc_mac_address": "02:40:10:00:00:03",
+        "management_ip": "10.252.1.13",
+        "executable": true,
+        "instance_id": "instance-gb200-r01-c03",
+        "machine_id": "machine-gb200-r01-c03",
+        "os_release": "Ubuntu Server 24.04 LTS",
+        "cpu_architecture": "aarch64",
+        "intent": {
+          "hostname": "gb200-r01-c03"
+        }
+      },
+      {
+        "id": "gb200-r01-c04",
+        "serial": "GB2C24110004",
+        "bmc_ip": "10.251.1.14",
+        "bmc_ip_address": "10.251.1.14",
+        "bmc_mac_address": "02:40:10:00:00:04",
+        "management_ip": "10.252.1.14",
+        "executable": true,
+        "instance_id": "instance-gb200-r01-c04",
+        "machine_id": "machine-gb200-r01-c04",
+        "os_release": "Ubuntu Server 24.04 LTS",
+        "cpu_architecture": "aarch64",
+        "intent": {
+          "hostname": "gb200-r01-c04"
+        }
+      },
+      {
+        "id": "control-01",
+        "serial": "CN74210005",
+        "bmc_ip": "10.251.10.11",
+        "bmc_ip_address": "10.251.10.11",
+        "bmc_mac_address": "02:40:10:00:00:05",
+        "management_ip": "10.252.10.11",
+        "executable": true,
+        "instance_id": "instance-control-01",
+        "machine_id": "machine-control-01",
+        "os_release": "Ubuntu Server 24.04 LTS",
+        "cpu_architecture": "x86_64",
+        "intent": {
+          "hostname": "control-01"
+        }
+      },
+      {
+        "id": "control-02",
+        "serial": "CN74210006",
+        "bmc_ip": "10.251.10.12",
+        "bmc_ip_address": "10.251.10.12",
+        "bmc_mac_address": "02:40:10:00:00:06",
+        "management_ip": "10.252.10.12",
+        "executable": true,
+        "instance_id": "instance-control-02",
+        "machine_id": "machine-control-02",
+        "os_release": "Ubuntu Server 24.04 LTS",
+        "cpu_architecture": "x86_64",
+        "intent": {
+          "hostname": "control-02"
+        }
+      }
+    ],
+    "core_url": "https://core.ai-factory.example:1079"
+  },
+  "/api/equipment": {
+    "devices": [
+      {
+        "id": "nvlink-r01-s01",
+        "kind": "switch",
+        "name": "nvlink-r01-s01",
+        "serial": "NVL24120001",
+        "rack_id": "AI-R01",
+        "status": "managed",
+        "power_state": "On",
+        "ports": [
+          {
+            "role": "switch_bmc",
+            "role_label": "BMC",
+            "mac_address": "02:40:10:00:01:2d",
+            "primary": false,
+            "target_ip": "10.251.1.121",
+            "observed": [
+              {
+                "addresses": [
+                  "10.251.1.121"
+                ],
+                "network_id": "bmc",
+                "network_name": "Fabric BMC"
+              }
+            ]
+          },
+          {
+            "role": "nvos",
+            "role_label": "NVOS",
+            "mac_address": "02:40:10:00:01:91",
+            "primary": true,
+            "target_ip": "10.251.31.101",
+            "observed": [
+              {
+                "addresses": [
+                  "10.251.31.101"
+                ],
+                "network_id": "nvos",
+                "network_name": "NVLink Management"
+              }
+            ]
+          }
+        ],
+        "can_sync": true,
+        "unplanned": false
+      },
+      {
+        "id": "nvlink-r01-s02",
+        "kind": "switch",
+        "name": "nvlink-r01-s02",
+        "serial": "NVL24120002",
+        "rack_id": "AI-R01",
+        "status": "managed",
+        "power_state": "On",
+        "ports": [
+          {
+            "role": "switch_bmc",
+            "role_label": "BMC",
+            "mac_address": "02:40:10:00:01:2e",
+            "primary": false,
+            "target_ip": "10.251.1.122",
+            "observed": [
+              {
+                "addresses": [
+                  "10.251.1.122"
+                ],
+                "network_id": "bmc",
+                "network_name": "Fabric BMC"
+              }
+            ]
+          },
+          {
+            "role": "nvos",
+            "role_label": "NVOS",
+            "mac_address": "02:40:10:00:01:92",
+            "primary": true,
+            "target_ip": "10.251.31.102",
+            "observed": [
+              {
+                "addresses": [
+                  "10.251.31.102"
+                ],
+                "network_id": "nvos",
+                "network_name": "NVLink Management"
+              }
+            ]
+          }
+        ],
+        "can_sync": true,
+        "unplanned": false
+      },
+      {
+        "id": "gb200-r01-c01",
+        "legacy_id": "gb200-r01-c01",
+        "kind": "server",
+        "serial": "GB2C24110001",
+        "name": "gb200-r01-c01",
+        "rack_id": "AI-R01",
+        "status": "server",
+        "power_state": "On",
+        "ports": [
+          {
+            "role": "host_bmc",
+            "role_label": "BMC",
+            "mac_address": "02:40:10:00:00:01",
+            "primary": false,
+            "target_ip": "10.251.1.11",
+            "observed": [
+              {
+                "addresses": [
+                  "10.251.1.11"
+                ],
+                "network_id": "bmc",
+                "network_name": "Fabric BMC"
+              }
+            ]
+          },
+          {
+            "role": "host",
+            "role_label": "管理口",
+            "mac_address": "02:40:10:00:00:65",
+            "primary": true,
+            "target_ip": "10.252.1.11",
+            "observed": [
+              {
+                "addresses": [
+                  "10.252.1.11"
+                ],
+                "network_id": "host",
+                "network_name": "Host Management"
+              }
+            ]
+          },
+          {
+            "role": "dpu_bmc",
+            "role_label": "DPU BMC",
+            "mac_address": "02:40:10:00:00:ca",
+            "primary": false,
+            "target_ip": "10.251.1.42",
+            "observed": [
+              {
+                "addresses": [
+                  "10.251.1.42"
+                ],
+                "network_id": "bmc",
+                "network_name": "Fabric BMC"
+              }
+            ]
+          },
+          {
+            "role": "dpu_bmc",
+            "role_label": "DPU BMC",
+            "mac_address": "02:40:10:00:00:cb",
+            "primary": false,
+            "target_ip": "10.251.1.43",
+            "observed": [
+              {
+                "addresses": [
+                  "10.251.1.43"
+                ],
+                "network_id": "bmc",
+                "network_name": "Fabric BMC"
+              }
+            ]
+          }
+        ],
+        "address_only": false,
+        "unplanned": false
+      },
+      {
+        "id": "gb200-r01-c02",
+        "legacy_id": "gb200-r01-c02",
+        "kind": "server",
+        "serial": "GB2C24110002",
+        "name": "gb200-r01-c02",
+        "rack_id": "AI-R01",
+        "status": "server",
+        "power_state": "On",
+        "ports": [
+          {
+            "role": "host_bmc",
+            "role_label": "BMC",
+            "mac_address": "02:40:10:00:00:02",
+            "primary": false,
+            "target_ip": "10.251.1.12",
+            "observed": [
+              {
+                "addresses": [
+                  "10.251.1.12"
+                ],
+                "network_id": "bmc",
+                "network_name": "Fabric BMC"
+              }
+            ]
+          },
+          {
+            "role": "host",
+            "role_label": "管理口",
+            "mac_address": "02:40:10:00:00:66",
+            "primary": true,
+            "target_ip": "10.252.1.12",
+            "observed": [
+              {
+                "addresses": [
+                  "10.252.1.12"
+                ],
+                "network_id": "host",
+                "network_name": "Host Management"
+              }
+            ]
+          },
+          {
+            "role": "dpu_bmc",
+            "role_label": "DPU BMC",
+            "mac_address": "02:40:10:00:00:cc",
+            "primary": false,
+            "target_ip": "10.251.1.44",
+            "observed": [
+              {
+                "addresses": [
+                  "10.251.1.44"
+                ],
+                "network_id": "bmc",
+                "network_name": "Fabric BMC"
+              }
+            ]
+          },
+          {
+            "role": "dpu_bmc",
+            "role_label": "DPU BMC",
+            "mac_address": "02:40:10:00:00:cd",
+            "primary": false,
+            "target_ip": "10.251.1.45",
+            "observed": [
+              {
+                "addresses": [
+                  "10.251.1.45"
+                ],
+                "network_id": "bmc",
+                "network_name": "Fabric BMC"
+              }
+            ]
+          }
+        ],
+        "address_only": false,
+        "unplanned": false
+      },
+      {
+        "id": "gb200-r01-c03",
+        "legacy_id": "gb200-r01-c03",
+        "kind": "server",
+        "serial": "GB2C24110003",
+        "name": "gb200-r01-c03",
+        "rack_id": "AI-R01",
+        "status": "server",
+        "power_state": "On",
+        "ports": [
+          {
+            "role": "host_bmc",
+            "role_label": "BMC",
+            "mac_address": "02:40:10:00:00:03",
+            "primary": false,
+            "target_ip": "10.251.1.13",
+            "observed": [
+              {
+                "addresses": [
+                  "10.251.1.13"
+                ],
+                "network_id": "bmc",
+                "network_name": "Fabric BMC"
+              }
+            ]
+          },
+          {
+            "role": "host",
+            "role_label": "管理口",
+            "mac_address": "02:40:10:00:00:67",
+            "primary": true,
+            "target_ip": "10.252.1.13",
+            "observed": [
+              {
+                "addresses": [
+                  "10.252.1.13"
+                ],
+                "network_id": "host",
+                "network_name": "Host Management"
+              }
+            ]
+          },
+          {
+            "role": "dpu_bmc",
+            "role_label": "DPU BMC",
+            "mac_address": "02:40:10:00:00:ce",
+            "primary": false,
+            "target_ip": "10.251.1.46",
+            "observed": [
+              {
+                "addresses": [
+                  "10.251.1.46"
+                ],
+                "network_id": "bmc",
+                "network_name": "Fabric BMC"
+              }
+            ]
+          },
+          {
+            "role": "dpu_bmc",
+            "role_label": "DPU BMC",
+            "mac_address": "02:40:10:00:00:cf",
+            "primary": false,
+            "target_ip": "10.251.1.47",
+            "observed": [
+              {
+                "addresses": [
+                  "10.251.1.47"
+                ],
+                "network_id": "bmc",
+                "network_name": "Fabric BMC"
+              }
+            ]
+          }
+        ],
+        "address_only": false,
+        "unplanned": false
+      },
+      {
+        "id": "gb200-r01-c04",
+        "legacy_id": "gb200-r01-c04",
+        "kind": "server",
+        "serial": "GB2C24110004",
+        "name": "gb200-r01-c04",
+        "rack_id": "AI-R01",
+        "status": "server",
+        "power_state": "On",
+        "ports": [
+          {
+            "role": "host_bmc",
+            "role_label": "BMC",
+            "mac_address": "02:40:10:00:00:04",
+            "primary": false,
+            "target_ip": "10.251.1.14",
+            "observed": [
+              {
+                "addresses": [
+                  "10.251.1.14"
+                ],
+                "network_id": "bmc",
+                "network_name": "Fabric BMC"
+              }
+            ]
+          },
+          {
+            "role": "host",
+            "role_label": "管理口",
+            "mac_address": "02:40:10:00:00:68",
+            "primary": true,
+            "target_ip": "10.252.1.14",
+            "observed": [
+              {
+                "addresses": [
+                  "10.252.1.14"
+                ],
+                "network_id": "host",
+                "network_name": "Host Management"
+              }
+            ]
+          },
+          {
+            "role": "dpu_bmc",
+            "role_label": "DPU BMC",
+            "mac_address": "02:40:10:00:00:d0",
+            "primary": false,
+            "target_ip": "10.251.1.48",
+            "observed": [
+              {
+                "addresses": [
+                  "10.251.1.48"
+                ],
+                "network_id": "bmc",
+                "network_name": "Fabric BMC"
+              }
+            ]
+          },
+          {
+            "role": "dpu_bmc",
+            "role_label": "DPU BMC",
+            "mac_address": "02:40:10:00:00:d1",
+            "primary": false,
+            "target_ip": "10.251.1.49",
+            "observed": [
+              {
+                "addresses": [
+                  "10.251.1.49"
+                ],
+                "network_id": "bmc",
+                "network_name": "Fabric BMC"
+              }
+            ]
+          }
+        ],
+        "address_only": false,
+        "unplanned": false
+      },
+      {
+        "id": "power-r01-p01",
+        "kind": "power_shelf",
+        "name": "power-r01-p01",
+        "serial": "PWR24130001",
+        "rack_id": "AI-R01",
+        "status": "managed",
+        "power_state": "On",
+        "ports": [
+          {
+            "role": "pmc",
+            "role_label": "PMC",
+            "mac_address": "02:40:10:00:01:f4",
+            "primary": false,
+            "target_ip": "10.251.1.141",
+            "observed": [
+              {
+                "addresses": [
+                  "10.251.1.141"
+                ],
+                "network_id": "bmc",
+                "network_name": "Fabric BMC"
+              }
+            ]
+          }
+        ],
+        "can_sync": true,
+        "unplanned": false
+      },
+      {
+        "id": "control-01",
+        "legacy_id": "control-01",
+        "kind": "server",
+        "serial": "CN74210005",
+        "name": "control-01",
+        "rack_id": "MGMT-R01",
+        "status": "server",
+        "power_state": "On",
+        "ports": [
+          {
+            "role": "host_bmc",
+            "role_label": "BMC",
+            "mac_address": "02:40:10:00:00:05",
+            "primary": false,
+            "target_ip": "10.251.10.11",
+            "observed": [
+              {
+                "addresses": [
+                  "10.251.10.11"
+                ],
+                "network_id": "mgmt-bmc",
+                "network_name": "Management BMC"
+              }
+            ]
+          },
+          {
+            "role": "host",
+            "role_label": "管理口",
+            "mac_address": "02:40:10:00:00:69",
+            "primary": true,
+            "target_ip": "10.252.10.11",
+            "observed": [
+              {
+                "addresses": [
+                  "10.252.10.11"
+                ],
+                "network_id": "mgmt-host",
+                "network_name": "Management Hosts"
+              }
+            ]
+          }
+        ],
+        "address_only": false,
+        "unplanned": false
+      },
+      {
+        "id": "control-02",
+        "legacy_id": "control-02",
+        "kind": "server",
+        "serial": "CN74210006",
+        "name": "control-02",
+        "rack_id": "MGMT-R01",
+        "status": "server",
+        "power_state": "On",
+        "ports": [
+          {
+            "role": "host_bmc",
+            "role_label": "BMC",
+            "mac_address": "02:40:10:00:00:06",
+            "primary": false,
+            "target_ip": "10.251.10.12",
+            "observed": [
+              {
+                "addresses": [
+                  "10.251.10.12"
+                ],
+                "network_id": "mgmt-bmc",
+                "network_name": "Management BMC"
+              }
+            ]
+          },
+          {
+            "role": "host",
+            "role_label": "管理口",
+            "mac_address": "02:40:10:00:00:6a",
+            "primary": true,
+            "target_ip": "10.252.10.12",
+            "observed": [
+              {
+                "addresses": [
+                  "10.252.10.12"
+                ],
+                "network_id": "mgmt-host",
+                "network_name": "Management Hosts"
+              }
+            ]
+          }
+        ],
+        "address_only": false,
+        "unplanned": false
+      }
+    ],
+    "endpoints": [],
+    "errors": [],
+    "management_addresses": {
+      "operations": []
+    }
+  },
+  "/api/tasks": {
+    "tasks": [
+      {
+        "id": "OS-20261107-001",
+        "device": "CN74210005",
+        "hostname": "control-01",
+        "management_ip": "10.252.10.11",
+        "created_at": 1794013200,
+        "status": "completed",
+        "stage": "completed"
+      },
+      {
+        "id": "OS-20261107-002",
+        "device": "CN74210006",
+        "hostname": "control-02",
+        "management_ip": "10.252.10.12",
+        "created_at": 1794013200,
+        "status": "completed",
+        "stage": "completed"
+      },
+      {
+        "id": "OS-20261107-003",
+        "device": "GB2C24110001",
+        "hostname": "gb200-r01-c01",
+        "management_ip": "10.252.1.11",
+        "created_at": 1794013200,
+        "status": "running",
+        "stage": "install"
+      },
+      {
+        "id": "OS-20261107-004",
+        "device": "GB2C24110002",
+        "hostname": "gb200-r01-c02",
+        "management_ip": "10.252.1.12",
+        "created_at": 1794013200,
+        "status": "queued",
+        "stage": "queued"
+      },
+      {
+        "id": "OS-20261107-005",
+        "device": "GB2C24110003",
+        "hostname": "gb200-r01-c03",
+        "management_ip": "10.252.1.13",
+        "created_at": 1794013200,
+        "status": "queued",
+        "stage": "queued"
+      },
+      {
+        "id": "OS-20261107-006",
+        "device": "GB2C24110004",
+        "hostname": "gb200-r01-c04",
+        "management_ip": "10.252.1.14",
+        "created_at": 1794013200,
+        "status": "queued",
+        "stage": "queued"
+      }
+    ]
+  },
+  "/api/batches": {
+    "batches": [
+      {
+        "id": "BRINGUP-20261107-01",
+        "mode": "auto",
+        "created_at": 1794013200,
+        "status": "running",
+        "task_ids": [
+          "OS-20261107-001",
+          "OS-20261107-002",
+          "OS-20261107-003",
+          "OS-20261107-004",
+          "OS-20261107-005",
+          "OS-20261107-006"
+        ],
+        "counts": {
+          "completed": 2,
+          "queued": 3,
+          "needs_attention": 0
+        }
+      }
+    ]
+  },
+  "/api/operating-systems": {
+    "operating_systems": []
+  },
+  "/api/install-profiles": {
+    "profiles": []
+  },
+  "/api/topology-layout": {
+    "racks": []
+  },
+  "/api/networks": {
+    "networks": [
+      {
+        "id": "bmc",
+        "name": "Fabric BMC",
+        "prefixes": [
+          {
+            "prefix": "10.251.1.0/24"
+          }
+        ]
+      },
+      {
+        "id": "host",
+        "name": "Host Management",
+        "prefixes": [
+          {
+            "prefix": "10.252.1.0/24"
+          }
+        ]
+      },
+      {
+        "id": "nvos",
+        "name": "NVLink Management",
+        "prefixes": [
+          {
+            "prefix": "10.251.31.0/24"
+          }
+        ]
+      },
+      {
+        "id": "mgmt-bmc",
+        "name": "Management BMC",
+        "prefixes": [
+          {
+            "prefix": "10.251.10.0/24"
+          }
+        ]
+      },
+      {
+        "id": "mgmt-host",
+        "name": "Management Hosts",
+        "prefixes": [
+          {
+            "prefix": "10.252.10.0/24"
+          }
+        ]
+      }
+    ],
+    "drafts": []
+  }
+}
