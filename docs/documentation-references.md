@@ -4,6 +4,8 @@
 
 Reviewed on **2026-11-07**. These are upstream public documentation references, not claims that PXEye implements their capabilities. Branch pages can change; this review reflects the content available on that date. No project introduction, screenshot or badge was copied into PXEye.
 
+The onboarding structure was extended on **2026-11-08** using [Tinkerbell Getting Started](https://tinkerbell.org/docs/v0.22/setup/getting_started/), [Metal3 Quick Start](https://book.metal3.io/quick-start) and [Argo CD Getting Started](https://argo-cd.readthedocs.io/en/stable/getting_started/): prerequisites precede deployment and a first operation, while detailed configuration stays in separate guides. PXEye places an eight-item summary in its README and maintains the complete [pre-installation checklist](pre-installation-checklist.md) separately.
+
 ## What we adopted
 
 | Reference | Observed documentation approach | Application to PXEye |
@@ -19,8 +21,9 @@ Tinkerbell and Metal3 make booting, inspection and cleaning concrete rather than
 
 ## Resulting information architecture
 
-- README: positioning, product images, core capabilities, operator workflow, starting point and current support.
-- Getting started: the complete first-device path with recognizable UI labels.
+- README: positioning, core capabilities, a short checklist under Getting started, deployment and first-server links, product images, operator workflow and current support.
+- Pre-installation checklist: one-sentence checks for discovery, host OS writing and managed DPUs, with verification references and handoff fields.
+- Install your first server: the complete first-device path with recognizable UI labels.
 - Features: effects, resource boundaries and required hardware/network capabilities.
 - Architecture: ownership, runtime modules, execution behavior and version compatibility.
 - Deployment: configuration, exact credential filenames, mounts, publication paths and persistence.

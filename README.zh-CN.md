@@ -3,7 +3,7 @@
 <p align="center"><strong>See it. Plan it. Boot it.</strong></p>
 <p align="center">基于 NVIDIA Infra Controller 的裸金属运维控制台。</p>
 <p align="center"><a href="README.md">English</a> · <strong>简体中文</strong></p>
-<p align="center"><a href="docs/features.zh-CN.md">功能说明</a> · <a href="docs/getting-started.zh-CN.md">快速开始</a> · <a href="docs/architecture.zh-CN.md">系统架构</a> · <a href="docs/README.zh-CN.md">文档中心</a></p>
+<p align="center"><a href="docs/features.zh-CN.md">功能说明</a> · <a href="#快速开始">快速开始</a> · <a href="docs/architecture.zh-CN.md">系统架构</a> · <a href="docs/README.zh-CN.md">文档中心</a></p>
 
 PXEye 将设备发现、清单管理、地址规划和操作系统安装整合到统一界面。它基于 [NVIDIA Infra Controller（NICo）](https://docs.nvidia.com/infra-controller/documentation/home)，帮助基础设施团队从新到货硬件走到完成验收的操作系统交付，每次执行都有明确入口和持久安装记录。
 
@@ -34,6 +34,33 @@ PXEye 是独立社区项目。NICo 提供基础设施控制面，PXEye 提供操
 
 原生资源映射和硬件前提见[功能与支持边界](docs/features.zh-CN.md)。
 
+## 快速开始
+
+PXEye 使用已有的 NICo 控制面；先按清单准备站点，部署 PXEye，再完成一台服务器安装后扩大批次，OS 材料和设备配置可以在部署后通过界面准备。
+
+### 开始前检查
+
+- 已准备兼容版本的 NICo、管理客户端、Core mTLS 凭据及 PXEye 持久存储。
+- 已核对目标主机序列号、CPU 架构、BMC MAC 和 PXE 接口永久 MAC。
+- 已从实际控制面路径验证 BMC Redfish 身份及所需权限，并准备所选接管流程要求的凭据。
+- 已确认 BMC 与主机引导网络的子网、网关、VLAN、Relay 和无冲突的地址分配方案。
+- 已验证实际装机路径中的 DHCP 请求与回程，以及所需 HTTP、Core、DNS 和 NTP 服务。
+- 已准备匹配目标架构的 EFI、Scout、ISO、kernel/initrd、自动安装配置及所需软件源。
+- 已确认 RAID、稳定的系统盘选择规则、数据备份和允许清理的磁盘范围。
+- 已配置安装材料挂载与发布地址，并准备目标系统的登录、回执和验收访问方式。
+
+完整的发现、OS 写入及受管 DPU 分阶段检查、验证参考和交接填写栏见[装机前检查清单](docs/pre-installation-checklist.zh-CN.md)。
+
+### 部署 PXEye
+
+按[部署指南](docs/deployment.zh-CN.md)准备镜像、配置凭据和存储、通过 NICo PXE HTTP 发布材料并开放服务入口；仓库提供[站点配置示例](examples/site.example.json)和[单副本 Kubernetes 清单](deploy/kubernetes.yaml)，NICo 及其网络入口需另外准备。
+
+兼容的 `nico-admin-cli` 和 `grpcurl` 是镜像构建输入，不随源码分发；具体构建命令和挂载位置统一在部署指南维护。
+
+### 首台装机
+
+按[首台装机指南](docs/getting-started.zh-CN.md)操作一台专用设备：准备 OS、识别纳管、保存规划、安装并验证系统盘启动、SSH 和普通重启，保存任务证据后再扩大批次。
+
 ## 操作流程
 
 1. **准备站点：** 核对 NICo 连接、DHCP relay、网络段和材料服务。
@@ -56,27 +83,11 @@ PXEye 是独立社区项目。NICo 提供基础设施控制面，PXEye 提供操
 
 三张截图使用同一份示例数据。[参考集群场景](docs/reference-cluster.zh-CN.md)说明了示例范围和截图生成方法。
 
-## 快速开始
-
-PXEye 需要已经运行的 NICo、兼容的 Linux 管理客户端、Core mTLS 凭据、持久存储，以及目标机器能够访问的引导材料。
-
-在 PXEye 仓库根目录执行：
-
-```bash
-install -m 0755 /path/to/nico-admin-cli bin/nico-admin-cli
-install -m 0755 /path/to/grpcurl bin/grpcurl
-make image IMAGE=pxeye:dev BASE_IMAGE=ubuntu:24.04
-```
-
-仓库提供[站点配置示例](examples/site.example.json)和[单副本 Kubernetes 清单](deploy/kubernetes.yaml)。启动前按照[部署指南](docs/deployment.zh-CN.md)配置站点、凭据、存储和 PXE 发布路径。外部二进制在构建时提供，不随源代码分发。
-
-首次使用请按[快速开始指南](docs/getting-started.zh-CN.md)完成一台机器的安装。
-
 ## 架构与支持范围
 
 PXEye 使用 Python HTTP 后端、SQLite/WAL 和原生 JavaScript/CSS。同一服务提供界面与 API，无需前端构建步骤。NICo Core 管理基础设施生命周期状态；PXEye 保存设备规划、方案、任务快照、日志和展示布局。
 
-当前版本为**技术预览**，采用单站点、单副本、单操作员模型，安装任务串行执行。主要实机验证路径是 x86_64 UEFI 硬件上的 Ubuntu Server 24.04；ARM64、GB200/GB300 和其他 OEM 流程需要独立验证。地址更新依赖设备实际提供的 Redfish 或 NVOS 能力。
+当前版本为**技术预览**，采用单站点、单副本、单操作员模型，安装批次支持可配置并发（默认 5 台）。主要实机验证路径是 x86_64 UEFI 硬件上的 Ubuntu Server 24.04；ARM64、GB200/GB300 和其他 OEM 流程需要独立验证。地址更新依赖设备实际提供的 Redfish 或 NVOS 能力。
 
 集群创建、工作负载调度、固件分发、Fabric 配置和多租户 RBAC 不属于当前产品范围。详见[系统架构](docs/architecture.zh-CN.md)和[安全说明](SECURITY.zh-CN.md)。
 

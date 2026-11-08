@@ -4,6 +4,8 @@
 
 查阅日期：**2026-11-07**。以下是上游公开文档参考，不代表 PXEye 实现了这些项目的能力。分支页面会变化，本次结论以查阅时内容为准。未复制其他项目的介绍正文、截图或徽章。
 
+**2026-11-08** 增补入门结构，参考 [Tinkerbell Getting Started](https://tinkerbell.org/docs/v0.22/setup/getting_started/)、[Metal3 Quick Start](https://book.metal3.io/quick-start) 和 [Argo CD Getting Started](https://argo-cd.readthedocs.io/en/stable/getting_started/)：先列前提，再部署并完成首次操作，详细配置独立成文；PXEye 在 README 展示 8 项摘要，完整[装机前检查清单](pre-installation-checklist.zh-CN.md)单独维护。
+
 ## 采用的组织方式
 
 | 参考项目 | 公开文档的特点 | PXEye 的应用 |
@@ -19,8 +21,9 @@ Tinkerbell 和 Metal3 将启动、硬件检查和清理写成具体能力，而�
 
 ## 最终文档层次
 
-- README：定位、产品截图、核心能力、操作流程、入门入口和支持范围。
-- 快速开始：完整首次单机路径，使用可对应页面的操作名称。
+- README：定位、核心能力、快速开始中的简版检查、部署与首台装机入口、截图、操作流程和支持范围。
+- 装机前检查：发现、主机 OS 写入及受管 DPU 分阶段的一句话清单，附验证参考和交接填写栏。
+- 首台装机：完整首次单机路径，使用可对应页面的操作名称。
 - 功能说明：实际作用、资源边界、硬件与网络前提。
 - 架构：数据归属、模块、执行逻辑和版本兼容。
 - 部署：配置、准确凭据文件名、挂载、发布路径和持久化。

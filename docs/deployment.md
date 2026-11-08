@@ -4,6 +4,8 @@
 
 PXEye currently runs as a single Kubernetes replica. The supplied manifest is a deployment skeleton, not an installer for NICo. Commands below are generic deployment examples; use your authorized context and namespace. In a shared environment, follow its resource-naming and namespace rules.
 
+Use the [pre-installation checklist](pre-installation-checklist.md) alongside this guide: complete discovery prerequisites before the first Scout boot, then prepare the OS-writing checks through [Install your first server](getting-started.md).
+
 ## 1. Prepare dependencies
 
 Provide a reachable NICo Core, DHCP and PXE service; compatible Linux `nico-admin-cli` and `grpcurl` binaries; a Core CA and client certificate/key; and a dedicated SSH key for acceptance. Match both binaries to the image CPU architecture. The existing physical path was validated on amd64; an arm64 image requires separate validation.
@@ -77,7 +79,7 @@ Review storage classes, image availability, resource limits and namespace before
 
 `os_library.directory` is the service's writable artifact path. `sources[].directory` must exist **inside the PXEye container**; a file on the Kubernetes node is invisible unless mounted. Add the optional `/iso-sources` volume/mount to use directory import.
 
-`public_base_url` must deliver those same prepared files to target hosts. `verification_base_url` is the route PXEye uses to check delivery. A PVC mount by itself does not publish HTTP files: configure a reachable static artifact service or the appropriate NICo PXE volume mapping. The supplied Deployment does not mount `/materials` into NICo PXE. Also configure NICo's host-facing metadata and callback routes for task delivery.
+`public_base_url` must deliver those same prepared files to target hosts. `verification_base_url` is the route PXEye uses to check delivery. Use NICo PXE's HTTP service to publish the materials: mount the same persistent files into NICo PXE and map their directory to its configured HTTP path. The supplied Deployment does not mount `/materials` into NICo PXE automatically. Also configure NICo's host-facing metadata and callback routes for task delivery.
 
 Keep Scout discovery artifacts supplied by NICo available even when installing your own ISO.
 

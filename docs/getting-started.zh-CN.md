@@ -1,8 +1,8 @@
-# 快速开始
+# 首台装机
 
 [English](getting-started.md) · **简体中文** · [文档中心](README.zh-CN.md)
 
-本文以一台服务器为例，从纳管走到 OS 验收。先完成[服务部署](deployment.zh-CN.md)，选择专用设备，验证该硬件流程后再扩大批次。
+本文以一台服务器为例，从纳管走到 OS 验收。先完成[服务部署](deployment.zh-CN.md)，选择专用设备，在发现和写入 OS 的对应阶段完成[装机前检查](pre-installation-checklist.zh-CN.md)，验证该硬件流程后再扩大批次。
 
 ## 1. 核对站点和网络
 

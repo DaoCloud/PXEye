@@ -1,8 +1,8 @@
-# Getting started
+# Install your first server
 
 **English** · [简体中文](getting-started.zh-CN.md) · [Documentation](README.md)
 
-This guide follows one server from enrollment to OS acceptance. Begin with a dedicated device and a prepared [deployment](deployment.md); expand the batch after confirming that hardware's workflow.
+This guide follows one server from enrollment to OS acceptance. Begin with a dedicated device and a prepared [deployment](deployment.md); complete the [pre-installation checklist](pre-installation-checklist.md) at its discovery and OS-writing stages, then expand the batch after confirming that hardware's workflow.
 
 ## 1. Check the site and networks
 

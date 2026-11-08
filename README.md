@@ -3,7 +3,7 @@
 <p align="center"><strong>See it. Plan it. Boot it.</strong></p>
 <p align="center">A bare-metal operations console for NVIDIA Infra Controller.</p>
 <p align="center"><strong>English</strong> · <a href="README.zh-CN.md">简体中文</a></p>
-<p align="center"><a href="docs/features.md">Features</a> · <a href="docs/getting-started.md">Getting started</a> · <a href="docs/architecture.md">Architecture</a> · <a href="docs/README.md">Documentation</a></p>
+<p align="center"><a href="docs/features.md">Features</a> · <a href="#getting-started">Getting started</a> · <a href="docs/architecture.md">Architecture</a> · <a href="docs/README.md">Documentation</a></p>
 
 PXEye brings device discovery, inventory, address planning and operating-system installation into one interface. Built on [NVIDIA Infra Controller (NICo)](https://docs.nvidia.com/infra-controller/documentation/home), it helps infrastructure teams move from newly arrived hardware to verified OS delivery, with explicit execution steps and persistent installation records.
 
@@ -34,6 +34,33 @@ PXEye is an independent community project. NICo provides the infrastructure cont
 
 See [Features and support boundaries](docs/features.md) for native resource mappings and hardware requirements.
 
+## Getting started
+
+PXEye uses an existing NICo control plane. Prepare the site with the checklist below, deploy PXEye, then install one server before expanding the batch. OS materials and device settings can be prepared through the UI after deployment.
+
+### Before you begin
+
+- Compatible NICo services, administrative clients, Core mTLS credentials and persistent PXEye storage are available.
+- Target server serial numbers, CPU architectures and permanent BMC/PXE MAC addresses are verified.
+- The actual control-plane path can verify BMC Redfish identity and permissions, with the credentials required by the selected ingestion workflow.
+- BMC and host boot networks have agreed subnets, gateways, VLANs, relays and conflict-free address allocations.
+- The actual installation path supports DHCP requests and replies plus the required HTTP, Core, DNS and NTP services.
+- Matching EFI, Scout, ISO, kernel/initrd, unattended-install settings and software sources are prepared for the target architecture.
+- RAID arrangements, stable system-disk selection rules, backups and permitted cleanup scope are confirmed.
+- Artifact mounts and publication URLs are configured alongside OS login, installer callbacks and acceptance access.
+
+Use the [full pre-installation checklist](docs/pre-installation-checklist.md) for the discovery, OS-writing and managed-DPU stages, with verification references and handoff fields.
+
+### Deploy PXEye
+
+Follow the [deployment guide](docs/deployment.md) to prepare the image, configure credentials and storage, publish materials through NICo PXE HTTP, and expose the service. The repository supplies a [site configuration example](examples/site.example.json) and a [single-replica Kubernetes manifest](deploy/kubernetes.yaml); NICo and its network entry points must be provided separately.
+
+Compatible `nico-admin-cli` and `grpcurl` binaries are build inputs; they are not bundled in the source repository. Build commands and mount locations are maintained in the deployment guide.
+
+### Install your first server
+
+Follow [Install your first server](docs/getting-started.md) on a dedicated device: prepare its OS, identify and enroll it, save its plan, then install and verify system-disk boot, SSH and a normal reboot. Retain the task evidence before expanding the batch.
+
 ## Operator workflow
 
 1. **Prepare the site:** verify NICo connectivity, DHCP relay, network segments and artifact delivery.
@@ -56,27 +83,11 @@ Discovery, planning and installation have separate responsibilities. Non-server 
 
 These images share the same illustrative dataset. The [reference scenario](docs/reference-cluster.md) explains its scope and how to reproduce the captures.
 
-## Getting started
-
-PXEye requires an existing NICo deployment, a compatible Linux administrative client, Core mTLS credentials, persistent storage and boot artifacts reachable from the target hosts.
-
-From the PXEye repository root:
-
-```bash
-install -m 0755 /path/to/nico-admin-cli bin/nico-admin-cli
-install -m 0755 /path/to/grpcurl bin/grpcurl
-make image IMAGE=pxeye:dev BASE_IMAGE=ubuntu:24.04
-```
-
-The repository includes a [site configuration example](examples/site.example.json) and a [single-replica Kubernetes manifest](deploy/kubernetes.yaml). Configure the site, credentials, storage and PXE publication paths using the [deployment guide](docs/deployment.md) before starting the service. External binaries are supplied at build time; they are not bundled in the source repository.
-
-For a first installation, follow the [getting-started guide](docs/getting-started.md).
-
 ## Architecture and support
 
 PXEye uses a Python HTTP backend, SQLite/WAL persistence and native JavaScript/CSS. The service serves both the UI and API; no frontend build step is required. NICo Core owns infrastructure lifecycle state. PXEye stores device plans, profiles, task snapshots, logs and display layout.
 
-The current **technical preview** targets a single site, one service replica and a single operator, with installations executed serially. The principal physical validation path is Ubuntu Server 24.04 on x86_64 UEFI hardware. ARM64, GB200/GB300 and other OEM workflows require separate validation. Address operations depend on each device's Redfish or NVOS capabilities.
+The current **technical preview** targets a single site, one service replica and a single operator, with configurable installation concurrency within a batch (default: 5). The principal physical validation path is Ubuntu Server 24.04 on x86_64 UEFI hardware. ARM64, GB200/GB300 and other OEM workflows require separate validation. Address operations depend on each device's Redfish or NVOS capabilities.
 
 Cluster creation, workload scheduling, firmware distribution, fabric configuration and multi-tenant RBAC are outside the current product scope. See [Architecture](docs/architecture.md) and [Security](SECURITY.md).
 

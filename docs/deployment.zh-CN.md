@@ -4,6 +4,8 @@
 
 PXEye 当前采用 Kubernetes 单副本部署。提供的清单是部署骨架，不负责安装 NICo。以下命令为通用示例，请使用已授权的 context 和命名空间；共享环境应遵守现场的资源命名规则。
 
+结合[装机前检查清单](pre-installation-checklist.zh-CN.md)使用本指南：首次 Scout 启动前完成发现前提，再按[首台装机指南](getting-started.zh-CN.md)准备写入 OS 的检查项。
+
 ## 1. 准备依赖
 
 准备可访问的 NICo Core、DHCP 和 PXE 服务，兼容的 Linux `nico-admin-cli` 和 `grpcurl`，Core CA、客户端证书与私钥，以及验收专用 SSH 密钥。二进制架构必须与镜像一致。已有实机路径在 amd64 验证，arm64 镜像需要独立验证。
@@ -77,7 +79,7 @@ kubectl -n pxeye rollout status deployment/pxeye --timeout=120s
 
 `os_library.directory` 是服务可写的材料目录。`sources[].directory` 必须存在于 **PXEye 容器内部**；Kubernetes 节点上的文件未经挂载，容器无法读取。使用目录导入时，另行添加 `/iso-sources` 的 volume 和 volumeMount。
 
-`public_base_url` 必须向目标主机提供这些已准备的文件；`verification_base_url` 是 PXEye 检查材料服务时使用的路径。仅挂载 PVC 不会自动发布 HTTP 文件，需要配置可达的静态材料服务或 NICo PXE 挂载映射。当前 Deployment 不会把 `/materials` 自动挂入 NICo PXE。还需配置 NICo 面向主机的元数据和安装回调路由。
+`public_base_url` 必须向目标主机提供这些已准备的文件；`verification_base_url` 是 PXEye 检查材料服务时使用的路径。使用 NICo PXE 自带的 HTTP 发布材料：将同一份持久化文件挂入 NICo PXE，并将目录映射到其配置的 HTTP 路径。当前 Deployment 不会自动把 `/materials` 挂入 NICo PXE，还需配置 NICo 面向主机的元数据和安装回调路由。
 
 使用自己的 ISO 时，仍保留 NICo 提供的 Scout 发现材料。
 

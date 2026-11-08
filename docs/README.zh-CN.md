@@ -2,13 +2,14 @@
 
 [English](README.md) · **简体中文**
 
-PXEye 公开项目文档均提供内容对应的中英文版本。首次使用先阅读快速开始与部署指南；判断某项操作的原生映射和限制时阅读功能与架构。
+PXEye 公开项目文档均提供内容对应的中英文版本。首次使用按“装机前检查 → 部署 PXEye → 首台装机”阅读；判断某项操作的原生映射和限制时阅读功能与架构。
 
 | 文档 | English | 简体中文 | 用途 |
 | --- | --- | --- | --- |
-| 功能与边界 | [Read](features.md) | [阅读](features.zh-CN.md) | 原生映射、设备能力和安装范围。 |
-| 快速开始 | [Read](getting-started.md) | [阅读](getting-started.zh-CN.md) | 从纳管到验收的首次单机流程。 |
+| 装机前检查 | [Read](pre-installation-checklist.md) | [阅读](pre-installation-checklist.zh-CN.md) | 一句话一项，分发现、主机 OS 写入及受管 DPU 阶段检查。 |
 | 部署指南 | [Read](deployment.md) | [阅读](deployment.zh-CN.md) | 二进制、站点配置、凭据、挂载和持久化。 |
+| 首台装机 | [Read](getting-started.md) | [阅读](getting-started.zh-CN.md) | 从纳管到验收的首次单机流程。 |
+| 功能与边界 | [Read](features.md) | [阅读](features.zh-CN.md) | 原生映射、设备能力和安装范围。 |
 | 系统架构 | [Read](architecture.md) | [阅读](architecture.zh-CN.md) | 运行环境、模块职责和数据归属。 |
 | 代码结构评审 | [Read](code-structure-review.md) | [阅读](code-structure-review.zh-CN.md) | 静态问题、优先级与建议的调整顺序。 |
 | 参考集群 | [Read](reference-cluster.md) | [阅读](reference-cluster.zh-CN.md) | GB200 架构示例与截图生成。 |
