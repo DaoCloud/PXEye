@@ -5,7 +5,7 @@ title: Device management
 description: Arrival plans, discovery, enrollment and address configuration matching by serial number.
 navigation_group: resources
 updated_at: "2026-11-08"
-product_version: "0.21.19"
+product_version: "0.21.23"
 ---
 
 # Device management
@@ -18,11 +18,13 @@ Open **Resources → Device management (资源 → 设备管理)** to import arr
 
 | Tab | Purpose |
 | --- | --- |
-| Device plans (设备规划) | Import or edit serial numbers, addresses, MACs, management subnets and racks; compare them with enrolled device configuration. |
 | Discovered devices (发现设备) | Inspect DHCP endpoints, authenticate with BMC / PMC credentials and enroll the identified device. |
 | Managed devices (纳管设备) | View existing devices and use matching, system configuration and address management. This tab opens by default. |
+| Device plans (设备规划) | Import or edit serial numbers, addresses, MACs, management subnets and racks; compare them with enrolled device configuration. |
 
 Device plans are stored separately. Continue the existing discovery, authentication and enrollment steps after import; imported plans do not automatically become managed devices.
+
+Device plans is the last tab. Search by SN, IP, MAC or rack; the search field and table text use the shared device management styles.
 
 ## 2. Field values
 

@@ -88,10 +88,10 @@ function equipmentPlanningTable() {
       .includes(state.equipmentPlanningSearch.toLowerCase()),
   );
   return (
-    `<div class="equipment-planning-toolbar">${inputField("planning-search", "搜索 SN、地址、MAC 或机柜", state.equipmentPlanningSearch)}<span class="live-small">${rows.length} 条规划</span></div>` +
+    `<div class="live-editor-grid equipment-planning-toolbar">${inputField("planning-search", "搜索 SN、IP、MAC 或机柜", state.equipmentPlanningSearch)}<span class="live-small">${rows.length} 条规划</span></div>` +
     table(
       [
-        "SN",
+        "设备 SN",
         "管理地址 / MAC",
         "管理子网",
         "BMC 地址 / MAC",
@@ -103,7 +103,7 @@ function equipmentPlanningTable() {
         const v = row.values,
           comparison = equipmentPlanningComparison(row),
           c = comparison.current;
-        return `<tr><td><strong>${esc(v.serial)}</strong></td><td>${equipmentPlanningCell(v.management_ip, c?.management_ip)}<span class="live-small live-code">${equipmentPlanningCell(v.management_mac, c?.management_mac)}</span></td><td class="live-code">${equipmentPlanningCell(v.management_subnet, c?.management_subnet)}</td><td>${equipmentPlanningCell(v.bmc_ip, c?.bmc_ip)}<span class="live-small live-code">${equipmentPlanningCell(v.bmc_mac, c?.bmc_mac)}</span></td><td>${equipmentPlanningCell(v.rack, c?.rack)}</td><td>${badge(comparison.label, comparison.tone)}</td><td>${button("编辑规划", "planning-edit", false, `data-id="${esc(row.id)}"`)}</td></tr>`;
+        return `<tr><td>${esc(v.serial)}</td><td>${equipmentPlanningCell(v.management_ip, c?.management_ip)}<span class="live-small live-code">${equipmentPlanningCell(v.management_mac, c?.management_mac)}</span></td><td>${equipmentPlanningCell(v.management_subnet, c?.management_subnet)}</td><td>${equipmentPlanningCell(v.bmc_ip, c?.bmc_ip)}<span class="live-small live-code">${equipmentPlanningCell(v.bmc_mac, c?.bmc_mac)}</span></td><td>${equipmentPlanningCell(v.rack, c?.rack)}</td><td>${badge(comparison.label, comparison.tone)}</td><td>${button("编辑规划", "planning-edit", false, `data-id="${esc(row.id)}"`)}</td></tr>`;
       }),
     ) +
     '<div class="live-note">按序列号与纳管设备对比。规划可随时编辑，在纳管设备中点击“一键匹配”后写入设备配置；机柜用于对比。</div>'

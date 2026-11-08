@@ -4,6 +4,12 @@
 
 Capability milestones for the current source lineage. Historical version headings identify development baselines, not published PXEye releases. Site addresses, device identities and operational logs are excluded.
 
+## 0.21.23 — Device management layout consistency
+
+- Place Device plans after Discovered devices and Managed devices, retaining Managed devices as the default tab.
+- Reuse the device management search-field layout and table typography for arrival plans, including responsive sizing and secondary MAC text.
+- Align the runtime health version with package metadata; retain the existing BIOS/PXE recovery fixes.
+
 ## 0.21.20 — Shared device identification
 
 - Use shared Redfish and NICo-report parsing to identify physical servers, supported NVLink switches, power shelves and BlueField DPUs.

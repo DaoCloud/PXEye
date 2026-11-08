@@ -130,7 +130,7 @@ function devicePage() {
           : "查看纳管设备，维护地址和安装规划。",
       tools,
     ) +
-    `<div class="live-tabs">${button("设备规划", "planning-tab", planning)}${button("发现设备", "eq-endpoints", pending)}${button("纳管设备", "eq-managed", !pending && !planning)}</div>`;
+    `<div class="live-tabs">${button("发现设备", "eq-endpoints", pending)}${button("纳管设备", "eq-managed", !pending && !planning)}${button("设备规划", "planning-tab", planning)}</div>`;
   if (planning) return body + equipmentPlanningTable();
   if (!data) return body + '<div class="live-empty">正在读取设备与接口…</div>';
   if (data.errors.length)
@@ -722,7 +722,7 @@ async function equipmentSyncPreview(id) {
   modal(
     "同步至 NICo",
     r.serial,
-      `<div class="live-note">设备已在 PXEye 清单中；此操作会把本地规划创建或更新为 NICo Expected 设备声明。</div><div class="live-note live-warning">${esc(r.effect)}</div>` +
+    `<div class="live-note">设备已在 PXEye 清单中；此操作会把本地规划创建或更新为 NICo Expected 设备声明。</div><div class="live-note live-warning">${esc(r.effect)}</div>` +
       defs([
         ["原生操作", esc(r.operation)],
         ["站点开关来源", esc(r.site_explorer.source)],

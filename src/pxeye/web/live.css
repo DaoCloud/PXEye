@@ -2049,11 +2049,5 @@
 
 /* Arrival planning shares the device table and editor components. */
 .equipment-planning-toolbar {
-  display: flex;
-  align-items: flex-end;
-  gap: 24px;
-  margin-bottom: 18px;
-}
-.equipment-planning-toolbar label {
-  width: min(480px, 100%);
+  align-items: end;
 }
