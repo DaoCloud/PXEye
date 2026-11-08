@@ -49,7 +49,7 @@ Owners: the OS supplier, hardware/network teams and PXEye operator. Follow [Inst
 - The installation profile resolves its disk and partition rules to the approved target storage, with any hardware RAID prepared through the appropriate hardware tooling.
 - The effective hostname, interface MAC, address, gateway and DNS settings match the device plan and selected installation profile.
 - The OS account, SSH authentication and acceptance access are configured for the installed system, independently of the BMC credentials.
-- The actual host network can download and verify the published ISO, kernel/initrd and installation metadata, and reach the installer callback; OS installation does not require an external package mirror.
+- The actual host network can download and verify the published ISO, kernel/initrd and installation metadata, and reach the installer callback. If a profile explicitly adds packages, its configured site-local APT mirror must also be reachable.
 - The operator has reviewed the selected devices, OS and cleanup scope, and the task preflight has passed with the effective installation settings.
 
 PXEye prepares or reuses the required Machine/Instance and per-host installation data during its workflow; do not create a second manual configuration merely to satisfy this checklist. First-ingestion cleanup can affect more disks than the OS system-disk selection.

@@ -9,17 +9,22 @@ import yaml
 OFFLINE_MIRROR = "http://127.0.0.1/pxeye-offline"
 
 
-def apply_offline_install(ai):
-    """Keep provisioning independent from site or public package mirrors."""
+def apply_software_install(ai, packages=None, apt=None):
+    """Apply only explicitly configured packages and mirrors."""
     ai.pop("packages", None)
-    ai["apt"] = {
-        "geoip": False,
-        # Keep the legacy primary shape for Ubuntu 22.04 media compatibility.
-        # Loopback fails immediately, then Subiquity selects its ISO-backed
-        # offline path without sending mirror traffic outside the installer.
-        "primary": [{"arches": ["default"], "uri": OFFLINE_MIRROR}],
-        "fallback": "offline-install",
-    }
+    if packages:
+        ai["packages"] = copy.deepcopy(packages)
+    if apt:
+        ai["apt"] = copy.deepcopy(apt)
+    else:
+        ai["apt"] = {
+            "geoip": False,
+            # Keep the legacy primary shape for Ubuntu 22.04 media compatibility.
+            # Loopback fails immediately, then Subiquity selects its ISO-backed
+            # offline path without sending mirror traffic outside the installer.
+            "primary": [{"arches": ["default"], "uri": OFFLINE_MIRROR}],
+            "fallback": "offline-install",
+        }
     ai.setdefault("source", {})["search_drivers"] = False
     ai["drivers"] = {"install": False}
     return ai
@@ -100,7 +105,7 @@ def generic_ubuntu(source, username, dns, timezone, ntp):
         "shutdown": "reboot",
         "refresh-installer": {"update": False},
     }
-    apply_offline_install(ai)
+    apply_software_install(ai)
     result = {k: copy.deepcopy(v) for k, v in source.items() if k != "user_data"}
     result["run_provisioning_instructions_on_every_boot"] = False
     result["phone_home_enabled"] = False

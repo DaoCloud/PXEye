@@ -17,7 +17,7 @@ from pxeye.installation.storage_policy import (
     selection_label,
     apply_partition_layout,
 )
-from pxeye.installation.profile_template import apply_offline_install
+from pxeye.installation.profile_template import apply_software_install
 
 OVERRIDABLE = ("os_id", "username", "login_mode", "authorized_keys", "credential")
 
@@ -96,8 +96,6 @@ class InstallProfiles:
         settings.pop("login_ref", None)
         settings.pop("allow_overrides", None)
         settings["storage"] = normalize_storage(settings.get("storage"))
-        settings.pop("packages", None)
-        settings.pop("apt", None)
         return {
             k: row[k]
             for k in (
@@ -121,7 +119,7 @@ class InstallProfiles:
             "layout": storage_label(settings["storage"]),
             "disk_selection": selection_label(settings["storage"]),
             "boot_mode": "UEFI",
-            "software_mode": "offline",
+            "software_mode": "online" if settings.get("apt") or settings.get("packages") else "offline",
             "validation": row.get("checked"),
             "evidence": "技术配置；实机适用范围以独立安装回执为准",
         }
@@ -293,10 +291,6 @@ class InstallProfiles:
                         raise ValueError("APT镜像地址无效。")
         s["allow_overrides"] = dict.fromkeys(OVERRIDABLE, True)
         s["storage"] = normalize_storage(s.get("storage"))
-        # Legacy profile versions may retain online fields in SQLite. They are
-        # accepted for compatibility but cannot affect newly rendered tasks.
-        s["packages"] = []
-        s["apt"] = {}
         password = config.get("password", "")
         if not isinstance(password, str):
             raise ValueError("密码格式无效。")
@@ -464,7 +458,7 @@ class InstallProfiles:
         ai.setdefault("user-data", {}).update(
             timezone=s["timezone"], ntp={"enabled": True, "servers": s["ntp"]}
         )
-        apply_offline_install(ai)
+        apply_software_install(ai, s["packages"], s["apt"])
         if "storage" in s:
             apply_partition_layout(ai, s["storage"])
         result["variant"] = {"OperatingSystemId": s["os_id"]}

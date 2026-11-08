@@ -123,7 +123,7 @@ async function profileEditor(id, copy = false) {
       ["clear", "清除密码"],
     ],
     "keep",
-  )}${multiline("profile-keys", "SSH 公钥（每行一个）", s.authorized_keys)}</div><p class="live-small">使用密码登录时，需在此处或设备规划中设置密码。</p></section><details class="subsection"><summary>高级设置</summary><div class="live-editor-grid">${inputField("profile-timezone", "时区", s.timezone)}${multiline("profile-ntp", "NTP 服务器（每行一个）", s.ntp)}${multiline("profile-dns-checks", "DNS 验收域名（每行一个）", s.dns_checks)}${multiline("profile-http-checks", "HTTP 验收 URL（每行一个）", s.http_checks)}</div><p class="live-small">安装仅使用 ISO 内材料，不访问外部软件源。当前不支持自定义脚本、多盘分区或 LVM。</p>${defs(
+  )}${multiline("profile-keys", "SSH 公钥（每行一个）", s.authorized_keys)}</div><p class="live-small">使用密码登录时，需在此处或设备规划中设置密码。</p></section><details class="subsection"><summary>高级设置</summary><div class="live-editor-grid">${inputField("profile-timezone", "时区", s.timezone)}${multiline("profile-ntp", "NTP 服务器（每行一个）", s.ntp)}${multiline("profile-packages", "额外软件包（每行一个）", s.packages)}${inputField("profile-apt", "APT 软件源 URL", s.apt?.primary?.[0]?.uri || "")}${inputField("profile-security", "APT 安全更新源 URL", s.apt?.security?.[0]?.uri || "")}${multiline("profile-dns-checks", "DNS 验收域名（每行一个）", s.dns_checks)}${multiline("profile-http-checks", "HTTP 验收 URL（每行一个）", s.http_checks)}</div><p class="live-small">留空时仅使用 ISO 内材料；需要额外软件时填写可达的站点内 APT 源。当前不支持自定义脚本、多盘分区或 LVM。</p>${defs(
     [
       ["网络模式", esc(p.network_mode) + " · 继承站点已有租户/VPC"],
       ["验证范围", esc(p.evidence)],
@@ -146,6 +146,17 @@ async function profileSave() {
   return busy(async () => {
     const w = state.wizard,
       p = w.profile;
+    const apt = structuredClone(p.settings.apt || {});
+    if ($("#profile-apt").value.trim())
+      apt.primary = [
+        { arches: ["default"], uri: $("#profile-apt").value.trim() },
+      ];
+    else delete apt.primary;
+    if ($("#profile-security").value.trim())
+      apt.security = [
+        { arches: ["default"], uri: $("#profile-security").value.trim() },
+      ];
+    else delete apt.security;
     const config = {
       name: $("#profile-name").value.trim(),
       description: $("#profile-description").value,
@@ -157,6 +168,8 @@ async function profileSave() {
       authorized_keys: lines("profile-keys"),
       timezone: $("#profile-timezone").value.trim(),
       ntp: lines("profile-ntp"),
+      packages: lines("profile-packages"),
+      apt,
       dns_checks: lines("profile-dns-checks"),
       http_checks: lines("profile-http-checks"),
       storage: {

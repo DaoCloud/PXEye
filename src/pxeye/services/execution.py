@@ -18,7 +18,6 @@ from pxeye.clients.redfish import RedfishClient
 from pxeye.clients.ssh import SSHClient
 from pxeye.clients.process import run
 from pxeye.installation.scripts import script_source
-from pxeye.installation.profile_template import apply_offline_install
 from pxeye.common import sha, atomic_json
 
 
@@ -461,9 +460,6 @@ print(json.dumps({'serial':Path('/sys/class/dmi/id/product_serial').read_text().
         firstboot_commands = ai["user-data"].setdefault("runcmd", [])
         if timezone_command not in firstboot_commands:
             firstboot_commands.append(timezone_command)
-        # Rendering is authoritative for old published profiles as well: no
-        # saved mirror or package list may reintroduce an Internet dependency.
-        apply_offline_install(ai)
         ai["identity"]["hostname"] = task["hostname"]
         if device.get("authorized_keys") is not None:
             ai["ssh"]["authorized-keys"] = copy.deepcopy(device["authorized_keys"])
