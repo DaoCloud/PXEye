@@ -9,7 +9,7 @@ LABEL org.opencontainers.image.title="PXEye" \
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 python3-pip python3-venv openssh-client ipmitool ca-certificates libgcc-s1 xorriso openssl sshpass \
     && rm -rf /var/lib/apt/lists/* \
-    && useradd --uid 1000 --create-home console
+    && (getent passwd 1000 >/dev/null || useradd --uid 1000 --create-home console)
 COPY bin/nico-admin-cli /usr/local/bin/nico-admin-cli
 COPY bin/grpcurl /usr/local/bin/grpcurl
 COPY pyproject.toml README.md LICENSE /app/

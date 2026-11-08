@@ -9,6 +9,7 @@ Capability milestones for the current source lineage. Historical version heading
 - Reduced the installation review to device identity, installation configuration and operating-system materials, with batch progress and failure-only details.
 - Reused the initial NICo allocation observation during reinstall review while retaining the complete safety preflight immediately before execution.
 - Added source-revision metadata and a commit-before-build workflow for traceable images.
+- Made the runtime UID setup compatible with Ubuntu base images that already provide UID 1000.
 
 ## 0.21.0 — Source structure and packaging
 
