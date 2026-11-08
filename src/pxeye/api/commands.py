@@ -38,6 +38,7 @@ class CommandRoutes:
                 "import-preview": lambda: equipment.import_preview(body, owner),
                 "import-apply": lambda: equipment.import_apply(body, owner),
                 "identify": lambda: equipment.identify(body, owner),
+                "identify-many": lambda: equipment.identify_many(body, owner),
                 "enroll": lambda: equipment.enroll(body, owner, self.app.discovery, actor),
                 "sync-preview": lambda: equipment.sync_preview(body, owner),
                 "sync-apply": lambda: equipment.sync_apply(body, owner, actor),

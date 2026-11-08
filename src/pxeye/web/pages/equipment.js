@@ -20,6 +20,10 @@ const equipmentStates = {
 };
 state.equipment = null;
 state.equipmentDeviceSelection = [];
+state.equipmentDiscoverySelection = [];
+state.equipmentDiscoveryResults = {};
+state.equipmentDiscoveryBatch = null;
+state.equipmentDiscoveryReading = false;
 state.equipmentFilters = { kind: "", rack: "", status: "", search: "" };
 sectionReads.equipment = async () => {
   state.equipment = await api("/api/equipment");
@@ -424,8 +428,8 @@ function equipmentOperationTable(operations) {
         )
     : "";
 }
-function equipmentDiscovery(rows) {
-  const candidates = rows.filter(
+function equipmentDiscoveryCandidates(rows) {
+  return rows.filter(
     (a) =>
       a.last_dhcp &&
       !a.device_id &&
@@ -434,25 +438,70 @@ function equipmentDiscovery(rows) {
       !a.switch_id &&
       !a.power_shelf_id,
   );
+}
+const equipmentDiscoveryAddresses = (row) =>
+  row.addresses.filter((ip) => /^\d+\.\d+\.\d+\.\d+$/.test(ip));
+const equipmentDiscoveryReadable = (row) =>
+  !row.identity_conflict &&
+  row.segment_type === "UNDERLAY" &&
+  row.network_name !== "static-assignments" &&
+  row.kind !== "dpu" &&
+  !["nvos", "host"].includes(row.role) &&
+  equipmentDiscoveryAddresses(row).length > 0;
+function equipmentDiscoveryProof(row) {
+  const result = state.equipmentDiscoveryResults[row.interface_id];
+  return result?.passed &&
+    result.mac_address === row.mac_address &&
+    row.addresses.includes(result.ip) &&
+    result.verified_at > Date.now() / 1000 - 900
+    ? result
+    : null;
+}
+function equipmentDiscovery(rows) {
+  const candidates = equipmentDiscoveryCandidates(rows);
   const networks = [
     ...new Set(candidates.map((a) => a.network_name).filter(Boolean)),
   ].sort();
   const visible = candidates.filter(
     (a) => !state.candidateNetwork || a.network_name === state.candidateNetwork,
   );
+  const selectable = visible.filter(equipmentDiscoveryReadable);
+  state.equipmentDiscoverySelection = state.equipmentDiscoverySelection.filter(
+    (id) => selectable.some((a) => a.interface_id === id),
+  );
+  const selected = state.equipmentDiscoverySelection.length,
+    reading = state.equipmentDiscoveryReading;
   const note =
     '<div class="live-note">设备上电后，管理控制器发出 DHCP 请求，NICo 按请求来源匹配子网并从动态地址池分配临时地址。选择端点并使用 BMC / PMC 账号读取序列号、设备类型和硬件信息，确认后加入纳管设备。</div>';
   const filter = `<div class="live-form" style="margin-bottom:18px">${selectField("eq-discovery-network", "发现子网", [["", "全部发现子网"], ...networks.map((n) => [n, n])], state.candidateNetwork)}</div>`;
-  const rowsHtml = visible.map(
-    (a) =>
-      `<tr><td>${bmcLink(a.addresses[0])}<span class="live-small live-code">${esc(a.mac_address)}</span></td><td>${esc(a.network_name || "未匹配子网")}<span class="live-small">${esc(a.last_dhcp)}</span></td><td>${esc(a.identity_conflict ? "接口归属冲突" : "待获取")}<span class="live-small">${esc(a.identity_conflict ? "请先处理重复归属" : "获取后显示序列号和设备类型")}</span></td><td>${a.identity_conflict ? "—" : button("获取设备信息", "eq-identify", false, eqAttr(a.interface_id))}</td></tr>`,
-  );
+  const bar = `<div class="equipment-batch-bar"><span>已选 ${selected} 台 · 每批最多 50 台</span><div class="live-tools">${state.equipmentDiscoveryBatch ? button("查看获取结果", "eq-discovery-results") : ""}${button(reading ? "正在获取设备信息…" : "批量获取设备信息", "eq-identify-many", false, !reading && selected > 0 && selected <= 50 ? "" : "disabled")}</div></div>`;
+  const rowsHtml = visible.map((a) => {
+    const result = equipmentDiscoveryProof(a),
+      failure = state.equipmentDiscoveryResults[a.interface_id],
+      readable = equipmentDiscoveryReadable(a);
+    const info = a.identity_conflict
+      ? "接口归属冲突"
+      : result
+        ? `${esc(result.identity.serial)}<span class="live-small">${esc([equipmentKinds[result.identity.kind], result.identity.model].filter(Boolean).join(" · "))}</span>`
+        : `待获取<span class="live-small">${esc(failure?.passed === false ? failure.detail : "获取后显示序列号和设备类型")}</span>`;
+    return `<tr><td><input type="checkbox" name="eq-discovery-device" value="${esc(a.interface_id)}" ${state.equipmentDiscoverySelection.includes(a.interface_id) ? "checked" : ""} ${readable && !reading ? "" : "disabled"} aria-label="选择 ${esc(a.mac_address)}"></td><td>${bmcLink(a.addresses[0])}<span class="live-small live-code">${esc(a.mac_address)}</span></td><td>${esc(a.network_name || "未匹配子网")}<span class="live-small">${esc(a.last_dhcp)}</span></td><td>${info}</td><td>${readable ? button(result ? "确认设备信息" : "获取设备信息", result ? "eq-identify-result" : "eq-identify", false, eqAttr(a.interface_id) + (reading ? " disabled" : "")) : "—"}</td></tr>`;
+  });
   return (
     note +
     filter +
+    bar +
     table(
-      ["临时管理地址 / MAC", "来源子网 / 最近 DHCP", "设备信息", "操作"],
+      [
+        "选择",
+        "临时管理地址 / MAC",
+        "来源子网 / 最近 DHCP",
+        "设备信息",
+        "操作",
+      ],
       rowsHtml,
+    ).replace(
+      "<th>选择</th>",
+      `<th><input type="checkbox" name="eq-discovery-all" ${selectable.length && selected === selectable.length ? "checked" : ""} ${selectable.length && !reading ? "" : "disabled"} aria-label="选择当前发现列表可获取信息的设备"></th>`,
     )
   );
 }
@@ -778,13 +827,42 @@ function equipmentIdentify(id) {
 }
 async function equipmentIdentifySubmit() {
   const w = state.wizard,
-    r = await api("/api/equipment/identify", {
+    ip = $("#eq-address").value,
+    payload = {
       interface_id: w.endpoint.interface_id,
-      ip: $("#eq-address").value,
+      ip,
       username: $("#eq-identity-user").value,
       password: $("#eq-identity-password").value,
-    });
-  w.proof = r;
+    };
+  let r;
+  try {
+    r = await api("/api/equipment/identify", payload);
+  } finally {
+    payload.password = "";
+    if ($("#eq-identity-password")) $("#eq-identity-password").value = "";
+  }
+  state.equipmentDiscoveryResults[w.endpoint.interface_id] = {
+    ...r,
+    passed: true,
+    ip,
+    mac_address: w.endpoint.mac_address,
+    interface_id: w.endpoint.interface_id,
+  };
+  render();
+  if (state.wizard !== w) {
+    toast("设备信息已获取，可从发现列表确认。");
+    return;
+  }
+  equipmentIdentityConfirmation(w.endpoint, r, ip);
+}
+function equipmentIdentityConfirmation(
+  endpoint,
+  proof,
+  ip,
+  returnToBatch = false,
+) {
+  const r = proof;
+  state.wizard = { resource: "eq-identify", endpoint, proof, returnToBatch };
   modal(
     "确认设备信息",
     "根据序列号和设备类型决定是否纳管",
@@ -792,11 +870,135 @@ async function equipmentIdentifySubmit() {
       ["设备类型", esc(equipmentKinds[r.identity.kind])],
       ["设备序列号", esc(r.identity.serial)],
       ["型号", esc(r.identity.model || "未提供")],
-      ["临时管理地址", esc(w.endpoint.addresses[0])],
+      ["临时管理地址", esc(ip)],
       ["验证时间", when(r.verified_at)],
     ]) + eqError(),
-    button("关闭", "close") +
+    (returnToBatch
+      ? button("返回获取结果", "eq-discovery-results")
+      : button("关闭", "close")) +
       (r.can_enroll ? button("加入纳管设备", "eq-enroll", true) : ""),
+  );
+}
+function equipmentIdentifyResult(id, returnToBatch = false) {
+  const endpoint = state.equipment?.endpoints.find(
+      (a) => a.interface_id === id,
+    ),
+    proof = endpoint && equipmentDiscoveryProof(endpoint);
+  if (!proof || !equipmentDiscoveryReadable(endpoint))
+    throw Error("设备信息已过期或端点已变化，请重新获取。");
+  equipmentIdentityConfirmation(endpoint, proof, proof.ip, returnToBatch);
+}
+function equipmentIdentifyMany() {
+  if (state.equipmentDiscoveryReading) return;
+  const selected = [...state.equipmentDiscoverySelection],
+    endpoints = equipmentDiscoveryCandidates(
+      state.equipment?.endpoints || [],
+    ).filter(
+      (row) =>
+        selected.includes(row.interface_id) && equipmentDiscoveryReadable(row),
+    );
+  if (
+    !selected.length ||
+    selected.length > 50 ||
+    endpoints.length !== selected.length
+  )
+    throw Error("请选择 1–50 台可获取信息的设备；端点变化时请刷新后重选。");
+  state.wizard = { resource: "eq-identify-many", endpoints };
+  modal(
+    "批量获取设备信息",
+    `为 ${endpoints.length} 台设备输入一次共用 BMC / PMC 账号密码`,
+    '<div class="live-note">仅通过 Redfish 读取设备信息。账号不同的设备请分批选择；获取完成后逐台核对并确认纳管。</div>' +
+      table(
+        ["临时管理地址", "管理 MAC"],
+        endpoints.map(
+          (row, index) =>
+            `<tr><td>${selectField(
+              "eq-batch-address-" + index,
+              "临时管理地址",
+              equipmentDiscoveryAddresses(row).map((ip) => [ip, ip]),
+              equipmentDiscoveryAddresses(row)[0],
+            )}</td><td>${esc(row.mac_address)}</td></tr>`,
+        ),
+      ) +
+      `<div class="live-form">${eqText("identity-user", "共用 BMC / PMC 用户名", "", 'autocomplete="off" maxlength="16"')}${eqText("identity-password", "共用 BMC / PMC 密码", "", 'type="password" autocomplete="new-password" maxlength="20"')}</div>` +
+      eqError(),
+    button("取消", "close") +
+      button("获取设备信息", "eq-identify-many-submit", true),
+  );
+}
+async function equipmentIdentifyManySubmit() {
+  if (state.equipmentDiscoveryReading) return;
+  const w = state.wizard,
+    payload = {
+      endpoints: w.endpoints.map((row, index) => ({
+        interface_id: row.interface_id,
+        ip: $("#eq-batch-address-" + index).value,
+      })),
+      username: $("#eq-identity-user").value,
+      password: $("#eq-identity-password").value,
+    };
+  if (!payload.username || !payload.password)
+    throw Error("请输入共用 BMC / PMC 账号和密码。");
+  state.equipmentDiscoveryReading = true;
+  state.wizard = { resource: "eq-identify-many-running" };
+  const marker = state.wizard;
+  modal(
+    "批量获取设备信息",
+    `正在读取 ${w.endpoints.length} 台设备`,
+    '<div class="live-empty">正在通过 Redfish 获取序列号、设备类型和型号…</div><div class="live-note">可以关闭窗口。完成后从发现列表查看获取结果。</div>' +
+      eqError(),
+    button("关闭", "close"),
+  );
+  render();
+  try {
+    const r = await api("/api/equipment/identify-many", payload);
+    state.equipmentDiscoveryBatch = r.rows.map((row) => ({
+      ...row,
+      mac_address: w.endpoints.find((a) => a.interface_id === row.interface_id)
+        .mac_address,
+    }));
+    for (const row of state.equipmentDiscoveryBatch)
+      state.equipmentDiscoveryResults[row.interface_id] = row;
+    if (state.wizard === marker) equipmentDiscoveryResults();
+    else
+      toast(
+        `设备信息获取完成：${r.rows.filter((row) => row.passed).length} / ${r.rows.length} 台成功。`,
+      );
+  } catch (error) {
+    if (state.wizard === marker) {
+      state.wizard = null;
+      close();
+    }
+    toast(error.message);
+  } finally {
+    payload.password = "";
+    state.equipmentDiscoveryReading = false;
+    render();
+  }
+}
+function equipmentDiscoveryResults() {
+  const rows = state.equipmentDiscoveryBatch;
+  if (!rows) throw Error("暂无批量获取结果。");
+  state.wizard = { resource: "eq-discovery-results" };
+  modal(
+    "设备信息获取结果",
+    `${rows.filter((row) => row.passed).length} / ${rows.length} 台获取成功`,
+    table(
+      ["临时管理地址 / MAC", "设备 SN", "设备类型 / 型号", "结果", "操作"],
+      rows.map((row) => {
+        const endpoint = state.equipment?.endpoints.find(
+            (a) => a.interface_id === row.interface_id,
+          ),
+          available =
+            endpoint &&
+            equipmentDiscoveryProof(endpoint)?.id === row.id &&
+            equipmentDiscoveryReadable(endpoint);
+        return `<tr><td>${esc(row.ip)}<span class="live-small live-code">${esc(row.mac_address)}</span></td><td>${esc(row.identity?.serial || "—")}</td><td>${esc(row.identity ? [equipmentKinds[row.identity.kind], row.identity.model].filter(Boolean).join(" · ") : "—")}</td><td>${esc(row.enrolled ? "已加入纳管设备" : row.passed ? (available ? "获取成功" : "端点已变化或验证已过期") : row.detail)}</td><td>${row.passed && available && !row.enrolled ? button(row.can_enroll ? "确认并纳管" : "查看信息", "eq-discovery-confirm", false, eqAttr(row.interface_id)) : "—"}</td></tr>`;
+      }),
+    ) +
+      '<div class="live-note">成功信息在当前页面保留；纳管前重新核对端点归属。验证有效期为 15 分钟，页面刷新或验证失效后须重新获取。失败设备可按正确账号另选一批。</div>' +
+      eqError(),
+    button("关闭", "close"),
   );
 }
 
@@ -821,6 +1023,24 @@ observeUI(
     }
     if (e.target.id === "eq-discovery-network") {
       state.candidateNetwork = e.target.value;
+      state.equipmentDiscoverySelection = [];
+      render();
+    }
+    if (e.target.name === "eq-discovery-all") {
+      state.equipmentDiscoverySelection = [
+        ...document.querySelectorAll(
+          'input[name="eq-discovery-device"]:not(:disabled)',
+        ),
+      ]
+        .filter(() => e.target.checked)
+        .map((input) => input.value);
+      render();
+    }
+    if (e.target.name === "eq-discovery-device") {
+      state.equipmentDiscoverySelection =
+        state.equipmentDiscoverySelection.filter((id) => id !== e.target.value);
+      if (e.target.checked)
+        state.equipmentDiscoverySelection.push(e.target.value);
       render();
     }
   },
@@ -873,6 +1093,11 @@ registerActions(
     "eq-pin-apply",
     "eq-identify",
     "eq-identify-submit",
+    "eq-identify-result",
+    "eq-identify-many",
+    "eq-identify-many-submit",
+    "eq-discovery-results",
+    "eq-discovery-confirm",
     "eq-enroll",
     "eq-reconcile",
     "eq-network-allocations",
@@ -962,18 +1187,39 @@ registerActions(
             toast((equipmentStates[r.status] || r.status) + "：" + r.detail);
           });
         case "eq-identify":
+          if (state.equipmentDiscoveryReading) return;
           return equipmentIdentify(el.dataset.id);
         case "eq-identify-submit":
           return await busy(equipmentIdentifySubmit);
+        case "eq-identify-result":
+          return equipmentIdentifyResult(el.dataset.id);
+        case "eq-identify-many":
+          return equipmentIdentifyMany();
+        case "eq-identify-many-submit":
+          return await busy(equipmentIdentifyManySubmit);
+        case "eq-discovery-results":
+          return equipmentDiscoveryResults();
+        case "eq-discovery-confirm":
+          return equipmentIdentifyResult(el.dataset.id, true);
         case "eq-enroll":
           return await busy(async () => {
+            const w = state.wizard;
             await api("/api/equipment/enroll", {
-              id: state.wizard.proof.id,
+              id: w.proof.id,
               confirm_registration: true,
             });
-            close();
-            state.deviceView = "managed";
+            const result = state.equipmentDiscoveryBatch?.find(
+              (row) => row.id === w.proof.id,
+            );
+            if (result) result.enrolled = true;
+            delete state.equipmentDiscoveryResults[w.endpoint.interface_id];
+            if (!w.returnToBatch) {
+              close();
+              state.deviceView = "managed";
+            }
             await equipmentReload();
+            if (w.returnToBatch && state.wizard === w)
+              equipmentDiscoveryResults();
             toast("已加入纳管设备；可继续维护地址和安装规划。");
           });
         case "eq-reconcile":

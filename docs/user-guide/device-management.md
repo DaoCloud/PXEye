@@ -5,7 +5,7 @@ title: Device management
 description: Arrival plans, discovery, enrollment and address configuration matching by serial number.
 navigation_group: resources
 updated_at: "2026-11-08"
-product_version: "0.21.23"
+product_version: "0.21.24"
 ---
 
 # Device management
@@ -54,7 +54,11 @@ CSV headers must contain all seven columns. Fields other than SN may be empty. W
 
 1. Enable DHCP on the device and provide working request and response paths to NICo.
 2. Under **Discovered devices**, select **Get device information (获取设备信息)** for the endpoint and enter valid BMC / PMC credentials.
-3. Verify the automatically detected serial number and device type, then select **Add to managed devices (加入纳管设备)**. The managed list retains the detected type without another type selection.
+3. For devices sharing credentials, select endpoints (or all eligible endpoints in the current filtered list) and click **Get device information in bulk (批量获取设备信息)**. Enter the shared credentials once. Each batch supports up to 50 endpoints with four concurrent reads. Changing the discovery subnet clears selection; conflicting endpoints and those without a usable management IPv4 cannot be selected.
+4. Review each device’s SN, type, model and success or failure. Results remain on the current page and can be reopened with **View retrieval results (查看获取结果)**. Retry failed devices as a separate batch with the correct credentials; other devices continue independently.
+5. Select **Review and enroll (确认并纳管)** or **Confirm device information (确认设备信息)**, verify the details, then click **Add to managed devices (加入纳管设备)**. Review devices one at a time from the batch results without re-entering credentials. The managed list retains the detected type.
+
+Retrieval reads only already-discovered endpoints; it does not automatically enroll devices or change hardware. Passwords are excluded from browser state and results. The server retains restricted identity proofs for subsequent enrollment. Proofs expire after 15 minutes; reload the information after a full page refresh, address/ownership change or proof expiry.
 
 Discovery information retrieval and **Refresh device details (刷新设备详情)** use the same identification rules for physical servers, NVLink switches and supported power shelves. Refresh also verifies the device serial number and management MAC; identity or type conflicts are reported as failures.
 

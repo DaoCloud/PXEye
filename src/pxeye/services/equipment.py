@@ -1379,7 +1379,59 @@ class Equipment:
 
     def identify(self, body, owner):
         """Authenticate a bounded, already observed endpoint, never scan a network."""
+        credential = self.identity_credential(body)
         snapshot = self.snapshot()
+        return self.identify_observed(body, owner, credential, snapshot)
+
+    @staticmethod
+    def identity_credential(body):
+        credential = {"username": body.get("username"), "password": body.get("password")}
+        if not all(
+            isinstance(v, str) and 1 <= len(v) <= limit
+            for v, limit in [(credential["username"], 16), (credential["password"], 20)]
+        ):
+            raise ValueError("请输入 BMC 账号（最多16字符）和密码（最多20字符）。")
+        return credential
+
+    def identify_many(self, body, owner):
+        """Read selected discovery endpoints with one credential and bounded concurrency."""
+        rows = body.get("endpoints")
+        if (
+            set(body) != {"endpoints", "username", "password"}
+            or not isinstance(rows, list)
+            or not 1 <= len(rows) <= 50
+            or any(
+                not isinstance(row, dict)
+                or set(row) != {"interface_id", "ip"}
+                or not isinstance(row["interface_id"], str)
+                or not isinstance(row["ip"], str)
+                for row in rows
+            )
+            or len({row["interface_id"] for row in rows}) != len(rows)
+        ):
+            raise ValueError("请选择 1–50 个不重复的发现端点及其临时 IPv4。")
+        credential = self.identity_credential(body)
+        snapshot = self.snapshot()
+        if snapshot["errors"]:
+            raise ValueError("设备和接口读取不完整，请刷新发现结果后重试。")
+
+        def read(row):
+            try:
+                result = self.identify_observed(
+                    row, owner, credential, snapshot, discovery_only=True
+                )
+                return {**row, "passed": True, **result}
+            except (ValueError, RuntimeError) as error:
+                return {
+                    **row,
+                    "passed": False,
+                    "detail": str(error).replace(credential["password"], "[已隐藏]"),
+                }
+
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            return {"rows": list(pool.map(read, rows))}
+
+    def identify_observed(self, body, owner, credential, snapshot, *, discovery_only=False):
         endpoint = next(
             (a for a in snapshot["allocations"] if a["interface_id"] == body.get("interface_id")),
             None,
@@ -1396,18 +1448,24 @@ class Equipment:
             or endpoint.get("role") in ("nvos", "host")
         ):
             raise ValueError("此接口不是支持的 BMC / PMC 身份读取入口。")
+        if discovery_only and (
+            not endpoint.get("last_dhcp")
+            or any(
+                endpoint.get(k)
+                for k in (
+                    "device_id",
+                    "machine_id",
+                    "dpu_machine_id",
+                    "switch_id",
+                    "power_shelf_id",
+                )
+            )
+        ):
+            raise ValueError("发现端点已纳管或归属已变化，请刷新列表。")
         address = ipv4(body.get("ip", ""))
         if not address or address not in endpoint["addresses"]:
             raise ValueError("待验证 IPv4 不属于此端点。")
-        credential = {"username": body.get("username"), "password": body.get("password")}
-        if not all(
-            isinstance(v, str) and 1 <= len(v) <= limit
-            for v, limit in [(credential["username"], 16), (credential["password"], 20)]
-        ):
-            raise ValueError("请输入 BMC 账号（最多16字符）和密码（最多20字符）。")
-        identity = read_device_identity(
-            self.adapter, address, endpoint["mac_address"], credential
-        )
+        identity = read_device_identity(self.adapter, address, endpoint["mac_address"], credential)
         if endpoint["kind"] not in ("unknown", identity["kind"]):
             raise ValueError("硬件类型与现有声明或原生关联冲突。")
         if endpoint.get("serial") and identity["serial"] != endpoint["serial"]:
@@ -1431,7 +1489,8 @@ class Equipment:
             "identity": identity,
             "verified_at": proof["verified_at"],
             "device_id": endpoint.get("device_id"),
-            "can_enroll": identity["kind"] in ("server", *KINDS) and not any(
+            "can_enroll": identity["kind"] in ("server", *KINDS)
+            and not any(
                 endpoint.get(k)
                 for k in (
                     "device_id",

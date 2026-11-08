@@ -4,6 +4,12 @@
 
 Capability milestones for the current source lineage. Historical version headings identify development baselines, not published PXEye releases. Site addresses, device identities and operational logs are excluded.
 
+## 0.21.24 — Batch discovery information retrieval
+
+- Select discovered endpoints and enter shared BMC / PMC credentials once for up to 50 devices, using four concurrent reads.
+- Reuse single-device identity parsing, management-MAC verification and session-bound enrollment proofs; show per-device results and confirm enrollment without re-entering credentials.
+- Keep retrieval separate from enrollment, clear selection on subnet changes and report failed reads independently.
+
 ## 0.21.23 — Device management layout consistency
 
 - Place Device plans after Discovered devices and Managed devices, retaining Managed devices as the default tab.
