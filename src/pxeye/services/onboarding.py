@@ -1010,6 +1010,10 @@ class Onboarding:
         )
         DeviceConfig(self.adapter, self.resources).bind(plan, device)
         baseline_revision = digest(self.adapter.baseline(device))
+        if device.get("materials"):
+            self.adapter.check_materials(device)
+        else:
+            self.adapter.check_materials()
         checks = [
             {
                 "name": "设备规划、hostname 与安装方案",
@@ -1033,6 +1037,11 @@ class Onboarding:
                     else "按方案规则解析唯一系统盘："
                     + selection_label(profile.get("settings", {}).get("storage"))
                 ),
+            },
+            {
+                "name": "安装材料 HTTP 与固定长度（执行前另做完整摘要校验）",
+                "passed": True,
+                "detail": "实际检查通过",
             },
         ]
         return {

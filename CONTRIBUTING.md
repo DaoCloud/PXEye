@@ -18,7 +18,8 @@ Contributions should start with the operator scenario, the relevant NICo resourc
 2. Reproduce with an authorized environment or an isolated fixture.
 3. Make the smallest coherent change and update both documentation languages.
 4. Check Python/JavaScript syntax; perform only the validation authorized for that environment. Hardware writes require designated devices and an explicit impact scope.
-5. Describe the final behavior, verification evidence and remaining limitations in the change request.
+5. Commit each coherent change before building an image. Build from a clean committed tree, tag the image with the version and short Git SHA, and pass the full SHA as `VCS_REF`.
+6. Describe the final behavior, verification evidence, deployed commit and image, and remaining limitations in the change request.
 
 Prepare local tooling before editing:
 

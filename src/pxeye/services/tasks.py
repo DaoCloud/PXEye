@@ -198,7 +198,11 @@ class TaskCoordinator:
                                 )
                                 check["passed"] = False
                     else:
-                        check = self.adapter.preflight(row["serial"], row["hostname"])
+                        check = self.adapter.preflight(
+                            row["serial"],
+                            row["hostname"],
+                            native_observation=observed,
+                        )
                         if check["scope"]["instance_id"] != observed["instances"][0]["id"]:
                             raise ValueError(
                                 "执行配置与 NICo 当前 Instance 不一致，请刷新设备后重新检查。"

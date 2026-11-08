@@ -338,7 +338,7 @@ print(json.dumps({'serial':Path('/sys/class/dmi/id/product_serial').read_text().
             except OSError:
                 raise RuntimeError("安装材料无法访问：" + material["name"]) from None
 
-    def preflight(self, serial, hostname):
+    def preflight(self, serial, hostname, *, native_observation=None):
         if not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", hostname):
             raise ValueError("hostname 使用 1–63 位小写字母、数字和短横线。")
         device = self.device(serial, bind_intent=False)
@@ -357,10 +357,24 @@ print(json.dumps({'serial':Path('/sys/class/dmi/id/product_serial').read_text().
         plan = check("设备规划、已接管接口、子网与地址占用", lambda: self.installation_plan(serial))
 
         def core_check():
-            machine = self.machine(device)
+            if native_observation is None:
+                machine = self.machine(device)
+                instance = self.instance(device)
+            else:
+                machine = native_observation.get("machine") or {}
+                bmc = machine.get("bmc") or machine.get("bmc_info") or {}
+                if machine.get("id") != device["machine_id"] or bmc.get("ip") != device["bmc_ip"]:
+                    raise RuntimeError("Machine 与登记 BMC 身份不匹配。")
+                instances = [
+                    item
+                    for item in native_observation.get("instances", [])
+                    if item.get("id") == device["instance_id"]
+                ]
+                if len(instances) != 1:
+                    raise RuntimeError("未找到唯一匹配的既有 Instance。")
+                instance = instances[0]
             if machine["state"] != "Assigned/Ready":
                 raise RuntimeError("Machine 当前不是 Assigned/Ready。")
-            instance = self.instance(device)
             if instance["config"]["os"].get("run_provisioning_instructions_on_every_boot"):
                 raise RuntimeError("当前 Instance 仍启用 everyboot。")
             snapshot.update(

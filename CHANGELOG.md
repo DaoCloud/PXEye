@@ -4,6 +4,12 @@
 
 Capability milestones for the current source lineage. Historical version headings identify development baselines, not published PXEye releases. Site addresses, device identities and operational logs are excluded.
 
+## 0.21.1 — Installation preflight
+
+- Reduced the installation review to device identity, installation configuration and operating-system materials, with batch progress and failure-only details.
+- Reused the initial NICo allocation observation during reinstall review while retaining the complete safety preflight immediately before execution.
+- Added source-revision metadata and a commit-before-build workflow for traceable images.
+
 ## 0.21.0 — Source structure and packaging
 
 - Split HTTP transport/routes, task coordination, clients, contracts and device projections.

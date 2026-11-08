@@ -250,9 +250,51 @@ function batchDeviceFilters() {
     `</div><div class="live-tools batch-selection-tools"><label><input id="batch-only-available" type="checkbox" ${f.available ? "checked" : ""}> 仅看可选设备</label><label><input id="batch-only-selected" type="checkbox" ${f.selected ? "checked" : ""}> 仅看已选</label><button class="link-button" data-batch-action="identity-refresh">刷新设备信息</button><button class="link-button" data-batch-action="system-query" ${state.currentSystems?.pending?.length ? "disabled" : ""} title="查询已选设备；未选择时查询当前筛选结果，最多50台">查询当前系统</button><span id="batch-selection-summary" role="status" aria-live="polite"></span></div>`
   );
 }
+
+function installationCheckPresentation(check) {
+  const rows = (check?.checks || []).flatMap((device) =>
+    (device.checks || []).map((item) => ({ ...item, device: device.device })),
+  );
+  const groups = [
+    {
+      label: "设备身份",
+      detail: "BMC 登录与序列号",
+      match: (item) => /BMC|设备接入条件/.test(item.name),
+    },
+    {
+      label: "安装配置",
+      detail: "管理地址、启动接口与系统盘",
+      match: (item) => !/BMC|设备接入条件|材料/.test(item.name),
+    },
+    {
+      label: "操作系统材料",
+      detail: "kernel、initrd、ISO 与自动安装配置",
+      match: (item) => /材料/.test(item.name),
+    },
+  ];
+  const steps = groups.map((group) => {
+    const matches = rows.filter(group.match);
+    const status = matches.some((item) => !item.passed)
+      ? "failed"
+      : matches.length
+        ? "passed"
+        : check
+          ? "waiting"
+          : "checking";
+    return { ...group, status };
+  });
+  const passed = steps.filter((step) => step.status === "passed").length;
+  return `<section class="install-check-panel" aria-label="安装条件检查"><header><div><span class="site-eyebrow">安装条件</span><strong>${check ? (check.passed ? "配置可以执行" : "发现阻断项") : "正在核对配置"}</strong></div><span>${passed} / ${steps.length}</span></header><progress value="${passed}" max="${steps.length}" aria-label="已通过 ${passed} 项，共 ${steps.length} 项"></progress><ol>${steps
+    .map(
+      (step) =>
+        `<li class="${step.status}"><span class="install-check-dot" aria-hidden="true"></span><div><strong>${esc(step.label)}</strong><span>${esc(step.detail)}</span></div><small>${{ passed: "已通过", failed: "需处理", checking: "检查中", waiting: "待核对" }[step.status]}</small></li>`,
+    )
+    .join("")}</ol></section>`;
+}
+
 function batchWizard() {
   const w = state.wizard;
-  let body = `<div class="live-step">${["选择设备", "核对配置与影响"].map((s, i) => `<${w.step === i + 1 ? "strong" : "span"}>${i + 1}. ${s}</${w.step === i + 1 ? "strong" : "span"}>`).join(" → ")}</div>`,
+  let body = `<div class="live-step">${["选择设备", "核对配置"].map((s, i) => `<${w.step === i + 1 ? "strong" : "span"}>${i + 1}. ${s}</${w.step === i + 1 ? "strong" : "span"}>`).join(" → ")}</div>`,
     foot = "";
   if (w.step === 1) {
     body +=
@@ -294,27 +336,24 @@ function batchWizard() {
     );
   }
   if (w.step === 2) {
-    body += w.check
-      ? w.check.checks
+    body += installationCheckPresentation(w.check);
+    if (w.check) {
+      const failures = w.check.checks.flatMap((device) =>
+        device.checks
+          .filter((item) => !item.passed)
           .map(
-            (c) =>
-              `<section class="subsection"><h3>${esc(c.device)} · ${esc(c.hostname)} · ${esc(c.scope.management_ip)}</h3><p class="live-small">${c.mode === "reinstall" ? "复用 Instance 重装" : "创建 Instance；需要时自动接入"}</p><p class="live-small">目标盘 ${esc(c.scope.disk_serial || c.scope.disk_wwn || "硬件采集后按方案选盘")}${c.installation_plan?.disk_selection ? " · " + esc(c.installation_plan.disk_selection.source) + " · " + esc(c.installation_plan.disk_selection.model) : ""}${c.installation_plan?.bmc_choice === "use_current" ? " · BMC " + esc(c.installation_plan.current_bmc_ip) + "（保留当前地址）" : ""}</p><details><summary>配置及来源</summary>${effectiveInstallSummary({ intent: { profile_id: c.profile_id || c.execution_device?.profile, effective: { values: c.installation_plan?.effective_config || {}, sources: c.installation_plan?.effective_sources || {}, password_present: c.installation_plan?.password_present, problems: [] } } })}</details>${defs([["管理DNS", esc((c.installation_plan?.dns_servers || []).join(", ") || "尚未解析") + " · " + esc(c.installation_plan?.dns_source || "执行前从管理子网核对")]])}<div class="live-checks">${c.checks
-                .filter((x) => !x.passed || x.deferred)
-                .map(
-                  (x) =>
-                    `<div class="${x.deferred ? "live-note" : x.passed ? "good" : "bad"}"><strong>${x.deferred ? "→" : x.passed ? "✓" : "!"} ${esc(x.name)}</strong>${esc(x.detail)}</div>`,
-                )
-                .join(
-                  "",
-                )}</div><details><summary>检查详情</summary><p>检查于 ${when(c.checked_at)}；规划版本 ${esc(c.installation_plan?.device_plan_revision?.slice(0, 12) || "原生声明")}。${esc(c.impact?.evidence)}</p>${c.checks
-                .filter((x) => x.passed && !x.deferred)
-                .map((x) => `<p>✓ ${esc(x.name)} · ${esc(x.detail)}</p>`)
-                .join(
-                  "",
-                )}</details><div class="live-note live-warning"><strong>接入清理范围：</strong>${esc(c.impact?.cleanup_detail)}</div></section>`,
-          )
-          .join("")
-      : '<div class="live-empty">正在检查安装条件…</div>';
+            (item) =>
+              `<div class="install-check-failure"><strong>${esc(device.device)} · ${esc(item.name)}</strong><span>${esc(item.detail)}</span></div>`,
+          ),
+      );
+      if (failures.length)
+        body += `<div class="install-check-failures">${failures.join("")}</div>`;
+      const cleanup = w.check.checks.filter(
+        (device) => device.impact?.cleanup_scope === "all_disks",
+      );
+      if (cleanup.length)
+        body += `<div class="live-note live-warning"><strong>首次接入将清理全部磁盘：</strong>${esc(cleanup.map((device) => device.device).join("、"))}</div>`;
+    }
     if (w.checkError)
       body += `<div class="live-error">${esc(w.checkError)}</div>`;
     if (w.check?.passed)
