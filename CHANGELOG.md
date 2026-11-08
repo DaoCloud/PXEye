@@ -10,6 +10,7 @@ Capability milestones for the current source lineage. Historical version heading
 - Reused the initial NICo allocation observation during reinstall review while retaining the complete safety preflight immediately before execution.
 - Added source-revision metadata and a commit-before-build workflow for traceable images.
 - Made the runtime UID setup compatible with Ubuntu base images that already provide UID 1000.
+- Aligned the API, package metadata and browser asset revision on version 0.21.1.
 
 ## 0.21.0 — Source structure and packaging
 
