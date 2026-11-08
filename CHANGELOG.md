@@ -4,6 +4,12 @@
 
 Capability milestones for the current source lineage. Historical version headings identify development baselines, not published PXEye releases. Site addresses, device identities and operational logs are excluded.
 
+## 0.21.9 — Public-evidence recovery gate
+
+- Gate BIOS recovery on the accepted task, `Assigned/BiosSetupFailed`, unchanged Instance configuration and absence of installer or disk-write evidence.
+- Stop relying on NICo's internal one-time iPXE flag, which is intentionally omitted from the public Instance representation while the state machine retains the reboot request separately.
+- Upgrade a v1 diagnosis-only stop without replaying any configuration write, restart or installation request.
+
 ## 0.21.8 — Automatic NICo boot recovery
 
 - Detect a bounded pre-installer `BiosSetupFailed` state and verify that the accepted Machine, Instance, boot interface and untouched-disk evidence still match the task.

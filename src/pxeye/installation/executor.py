@@ -766,17 +766,33 @@ class Executor:
             return None
 
     @staticmethod
+    def obsolete_automatic_recovery(recovery):
+        """The v1 gate used an internal NICo flag omitted by the public Instance API."""
+        return (
+            recovery.get("version") == 1
+            and recovery.get("state") == "blocked"
+            and recovery.get("error")
+            == "原 Instance 已没有待执行的一次性 custom PXE，停止自动恢复。"
+            and len(recovery.get("steps", [])) == 5
+            and all(
+                step.get("status") == ("failed" if step.get("id") == "diagnosis" else "pending")
+                for step in recovery.get("steps", [])
+            )
+        )
+
+    @staticmethod
     def can_start_automatic_recovery(task):
         """Whether an accepted install may enter the bounded BIOS recovery runbook."""
         requests = int(task.get("native_reinstall_requests") or 0) + int(
             task.get("native_allocation_requests") or 0
         )
         legacy = task.get("network_entry_recovery") or {}
+        recovery = task.get("automatic_recovery") or {}
         return (
             task.get("status") in ("running", "needs_attention")
             and task.get("stage") in ("boot", "pxe")
             and requests == 1
-            and not task.get("automatic_recovery")
+            and (not recovery or Executor.obsolete_automatic_recovery(recovery))
             and legacy.get("state") != "reboot_accepted"
             and not task.get("installer_failure")
             and not task.get("installer_progress")
@@ -817,8 +833,9 @@ class Executor:
         ):
             return False
 
+        previous = task.get("automatic_recovery")
         recovery = {
-            "version": 1,
+            "version": 2,
             "code": "NICO_BIOS_SETUP_FAILED",
             "source": "NICo",
             "title": "启动配置自动修复",
@@ -834,6 +851,8 @@ class Executor:
             ],
             "legacy_recovery": task.get("network_entry_recovery"),
         }
+        if previous:
+            task.setdefault("automatic_recovery_history", []).append(previous)
         task["automatic_recovery"] = recovery
         self.store.save(task)
         try:
@@ -847,12 +866,6 @@ class Executor:
                 or "BiosSetupFailed" not in state
             ):
                 raise RuntimeError("NICo 当前状态不是可自动恢复的 Assigned/BiosSetupFailed。")
-            instance = self.adapter.instance(device)
-            custom_pxe = instance.get(
-                "use_custom_pxe_on_boot", instance.get("useCustomPxeOnBoot")
-            )
-            if custom_pxe is not True:
-                raise RuntimeError("原 Instance 已没有待执行的一次性 custom PXE，停止自动恢复。")
             system = self.adapter.redfish(device)
             plan = boot_selection(self.adapter, device, system, "Pxe")
             if (
@@ -873,7 +886,7 @@ class Executor:
                 recovery,
                 "diagnosis",
                 "completed",
-                "设备、Instance、启动口和未写盘证据一致。",
+                "设备、Instance、启动口、NICo故障和未写盘证据一致。",
             )
             self.recovery_step(recovery, "configuration", "running", "写入网络优先并读回。")
             recovery["state"] = "config_requesting"
@@ -896,6 +909,7 @@ class Executor:
                 "task_timeout_seconds", 2400
             )
             task["observation_deadline"] = recovery["deadline"]
+            task["error"] = None
             self.recovery_step(recovery, "reboot", "completed", "NICo 已受理一次重启。")
             self.recovery_step(recovery, "nico", "running", "等待原状态机确认启动配置。")
             self.event(
