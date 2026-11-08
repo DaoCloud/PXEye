@@ -241,10 +241,24 @@ const bmcLink = (ip) =>
   ip
     ? `<a class="link-button" href="https://${esc(ip)}" target="_blank" rel="noopener noreferrer">${esc(ip)} ↗</a>`
     : "—";
+const taskStatus = (t) =>
+  t.recovery_observing
+    ? { label: "等待安装结果", tone: "amber" }
+    : {
+        label: statuses[t.status],
+        tone:
+          t.status === "completed"
+            ? "green"
+            : t.status === "needs_attention"
+              ? "red"
+              : "amber",
+      };
 function taskRows() {
   return state.tasks.map(
-    (t) =>
-      `<tr><td><button class="link-button" data-task="${esc(t.id)}">${esc(t.id)}</button><span class="live-small">${when(t.created_at)}</span></td><td>${esc(t.device)}<span class="live-small">${esc(t.management_ip)}</span></td><td>${esc(t.hostname)}</td><td>${badge(statuses[t.status], t.status === "completed" ? "green" : t.status === "needs_attention" ? "red" : "amber")}<span class="live-small">${esc(stages[t.stage])}</span></td><td>${bmcLink(state.resources?.devices.find((d) => d.serial === t.device)?.bmc_ip)}</td><td><button class="link-button" data-task="${esc(t.id)}">实时日志 / 记录</button></td></tr>`,
+    (t) => {
+      const status = taskStatus(t);
+      return `<tr><td><button class="link-button" data-task="${esc(t.id)}">${esc(t.id)}</button><span class="live-small">${when(t.created_at)}</span></td><td>${esc(t.device)}<span class="live-small">${esc(t.management_ip)}</span></td><td>${esc(t.hostname)}</td><td>${badge(status.label, status.tone)}<span class="live-small">${esc(stages[t.stage])}</span></td><td>${bmcLink(state.resources?.devices.find((d) => d.serial === t.device)?.bmc_ip)}</td><td><button class="link-button" data-task="${esc(t.id)}">实时日志 / 记录</button></td></tr>`;
+    },
   );
 }
 function sitePage() {
@@ -560,9 +574,10 @@ function detail(id) {
   }
   state.detail = id;
   const after = t.after_reboot,
+    status = taskStatus(t),
     checks =
       after?.checks || t.initial?.checks || t.installation_checks?.checks || {};
-  let body = `<div class="live-task-title"><div>${badge(statuses[t.status], t.status === "completed" ? "green" : t.status === "needs_attention" ? "red" : "amber")} <strong>${esc(stages[t.stage])}</strong></div><span class="live-small">${when(t.created_at)} · ${esc(t.actor)}</span></div>${defs(
+  let body = `<div class="live-task-title"><div>${badge(status.label, status.tone)} <strong>${esc(stages[t.stage])}</strong></div><span class="live-small">${when(t.created_at)} · ${esc(t.actor)}</span></div>${defs(
     [
       ["设备 / 主机名", esc(t.device) + " / " + esc(t.hostname)],
       ["本次安装目标地址", esc(t.management_ip)],
@@ -660,7 +675,7 @@ function detail(id) {
     "物理机安装记录",
     t.id,
     body,
-    `<div class="actions">${t.status === "needs_attention" ? button("处理问题", "task-problem", true, `data-id="${esc(t.id)}"`) : ""}${t.receipt ? `<a class="button" href="/api/tasks/${esc(t.id)}/receipt" download>下载验收报告</a>` : ""}${button("关闭", "close")}</div>`,
+    `<div class="actions">${t.status === "needs_attention" ? button(t.recovery_observing ? "查看恢复进度" : "处理问题", "task-problem", true, `data-id="${esc(t.id)}"`) : ""}${t.receipt ? `<a class="button" href="/api/tasks/${esc(t.id)}/receipt" download>下载验收报告</a>` : ""}${button("关闭", "close")}</div>`,
   );
   state.detail = id;
   refreshLogs(id);
@@ -672,6 +687,28 @@ async function taskProblem(id) {
   if (t.restart_available) return restartInstallDialog(id);
   if (t.retry_available) return retryInstallDialog(id);
   if (t.prepare_available) return prepareResumeDialog(id);
+  if (t.recovery_observing) {
+    state.detail = null;
+    state.wizard = { resource: "task-problem", id };
+    return modal(
+      "等待安装结果",
+      t.device,
+      defs([
+        ["当前阶段", esc(stages[t.stage] || t.stage)],
+        ["当前状态", "安装程序已经启动，正在等待本轮安装退出和新系统可信身份。"],
+        ["自动观察截止", when(t.observation_deadline)],
+      ]) +
+        `<div class="live-note">系统每 10 秒只读检查一次。收到可信身份后会自动继续验收，不会重复写盘或再次发送 PXE。</div>`,
+      button("刷新状态", "problem-refresh", true, `data-id="${esc(id)}"`) +
+        button(
+          "查看原任务与日志",
+          "problem-record",
+          false,
+          `data-id="${esc(id)}"`,
+        ) +
+        button("关闭", "close"),
+    );
+  }
   state.detail = null;
   state.wizard = { resource: "task-problem", id };
   modal(
@@ -725,6 +762,7 @@ registerActions(
     "site-save",
     "site-network",
     "problem-record",
+    "problem-refresh",
     "task-problem",
     "batch-new",
     "batch-next",
@@ -780,6 +818,9 @@ registerActions(
         case "problem-record":
           return detail(el.dataset.id);
         case "task-problem":
+          return await taskProblem(el.dataset.id);
+        case "problem-refresh":
+          await refreshTasks();
           return await taskProblem(el.dataset.id);
         case "batch-new":
           return batchStart(el.dataset.device);

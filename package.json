@@ -1,7 +1,7 @@
 {
   "name": "pxeye-ui-tools",
   "private": true,
-  "version": "0.21.4",
+  "version": "0.21.5",
   "scripts": {
     "format": "prettier --write 'src/pxeye/web/**/*.js' 'src/pxeye/web/**/*.css' 'src/pxeye/web/**/*.html' 'tools/*.cjs'",
     "format:check": "prettier --check 'src/pxeye/web/**/*.js' 'src/pxeye/web/**/*.css' 'src/pxeye/web/**/*.html' 'tools/*.cjs'",

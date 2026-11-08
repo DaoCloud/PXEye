@@ -31,22 +31,27 @@ class TaskCoordinator:
             return 5
         return value
 
+    def recovery_observation_active(self, task):
+        """Whether a restarted worker should keep observing this accepted install attempt."""
+        return (
+            task.get("stage") in ("boot", "pxe", "install", "handoff", "firstboot", "reboot")
+            and task.get("observation_deadline", 0) > time.time()
+            and (
+                task.get("native_reinstall_requests") == 1
+                or task.get("native_allocation_requests") == 1
+            )
+            and (
+                Path(self.adapter.data) / "tasks" / task["id"] / "event-binding.json"
+            ).exists()
+        )
+
     def recover(self):
-        data_dir = self.adapter.data
         auto_continue = []
         for task in self.store.incomplete():
             if task["status"] == "queued" and task.get("batch_id"):
                 continue
             if task["status"] in ("running", "queued"):
-                if (
-                    (Path(data_dir) / "tasks" / task["id"] / "event-binding.json").exists()
-                    and task.get("stage")
-                    in ("boot", "pxe", "install", "handoff", "firstboot", "reboot")
-                    and (
-                        task.get("native_reinstall_requests") == 1
-                        or task.get("native_allocation_requests") == 1
-                    )
-                ):
+                if self.recovery_observation_active(task):
                     auto_continue.append(task["id"])
                 task["status"] = "needs_attention"
                 try:
@@ -77,6 +82,8 @@ class TaskCoordinator:
                 task["retry_available"] = self.executor.can_retry_install(task)
                 task["restart_available"] = self.executor.can_restart_preinstall(task)
                 self.store.save(task)
+                if self.recovery_observation_active(task):
+                    auto_continue.append(task["id"])
         if auto_continue:
             self.start_recovered(auto_continue)
         elif self.store.queued():
@@ -89,6 +96,9 @@ class TaskCoordinator:
         result = dict(task)
         result["resume_available"] = self.executor.can_resume(result)
         result["retry_available"] = self.executor.can_retry_install(result)
+        result["recovery_observing"] = (
+            not result["resume_available"] and self.recovery_observation_active(result)
+        )
         return result
 
     def start_recovered(self, task_ids):

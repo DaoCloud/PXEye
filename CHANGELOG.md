@@ -4,6 +4,12 @@
 
 Capability milestones for the current source lineage. Historical version headings identify development baselines, not published PXEye releases. Site addresses, device identities and operational logs are excluded.
 
+## 0.21.5 — Installation recovery visibility
+
+- Displayed restarted installation observation as “Waiting for installation result” with its deadline and an explicit refresh action.
+- Kept the read-only recovery observer active across repeated service updates until the original observation deadline.
+- Continued to withhold acceptance and retry actions until trustworthy completion or identity evidence exists.
+
 ## 0.21.4 — Clear equipment actions
 
 - Sized per-device actions to their labels instead of stretching them across the table cell.
