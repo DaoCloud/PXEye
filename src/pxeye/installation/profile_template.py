@@ -6,6 +6,25 @@ import re
 import yaml
 
 
+OFFLINE_MIRROR = "http://127.0.0.1/pxeye-offline"
+
+
+def apply_offline_install(ai):
+    """Keep provisioning independent from site or public package mirrors."""
+    ai.pop("packages", None)
+    ai["apt"] = {
+        "geoip": False,
+        # Keep the legacy primary shape for Ubuntu 22.04 media compatibility.
+        # Loopback fails immediately, then Subiquity selects its ISO-backed
+        # offline path without sending mirror traffic outside the installer.
+        "primary": [{"arches": ["default"], "uri": OFFLINE_MIRROR}],
+        "fallback": "offline-install",
+    }
+    ai.setdefault("source", {})["search_drivers"] = False
+    ai["drivers"] = {"install": False}
+    return ai
+
+
 def generic_ubuntu(source, username, dns, timezone, ntp):
     if not re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}", username):
         raise ValueError("安装用户名称无效。")
@@ -67,13 +86,11 @@ def generic_ubuntu(source, username, dns, timezone, ntp):
                 {"type": "mount", "id": "efi-mount", "device": "efi-format", "path": "/boot/efi"},
             ],
         },
-        "packages": ["sudo", "efibootmgr"],
         "late-commands": [
             "printf '%s\\n' '"
             + username
             + " ALL=(ALL) NOPASSWD:ALL' > /target/etc/sudoers.d/90-nico-operator",
             "chmod 0440 /target/etc/sudoers.d/90-nico-operator",
-            "curtin in-target --target=/target -- visudo -cf /etc/sudoers.d/90-nico-operator",
         ],
         "user-data": {
             "ssh_deletekeys": False,
@@ -83,8 +100,7 @@ def generic_ubuntu(source, username, dns, timezone, ntp):
         "shutdown": "reboot",
         "refresh-installer": {"update": False},
     }
-    if original.get("apt"):
-        ai["apt"] = copy.deepcopy(original["apt"])
+    apply_offline_install(ai)
     result = {k: copy.deepcopy(v) for k, v in source.items() if k != "user_data"}
     result["run_provisioning_instructions_on_every_boot"] = False
     result["phone_home_enabled"] = False

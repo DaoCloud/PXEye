@@ -18,6 +18,7 @@ from pxeye.clients.redfish import RedfishClient
 from pxeye.clients.ssh import SSHClient
 from pxeye.clients.process import run
 from pxeye.installation.scripts import script_source
+from pxeye.installation.profile_template import apply_offline_install
 from pxeye.common import sha, atomic_json
 
 
@@ -460,10 +461,9 @@ print(json.dumps({'serial':Path('/sys/class/dmi/id/product_serial').read_text().
         firstboot_commands = ai["user-data"].setdefault("runcmd", [])
         if timezone_command not in firstboot_commands:
             firstboot_commands.append(timezone_command)
-        if task.get("apt_repair"):
-            ai["apt"] = copy.deepcopy(task["apt_repair"]["apt"])
-        # Older published templates may still list the former verifier dependency.
-        ai["packages"] = [p for p in ai.get("packages", []) if p != "python3-yaml"]
+        # Rendering is authoritative for old published profiles as well: no
+        # saved mirror or package list may reintroduce an Internet dependency.
+        apply_offline_install(ai)
         ai["identity"]["hostname"] = task["hostname"]
         if device.get("authorized_keys") is not None:
             ai["ssh"]["authorized-keys"] = copy.deepcopy(device["authorized_keys"])
@@ -532,10 +532,6 @@ print(json.dumps({'serial':Path('/sys/class/dmi/id/product_serial').read_text().
             + " > /target/var/log/nico-installation/task.json && cp /target/var/log/nico-installation/task.json /target/etc/nico-installation.json"
         )
         ai["late-commands"].append(command)
-        apt_check = script_source("apt_preflight.py")
-        ai.setdefault("early-commands", []).insert(
-            0, "python3 - <<'NICO_APT_CHECK'\n" + apt_check + "\nNICO_APT_CHECK"
-        )
         from pxeye.installation.install_events import inject, freeze
 
         binding = inject(self, ai, device, task)

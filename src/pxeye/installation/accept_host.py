@@ -175,8 +175,8 @@ def collect(context):
 
     for url in device["http_checks"]:
         service("HTTP访问 " + url, lambda u=url: http_check(u))
-    efi = command(["efibootmgr"])
-    assert "BootNext:" not in efi, "BOOTNEXT_STILL_SET"
+    boot_next = list(Path("/sys/firmware/efi/efivars").glob("BootNext-*"))
+    assert not boot_next, "BOOTNEXT_STILL_SET"
     disks = json.loads(command(["lsblk", "-J", "-o", "NAME,TYPE,FSTYPE,WWN,SERIAL,MOUNTPOINTS"]))[
         "blockdevices"
     ]
@@ -227,7 +227,7 @@ def collect(context):
         "task_receipt": receipt,
         "addresses": addresses,
         "routes": routes,
-        "efi": efi,
+        "efi": {"boot_next_present": False, "source": "efivarfs"},
         "installer_log_sha256": hashlib.sha256(logpath.read_bytes()).hexdigest(),
         "other_disks_layout_unchanged": others,
         "other_disks_bytewise_compared": False,
