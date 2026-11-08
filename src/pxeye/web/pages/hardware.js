@@ -210,12 +210,14 @@ async function openReferencedPlan(id, mac) {
     }
   }
 }
-function restoreInstallReview() {
-  const w = state.installReviewReturn;
+function restoreInstallReview(returnTo = state.installReviewReturn) {
+  const w = returnTo;
   if (!w) return;
   state.installReviewReturn = null;
   state.wizard = w;
   w.check = null;
+  w.checkError = null;
+  w.checking = false;
   w.step = 2;
   w.entries = w.selected.map((serial) => {
     const d = state.resources.devices.find((d) => d.serial === serial);
@@ -230,11 +232,8 @@ function restoreInstallReview() {
     state.resources.devices.find((d) => d.serial === w.selected[0])?.intent
       ?.profile_id || "";
   batchWizard();
-  batchCheck();
+  return batchCheck();
 }
-registerHook("devicePlanSaved", (returnTo) => {
-  if (returnTo && !state.wizard) restoreInstallReview();
-});
 registerHook("modalClosed", stopHardwarePolling);
 function discoveryDialog(serial) {
   return deviceDetail(serial, "hardware");

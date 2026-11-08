@@ -966,7 +966,21 @@ async function saveDevice() {
         $("#nic-network-" + i).value = $("#dev-bmc-network").value;
     }
   });
-  const result = await persistDevicePlan();
-  runHooks("devicePlanSaved", returnTo);
+  const result = await persistDevicePlan(
+    returnTo
+      ? () => {
+          state.wizard = returnTo;
+          returnTo.step = 2;
+          returnTo.check = null;
+          returnTo.checkError = null;
+          returnTo.checking = true;
+          batchWizard();
+        }
+      : null,
+  );
+  if (returnTo && state.wizard === returnTo) {
+    returnTo.checking = false;
+    await restoreInstallReview(returnTo);
+  }
   return result;
 }

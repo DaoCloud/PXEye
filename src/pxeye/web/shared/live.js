@@ -399,6 +399,7 @@ function close() {
   state.modal = null;
   state.detail = null;
   state.wizard = null;
+  state.installReviewReturn = null;
   $("#overlay-root").innerHTML = "";
   $(".app-shell").inert = false;
   document.body.style.overflow = "";
@@ -1203,7 +1204,7 @@ function cellCsv(value) {
       : String(value);
   return '"' + text.replaceAll('"', '""') + '"';
 }
-async function persistDevicePlan() {
+async function persistDevicePlan(afterClose) {
   return busy(async () => {
     const w = state.wizard,
       m = {};
@@ -1267,6 +1268,7 @@ async function persistDevicePlan() {
       intent: intentRequest(w, m).intent,
     });
     close();
+    if (afterClose) afterClose();
     toast(result.detail);
     try {
       await load();

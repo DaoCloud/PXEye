@@ -21,6 +21,7 @@ function batchSummary() {
   )}</section>`;
 }
 function batchStart(serial) {
+  state.installReviewReturn = null;
   state.wizard = {
     resource: "batch",
     step: 1,
