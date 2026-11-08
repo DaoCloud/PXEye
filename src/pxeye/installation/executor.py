@@ -518,7 +518,11 @@ class Executor:
                                     deadline = max(deadline, time.monotonic() + duration)
                                     began = time.monotonic()
                                     continue
-                            elif recovery.get("state") in ("observing", "waiting_installation"):
+                            elif recovery.get("state") in (
+                                "observing",
+                                "waiting_reboot",
+                                "waiting_installation",
+                            ):
                                 if time.time() > recovery.get("deadline", 0):
                                     raise RuntimeError(
                                         "启动配置自动修复后，NICo 未在限定时间恢复；保留现场。"
@@ -845,8 +849,8 @@ class Executor:
             "steps": [
                 {"id": "diagnosis", "label": "核对现场", "status": "running"},
                 {"id": "configuration", "label": "修复配置", "status": "pending"},
-                {"id": "reboot", "label": "重启生效", "status": "pending"},
-                {"id": "nico", "label": "NICo 恢复", "status": "pending"},
+                {"id": "nico", "label": "NICo 接管", "status": "pending"},
+                {"id": "reboot", "label": "网络重启", "status": "pending"},
                 {"id": "installation", "label": "继续安装", "status": "pending"},
             ],
             "legacy_recovery": task.get("network_entry_recovery"),
@@ -898,31 +902,24 @@ class Executor:
                 config_detail = "启动顺序已经符合目标，无需重复写入。"
             recovery["state"] = "config_verified"
             self.recovery_step(recovery, "configuration", "completed", config_detail)
-            self.recovery_step(recovery, "reboot", "running", "通过 NICo 请求一次主机重启。")
-            recovery["state"] = "reset_requesting"
-            self.check_bound(device, task)
-            self.store.save(task)
-            self.adapter.core(["machine", "reboot", "--machine", device["machine_id"]])
             recovery["state"] = "observing"
-            recovery["reboot_accepted"] = True
             recovery["deadline"] = time.time() + self.adapter.config.get(
                 "task_timeout_seconds", 2400
             )
             task["observation_deadline"] = recovery["deadline"]
             task["error"] = None
-            self.recovery_step(recovery, "reboot", "completed", "NICo 已受理一次重启。")
-            self.recovery_step(recovery, "nico", "running", "等待原状态机确认启动配置。")
+            self.recovery_step(recovery, "nico", "running", "等待原状态机确认配置并接管重启。")
             self.event(
                 task,
                 "boot",
-                "已自动修复网络启动顺序并通过 NICo 重启；继续原任务，不重发 custom PXE。",
+                "已自动修复网络启动顺序；等待 NICo 接管原 custom PXE 重启，不重发安装请求。",
                 recovery=True,
                 recovery_code=recovery["code"],
             )
             return True
         except Exception as error:
             state = recovery.get("state")
-            uncertain = state in ("config_requesting", "reset_requesting")
+            uncertain = state == "config_requesting"
             recovery["state"] = "unknown" if uncertain else "blocked"
             recovery["error"] = str(error)
             running = next(
@@ -935,17 +932,26 @@ class Executor:
 
     def observe_automatic_recovery(self, task, machine_state=None):
         recovery = task.get("automatic_recovery") or {}
-        if recovery.get("state") not in ("observing", "waiting_installation"):
+        if recovery.get("state") not in (
+            "observing",
+            "waiting_reboot",
+            "waiting_installation",
+        ):
             return False
         if machine_state is None:
             machine_state = str(self.adapter.machine(self.task_device(task)).get("state", ""))
         if machine_state.startswith("Assigned/Failed"):
             return False
         if recovery["state"] == "observing":
-            recovery["state"] = "waiting_installation"
+            recovery["state"] = "waiting_reboot"
             self.recovery_step(
-                recovery, "nico", "completed", "NICo 已离开 BiosSetupFailed 并继续原状态机。"
+                recovery, "nico", "completed", "NICo 已离开 BiosSetupFailed 并接管原状态机。"
             )
+            self.recovery_step(recovery, "reboot", "running", "等待NICo完成原custom PXE重启。")
+            self.event(task, "boot", "NICo 已接管恢复流程，等待原 custom PXE 重启完成。")
+        if recovery["state"] == "waiting_reboot" and machine_state.startswith("Assigned/Ready"):
+            recovery["state"] = "waiting_installation"
+            self.recovery_step(recovery, "reboot", "completed", "NICo 已完成原请求的网络重启。")
             self.recovery_step(
                 recovery, "installation", "running", "等待原 custom PXE 进入安装器。"
             )

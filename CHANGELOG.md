@@ -4,6 +4,12 @@
 
 Capability milestones for the current source lineage. Historical version headings identify development baselines, not published PXEye releases. Site addresses, device identities and operational logs are excluded.
 
+## 0.21.10 — Single-owner recovery restart
+
+- Let NICo's recovered state machine perform the retained custom-PXE restart after PXEye verifies the repaired boot order.
+- Remove the extra administrative restart that could precede NICo's own restart.
+- Display NICo takeover and network restart as separate persisted incident steps.
+
 ## 0.21.9 — Public-evidence recovery gate
 
 - Gate BIOS recovery on the accepted task, `Assigned/BiosSetupFailed`, unchanged Instance configuration and absence of installer or disk-write evidence.

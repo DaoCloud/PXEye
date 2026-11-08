@@ -104,7 +104,7 @@ class TaskCoordinator:
             not result["resume_available"] and self.recovery_observation_active(result)
         )
         recovery = result.get("automatic_recovery") or {}
-        if recovery.get("state") in ("observing", "waiting_installation"):
+        if recovery.get("state") in ("observing", "waiting_reboot", "waiting_installation"):
             result["recovery_observing"] = True
         return result
 

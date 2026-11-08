@@ -734,6 +734,7 @@ function automaticRecoveryDialog(t) {
     config_verified: "启动配置已核对",
     reset_requesting: "正在请求重启",
     observing: "等待 NICo 恢复",
+    waiting_reboot: "等待 NICo 网络重启",
     waiting_installation: "等待进入安装器",
     completed: "自动修复完成",
     blocked: "自动修复已停止",
