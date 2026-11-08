@@ -113,6 +113,134 @@
 .nico-form .input {
   width: 100%;
 }
+.nico-mode-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 4px;
+}
+.nico-mode-switch button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  text-align: left;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.nico-mode-switch button.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.nico-mode-switch strong,
+.nico-mode-switch small {
+  display: block;
+}
+.nico-mode-switch strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+.nico-mode-switch small {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.nico-mode-dot {
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  flex: 0 0 14px;
+}
+.active .nico-mode-dot {
+  border: 4px solid var(--accent);
+  background: var(--surface);
+}
+.nico-upload,
+.nico-values-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.nico-upload {
+  padding: 18px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+.nico-upload strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+.nico-upload p,
+.nico-upload-status {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 4px;
+}
+.nico-file-button,
+.nico-values-file {
+  cursor: pointer;
+  white-space: nowrap;
+  color: var(--accent);
+  font-size: 12px;
+}
+.nico-file-button {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+.nico-file-button input,
+.nico-values-file input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+.nico-file-button:focus-within,
+.nico-values-file:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.nico-values-editor {
+  font-family: var(--mono);
+  line-height: 1.65;
+  font-size: 12px;
+  resize: vertical;
+  min-height: 200px;
+}
+.nico-connection-settings summary {
+  cursor: pointer;
+  padding: 8px 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.nico-connection-settings .nico-field-grid {
+  margin-top: 14px;
+}
+.nico-command-preview {
+  min-width: 0;
+  margin-top: 14px;
+}
+.nico-command-preview strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+.nico-command-preview pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 11px/1.7 var(--mono);
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  max-height: 260px;
+  overflow-y: auto;
+  margin-top: 10px;
+}
 .nico-form input[readonly] {
   background: var(--bg);
   color: var(--muted);
@@ -419,6 +547,9 @@
     border: 0;
   }
   .nico-field-grid {
+    grid-template-columns: 1fr;
+  }
+  .nico-mode-switch {
     grid-template-columns: 1fr;
   }
   .nico-tabs {

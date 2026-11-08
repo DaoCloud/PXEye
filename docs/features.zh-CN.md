@@ -6,7 +6,7 @@
 
 ## NICo 集群部署
 
-PXEye 可在未配置 Core 时独立启动，通过当前 Kubernetes 的完整本地 Helm 包部署 NICo。查看服务、副本、初始化、存储与 Boot 材料，全部就绪后明确应用到站点设置。已有 Kubernetes 和准备齐全的站点 Chart/values 是部署前提。参见[集群页面指南](user-guide/nico-cluster.zh-CN.md)。
+PXEye 可在未配置 Core 时独立启动，在当前 Kubernetes 在线下载 Chart 或上传离线材料部署 NICo。默认在线，页面填写参数、预览 Helm 命令，无需挂载部署包。查看服务、副本、初始化、存储与 Boot 材料，全部就绪后明确应用到站点设置。已有 Kubernetes 和准备齐全的站点 Chart/values 是部署前提。参见[集群页面指南](user-guide/nico-cluster.zh-CN.md)。
 
 ## 机柜拓扑
 

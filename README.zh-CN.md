@@ -30,7 +30,7 @@ PXEye 是独立社区项目。NICo 提供基础设施控制面，PXEye 提供操
 | 操作系统 | 上传或从服务可访问目录导入 Ubuntu ISO，提取引导材料，登记 NICo OS 定义。 |
 | 安装方案 | 复用磁盘选择、GPT/UEFI 分区、ext4/XFS 和安装默认值，创建任务时冻结逐机配置。 |
 | 安装任务 | 按需准备硬件，分配或复用 Instance，启动无人值守安装，查看日志和 OS 验收结果。 |
-| NICo 集群 | 本地 Helm 包部署、完整服务状态与验证后站点连接。 |
+| NICo 集群 | 在线 Chart / 离线上传部署、服务状态与验证后站点连接。 |
 | 实例与站点 | 查询和回收 Instance，查看 Core 连接、客户端身份、存储和配套服务。 |
 
 原生资源映射和硬件前提见[功能与支持边界](docs/features.zh-CN.md)。
@@ -41,7 +41,7 @@ PXEye 可以先独立启动，再通过 [NICo 集群页面](docs/user-guide/nico
 
 ### 开始前检查
 
-- 已有 Kubernetes 集群、兼容管理客户端及 PXEye 持久存储；新部署准备完整 Helm 包，连接已有站点时准备 Core mTLS 凭据。
+- 已有 Kubernetes 集群、兼容管理客户端及 PXEye 持久存储；新部署选择在线来源或上传离线材料并填写 values，连接已有站点时准备 Core mTLS 凭据。
 - 已核对目标主机序列号、CPU 架构、BMC MAC 和 PXE 接口永久 MAC。
 - 已从实际控制面路径验证 BMC Redfish 身份及所需权限，并准备所选接管流程要求的凭据。
 - 已确认 BMC 与主机引导网络的子网、网关、VLAN、Relay 和无冲突的地址分配方案。

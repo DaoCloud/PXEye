@@ -132,7 +132,6 @@ spec:
             - {name: config, mountPath: /config, readOnly: true}
             - {name: secrets, mountPath: /secrets, readOnly: true}
             - {name: materials, mountPath: /materials}
-            - {name: packages, mountPath: /nico-packages, readOnly: true}
             - {name: temporary, mountPath: /tmp}
       volumes:
         - name: data
@@ -143,8 +142,6 @@ spec:
           secret: {secretName: mmzhou-pxeye, defaultMode: 0440}
         - name: materials
           persistentVolumeClaim: {claimName: mmzhou-pxeye-materials}
-        - name: packages
-          persistentVolumeClaim: {claimName: mmzhou-nico-packages}
         - name: temporary
           emptyDir: {sizeLimit: 256Mi}
 ---

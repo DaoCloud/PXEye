@@ -101,6 +101,8 @@ class Handler(QueryRoutes, CommandRoutes, BaseHTTPRequestHandler):
                 if urlsplit(self.path).path.startswith(
                     ("/api/devices", "/api/device-plans", "/api/equipment")
                 )
+                else 2 * 1024**2
+                if urlsplit(self.path).path == "/api/nico-deployment/preflight"
                 else 16384
             ):
                 return self.respond(413, {"error": "请求大小超限。"})
@@ -182,6 +184,19 @@ class Handler(QueryRoutes, CommandRoutes, BaseHTTPRequestHandler):
                 return self.respond(401, {"error": "请先登录。"})
             if not hmac.compare_digest(self.headers.get("X-CSRF-Token", ""), session["csrf"]):
                 return self.respond(403, {"error": "会话校验失败。"})
+            if path.path == "/api/nico-deployment/material":
+                from pxeye.deployment.sources import ARCHIVE_LIMIT
+
+                length = int(self.headers.get("Content-Length", "0"))
+                if not 1 <= length <= ARCHIVE_LIMIT:
+                    return self.respond(413, {"error": "部署材料最大 128 MiB。"})
+                if self.headers.get("Content-Type") != "application/octet-stream":
+                    return self.respond(415, {"error": "请选择 Chart 或部署包文件。"})
+                self.connection.settimeout(120)
+                filename = parse_qs(path.query).get("filename", ["deployment.tgz"])[0]
+                return self.respond(
+                    200, self.app.nico_deployment.sources.upload(self.rfile, length, filename)
+                )
             if not match:
                 return self.respond(404, {"error": "上传接口不存在。"})
             length = int(self.headers.get("Content-Length", "0"))

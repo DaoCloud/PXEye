@@ -248,6 +248,7 @@ def project(objects, bindings=()):
                     row["endpoints"].append(
                         {
                             "name": service["metadata"]["name"],
+                            "namespace": ns,
                             "address": service["spec"].get("clusterIP", ""),
                             "ports": ports,
                         }

@@ -11,6 +11,7 @@ const nicoStates = {
   prepared: ["可以部署", "blue"],
   ready: ["已就绪", "green"],
   connected: ["已连接站点", "green"],
+  installed: ["Helm 已完成", "green"],
   failed: ["需处理", "red"],
   needs_attention: ["需处理", "red"],
   unknown: ["待核对", "amber"],
@@ -28,6 +29,17 @@ sectionReads.nico = async (refresh = false) => {
   if (!state.nicoForm) {
     const p = state.nico.packages.find((x) => x.valid);
     state.nicoForm = {
+      mode: "online",
+      source_type: "url",
+      chart_source: "",
+      repository_url: "",
+      chart_version: "",
+      values_yaml: "",
+      timeout_seconds: 900,
+      client_secret: "",
+      ca_secret: "",
+      architecture: "both",
+      ...state.nico.source_defaults,
       package_id: p?.id || "",
       site_name: state.readiness?.site_name || "PXEye",
       release_prefix: "mmzhou",
@@ -74,6 +86,7 @@ function nicoClusterPage() {
         deploying: "正在部署 NICo",
         connecting: "正在连接站点",
         ready: "NICo 服务已就绪",
+        installed: "Helm 安装已完成",
         starting: "NICo 服务运行情况",
         unknown: "NICo 服务状态待核对",
         connected: "NICo 已连接站点",
@@ -146,8 +159,84 @@ function nicoClusterPage() {
 function nicoConfigPanel(data) {
   const values = state.nicoForm || {},
     packages = data.packages,
-    active = data.busy || !!data.operation?.started_at;
-  return `<div class="nico-config-layout"><section class="site-panel"><header class="site-panel-header"><div><span class="site-eyebrow">部署目标</span><h2>当前集群配置</h2></div>${badge("Helm 3", "gray")}</header><div class="nico-form live-form"><div class="nico-field-grid">${selectField("nico-package", "部署包", [["", packages.length ? "请选择部署包" : "未找到部署包"], ...packages.filter((p) => p.valid).map((p) => [p.id, `${p.name} · ${p.version}`])], values.package_id)}${inputField("nico-site-name", "站点名称", values.site_name, 'maxlength="100"')}${inputField("nico-prefix", "发布名前缀", values.release_prefix, 'maxlength="32"')}${inputField("nico-namespace", "命名空间", data.namespace, "readonly")}${inputField("nico-core-url", "Core HTTPS 地址", values.core_url, 'type="url" placeholder="https://mmzhou-nico-api.mmzhou.svc:1079"')}${inputField("nico-pxe-url", "PXE / HTTP 对外地址", values.pxe_url, 'type="url" placeholder="http://192.0.2.50:8080"')}</div><p class="live-small">PXE 地址必须能被被安装主机访问。数据库、服务暴露和存储配置使用部署包内的 values。</p>${!data.enabled || !data.cluster_available ? '<div class="nico-notice"><span>需要启用集群部署，并给 PXEye 配置当前集群的 ServiceAccount。</span></div>' : ""}${!packages.length ? '<div class="nico-notice"><span>将已准备的 Helm 部署包只读挂载到 /nico-packages。每个包包含 deployment.json、Chart、values 和初始化作业。</span></div>' : ""}<div class="nico-form-actions">${button("检查部署配置", "nico-preflight", true, active || !data.enabled || !data.cluster_available || !values.package_id ? "disabled" : "")}</div></div></section><aside class="site-panel nico-deployment-notes"><header class="site-panel-header"><div><span class="site-eyebrow">部署顺序</span><h2>从环境到站点</h2></div></header><ol><li><span>01</span><div><strong>检查集群和材料</strong><p>核对权限、文件、Chart 与服务映射。</p></div></li><li><span>02</span><div><strong>启动基础服务</strong><p>证书、数据库、Vault 与初始化作业。</p></div></li><li><span>03</span><div><strong>部署 NICo 服务</strong><p>Core、网络引导、REST 与工作流。</p></div></li><li><span>04</span><div><strong>应用到站点</strong><p>验证 Core 身份，启用业务页面。</p></div></li></ol><p class="site-panel-note">部署不会自动登记设备或执行装机。已有服务保留数据，异常阶段需要核对后继续。</p></aside></div>`;
+    active =
+      data.busy ||
+      (!!data.operation?.started_at &&
+        !["installed", "connected"].includes(data.operation.status)),
+    offline = values.mode === "offline";
+  const sourceFields = offline
+    ? `<div class="nico-upload"><div><strong>离线部署材料</strong><p>选择 Chart（.tgz）或完整部署包（.tar.gz / .zip），最大 128 MiB。</p></div><label class="nico-file-button">选择文件<input type="file" id="nico-material-file" accept=".tgz,.tar.gz,.zip" ${state.nicoUploading ? "disabled" : ""}></label></div>${state.nicoUploading ? '<p class="nico-upload-status" role="status">正在上传部署材料…</p>' : ""}${selectField("nico-package", "已上传的材料", [["", "请选择或上传材料"], ...packages.filter((p) => p.valid).map((p) => [p.id, `${p.name} · ${p.version}`])], values.package_id)}`
+    : `<div class="nico-field-grid">${selectField(
+        "nico-source-type",
+        "Chart 来源",
+        [
+          ["url", "下载地址"],
+          ["repository", "Helm 仓库"],
+          ["oci", "OCI 仓库"],
+        ],
+        values.source_type,
+      )}${values.source_type === "repository" ? inputField("nico-repository-url", "仓库地址", values.repository_url, 'type="url" placeholder="https://charts.example.com"') : values.source_type === "oci" ? inputField("nico-chart-version", "Chart 版本（可选）", values.chart_version, 'placeholder="使用来源中的版本"') : ""}</div>${inputField("nico-chart-source", values.source_type === "repository" ? "Chart 名称" : values.source_type === "oci" ? "OCI Chart 地址" : "Chart / 源码下载地址", values.chart_source, `placeholder="${values.source_type === "repository" ? "nico" : values.source_type === "oci" ? "oci://registry.example.com/charts/nico" : "https://example.com/nico.tgz"}"`)}${values.source_type === "repository" ? inputField("nico-chart-version", "Chart 版本（可选）", values.chart_version) : ""}<p class="live-small">由 PXEye 下载和准备 Chart，无需登录服务器。默认下载地址使用固定版本的 NICo 源码。</p>`;
+  return `<div class="nico-config-layout"><section class="site-panel"><header class="site-panel-header"><div><span class="site-eyebrow">部署目标</span><h2>当前集群配置</h2></div>${badge("Helm 3", "gray")}</header><div class="nico-form live-form"><div class="nico-mode-switch" role="group" aria-label="部署方式">${[
+    ["online", "在线部署", "从仓库或地址下载 Chart"],
+    ["offline", "离线部署", "从本机上传部署材料"],
+  ]
+    .map(
+      ([id, title, detail]) =>
+        `<button type="button" data-live="nico-mode" data-mode="${id}" class="${values.mode === id ? "active" : ""}" aria-pressed="${values.mode === id}"><span class="nico-mode-dot"></span><span><strong>${title}</strong><small>${detail}</small></span></button>`,
+    )
+    .join(
+      "",
+    )}</div>${sourceFields}<div class="nico-field-grid">${inputField("nico-site-name", "站点名称", values.site_name, 'maxlength="100"')}${inputField("nico-prefix", "Helm 发布名", values.release_prefix, 'maxlength="49"')}${inputField("nico-namespace", "命名空间", data.namespace, "readonly")}${inputField("nico-timeout", "部署超时（秒）", values.timeout_seconds, 'type="number" min="60" max="1800"')}</div><div class="nico-values-header"><label for="nico-values">安装参数 · values YAML</label><label class="nico-values-file">从文件读取<input type="file" id="nico-values-file" accept=".yaml,.yml"></label></div><textarea id="nico-values" class="input nico-values-editor" spellcheck="false" rows="10" placeholder="在这里粘贴 Chart 的 values，也可以从 YAML 文件读取。">${esc(values.values_yaml || "")}</textarea><p class="live-small">参数按所选 Chart 生效。NICo Core 的数据库、Vault、镜像和 Boot 配置在 values 中填写；普通 Chart 不需要额外的组件清单。</p><details class="nico-connection-settings"><summary>站点连接（可选，安装后应用）</summary><div class="nico-field-grid">${inputField("nico-core-url", "Core HTTPS 地址", values.core_url, 'type="url" placeholder="https://mmzhou-nico-api.mmzhou.svc:1079"')}${inputField("nico-pxe-url", "PXE / HTTP 对外地址", values.pxe_url, 'type="url" placeholder="http://192.0.2.50:8080"')}${inputField("nico-client-secret", "Core 客户端 Secret", values.client_secret, 'placeholder="mmzhou-nico-admin-client"')}${inputField("nico-ca-secret", "Core CA Secret", values.ca_secret, 'placeholder="mmzhou-nico-site-ca"')}${selectField(
+    "nico-architecture",
+    "被安装主机架构",
+    [
+      ["both", "x86_64 与 ARM64"],
+      ["x86_64", "x86_64"],
+      ["aarch64", "ARM64 / Grace"],
+    ],
+    values.architecture,
+  )}</div></details>${!data.enabled || !data.cluster_available ? '<div class="nico-notice"><span>当前仅可查看服务；执行安装需要 PXEye 的 ServiceAccount 具备部署权限并启用集群部署。</span></div>' : ""}<div class="nico-form-actions">${button("检查并预览", "nico-preflight", true, active || state.nicoUploading || !data.enabled || !data.cluster_available || (offline ? !values.package_id : !values.chart_source) ? "disabled" : "")}</div></div></section><aside class="site-panel nico-deployment-notes"><header class="site-panel-header"><div><span class="site-eyebrow">部署流程</span><h2>填写参数，执行 Helm</h2></div></header><ol><li><span>01</span><div><strong>选择部署方式</strong><p>在线下载，或从页面上传离线材料。</p></div></li><li><span>02</span><div><strong>填写安装参数</strong><p>指定发布名和 values，检查生成的 Helm 命令。</p></div></li><li><span>03</span><div><strong>确认并部署</strong><p>后台执行 Helm，查看服务和操作进度。</p></div></li><li><span>04</span><div><strong>连接站点</strong><p>服务和 Boot 材料就绪后，验证 Core 并启用业务页面。</p></div></li></ol><p class="site-panel-note">NICo Core Chart 不包含全部数据库、Vault、REST 和工作流依赖。可分别安装依赖 Chart，或使用包含它们的完整部署包。</p></aside></div>`;
+}
+
+async function nicoUploadMaterial(file) {
+  if (file.size > 128 * 1024 * 1024 || file.size === 0) {
+    toast("请选择不超过 128 MiB 的 Chart 或部署包。");
+    return;
+  }
+  state.nicoUploading = true;
+  render();
+  const controller = new AbortController(),
+    timer = setTimeout(() => controller.abort(), 180000);
+  try {
+    const response = await fetch(
+      "/api/nico-deployment/material?filename=" + encodeURIComponent(file.name),
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/octet-stream",
+          "X-CSRF-Token": state.csrf,
+        },
+        body: file,
+        credentials: "same-origin",
+        signal: controller.signal,
+      },
+    );
+    const result = await response.json();
+    if (!response.ok) throw Error(result.error || "部署材料上传失败。");
+    state.nicoForm.package_id = result.id;
+    state.nico = await api("/api/nico-deployment");
+    toast("部署材料已上传，可以填写参数并检查。");
+  } catch (error) {
+    toast(
+      error.name === "AbortError"
+        ? "上传超时，请重新选择文件。"
+        : error.message,
+    );
+  } finally {
+    clearTimeout(timer);
+    state.nicoUploading = false;
+    render();
+  }
 }
 
 function nicoServicesPanel(data) {
@@ -185,6 +274,9 @@ function nicoProgressPanel(data) {
   if (!op)
     return '<section class="site-panel"><div class="live-empty">尚未开始部署。先在部署配置中检查材料。</div></section>';
   return (
+    (op.status === "installed"
+      ? '<div class="nico-notice"><span>本次 Helm 安装已完成。完整服务和 Boot 材料仍在服务总览中核对；可以返回部署配置继续安装依赖 Chart。</span></div>'
+      : "") +
     `<div class="nico-progress-layout"><section class="site-panel"><header class="site-panel-header"><div><span class="site-eyebrow">按依赖顺序执行</span><h2>部署进度</h2></div>${nicoBadge(op.status)}</header><ol class="nico-timeline">${op.phases.map((p, i) => `<li class="${esc(p.state)}"><span class="nico-step-marker">${p.state === "ready" ? "✓" : i + 1}</span><div class="nico-step-content"><div><strong>${esc(p.name)}</strong>${nicoBadge(p.state)}</div><p>${esc(p.detail || (p.state === "running" ? "正在执行" : "等待前序阶段完成"))}</p>${p.release ? `<span class="live-code">${esc(p.release)}</span>` : ""}${p.finished_at ? `<small>完成于 ${when(p.finished_at)}</small>` : ""}</div></li>`).join("")}</ol></section><section class="site-panel"><header class="site-panel-header"><div><span class="site-eyebrow">执行记录</span><h2>操作与命令</h2></div><span class="live-small">${op.events.length} 条</span></header><div class="nico-events">${op.events.map((event) => `<div class="nico-event"><time>${when(event.at)}</time><p>${esc(event.message)}${event.exit_code != null ? ` · 退出码 ${esc(event.exit_code)}` : ""}</p>${event.command ? `<code>${esc(event.command)}</code>` : ""}</div>`).join("") || '<div class="live-empty">等待执行记录</div>'}</div></section></div>` +
     ((data.jobs || []).length
       ? `<section class="site-panel nico-initialization"><header class="site-panel-header"><div><span class="site-eyebrow">初始化</span><h2>作业与依赖</h2></div></header>${table(
@@ -240,20 +332,38 @@ function nicoServiceDialog(id) {
 
 async function nicoPreflight() {
   const v = state.nicoForm;
-  if (!v.package_id || !v.core_url || !v.pxe_url) {
-    toast("请选择部署包，并填写 Core 与 PXE 地址。");
+  if (v.mode === "offline" ? !v.package_id : !v.chart_source) {
+    toast(
+      v.mode === "offline"
+        ? "请上传并选择离线材料。"
+        : "请填写在线 Chart 来源。",
+    );
     return;
   }
   await api("/api/nico-deployment/preflight", {
-    package_id: v.package_id,
-    site_name: v.site_name,
-    release_prefix: v.release_prefix,
-    core_url: v.core_url,
-    pxe_url: v.pxe_url,
+    ...Object.fromEntries(
+      [
+        "mode",
+        "package_id",
+        "site_name",
+        "release_prefix",
+        "core_url",
+        "pxe_url",
+        "source_type",
+        "chart_source",
+        "repository_url",
+        "chart_version",
+        "values_yaml",
+        "client_secret",
+        "ca_secret",
+        "architecture",
+      ].map((key) => [key, v[key] || ""]),
+    ),
+    timeout_seconds: Number(v.timeout_seconds),
   });
   state.nicoTab = "progress";
   await readSection("nico", sectionReads.nico);
-  toast("已启动后台部署预检。");
+  toast("已启动后台检查，准备 Chart 与 Helm 命令。");
 }
 
 function nicoConfirm(action) {
@@ -276,7 +386,7 @@ function nicoConfirm(action) {
         "PXE / HTTP",
         `<span class="live-code">${esc(op.configuration.pxe_url)}</span>`,
       ],
-    ])}<p class="live-small">${connecting ? "将更新站点连接和材料服务地址；Core 验证失败时保留原配置。" : "将创建包内声明的 NICo 服务与依赖。失败时保留发布记录和持久数据，继续前会核对 Helm 状态。"}</p><div id="resource-error" class="live-error" role="alert"></div></div>`,
+    ])}${!connecting && op.commands?.length ? `<div class="nico-command-preview"><strong>将执行的 Helm 命令</strong><pre>${esc(op.commands.join("\n\n"))}</pre></div>` : ""}${connecting ? inputField("nico-connect-core", "Core HTTPS 地址", op.configuration.core_url, 'type="url"') + inputField("nico-connect-pxe", "PXE / HTTP 对外地址", op.configuration.pxe_url, 'type="url"') : ""}<p class="live-small">${connecting ? "将更新站点连接和材料服务地址；Core 验证失败时保留原配置。" : "将创建包内声明的 NICo 服务与依赖。失败时保留发布记录和持久数据，继续前会核对 Helm 状态。"}</p><div id="resource-error" class="live-error" role="alert"></div></div>`,
     button("取消", "close") +
       button(connecting ? "验证并应用" : "确认部署", "nico-confirm", true),
   );
@@ -285,6 +395,7 @@ function nicoConfirm(action) {
 registerActions(
   "nico_cluster.js",
   [
+    "nico-mode",
     "nico-refresh",
     "nico-tab",
     "nico-group",
@@ -298,7 +409,10 @@ registerActions(
   async (event) => {
     const target = event.target.closest("[data-live]"),
       action = target.dataset.live;
-    if (action === "nico-tab") {
+    if (action === "nico-mode") {
+      state.nicoForm.mode = target.dataset.mode;
+      render();
+    } else if (action === "nico-tab") {
       state.nicoTab = target.dataset.tab;
       render();
     } else if (action === "nico-group") {
@@ -322,7 +436,16 @@ registerActions(
       await busy(async () => {
         const result = await api(
           "/api/nico-deployment/" + state.wizard.action,
-          { id: state.wizard.operationId, confirm: true },
+          {
+            id: state.wizard.operationId,
+            confirm: true,
+            ...(state.wizard.action === "connect"
+              ? {
+                  core_url: document.getElementById("nico-connect-core").value,
+                  pxe_url: document.getElementById("nico-connect-pxe").value,
+                }
+              : {}),
+          },
         );
         close();
         state.nicoTab = "progress";
@@ -334,6 +457,13 @@ registerActions(
 
 observeUI("input", "nico_cluster.js", (event) => {
   const keys = {
+    "nico-chart-source": "chart_source",
+    "nico-chart-version": "chart_version",
+    "nico-repository-url": "repository_url",
+    "nico-values": "values_yaml",
+    "nico-timeout": "timeout_seconds",
+    "nico-client-secret": "client_secret",
+    "nico-ca-secret": "ca_secret",
     "nico-site-name": "site_name",
     "nico-prefix": "release_prefix",
     "nico-core-url": "core_url",
@@ -342,7 +472,35 @@ observeUI("input", "nico_cluster.js", (event) => {
   const key = keys[event.target.id];
   if (key && state.nicoForm) state.nicoForm[key] = event.target.value;
 });
-observeUI("change", "nico_cluster.js", (event) => {
+observeUI("change", "nico_cluster.js", async (event) => {
+  if (event.target.id === "nico-material-file") {
+    if (event.target.files[0]) await nicoUploadMaterial(event.target.files[0]);
+    return;
+  }
+  if (event.target.id === "nico-values-file") {
+    const file = event.target.files[0];
+    if (!file) return;
+    if (file.size > 1024 * 1024) {
+      toast("values 文件最大 1 MiB。");
+      return;
+    }
+    state.nicoForm.values_yaml = await file.text();
+    render();
+    return;
+  }
+  if (event.target.id === "nico-source-type") {
+    state.nicoForm.source_type = event.target.value;
+    state.nicoForm.chart_source =
+      event.target.value === "url"
+        ? state.nico.source_defaults?.chart_source || ""
+        : "";
+    render();
+    return;
+  }
+  if (event.target.id === "nico-architecture") {
+    state.nicoForm.architecture = event.target.value;
+    return;
+  }
   if (event.target.id !== "nico-package") return;
   const p = state.nico.packages.find((x) => x.id === event.target.value);
   state.nicoForm = {

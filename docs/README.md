@@ -8,7 +8,7 @@ Public PXEye documentation is maintained in English and Simplified Chinese. Star
 | --- | --- | --- | --- |
 | Pre-installation checklist | [Read](pre-installation-checklist.md) | [阅读](pre-installation-checklist.zh-CN.md) | One-sentence checks for discovery, host OS writing and managed DPUs. |
 | Deployment | [Read](deployment.md) | [阅读](deployment.zh-CN.md) | Binaries, site config, credentials, mounts and persistence. |
-| NICo cluster deployment | [Read](nico-deployment.md) | [阅读](nico-deployment.zh-CN.md) | Independent startup, Helm packages, permissions and site connection. |
+| NICo cluster deployment | [Read](nico-deployment.md) | [阅读](nico-deployment.zh-CN.md) | Independent startup, online/offline Helm deployment, permissions and site connection. |
 | Install your first server | [Read](getting-started.md) | [阅读](getting-started.zh-CN.md) | First-device path from enrollment to acceptance. |
 | Features and boundaries | [Read](features.md) | [阅读](features.zh-CN.md) | Native mappings, device capabilities and installation scope. |
 | Architecture | [Read](architecture.md) | [阅读](architecture.zh-CN.md) | Runtime, module responsibilities and authoritative data. |

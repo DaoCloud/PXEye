@@ -2,21 +2,41 @@
 
 [English](nico-deployment.md) · **简体中文** · [文档中心](README.zh-CN.md)
 
-PXEye 可独立启动在已有 Kubernetes/Kind 中。登录后使用 [NICo 集群页面](user-guide/nico-cluster.zh-CN.md) 部署当前集群的 NICo 应用。Kubernetes、CNI、存储类及对外网络入口需要事先可用。
+PXEye 可独立启动在已有 Kubernetes/Kind 中。登录后使用 [NICo 集群页面](user-guide/nico-cluster.zh-CN.md) 在线或离线部署当前集群的 NICo 应用。默认在线，在页面填写来源、发布名和 values 即可；离线直接上传文件，无需登录服务器挂载部署包。Kubernetes、CNI、存储类及对外网络入口需要事先可用。
 
 ## 1. 准备运行环境
 
 - PXEye 镜像包含兼容控制面架构的 `nico-admin-cli`、`grpcurl` 和 **Helm 3**，构建前放在 `bin/`。
 - `/data` 持久保存任务、配置、部署记录与受限客户端身份；`/materials` 保存上传的 OS 材料。
 - `/secrets/auth.json` 提供登录口令的 SHA256。初次启动不需要 Core 证书或 SSH 私钥，PXEye 在后端数据目录生成 SSH 身份。
-- `/nico-packages` 只读挂载已准备的部署包；该目录不通过 HTTP 发布。
+- 页面上传及在线准备的 Chart 保存在 `/data/nico-deployment/`，由 PXEye 自动维护；上传不需要额外 PVC。既有 `/nico-packages` 挂载可继续作为可选材料来源。
 - PXEye 与 PXE 使用同一份材料存储。单节点/RWO 存储须通过节点选择器将 PXE 调度到 PXEye 节点；多节点可使用 RWX 存储。
 
 启动配置使用 [bootstrap-site.example.json](../examples/bootstrap-site.example.json)。保持 `core_url` 为空，启用 `nico_deployment.enabled`，命名空间与 Pod 所在命名空间一致。
 
-## 2. 准备 Helm 部署包
+## 2. 在线与离线部署
 
-目录如下，一台站点的配置集中保存在 `values/`：
+| 方式 | 页面操作 |
+| --- | --- |
+| 在线下载地址（默认） | 使用默认固定版本 NICo 源码，或填写 Chart `.tgz` / 源码归档的下载地址。PXEye 下载并准备 Chart。 |
+| 在线 Helm 仓库 | 填仓库 URL、Chart 名称、可选版本及 values；PXEye 执行 `helm pull --repo`，随后安装固定的 Chart。 |
+| 在线 OCI | 填 `oci://...` Chart 地址、可选版本及 values；PXEye 执行 `helm pull`。 |
+| 离线 | 从页面上传带子 Chart 依赖的 `.tgz`，填写或读取 values。也可上传完整部署包 `.tar.gz` / `.zip`。 |
+
+在线来源由 PXEye 下载，镜像由节点拉取；私有仓库需要已有的相应认证。普通 Chart 不要求 `deployment.json`、组件映射或文件摘要表。完整部署包使用下节格式，保留多阶段初始化和站点连接信息。
+
+检查通过后在确认窗口查看将执行的命令：
+
+```bash
+helm upgrade --install mmzhou ./chart.tgz \
+  -n mmzhou -f values.yaml --wait --wait-for-jobs --timeout 900s
+```
+
+实际命令还使用当前 Pod 的 Kubernetes 身份和 PXEye 的命名/挂载适配器，在部署流程中展示。NICo Core Chart 自动使用 `mmzhou` 工作负载命名和共享材料 PVC；自定义材料 PVC 名称可在 `nico_deployment.materials_claim` 中指定。单个 Chart 成功表示本次 Helm 完成；完整服务、Boot、站点连接仍分别核对。
+
+## 3. 完整 Helm 部署包（可选）
+
+需要一次部署 Core、REST 及依赖时，可使用完整包。一台站点的配置集中保存在 `values/`：
 
 ```text
 site-recipe/
@@ -64,9 +84,15 @@ python3 tools/package-nico-deployment.py \
   --destination /srv/nico-packages/site-v1
 ```
 
-打包工具复制配方声明的 Chart/values，生成文件 SHA256，拒绝覆盖已有目标。把输出目录放入现有 PVC `mmzhou-nico-packages`，使 PXEye 中可见 `/nico-packages/site-v1/deployment.json`。镜像需提前导入节点或放入可访问仓库；页面不会执行宿主机镜像导入或在线 dependency update。
+打包工具复制配方声明的 Chart/values，生成文件 SHA256，拒绝覆盖已有目标。把输出目录打成压缩包，从离线部署页面上传：
 
-## 3. 配方字段与挂载
+```bash
+tar -C /srv/nico-packages -czf /srv/site-v1.tar.gz site-v1
+```
+
+也可继续使用已有 `/nico-packages` 只读挂载。镜像需提前导入节点或放入可访问仓库；页面不会执行宿主机镜像导入；离线材料必须已包含子 Chart 依赖。
+
+## 4. 配方字段与材料共享
 
 | 字段 | 用途 |
 | --- | --- |
@@ -93,9 +119,9 @@ HTTP：<pxe-url>/public/blobs/internal/nico/os-library/<os-id>/install.iso
 
 Boot initContainer 同时在 Core 和 PXE 中配置；自建 x86 Boot 镜像和 Grace ARM64 文件树都需要按实际供货版本加入，不能只凭控制面 x86 架构选择引导文件。
 
-## 4. 启动 PXEye
+## 5. 启动 PXEye
 
-先将输出包填充到 `mmzhou-nico-packages` PVC，按存储类设置数据/材料 PVC。创建本地配置和登录凭据文件：
+按存储类设置数据/材料 PVC；启动清单不需要部署包 PVC。创建配置和登录凭据文件：
 
 ```bash
 mkdir -p deploy/local/bootstrap
@@ -132,7 +158,7 @@ kubectl --context "$SITE_CONTEXT" -n mmzhou rollout status deployment/mmzhou-pxe
 
 基础清单授予当前命名空间的应用安装权限。安装 cert-manager CRD/集群 RBAC 或本仓库平台 Chart 的 Vault TokenReview 绑定时，管理员需另行应用 [集群安装权限](../deploy/nico-cluster-permissions.yaml)，并在启动配置设置 `allow_cluster_resources: true`。权限不允许时，使用已准备依赖的部署包。完成部署后可撤销安装权限，保留状态观察和指定身份 Secret 的读取权限。
 
-## 5. 在页面部署和确认
+## 6. 在页面部署和确认
 
 按 [页面指南](user-guide/nico-cluster.zh-CN.md) 检查、部署和应用站点。命令与退出码在**部署流程 → 操作与命令**按阶段显示；可能包含凭据的 Helm 原始输出仅保留在 `/data/nico-deployment/` 受限文件中。
 

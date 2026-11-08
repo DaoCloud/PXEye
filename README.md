@@ -30,7 +30,7 @@ PXEye is an independent community project. NICo provides the infrastructure cont
 | Operating systems | Upload or import Ubuntu ISOs from a service-accessible directory, extract boot artifacts, and register NICo OS definitions. |
 | Installation profiles | Reuse disk-selection, GPT/UEFI partitioning, ext4/XFS and installation defaults; freeze resolved device settings when creating tasks. |
 | Installation tasks | Prepare hardware when needed, allocate or reuse Instances, launch unattended installation, and inspect logs and OS acceptance results. |
-| NICo cluster | Deploy local Helm packages, inspect complete service status and connect the deployment to site settings. |
+| NICo cluster | Deploy online Charts or uploaded offline material, inspect service status and connect site settings. |
 | Instances and site | Inspect and release Instances; view Core connectivity, client identity, storage and supporting services. |
 
 See [Features and support boundaries](docs/features.md) for native resource mappings and hardware requirements.
@@ -41,7 +41,7 @@ PXEye can start independently and use the [NICo cluster page](docs/user-guide/ni
 
 ### Before you begin
 
-- An existing Kubernetes cluster, compatible client tools and persistent PXEye storage are available; prepare a complete Helm package for new NICo deployment, or Core mTLS credentials for an existing site.
+- An existing Kubernetes cluster, compatible client tools and persistent PXEye storage are available; choose an online Chart source or upload offline material and provide its values; use Core mTLS credentials for an existing site.
 - Target server serial numbers, CPU architectures and permanent BMC/PXE MAC addresses are verified.
 - The actual control-plane path can verify BMC Redfish identity and permissions, with the credentials required by the selected ingestion workflow.
 - BMC and host boot networks have agreed subnets, gateways, VLANs, relays and conflict-free address allocations.

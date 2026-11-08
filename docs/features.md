@@ -6,7 +6,7 @@ This guide describes current code capabilities. UI rendering, fixture-based demo
 
 ## NICo cluster deployment
 
-Start PXEye before Core is configured, then deploy a complete local Helm package in its current Kubernetes cluster. Inspect services, replicas, initialization, storage and Boot delivery; explicitly connect the ready deployment to site settings. Kubernetes provisioning and preparation of complete site Charts/values remain prerequisites. See the [cluster guide](user-guide/nico-cluster.md).
+Start PXEye before Core is configured, then deploy online Charts or browser-uploaded offline material in its current Kubernetes cluster. Online is the default; enter Chart parameters and preview Helm commands without a package mount. Inspect services, replicas, initialization, storage and Boot delivery; explicitly connect the ready deployment to site settings. Kubernetes provisioning and preparation of complete site Charts/values remain prerequisites. See the [cluster guide](user-guide/nico-cluster.md).
 
 ## Rack topology
 

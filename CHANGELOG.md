@@ -4,6 +4,12 @@
 
 Capability milestones for the current source lineage. Historical version headings identify development baselines, not published PXEye releases. Site addresses, device identities and operational logs are excluded.
 
+## 0.22.1 — Online and offline Helm deployment
+
+- Default to online Chart downloads from URLs, Helm repositories or OCI; accept browser uploads for offline Charts and complete recipes.
+- Edit or import values YAML, preview Helm installation commands, and retain frozen inputs for bounded execution and recovery.
+- Remove the mandatory deployment-package PVC from the bootstrap manifest; distinguish a completed Helm install from full NICo readiness.
+
 ## 0.22.0 — NICo cluster deployment
 
 - Start PXEye independently before NICo and open the cluster deployment page.

@@ -23,6 +23,7 @@ from pxeye.deployment.components import REQUIRED, WORKLOADS, project, readiness
 from pxeye.deployment.kubernetes import ClusterError, CurrentCluster
 from pxeye.deployment.packages import Packages, configuration, substitute
 from pxeye.deployment.renderer import validate_workload
+from pxeye.deployment.sources import Sources, DEFAULT_CHART_URL
 
 GROUP_RESOURCES = {
     "ServiceAccount": ("", "serviceaccounts"),
@@ -83,6 +84,7 @@ class NicoDeployment:
         self.directory.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.cluster = CurrentCluster(self.settings, self.directory)
         self.packages = Packages(self.settings.get("packages_directory", "/nico-packages"))
+        self.sources = Sources(self.directory, self.packages)
         self.lock = threading.RLock()
         self.busy = False
         self.observing = False
@@ -156,11 +158,17 @@ class NicoDeployment:
             current = copy.deepcopy(self.current)
             if current:
                 current.pop("rendered", None)
+                # Values may contain credentials. Only the operator's local form shows its input.
+                current.get("configuration", {}).pop("values_yaml", None)
             result = {
                 "namespace": self.cluster.namespace,
                 "cluster_available": self.cluster.available,
                 "enabled": bool(self.settings.get("enabled", False)),
-                "packages": self.packages.list(),
+                "packages": self.sources.list(),
+                "source_defaults": {
+                    "source_type": "url",
+                    "chart_source": self.settings.get("online_chart_url", DEFAULT_CHART_URL),
+                },
                 "operation": current,
                 "busy": self.busy,
                 "observing": self.observing,
@@ -254,9 +262,14 @@ class NicoDeployment:
                 else False
             )
         components = project(objects, bindings)
-        if current and jobs and all(j["state"] == "ready" for j in jobs):
+        if (
+            current
+            and current.get("connection")
+            and (jobs or current.get("profile") == "helm")
+            and all(j["state"] == "ready" for j in jobs)
+        ):
             vault = next(c for c in components if c["id"] == "vault")
-            if vault["state"] == "ready" and not self._vault_probe(current):
+            if vault["state"] == "ready" and not self._vault_probe(current, components):
                 vault["state"] = "starting"
                 for workload in vault["workloads"]:
                     workload.update(state="starting", detail="等待 Vault 解封与健康检查")
@@ -269,7 +282,8 @@ class NicoDeployment:
             "dependencies": dependencies,
             "initialization_ready": bool(
                 current
-                and jobs
+                and (jobs or current.get("profile") == "helm")
+                and all(p["state"] == "ready" for p in current.get("phases", []))
                 and all(j["state"] == "ready" for j in jobs)
                 and all(d["state"] == "ready" for d in dependencies)
             ),
@@ -281,7 +295,7 @@ class NicoDeployment:
             self.observed = result
         return result
 
-    def _vault_probe(self, current):
+    def _vault_probe(self, current, components):
         source = current["connection"]
         try:
             ca = self.cluster.get("secrets", source["ca_secret"], source.get("namespace"))
@@ -290,7 +304,12 @@ class NicoDeployment:
                     ca["data"][source.get("ca_key", "tls.crt")], validate=True
                 ).decode()
             )
-            binding = next(b for b in current["bindings"] if b["id"] == "vault")
+            binding = next((b for b in current["bindings"] if b["id"] == "vault"), None)
+            if not binding:
+                vault = next(c for c in components if c["id"] == "vault")
+                if len(vault["workloads"]) != 1:
+                    return False
+                binding = vault["workloads"][0]
             address = source.get(
                 "vault_url", f"https://{binding['name']}.{binding['namespace']}.svc:8200"
             )
@@ -379,7 +398,7 @@ class NicoDeployment:
             if (
                 self.current
                 and self.current.get("started_at")
-                and self.current["status"] != "connected"
+                and self.current["status"] not in ("connected", "installed")
             ):
                 raise ValueError("存在未结束的部署记录，请先刷新并继续原部署。")
             if self.app.store.incomplete():
@@ -399,10 +418,46 @@ class NicoDeployment:
         return {"status": "accepted", "detail": "已启动后台部署预检。", "id": self.current["id"]}
 
     def _preflight(self, settings):
-        package = self.packages.load(settings)
-        self._event("部署包摘要与完整服务清单已核对")
         self.cluster.request("/version")
         base = self._helm()
+        package = self.sources.prepare(
+            settings, lambda args, **kwargs: self._run(base + args, **kwargs), self._event
+        )
+        simple = package["manifest"].get("profile") == "helm"
+        self._event("Chart 与 values 已准备" if simple else "部署包摘要与服务清单已核对")
+        if simple and package["manifest"]["name"] == "nico":
+            package["manifest"]["phases"][0]["pod_overrides"] = [
+                {
+                    "kind": "Deployment",
+                    "name": "mmzhou-nico-pxe",
+                    "fsGroup": 1000,
+                    "nodeSelector": {"kubernetes.io/hostname": settings["pxeye_node"]}
+                    if settings["pxeye_node"]
+                    else {},
+                    "volumes": [
+                        {
+                            "name": "pxeye-os-materials",
+                            "persistentVolumeClaim": {
+                                "claimName": self.settings.get(
+                                    "materials_claim", "mmzhou-pxeye-materials"
+                                )
+                            },
+                        }
+                    ],
+                    "containers": [
+                        {
+                            "name": "mmzhou-nico-pxe",
+                            "volumeMounts": [
+                                {
+                                    "name": "pxeye-os-materials",
+                                    "mountPath": "/forge-boot-artifacts/blobs/internal/nico/os-library",
+                                    "readOnly": True,
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ]
         objects = self.observe()["objects"]
         rendered = []
         phases = []
@@ -457,7 +512,7 @@ class NicoDeployment:
                 plan,
                 {
                     "namespace": settings["namespace"],
-                    "prefix": settings["release_prefix"],
+                    "prefix": "mmzhou" if simple else settings["release_prefix"],
                     "overrides": substitute(phase.get("pod_overrides", []), settings),
                 },
             )
@@ -483,7 +538,9 @@ class NicoDeployment:
             if any(o.get("kind") == "List" for o in docs):
                 docs = [x for o in docs for x in (o["items"] if o.get("kind") == "List" else [o])]
             for obj in docs:
-                validate_workload(obj, settings["namespace"], settings["release_prefix"])
+                validate_workload(
+                    obj, settings["namespace"], "mmzhou" if simple else settings["release_prefix"]
+                )
                 if obj.get("kind") == "ConfigMap":
                     for name, content in obj.get("data", {}).items():
                         if name.endswith("-site-config.toml"):
@@ -552,13 +609,67 @@ class NicoDeployment:
                         "hook": metadata.get("annotations", {}).get("helm.sh/hook", ""),
                     }
                 )
-            if phase["id"] in package["manifest"]["initialization"].values() and not any(
+            if phase["id"] in package["manifest"].get("initialization", {}).values() and not any(
                 o["kind"] == "Job" for o in docs
             ):
                 raise ValueError(
                     f"{phase['name']} 未包含初始化 Job / Helm hook，不能作为完整部署阶段。"
                 )
             self._event(f"{phase['name']} 渲染与权限检查完成")
+        if simple:
+            # Recognize services from the rendered Chart; no user-maintained component manifest.
+            projected = project(docs)
+            package["bindings"] = [
+                {
+                    "id": c["id"],
+                    "kind": w["kind"],
+                    "name": w["name"],
+                    "namespace": w["namespace"],
+                    "phase": "helm",
+                }
+                for c in projected
+                if len(c["workloads"]) == 1
+                for w in c["workloads"]
+            ]
+            pxe = next((b for b in package["bindings"] if b["id"] == "pxe"), None)
+            if not pxe:
+                existing_pxe = next(c for c in self.observed["components"] if c["id"] == "pxe")
+                if len(existing_pxe["workloads"]) == 1:
+                    workload = existing_pxe["workloads"][0]
+                    pxe = {
+                        "id": "pxe",
+                        "kind": workload["kind"],
+                        "name": workload["name"],
+                        "namespace": workload["namespace"],
+                        "phase": "helm",
+                        "external": True,
+                    }
+                    package["bindings"].append(pxe)
+            source = package["connection"] = {
+                "namespace": settings["namespace"],
+                "client_secret": settings.get("client_secret") or "mmzhou-nico-admin-client",
+                "ca_secret": settings.get("ca_secret") or "mmzhou-nico-site-ca",
+            }
+            if pxe:
+                source["pxe_internal_url"] = f"http://{pxe['name']}.{pxe['namespace']}.svc:8080"
+                architectures = (
+                    ("x86_64", "aarch64")
+                    if settings.get("architecture", "both") == "both"
+                    else (settings["architecture"],)
+                )
+                package["boot_checks"] = [
+                    {
+                        "architecture": arch,
+                        "url": source["pxe_internal_url"] + f"/public/blobs/internal/{arch}/{name}",
+                        "min_bytes": size,
+                    }
+                    for arch in architectures
+                    for name, size in (
+                        ("ipxe.efi", 100000),
+                        ("scout.efi", 100000),
+                        ("scout.squashfs", 100000000),
+                    )
+                ]
         for binding in package["bindings"]:
             phase = next(p for p in phases if p["id"] == binding["phase"])
             found = any(
@@ -567,7 +678,7 @@ class NicoDeployment:
                 and o["namespace"] == binding["namespace"]
                 for o in rendered
             )
-            if not phase["reused"] and not found:
+            if not phase["reused"] and not binding.get("external") and not found:
                 raise ValueError(f"Chart 未渲染服务 {binding['id']}，请修正组件映射或 values。")
         dependencies = [
             o for o in rendered if o["kind"] in ("Job", "Certificate", "PersistentVolumeClaim")
@@ -576,16 +687,50 @@ class NicoDeployment:
             self.current.update(
                 status="prepared",
                 revision=package["revision"],
+                configuration=settings,
+                profile="helm" if simple else "recipe",
                 bindings=package["bindings"],
                 phases=phases,
                 dependencies=dependencies,
                 connection=package["connection"],
                 boot_checks=package["boot_checks"],
                 prepared_at=time.time(),
+                commands=[
+                    "NICO_RENDER_PLAN="
+                    + shlex.quote(
+                        str(self.directory / self.current["id"] / p["id"] / "render-plan.json")
+                    )
+                    + " "
+                    + shlex.join(self._install_arguments(settings, p))
+                    for p in phases
+                    if not p["reused"]
+                ],
                 error="",
             )
             self._save()
         self._event("预检完成，确认后按当前配置部署")
+
+    def _install_arguments(self, settings, phase):
+        path = self.directory / self.current["id"] / phase["id"]
+        values = [arg for p in sorted(path.glob("values-*.yaml")) for arg in ("-f", str(p))]
+        return (
+            self._helm()
+            + [
+                "upgrade",
+                "--install",
+                phase["release"],
+                str(path / "chart.tgz"),
+                "-n",
+                settings["namespace"],
+                "--wait",
+                "--wait-for-jobs",
+                "--timeout",
+                str(phase["timeout_seconds"]) + "s",
+                "--post-renderer",
+                self.settings.get("post_renderer", "pxeye-render-nico"),
+            ]
+            + values
+        )
 
     def start(self, body):
         if not self.settings.get("enabled"):
@@ -607,7 +752,7 @@ class NicoDeployment:
                 raise ValueError("预检已超过 10 分钟，请重新检查。")
             if self.app.store.incomplete():
                 raise ValueError("存在未完成的安装任务，暂不能部署。")
-            package = self.packages.load(self.current["configuration"])
+            package = self.sources.load(self.current["configuration"])
             if package["revision"] != self.current["revision"]:
                 raise ValueError("部署包或配置已变化，未继续执行。")
             self.busy = True
@@ -680,24 +825,8 @@ class NicoDeployment:
                     continue
             phase.update(state="running", attempted_at=time.time(), detail="正在应用 Helm Chart")
             self._save()
-            values = [arg for p in sorted(path.glob("values-*.yaml")) for arg in ("-f", str(p))]
             self._run(
-                base
-                + [
-                    "upgrade",
-                    "--install",
-                    phase["release"],
-                    str(path / "chart.tgz"),
-                    "-n",
-                    settings["namespace"],
-                    "--wait",
-                    "--wait-for-jobs",
-                    "--timeout",
-                    str(phase["timeout_seconds"]) + "s",
-                    "--post-renderer",
-                    self.settings.get("post_renderer", "pxeye-render-nico"),
-                ]
-                + values,
+                self._install_arguments(settings, phase),
                 timeout=phase["timeout_seconds"] + 30,
                 render_plan=path / "render-plan.json",
             )
@@ -707,22 +836,45 @@ class NicoDeployment:
         healthy = all(c["state"] == "ready" for c in observation["components"] if c["required"])
         with self.lock:
             ready = healthy and observation["initialization_ready"] and observation["boot_ready"]
+            simple = self.current.get("profile") == "helm"
             self.current.update(
-                status="ready" if ready else "needs_attention",
+                status="ready" if ready else "installed" if simple else "needs_attention",
                 error=""
-                if ready
+                if ready or simple
                 else "Helm 已完成；仍有服务、初始化资源或 Boot HTTP 材料未就绪，请刷新查看。",
             )
             self._save()
 
     def connect(self, body):
-        if set(body) != {"id", "confirm"} or body["confirm"] is not True:
+        if (
+            not {"id", "confirm"} <= set(body)
+            or set(body) - {"id", "confirm", "core_url", "pxe_url"}
+            or body["confirm"] is not True
+        ):
             raise ValueError("请确认将部署结果应用到站点。")
         with self.lock:
             if self.busy or not self.current or self.current["id"] != body["id"]:
                 raise ValueError("部署记录已变化，请刷新。")
             if not all(p["state"] == "ready" for p in self.current["phases"]):
                 raise ValueError("部署阶段尚未全部完成。")
+            if "core_url" in body or "pxe_url" in body:
+                from pxeye.deployment.sources import source_url
+                from urllib.parse import urlsplit
+
+                updates = {}
+                for key in ("core_url", "pxe_url"):
+                    value = source_url(
+                        body.get(key, self.current["configuration"].get(key, ""))
+                    ).rstrip("/")
+                    parsed = urlsplit(value)
+                    if parsed.path or (key == "core_url" and parsed.scheme != "https"):
+                        raise ValueError("Core 使用 HTTPS，服务地址不带路径。")
+                    updates[key] = value
+                self.current["configuration"].update(updates)
+            if not self.current["configuration"].get("core_url") or not self.current[
+                "configuration"
+            ].get("pxe_url"):
+                raise ValueError("应用到站点前需要填写 Core HTTPS 和 PXE 对外地址。")
             self.busy = True
             self.current.update(status="connecting", error="")
             self._save()

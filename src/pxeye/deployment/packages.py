@@ -28,6 +28,84 @@ def substitute(value, settings):
 
 
 def configuration(body, namespace):
+    if "mode" in body:
+        from pxeye.deployment.sources import source_url
+
+        fields = {
+            "mode",
+            "package_id",
+            "site_name",
+            "release_prefix",
+            "core_url",
+            "pxe_url",
+            "source_type",
+            "chart_source",
+            "repository_url",
+            "chart_version",
+            "values_yaml",
+            "timeout_seconds",
+            "client_secret",
+            "ca_secret",
+            "architecture",
+        }
+        if set(body) - fields or body.get("mode") not in ("online", "offline"):
+            raise ValueError("部署方式或字段无效。")
+        values = {k: str(body.get(k, "")).strip() for k in fields - {"timeout_seconds"}}
+        if not NAME.fullmatch(values["release_prefix"]) or not (
+            values["release_prefix"] == "mmzhou" or values["release_prefix"].startswith("mmzhou-")
+        ):
+            raise ValueError(
+                "Helm 发布名使用 mmzhou 或 mmzhou- 前缀、小写字母和数字，最长 49 字符。"
+            )
+        if not 1 <= len(values["site_name"]) <= 100:
+            raise ValueError("请填写站点名称，最长 100 字符。")
+        try:
+            timeout = int(body.get("timeout_seconds", 900))
+        except (TypeError, ValueError):
+            raise ValueError("部署超时应为 60–1800 秒。") from None
+        if not 60 <= timeout <= 1800 or len(values["values_yaml"].encode()) > 1024**2:
+            raise ValueError("部署超时应为 60–1800 秒，values 不超过 1 MiB。")
+        try:
+            parsed_values = yaml.safe_load(values["values_yaml"] or "{}")
+        except yaml.YAMLError:
+            raise ValueError("values YAML 格式错误，请检查缩进和字段。") from None
+        if not isinstance(parsed_values, dict):
+            raise ValueError("values 应为 YAML 对象。")
+        values["architecture"] = values["architecture"] or "both"
+        if values["architecture"] not in ("x86_64", "aarch64", "both"):
+            raise ValueError("请选择 x86_64、aarch64 或双架构引导材料。")
+        for key in ("client_secret", "ca_secret"):
+            if values[key] and not NAME.fullmatch(values[key]):
+                raise ValueError("客户端和 CA Secret 名称格式无效。")
+        if values["mode"] == "online":
+            if values["source_type"] not in ("url", "repository", "oci"):
+                raise ValueError("请选择在线 Chart 来源类型。")
+            if values["source_type"] == "repository":
+                values["repository_url"] = source_url(values["repository_url"])
+                if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9._/-]{0,199}", values["chart_source"]):
+                    raise ValueError("请填写仓库中的 Chart 名称。")
+            else:
+                values["chart_source"] = source_url(
+                    values["chart_source"], oci=values["source_type"] == "oci"
+                )
+                if values["source_type"] == "oci" and not values["chart_source"].startswith(
+                    "oci://"
+                ):
+                    raise ValueError("OCI Chart 使用 oci:// 地址。")
+            if values["chart_version"] and not re.fullmatch(
+                r"[a-zA-Z0-9][a-zA-Z0-9.+_-]{0,79}", values["chart_version"]
+            ):
+                raise ValueError("Chart 版本格式无效。")
+        elif not values["package_id"]:
+            raise ValueError("请上传并选择离线 Chart 或部署包。")
+        for field in ("core_url", "pxe_url"):
+            if values[field]:
+                values[field] = source_url(values[field]).rstrip("/")
+                if urlsplit(values[field]).path or (
+                    field == "core_url" and not values[field].startswith("https://")
+                ):
+                    raise ValueError("Core 使用 HTTPS；服务地址不带路径。")
+        return values | {"namespace": namespace, "timeout_seconds": timeout}
     if set(body) != {"package_id", "site_name", "release_prefix", "core_url", "pxe_url"}:
         raise ValueError("部署配置字段无效。")
     values = {k: str(v).strip() for k, v in body.items()}
@@ -67,7 +145,7 @@ class Packages:
             raise ValueError("部署包标识无效。")
         path = (self.root / package_id).resolve()
         if path.parent != self.root or not (path / "deployment.json").is_file():
-            raise ValueError("部署包不存在，请检查 /nico-packages 挂载。")
+            raise ValueError("部署材料不存在，请重新选择或上传。")
         return path
 
     @staticmethod
@@ -148,7 +226,8 @@ class Packages:
             if not 60 <= phase.get("timeout_seconds", 600) <= 1800:
                 raise ValueError("每个阶段的超时应为 60–1800 秒。")
         bindings = substitute(manifest.get("components", []), settings)
-        if not REQUIRED <= {b["id"] for b in bindings}:
+        simple = manifest.get("profile") == "helm"
+        if not simple and not REQUIRED <= {b["id"] for b in bindings}:
             raise ValueError(
                 "部署包未覆盖完整 NICo 服务，请补齐 Core、网络、基础服务和 REST/工作流。"
             )
@@ -165,7 +244,9 @@ class Packages:
                 raise ValueError(
                     "应用服务必须部署在当前指定命名空间；共享组件须显式声明 external。"
                 )
-        if not {"core", "rest", "temporal", "vault"} <= set(manifest.get("initialization", {})):
+        if not simple and not {"core", "rest", "temporal", "vault"} <= set(
+            manifest.get("initialization", {})
+        ):
             raise ValueError("部署包必须声明 Core、REST、Temporal 和 Vault 初始化所在阶段。")
         if not set(manifest["initialization"].values()) <= seen:
             raise ValueError("初始化引用了不存在的部署阶段。")
@@ -173,7 +254,9 @@ class Packages:
         if credentials.get("namespace", settings["namespace"]) != settings["namespace"]:
             raise ValueError("Core 客户端身份必须由本部署的命名空间提供。")
         checks = substitute(manifest.get("boot_checks", []), settings)
-        if not checks or any(c.get("architecture") not in ("x86_64", "aarch64") for c in checks):
+        if not simple and (
+            not checks or any(c.get("architecture") not in ("x86_64", "aarch64") for c in checks)
+        ):
             raise ValueError("部署包必须声明 x86_64 / aarch64 引导材料 HTTP 检查。")
         return {
             "root": root,

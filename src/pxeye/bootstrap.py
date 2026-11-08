@@ -203,7 +203,7 @@ class Application:
                     "name": c["name"],
                     "role": c["role"],
                     "endpoint": ", ".join(
-                        f"{e['name']}.{settings['namespace']}.svc: {' / '.join(e['ports'])}"
+                        f"{e['name']}.{e.get('namespace', settings['namespace'])}.svc: {' / '.join(e['ports'])}"
                         for e in c["endpoints"]
                     ),
                     **(

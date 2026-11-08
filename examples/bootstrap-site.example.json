@@ -4,7 +4,6 @@
   "nico_deployment": {
     "enabled": true,
     "namespace": "mmzhou",
-    "packages_directory": "/nico-packages",
     "allow_cluster_resources": false,
     "observe_namespaces": []
   },

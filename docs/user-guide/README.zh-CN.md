@@ -14,7 +14,7 @@
 | 资源 → 网络管理 | [网络管理](network-management.zh-CN.md) | 子网创建、地址保留与 DHCP 前提 |
 | 配置 → 安装方案 | [安装方案](installation-profiles.zh-CN.md) | OS、选盘、分区与登录默认值 |
 | 配置 → 站点设置 | [站点设置](site-settings.zh-CN.md) | 连接、存储与安装并发 |
-| 配置 → NICo 集群 | [NICo 集群](nico-cluster.zh-CN.md) | Helm 部署、服务状态与站点连接 |
+| 配置 → NICo 集群 | [NICo 集群](nico-cluster.zh-CN.md) | 在线/离线 Helm 部署、服务状态与站点连接 |
 
 ## 编写约定
 

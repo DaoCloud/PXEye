@@ -2,19 +2,39 @@
 
 **English** · [简体中文](nico-deployment.zh-CN.md) · [Documentation](README.md)
 
-PXEye can start independently in an existing Kubernetes/Kind cluster. After login, use the [NICo cluster page](user-guide/nico-cluster.md) to deploy NICo applications in the current cluster. Kubernetes, CNI, storage classes and external network access must already be available.
+PXEye can start independently in an existing Kubernetes/Kind cluster. Use the [NICo cluster page](user-guide/nico-cluster.md) to deploy online or offline. Online is the default: enter a source, release and values. Offline materials are uploaded in the browser, without a server login or package mount. Kubernetes, CNI, storage and external service access must already be available.
 
 ## 1. Runtime prerequisites
 
 - The PXEye image includes `nico-admin-cli`, `grpcurl` and **Helm 3** matching the control-plane architecture; place them in `bin/` before building.
 - `/data` persists tasks, configuration, deployment records and restricted client identity files. `/materials` stores uploaded OS artifacts.
 - `/secrets/auth.json` holds the operator password SHA256. Initial startup does not require Core certificates or an SSH private key; PXEye creates its SSH identity in the backend data directory.
-- `/nico-packages` mounts prepared deployment packages read-only and is not served over HTTP.
+- PXEye manages online and uploaded materials privately under `/data/nico-deployment/`; uploads need no extra PVC. Existing `/nico-packages` mounts remain an optional source.
 - PXEye and PXE share the material storage. Single-node/RWO storage requires a node selector to schedule PXE on the PXEye node; multi-node deployments can use RWX storage.
 
 Use [bootstrap-site.example.json](../examples/bootstrap-site.example.json). Leave `core_url` empty, enable `nico_deployment.enabled` and set the namespace consistently with the Pod.
 
-## 2. Prepare the Helm package
+## 2. Online and offline deployment
+
+| Mode | Page input |
+| --- | --- |
+| Download URL (default) | Use the fixed NICo source URL or enter a Chart `.tgz` / source archive URL. PXEye downloads and prepares the Chart. |
+| Helm repository | Enter repository URL, Chart name, optional version and values; PXEye runs `helm pull --repo`. |
+| OCI | Enter an `oci://...` Chart reference, optional version and values; PXEye runs `helm pull`. |
+| Offline | Upload a `.tgz` with dependencies and paste or read values; complete `.tar.gz` / `.zip` recipes are also accepted. |
+
+PXEye downloads sources; nodes pull images. Private registries need appropriate existing authentication. Ordinary Charts need no deployment.json, component mapping or checksum table. Full ordered recipes retain their phase and connection metadata.
+
+After checks, inspect the command in the confirmation dialog:
+
+```bash
+helm upgrade --install mmzhou ./chart.tgz \
+  -n mmzhou -f values.yaml --wait --wait-for-jobs --timeout 900s
+```
+
+Actual commands use the current Pod identity and the PXEye naming/mount renderer, and appear in deployment progress. The Core Chart receives `mmzhou` workload names and the shared materials PVC; set `nico_deployment.materials_claim` for another PVC. A successful individual Chart means Helm completed, while full services, Boot and site connection are checked separately.
+
+## 3. Complete Helm recipe (optional)
 
 Keep a site's configuration in `values/`:
 
@@ -64,9 +84,15 @@ python3 tools/package-nico-deployment.py \
   --destination /srv/nico-packages/site-v1
 ```
 
-The helper copies declared Charts/values, generates file SHA256 values and refuses to overwrite a destination. Place the output on the existing `mmzhou-nico-packages` PVC so PXEye sees `/nico-packages/site-v1/deployment.json`. Import images into the nodes or supply an accessible registry first; the page does not import host images or run online dependency updates.
+The helper copies declared Charts/values, generates file SHA256 values and refuses to overwrite a destination. Archive the output and upload it in Offline mode:
 
-## 3. Recipe fields and mounts
+```bash
+tar -C /srv/nico-packages -czf /srv/site-v1.tar.gz site-v1
+```
+
+Existing read-only `/nico-packages` mounts remain supported. Import images into the nodes or supply an accessible registry first; the page does not import host images. Offline material must already contain Chart dependencies.
+
+## 4. Recipe fields and shared materials
 
 | Field | Purpose |
 | --- | --- |
@@ -93,9 +119,9 @@ HTTP:  <pxe-url>/public/blobs/internal/nico/os-library/<os-id>/install.iso
 
 Configure Boot init containers in both Core and PXE. Include the supplied versions of the custom x86 Boot image and Grace ARM64 files; the control-plane CPU architecture alone does not determine boot artifacts.
 
-## 4. Start PXEye
+## 5. Start PXEye
 
-Populate the `mmzhou-nico-packages` PVC and configure data/material PVCs for the available storage class. Create local configuration and login credential files:
+Configure data/material PVCs for the available storage class; the bootstrap manifest does not require a package PVC. Create configuration and login credential files:
 
 ```bash
 mkdir -p deploy/local/bootstrap
@@ -132,7 +158,7 @@ The example exposes TCP `31808`. Open that port on the actual node and log in. K
 
 The base manifest grants application installation permissions in the current namespace. Installing cert-manager CRDs/cluster RBAC or the platform Chart's Vault TokenReview binding additionally requires an administrator to apply [cluster installation permissions](../deploy/nico-cluster-permissions.yaml) and set `allow_cluster_resources: true`. Without these permissions, use a package with prepared dependencies. After deployment, installation rights can be withdrawn while retaining observation and access to the designated identity Secrets.
 
-## 5. Deploy and verify in the page
+## 6. Deploy and verify in the page
 
 Follow the [page guide](user-guide/nico-cluster.md). **Deployment workflow → Operations and commands** displays commands and exit codes by phase. Raw Helm output, which may contain credentials, is retained only in restricted files under `/data/nico-deployment/`.
 
