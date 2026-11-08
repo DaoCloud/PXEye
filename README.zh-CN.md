@@ -26,7 +26,7 @@ PXEye 是独立社区项目。NICo 提供基础设施控制面，PXEye 提供操
 | 机柜拓扑 | 展示服务器、DPU 端点、NVLink 交换机和供电框，持久保存人工排列。 |
 | 发现与规划 | 独立导入 CSV 到货规划；观察 DHCP 端点、验证身份并纳管，按唯一 SN 一键匹配地址配置。 |
 | 地址管理 | 维护 BMC 和主机管理地址规划，批量更新受支持的控制器并刷新实际信息。 |
-| 网络管理 | 查看 NICo 网络段和地址分配，准备草稿并创建支持的子网。 |
+| 网络管理 | 查看 NICo 网络段，创建装机子网并核对地址保留及 DHCP 前提。 |
 | 操作系统 | 上传或从服务可访问目录导入 Ubuntu ISO，提取引导材料，登记 NICo OS 定义。 |
 | 安装方案 | 复用磁盘选择、GPT/UEFI 分区、ext4/XFS 和安装默认值，创建任务时冻结逐机配置。 |
 | 安装任务 | 按需准备硬件，分配或复用 Instance，启动无人值守安装，查看日志和 OS 验收结果。 |
@@ -101,8 +101,14 @@ PXEye 使用 Python HTTP 后端、SQLite/WAL 和原生 JavaScript/CSS。同一�
 
 | 页面 | 使用文档 |
 | --- | --- |
-| 网络管理 | [网络配置与子网管理](docs/user-guide/network-management.zh-CN.md) |
-| 设备管理 | [设备规划、发现纳管与一键匹配](docs/user-guide/device-management.zh-CN.md) |
+| 机柜拓扑 | [机柜分组、设备定位与排列](docs/user-guide/rack-topology.zh-CN.md) |
+| 安装任务 | [选择设备、执行安装与查看结果](docs/user-guide/installation-tasks.zh-CN.md) |
+| 设备管理 | [规划导入、发现纳管、地址与系统配置](docs/user-guide/device-management.zh-CN.md) |
+| 实例管理 | [实例查询与退租回收](docs/user-guide/instance-management.zh-CN.md) |
+| 操作系统 | [导入 ISO、准备与启用 OS](docs/user-guide/operating-systems.zh-CN.md) |
+| 网络管理 | [子网创建、地址保留与 DHCP 前提](docs/user-guide/network-management.zh-CN.md) |
+| 安装方案 | [OS、选盘、分区与登录默认值](docs/user-guide/installation-profiles.zh-CN.md) |
+| 站点设置 | [连接、存储与安装并发](docs/user-guide/site-settings.zh-CN.md) |
 
 ## 参与项目
 

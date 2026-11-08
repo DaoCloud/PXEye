@@ -4,10 +4,16 @@
 
 Each main menu page has one guide explaining its purpose, field values and actions.
 
-| Menu | Guide |
-| --- | --- |
-| Resources → Networks (资源 → 网络管理) | [Network management](network-management.md) |
-| Resources → Devices (资源 → 设备管理) | [Device management](device-management.md) |
+| Menu | Guide | Purpose |
+| --- | --- | --- |
+| Overview → Rack topology (总览 → 机柜拓扑) | [Rack topology](rack-topology.md) | Rack groups, device lookup and ordering |
+| Installation → Tasks (装机 → 安装任务) | [Tasks](installation-tasks.md) | Select devices, install and inspect results |
+| Resources → Devices (资源 → 设备管理) | [Devices](device-management.md) | Plan import, enrollment, addresses and system configuration |
+| Resources → Instances (资源 → 实例管理) | [Instances](instance-management.md) | Inspect instances and reclaim devices |
+| Resources → Operating systems (资源 → 操作系统) | [Operating systems](operating-systems.md) | Import ISOs, prepare and enable OS versions |
+| Resources → Networks (资源 → 网络管理) | [Networks](network-management.md) | Subnet creation, reservations and DHCP prerequisites |
+| Configuration → Installation profiles (配置 → 安装方案) | [Installation profiles](installation-profiles.md) | OS, disk, partition and login defaults |
+| Configuration → Site settings (配置 → 站点设置) | [Site settings](site-settings.md) | Connections, storage and installation concurrency |
 
 ## Writing conventions
 
@@ -31,7 +37,7 @@ title: Network management
 description: Subnet purpose, field values, creation and deletion.
 navigation_group: resources
 updated_at: "2026-11-08"
-product_version: "0.21.7"
+product_version: "0.21.26"
 ---
 ```
 

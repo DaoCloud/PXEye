@@ -2,10 +2,10 @@
 page_id: device-management
 language: en
 title: Device management
-description: Arrival plans, discovery, enrollment and address configuration matching by serial number.
+description: Device plans, discovery, enrollment, address updates and server system configuration.
 navigation_group: resources
 updated_at: "2026-11-08"
-product_version: "0.21.25"
+product_version: "0.21.26"
 ---
 
 # Device management
@@ -24,9 +24,11 @@ Open **Resources → Device management (资源 → 设备管理)** to import arr
 
 Device plans are stored separately. Continue the existing discovery, authentication and enrollment steps after import; imported plans do not automatically become managed devices.
 
-Device plans is the last tab. Search by SN, IP, MAC or rack; the search field and table text use the shared device management styles.
+Device plans is the last tab. Search by SN, IP, MAC or rack.
 
 ## 2. Field values
+
+### Arrival plans
 
 Download the CSV template under **Device plans** with one host per row, or use **New plan (新增规划)** to enter a single host.
 
@@ -42,6 +44,36 @@ Download the CSV template under **Device plans** with one host per row, or use *
 
 CSV headers must contain all seven columns. Fields other than SN may be empty. When updating an existing plan, blank CSV cells preserve saved values; use **Edit plan (编辑规划)** to clear them. Management subnets display their ranges without names.
 
+### Server system configuration
+
+Under **Managed devices**, click the server's **System configuration (系统配置)**:
+
+| Field | Requirement |
+| --- | --- |
+| Device name / rack ID (设备名称 / 机柜 ID) | Name is for display. Use an actual NICo Rack ID, rather than the CSV's rack display name. |
+| BMC username / password (BMC 用户名 / 密码) | Valid controller credentials; empty password preserves the existing one. Maintain these separately from OS credentials. |
+| Planned BMC IP / policy / subnet (BMC 规划 IP / 地址策略 / 子网) | Use the actual plan. Fixed addresses must be in the corresponding subnet; apply BMC updates separately after saving. |
+| Boot NIC MAC / management IP / subnet (启动网卡 MAC / 管理 IP / 管理子网) | Choose the actual PXE / OS management port and an existing HostInband range. |
+| Hostname (主机名) | 1–63 lowercase letters, digits or `-`; first and last characters must be letters or digits, such as `gpu-01`. |
+| Current installation profile (当前安装方案) | A published, active [Installation profile](installation-profiles.md) version. |
+| Next installation disk (下次安装系统盘) | First installation can use profile rules; reinstallation can retain the current disk. Alternatively choose a disk from collected hardware. |
+| Device overrides (设备覆盖设置) | Inherit OS, username, login mode, password and keys from the selected profile or set per-device values. Inheriting a password hides its field. OS passwords use 8–128 characters without newlines; enter one complete public key per line. |
+
+### Switch and power shelf configuration
+
+| Field | Requirement |
+| --- | --- |
+| Device SN / name (设备 SN / 名称) | SN identifies the device uniquely and is read-only after registration; name is for display. |
+| BMC / PMC MAC, target IPv4, management network | Actual interface and planned address, with an existing Underlay subnet. |
+| BMC / PMC credentials and retention | Valid credentials; empty passwords preserve existing values. Choose credential handling according to device and site policy. |
+| Rack UUID (机柜 UUID) | Optional actual NICo Rack UUID. |
+| NVOS management interfaces (NVOS 管理接口) | Switches only: interface MACs and Underlay subnets. Target NVOS IPv4 supports one management port only; provide NVOS credentials as needed. |
+| Description and labels (说明与标签) | Optional. Labels are a JSON array, such as `["rack-a"]`. |
+
+### Interface address plans
+
+Under **Address management → Plan address (地址管理 → 规划地址)**, verify MAC, current IPv4 and management subnet, then enter **Planned IPv4 (规划 IPv4)**. BMC / PMC interfaces may hold their own credentials; an empty password preserves the existing one. Device name, type and interface role identify the endpoint.
+
 ## 3. Actions
 
 ### Import and edit
@@ -49,6 +81,8 @@ CSV headers must contain all seven columns. Fields other than SN may be empty. W
 1. Under **Device plans**, select **Download template (下载模板)**, fill in the CSV and select **Import plans (导入规划)**.
 2. Select **Validate and preview (校验并预览)** and review new, updated, unchanged and invalid rows. Correct errors and preview again.
 3. Select **Save imported plans (保存导入规划)**. Use **Edit plan** to change any row, including its SN.
+
+**Import devices / Download template (导入设备 / 下载模板)** in the managed list asks for a device type. Servers use the same planning CSV. Switches and power shelves have separate templates with JSON for nested fields; preview them and click **Confirm saving local plans (确认保存本地规划)**. **New device (新增设备)** enters one device by type. For non-server local plans, separately click **Synchronize to NICo (同步至 NICo)**, review the declaration and impact, enter SN and confirm enrollment. Synchronization may start native device management and credential handling.
 
 ### Discover and enroll
 
@@ -71,6 +105,16 @@ Discovery information retrieval and **Refresh device details (刷新设备详情
 
 The plan page's **Configuration matches (配置一致)** means the plan matches saved device configuration. Match again after editing the source plan.
 
+### Save configuration and update addresses
+
+1. Enter server settings in **System configuration** and click **Save plan (保存规划)**. Addresses can also be maintained through **Address management → Plan address → Save plan**. Saving does not immediately install or change addresses.
+2. To update BMC / PMC, select devices in the managed list, click **Update BMC address (更新 BMC 地址)**, read the impact and click **Confirm and start update (确认并开始更新)**.
+3. Follow **Check address and identity → Update BMC → Verify new address → Synchronize records (检查地址与身份 → 更新 BMC → 验证新地址 → 同步管理记录)**. Eligible devices disable DHCP and receive the planned static address through Redfish; failed checks show their reasons.
+4. Submitted operations continue after closing the dialog and can be reopened from recent update records. For errors, use **Recheck and update (重新检查并更新)** or **Verify and finish synchronization (核对并完成同步)** as offered.
+5. [Installation tasks](installation-tasks.md) apply server management addresses and OS configuration. **Update management address (更新管理地址)** provides only Redfish preflight for supported interfaces; it cannot replace host OS networking configuration.
+
+Double-click a device row or click its name for details. Select devices and click **Refresh device details (刷新设备详情)** to start a background task; review the hardware update time and results after completion.
+
 ## 4. Example
 
 These are fictional values; replace them with the actual site plan:
@@ -87,6 +131,7 @@ After enrolling the server with SN `SERIAL-1`, matching selects `02:00:00:00:00:
 - **Matching requirements**: Only unique server SN matching is supported. The management MAC must exist in collected hardware, and the subnet must match exactly and uniquely. Retrieve device details first if hardware information is missing.
 - **Credentials and effects**: Matching preserves BMC and OS credentials. It does not change Redfish addresses, allocate DHCP addresses, reboot devices or install an OS.
 - **Errors and concurrency**: A failed device is not saved; other valid devices can continue. Refresh and match again if a plan or device configuration changes. Finish outstanding address operations first.
-- **Format**: Planning CSV files support up to 1 MiB and 5,000 rows. Legacy Expected Machine CSV/Excel files use a different format; transfer their values to this page's template.
+- **Format**: Server planning CSV files support up to 1 MiB and 5,000 rows; switch/power shelf templates support up to 2 MiB. Legacy Expected Machine CSV/Excel files use a different format; download the template for the selected entry point.
+- **Other devices**: Switches and power shelves have their own system configuration and address management; they do not receive server OS installation tasks. Unknown DHCP endpoints can have address plans without being treated as authenticated, installable servers.
 
-Related: [Pre-installation checks](../pre-installation-checklist.md) · [First-server installation](../getting-started.md) · [NVIDIA host ingestion](https://docs.nvidia.com/infra-controller/documentation/provisioning-day-0/ingesting-hosts)
+Related: [Network management](network-management.md) · [Installation profiles](installation-profiles.md) · [Installation tasks](installation-tasks.md) · [Pre-installation checks](../pre-installation-checklist.md) · [NVIDIA host ingestion](https://docs.nvidia.com/infra-controller/documentation/provisioning-day-0/ingesting-hosts)

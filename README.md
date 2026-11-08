@@ -26,7 +26,7 @@ PXEye is an independent community project. NICo provides the infrastructure cont
 | Rack topology | View servers, DPU endpoints, NVLink switches and power shelves; persist manual device ordering. |
 | Discovery and planning | Import arrival CSV plans separately; discover DHCP endpoints, verify identity and enroll devices, then match address configuration by unique SN. |
 | Address management | Maintain planned BMC and host management addresses; update supported controllers and refresh observed details in batches. |
-| Networks | Inspect NICo network segments and allocations; prepare drafts and create supported segments. |
+| Networks | Inspect NICo network segments, create installation subnets and review reservations and DHCP prerequisites. |
 | Operating systems | Upload or import Ubuntu ISOs from a service-accessible directory, extract boot artifacts, and register NICo OS definitions. |
 | Installation profiles | Reuse disk-selection, GPT/UEFI partitioning, ext4/XFS and installation defaults; freeze resolved device settings when creating tasks. |
 | Installation tasks | Prepare hardware when needed, allocate or reuse Instances, launch unattended installation, and inspect logs and OS acceptance results. |
@@ -101,8 +101,14 @@ Browse by menu for purpose, field values and actions. See the [user guide index]
 
 | Page | Guide |
 | --- | --- |
-| Network management | [Network configuration and subnet management](docs/user-guide/network-management.md) |
-| Device management | [Device plans, discovery, enrollment and matching](docs/user-guide/device-management.md) |
+| Rack topology | [Rack groups, device lookup and ordering](docs/user-guide/rack-topology.md) |
+| Tasks | [Select devices, install and inspect results](docs/user-guide/installation-tasks.md) |
+| Devices | [Plan import, enrollment, addresses and system configuration](docs/user-guide/device-management.md) |
+| Instances | [Inspect instances and reclaim devices](docs/user-guide/instance-management.md) |
+| Operating systems | [Import ISOs, prepare and enable OS versions](docs/user-guide/operating-systems.md) |
+| Networks | [Subnet creation, reservations and DHCP prerequisites](docs/user-guide/network-management.md) |
+| Installation profiles | [OS, disk, partition and login defaults](docs/user-guide/installation-profiles.md) |
+| Site settings | [Connections, storage and installation concurrency](docs/user-guide/site-settings.md) |
 
 ## Contributing
 

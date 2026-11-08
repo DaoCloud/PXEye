@@ -4,10 +4,16 @@
 
 每个大菜单页对应一份指南，先介绍用途，再说明如何填写和操作。
 
-| 菜单 | 指南 |
-| --- | --- |
-| 资源 → 网络管理 | [网络管理](network-management.zh-CN.md) |
-| 资源 → 设备管理 | [设备管理](device-management.zh-CN.md) |
+| 菜单 | 指南 | 用途 |
+| --- | --- | --- |
+| 总览 → 机柜拓扑 | [机柜拓扑](rack-topology.zh-CN.md) | 机柜分组、设备定位与排列 |
+| 装机 → 安装任务 | [安装任务](installation-tasks.zh-CN.md) | 选择设备、执行安装与查看结果 |
+| 资源 → 设备管理 | [设备管理](device-management.zh-CN.md) | 规划导入、发现纳管、地址与系统配置 |
+| 资源 → 实例管理 | [实例管理](instance-management.zh-CN.md) | 实例查询与退租回收 |
+| 资源 → 操作系统 | [操作系统](operating-systems.zh-CN.md) | 导入 ISO、准备与启用 OS |
+| 资源 → 网络管理 | [网络管理](network-management.zh-CN.md) | 子网创建、地址保留与 DHCP 前提 |
+| 配置 → 安装方案 | [安装方案](installation-profiles.zh-CN.md) | OS、选盘、分区与登录默认值 |
+| 配置 → 站点设置 | [站点设置](site-settings.zh-CN.md) | 连接、存储与安装并发 |
 
 ## 编写约定
 
@@ -31,7 +37,7 @@ title: 网络管理
 description: 子网用途、字段填写与创建和删除操作。
 navigation_group: resources
 updated_at: "2026-11-08"
-product_version: "0.21.7"
+product_version: "0.21.26"
 ---
 ```
 

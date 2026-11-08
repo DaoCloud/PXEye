@@ -8,7 +8,7 @@ This guide follows one server from enrollment to OS acceptance. Begin with a ded
 
 For network field values and actions, see the [network management guide](user-guide/network-management.md).
 
-Open **Site settings (站点设置)** and inspect Core connectivity, client identity and storage. In **Networks (网络管理)**, confirm the BMC discovery segment and host boot/management segment. Arrange relay and routing outside PXEye. Use the OS DNS editor in network management for the target system's DNS servers.
+Open **Site settings (站点设置)** and inspect Core connectivity, client identity and storage. In **Networks (网络管理)**, confirm the BMC discovery segment and host boot/management segment. Arrange relay and routing outside PXEye.
 
 An unknown BMC address is discoverable through DHCP only when the BMC DHCP client is enabled and its requests reach NICo. Controllers with unknown static addresses need an external network or inventory procedure first.
 

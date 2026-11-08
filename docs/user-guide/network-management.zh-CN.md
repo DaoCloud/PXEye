@@ -2,7 +2,7 @@
 page_id: network-management
 language: zh-CN
 title: 网络管理
-description: 子网用途、字段填写与创建和删除操作。
+description: 创建装机子网，核对 DHCP Relay、地址保留及设备管理子网关联。
 navigation_group: resources
 updated_at: "2026-11-08"
 product_version: "0.21.26"
@@ -20,7 +20,7 @@ product_version: "0.21.26"
 
 - **服务连接**：PXEye 能访问 NICo Core，正常读取和创建子网。
 - **地址规划**：明确 IPv4 子网、网关、MTU和保留地址范围；新子网不能与 NICo 已有网段重叠。
-- **DHCP 路径**：客户端广播能到达 NICo DHCP 服务；跨子网时配置 DHCP Relay，转发至实际服务 IP 的 UDP `67`，中继信息须匹配客户端子网，并保证请求与应答双向可达（客户端使用 UDP `68`）。
+- **DHCP 路径**：客户端广播能到达 NICo DHCP 服务；跨子网时配置 DHCP Relay，转发至实际服务 IP 的 UDP `67`，并保证请求与应答双向可达（客户端使用 UDP `68`）。Relay 的 `giaddr` 应属于客户端所在的 NICo 子网；本页不填写 `giaddr`，也不配置交换机 Relay。
 - **装机连通**：NICo 能访问设备管理接口，待安装主机能访问实际使用的 PXE/HTTP 引导及安装材料服务；相关 VLAN、路由和访问规则已配置。
 
 ## 2. 字段填写
@@ -35,14 +35,14 @@ product_version: "0.21.26"
 | 网关 | 需要跨网段通信时填写实际网关；在子网内，不能为网络或广播地址。 | `192.0.2.1` |
 | MTU | 默认`1500`；整数`576–9216`，与现场链路一致。 | `1500` |
 | 起始保留地址数 | 默认`0`；从网络地址开始计数，非负且小于子网总地址数。 | `11`保留本例的`.0–.10`。 |
-| DNS 子域 UUID | HostInband必填；使用NICo中已存在的DNS子域UUID，不是DNS服务器IP。 | 从适用的已有子网**查看**详情中复制。 |
+| DNS 子域 UUID | HostInband必填；使用NICo中已存在的DNS子域UUID，不是DNS服务器IP。核对自动带入的值是否适用；没有时先在NICo准备子域。 | 从适用的已有子网**查看**详情中复制。 |
 | 地址策略 | 当前新增只支持**动态分配**。 | `动态分配` |
 
 | 网络类型 | 使用场景 |
 | --- | --- |
 | HostInband · 主机带内 | 主机直接接入的引导/管理网络；BMC是否共享按站点设计确认。 |
 | Admin · 管理 | 受管DPU模型中，主机未分配租户时使用的管理网络。 |
-| Underlay | DPU等基础连接及管理网络，按站点设计选择。 |
+| Underlay | BMC、DPU、交换机BMC/NVOS和供电框PMC等基础管理网络，按实际NICo拓扑选择。 |
 
 ## 3. 操作步骤
 
@@ -55,6 +55,7 @@ product_version: "0.21.26"
 1. 点击**新增子网**，填写并核对上述字段。
 2. 点击**创建到 NICo**，系统检查格式与前缀重叠，并创建、读回配置。
 3. 在子网列表找到新记录，点击**查看**确认与规划一致。
+4. 为服务器配置管理网时，在**设备管理 → 系统配置**选择该HostInband范围；CSV规划的`management_subnet`须与已有子网CIDR完全一致。
 
 ### 删除
 
@@ -81,7 +82,8 @@ product_version: "0.21.26"
 ## 5. 注意事项
 
 - **确认生效**：子网出现在列表或显示`READY`，不代表DHCP已可用；还需客户端实际请求并取得预期网段地址。
+- **固定地址**：创建子网不会将设备改为规划IP；BMC地址需单独执行更新，主机管理地址由安装任务应用。
 - **地址策略**：标注“站点配置”或“创建默认”时是配置来源，尚未确认当前实际策略；“待确认”表示无法确定。
 - **异常处理**：创建或删除超时，先刷新核对NICo结果，避免重复提交；提示已有操作执行中时等待后再试。
 
-相关：[装机前检查](../pre-installation-checklist.zh-CN.md) · [首台装机](../getting-started.zh-CN.md) · [NVIDIA 网络配置](https://docs.nvidia.com/infra-controller/documentation/provisioning-day-0/ip-and-network-configuration)
+相关：[设备管理](device-management.zh-CN.md) · [装机前检查](../pre-installation-checklist.zh-CN.md) · [首台装机](../getting-started.zh-CN.md) · [NVIDIA 网络配置](https://docs.nvidia.com/infra-controller/documentation/provisioning-day-0/ip-and-network-configuration)
