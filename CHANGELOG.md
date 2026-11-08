@@ -4,6 +4,11 @@
 
 Capability milestones for the current source lineage. Historical version headings identify development baselines, not published PXEye releases. Site addresses, device identities and operational logs are excluded.
 
+## 0.21.4 — Clear equipment actions
+
+- Sized per-device actions to their labels instead of stretching them across the table cell.
+- Renamed the switch and power-shelf action to “Sync to NICo” and clarified that it creates or updates an Expected device declaration after the device has entered the PXEye inventory.
+
 ## 0.21.3 — Faster batch submission
 
 - Removed the redundant device-count confirmation field and grouped review controls by intent.

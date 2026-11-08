@@ -721,16 +721,17 @@
 .device-row-actions {
   display: flex;
   align-items: center;
-  gap: 14px;
-  width: 100%;
-  min-width: 270px;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 230px;
 }
 .live-table td .device-row-actions .button {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex: 1 1 0;
+  flex: 0 0 auto;
   margin: 0;
+  padding: 7px 10px;
   white-space: nowrap;
 }
 .equipment-online {

@@ -162,7 +162,7 @@ function devicePage() {
             ),
           )}</details>`
         : ""
-    }</td><td>${equipmentManagementAddresses(d)}</td><td>${equipmentBmcAddresses(d, native)}</td><td>${badge(status)}${d.native_state ? `<span class="live-small">${esc(d.native_state)}</span>` : ""}</td><td>${esc(d.rack_id || "—")}</td><td><div class="device-row-actions">${button("地址管理", "address-device", false, eqAttr(d.id))}${server ? button("系统配置", "device-edit", false, eqAttr(d.legacy_id)) : d.address_only ? "" : !d.unplanned ? button("系统配置", "eq-edit", false, eqAttr(d.id)) + button("接入 NICo 管理", "eq-sync-preview", false, `${eqAttr(d.id)} ${!d.can_sync ? "disabled" : ""}`) : button("查看", "eq-detail", false, eqAttr(d.id))}</div></td><td>${equipmentOnline(d)}</td></tr>`;
+    }</td><td>${equipmentManagementAddresses(d)}</td><td>${equipmentBmcAddresses(d, native)}</td><td>${badge(status)}${d.native_state ? `<span class="live-small">${esc(d.native_state)}</span>` : ""}</td><td>${esc(d.rack_id || "—")}</td><td><div class="device-row-actions">${button("地址管理", "address-device", false, eqAttr(d.id))}${server ? button("系统配置", "device-edit", false, eqAttr(d.legacy_id)) : d.address_only ? "" : !d.unplanned ? button("系统配置", "eq-edit", false, eqAttr(d.id)) + button("同步至 NICo", "eq-sync-preview", false, `${eqAttr(d.id)} ${!d.can_sync ? "disabled" : ""}`) : button("查看", "eq-detail", false, eqAttr(d.id))}</div></td><td>${equipmentOnline(d)}</td></tr>`;
   });
   return (
     body +
@@ -403,7 +403,7 @@ function equipmentOperationTable(operations) {
             .reverse()
             .map(
               (o) =>
-                `<tr><td>${when(o.created_at)}</td><td>${esc(o.action === "sync" ? "接入 NICo 管理" : "固定当前 IP")}</td><td>${esc(equipmentStates[o.status] || o.status)}</td><td>${button("只读核对", "eq-reconcile", false, eqAttr(o.id))}</td></tr>`,
+                `<tr><td>${when(o.created_at)}</td><td>${esc(o.action === "sync" ? "同步至 NICo" : "固定当前 IP")}</td><td>${esc(equipmentStates[o.status] || o.status)}</td><td>${button("只读核对", "eq-reconcile", false, eqAttr(o.id))}</td></tr>`,
             ),
         )
     : "";
@@ -523,7 +523,7 @@ async function equipmentDetail(id) {
     button("关闭", "close") +
       (!d.unplanned
         ? button("系统配置", "eq-edit", false, eqAttr(id)) +
-          button("接入 NICo 管理", "eq-sync-preview", true, eqAttr(id))
+          button("同步至 NICo", "eq-sync-preview", true, eqAttr(id))
         : ""),
   );
 }
@@ -704,9 +704,9 @@ async function equipmentSyncPreview(id) {
   const r = await api("/api/equipment/sync-preview", { id });
   state.wizard = { resource: "eq-sync", preview: r };
   modal(
-    "接入 NICo 管理",
+    "同步至 NICo",
     r.serial,
-    `<div class="live-note live-warning">${esc(r.effect)}</div>` +
+      `<div class="live-note">设备已在 PXEye 清单中；此操作会把本地规划创建或更新为 NICo Expected 设备声明。</div><div class="live-note live-warning">${esc(r.effect)}</div>` +
       defs([
         ["原生操作", esc(r.operation)],
         ["站点开关来源", esc(r.site_explorer.source)],
