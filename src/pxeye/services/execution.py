@@ -446,6 +446,7 @@ print(json.dumps({'serial':Path('/sys/class/dmi/id/product_serial').read_text().
             "checks": checks,
             "snapshot": snapshot,
             "installation_plan": plan,
+            "execution_device": target,
             "scope": {
                 "disk_wwn": device["disk_wwn"],
                 "disk_serial": device.get("disk_serial"),

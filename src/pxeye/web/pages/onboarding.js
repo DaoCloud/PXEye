@@ -357,15 +357,14 @@ function batchWizard() {
     if (w.checkError)
       body += `<div class="live-error">${esc(w.checkError)}</div>`;
     if (w.check?.passed)
-      body += `<div class="live-note live-warning">将安装 ${w.entries.length} 台设备，应用规划地址、覆盖所选系统盘并重启验证。本批最多并发 ${w.check.max_concurrency} 台；失败设备暂停，其余设备继续。</div><div class="live-form">${inputField("batch-count", `输入设备数量 ${w.entries.length} 确认此批次`, "", 'type="number" min="1"')}<label class="live-check"><input type="checkbox" id="batch-confirm-disk">确认所选设备、管理地址及系统盘。</label><label class="live-check"><input type="checkbox" id="batch-confirm-reboot">允许安装及重启验证。</label>${w.check.checks.some((c) => c.impact?.cleanup_scope === "all_disks") ? '<label class="live-check live-warning"><input type="checkbox" id="batch-confirm-cleanup">允许需接入设备清理全部磁盘（含非系统盘，清单待核对），并执行站点凭据和固件配置。</label>' : ""}</div>`;
+      body += `<div class="live-note live-warning">将安装 ${w.entries.length} 台设备，应用规划地址、覆盖所选系统盘并重启验证。本批最多并发 ${w.check.max_concurrency} 台；失败设备暂停，其余设备继续。</div><div class="live-form"><label class="live-check"><input type="checkbox" id="batch-confirm-disk">确认所选设备、管理地址及系统盘。</label><label class="live-check"><input type="checkbox" id="batch-confirm-reboot">允许安装及重启验证。</label>${w.check.checks.some((c) => c.impact?.cleanup_scope === "all_disks") ? '<label class="live-check live-warning"><input type="checkbox" id="batch-confirm-cleanup">允许需接入设备清理全部磁盘（含非系统盘，清单待核对），并执行站点凭据和固件配置。</label>' : ""}</div>`;
     foot =
-      button("重新选择设备", "batch-back") +
-      button(
+      `<div class="batch-review-actions">${button("重新选择设备", "batch-back")}${button(
         w.check ? "更新状态" : "重试检查",
         "batch-check",
         false,
         w.checking ? "disabled" : "",
-      ) +
+      )}</div>` +
       button("确认并安装", "batch-submit", true, 'id="batch-submit" disabled');
   }
   body += '<div id="resource-error" class="live-error" role="alert"></div>';
@@ -469,7 +468,6 @@ function updateBatchSubmit() {
   const w = state.wizard;
   $("#batch-submit").disabled = !(
     w.check?.passed &&
-    Number($("#batch-count")?.value) === w.entries.length &&
     $("#batch-confirm-disk")?.checked &&
     $("#batch-confirm-reboot")?.checked &&
     (!$("#batch-confirm-cleanup") || $("#batch-confirm-cleanup").checked)
@@ -481,7 +479,9 @@ async function batchSubmit() {
     await batchCheck();
     return toast("检查已过期，请确认更新后的结果。");
   }
-  $("#batch-submit").disabled = true;
+  const submit = $("#batch-submit");
+  submit.disabled = true;
+  submit.textContent = "正在创建任务…";
   try {
     const batch = await api("/api/batches", {
       preflight_id: w.check.id,
@@ -493,11 +493,26 @@ async function batchSubmit() {
         ? "all_disks"
         : "none",
     });
+    state.page = "tasks";
+    location.hash = "tasks";
+    syncPollers("tasks");
+    state.tasks = [
+      ...batch.tasks,
+      ...state.tasks.filter((task) => !batch.task_ids.includes(task.id)),
+    ];
+    state.batches = [batch, ...state.batches.filter((item) => item.id !== batch.id)];
     close();
-    await load();
-    batchDetail(batch.id);
+    render();
+    await batchDetail(batch);
+    Promise.allSettled(
+      ["tasks", "batches", "resources"].map((key) =>
+        readSection(key, sectionReads[key]),
+      ),
+    );
   } catch (e) {
     if (state.wizard !== w) return;
+    const currentSubmit = $("#batch-submit");
+    if (currentSubmit) currentSubmit.textContent = "确认并安装";
     if (e.status === 400 && /已变化|已失效/.test(e.message)) {
       await batchCheck();
       toast("配置已变化，请确认更新后的检查结果。");
@@ -507,8 +522,12 @@ async function batchSubmit() {
     }
   }
 }
-async function batchDetail(id) {
-  const b = await api("/api/batches/" + encodeURIComponent(id));
+async function batchDetail(batch) {
+  const b =
+    typeof batch === "string"
+      ? await api("/api/batches/" + encodeURIComponent(batch))
+      : batch;
+  const id = b.id;
   state.batches = state.batches.map((x) => (x.id === id ? b : x));
   state.wizard = { resource: "batch-detail", id };
   const body =

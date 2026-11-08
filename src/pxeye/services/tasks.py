@@ -1,5 +1,6 @@
 """Task claiming, scheduling, recovery and operation lock policy."""
 
+import copy
 import json
 import os
 import threading
@@ -237,7 +238,11 @@ class TaskCoordinator:
                 "max_concurrency": self.install_concurrency(),
             }
             self.store.preflight(result["id"], result, lifetime=900)
-            return {k: v for k, v in result.items() if k != "owner"}
+            public = copy.deepcopy(result)
+            public.pop("owner", None)
+            for check in public["checks"]:
+                check.pop("execution_device", None)
+            return public
 
         return self.configure(check_all)
 
@@ -282,43 +287,20 @@ class TaskCoordinator:
                 raise ValueError("请核对全部设备 SN、逐机系统盘及重启验收范围。")
             tasks = []
             batch_id = "BATCH-" + time.strftime("%Y%m%d-") + uuid.uuid4().hex[:10]
-            observations = self.onboarding.observed(
-                [self.onboarding.inventory_row(c["device"]) for c in check["checks"]]
-            )
             for c in check["checks"]:
-                observed = observations[c["device"]]
-                if self.installation_mode(observed) != c["mode"] or c.get(
-                    "allocation_observation", self.allocation_observation(observed)
-                ) != self.allocation_observation(observed):
-                    raise ValueError("设备分配状态已变化，请重新检查并确认安装影响。")
                 check_release_pending(self.adapter, c["device"])
                 if not c["passed"]:
                     raise ValueError("批次存在预检阻断项。")
                 impact = authorize_impact(c, self.config, body.get("cleanup_scope"))
                 if impact != c.get("impact"):
                     raise ValueError("站点策略已变化，请重新核对安装影响。")
-                with bmc_choice(
-                    c["device"], c["installation_plan"].get("bmc_choice", "require_planned")
-                ):
-                    if c["mode"] == "first_install":
-                        if c.get("deferred_first_install"):
-                            fresh = self.onboarding.deferred_preflight(
-                                c["device"], c["hostname"], c["profile_id"], c["disk_serial"]
-                            )
-                            plan, device = fresh["installation_plan"], None
-                        else:
-                            plan, device, _ = self.onboarding.plan(
-                                c["device"], c["profile_id"], c["disk_serial"]
-                            )
-                            device["redfish_system"] = c["execution_device"]["redfish_system"]
-                            device["instance_id"] = str(uuid.uuid4())
-                    else:
-                        plan = self.resources.execution_plan(c["device"])
-                        device = self.adapter.target_device(c["device"], plan)
-                        if device["instance_id"] != observed["instances"][0]["id"]:
-                            raise ValueError("Instance 已变化，请重新检查。")
-                if plan != c["installation_plan"]:
-                    raise ValueError("设备、发现信息或网络规划已变化，请重新检查。")
+                plan = copy.deepcopy(c["installation_plan"])
+                device = copy.deepcopy(c.get("execution_device"))
+                if c["mode"] == "first_install" and device:
+                    device["instance_id"] = str(uuid.uuid4())
+                elif c["mode"] != "first_install" and not device:
+                    # Compatibility for a preflight created by an older running version.
+                    device = self.adapter.target_device(c["device"], plan)
                 task = {
                     "id": "UI-" + time.strftime("%Y%m%d-") + uuid.uuid4().hex[:10],
                     "batch_id": batch_id,

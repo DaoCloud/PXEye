@@ -4,6 +4,12 @@
 
 Capability milestones for the current source lineage. Historical version headings identify development baselines, not published PXEye releases. Site addresses, device identities and operational logs are excluded.
 
+## 0.21.3 — Faster batch submission
+
+- Removed the redundant device-count confirmation field and grouped review controls by intent.
+- Created tasks from the accepted frozen preflight while retaining complete safety validation in the execution worker before destructive actions.
+- Opened the returned batch immediately and refreshed supporting lists in the background.
+
 ## 0.21.2 — Installation concurrency
 
 - Added a site-level default installation concurrency from 1 to 50, with a default of 5.
