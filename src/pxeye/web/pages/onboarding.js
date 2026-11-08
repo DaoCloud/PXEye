@@ -293,6 +293,27 @@ function installationCheckPresentation(check) {
     .join("")}</ol></section>`;
 }
 
+function finalDiskCell(device, check) {
+  const selection = check?.disk_selection || check?.installation_plan?.disk_selection;
+  if (!selection) {
+    const profile = state.resources.first_install_profiles.find(
+      (item) => item.id === device.intent?.profile_id,
+    );
+    const pending =
+      deviceInstallMode(device) === "first_install"
+        ? device.intent?.disk_serial || profile?.disk_selection || "等待硬件回报后解析"
+        : device.intent?.disk_serial || device.disk_serial || device.disk_wwn || "未关联系统盘";
+    return `${esc(pending)}${check?.deferred_first_install ? '<span class="live-small">Scout 回报后执行前确定</span>' : ""}`;
+  }
+  const size = selection.size_bytes
+    ? (selection.size_bytes / 1024 ** 3).toFixed(1) + " GiB"
+    : "容量未回报";
+  const refreshed = check?.hardware_checked_at
+    ? " · 硬件刷新 " + when(check.hardware_checked_at)
+    : "";
+  return `${esc(selection.model || "型号未回报")}<span class="live-small live-code">${esc(selection.serial)}</span><span class="live-small">${esc(size)} · ${esc(selection.source || "已解析")}${esc(refreshed)}</span>`;
+}
+
 function batchWizard() {
   const w = state.wizard;
   let body = `<div class="live-step">${["选择设备", "核对配置"].map((s, i) => `<${w.step === i + 1 ? "strong" : "span"}>${i + 1}. ${s}</${w.step === i + 1 ? "strong" : "span"}>`).join(" → ")}</div>`,
@@ -311,6 +332,7 @@ function batchWizard() {
     const waiting = devices.filter((d) => !batchDeviceCondition(d).ready);
     if (waiting.length)
       body += `<div class="live-note">${waiting.length} 台设备当前仍在等待执行条件；下发后将自动准备设备。</div>`;
+    const checks = new Map((w.check?.checks || []).map((item) => [item.device, item]));
     body += table(
       [
         "设备 / 品牌",
@@ -332,7 +354,7 @@ function batchWizard() {
               d.intent?.os_id ||
               p?.settings?.os_id),
         );
-        return `<tr>${batchIdentityCells(d)}<td>${esc(os?.name || d.os_release || "未读取目标 OS 名称")}<span class="live-small">${esc(p?.name || "未选择方案")}</span></td><td>${esc(d.intent?.hostname || "未设置主机名")}<span class="live-small">${batchNetworkCell(d)}</span></td><td>${esc(deviceInstallMode(d) === "first_install" ? d.intent?.disk_serial || p?.disk_selection || "按方案规则确定系统盘" : d.disk_serial || d.disk_wwn || "未关联系统盘")}</td><td><div class="live-tools"><button class="link-button" data-batch-action="plan" data-serial="${esc(d.serial)}">编辑设备规划</button><button class="link-button" data-batch-action="hardware" data-serial="${esc(d.serial)}">查看硬件信息</button></div></td></tr>`;
+        return `<tr>${batchIdentityCells(d)}<td>${esc(os?.name || d.os_release || "未读取目标 OS 名称")}<span class="live-small">${esc(p?.name || "未选择方案")}</span></td><td>${esc(d.intent?.hostname || "未设置主机名")}<span class="live-small">${batchNetworkCell(d)}</span></td><td>${finalDiskCell(d, checks.get(d.serial))}</td><td><div class="live-tools"><button class="link-button" data-batch-action="plan" data-serial="${esc(d.serial)}">编辑设备规划</button><button class="link-button" data-batch-action="hardware" data-serial="${esc(d.serial)}">查看硬件信息</button></div></td></tr>`;
       }),
     );
   }
@@ -419,10 +441,7 @@ function readBatchEntries() {
   w.entries = devices.map((d, i) => ({
     serial: d.serial,
     hostname: d.intent?.hostname || "",
-    disk_serial:
-      deviceInstallMode(d) === "first_install"
-        ? d.intent?.disk_serial || null
-        : null,
+    disk_serial: d.intent?.disk_serial || null,
     bmc_choice: d.bmc_ip ? "use_current" : "require_planned",
   }));
   w.profile_id = null;

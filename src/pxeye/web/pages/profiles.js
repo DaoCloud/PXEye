@@ -290,7 +290,7 @@ function installIntentEditor(intent, profiles, os) {
   state.wizard.intentModes = { ...modes };
   const control = (k, id, label, content) =>
     `<div><label>${label}<select class="input" id="mode-${k}"><option value="inherit" ${modes[k] === "inherit" ? "selected" : ""}>继承所选方案</option><option value="override" ${modes[k] === "override" ? "selected" : ""}>为此设备设置</option></select></label><div id="override-${k}">${content}</div><span class="live-small" id="source-${k}"></span></div>`;
-  return `<section class="subsection" id="install-intent-section"><h3>安装配置</h3><input id="intent-enable" type="checkbox" checked hidden><div class="live-editor-grid">${inputField("intent-hostname", "主机名", intent.hostname || "")}${selectField("intent-profile", "当前安装方案", [["", "请选择安装方案"], ...profiles.map((p) => [p.id, p.name + " · v" + (p.version || 1)])], intent.profile_id || "")}${selectField("intent-disk", state.wizard.row?.instance_id ? "系统盘（重装沿用）" : "系统盘序列号", [["", "使用所选方案的选盘规则"], ...(state.wizard.row?.disks || []).map((d) => [d.serial, d.model + " / " + d.serial]), ...(intent.disk_serial && !(state.wizard.row?.disks || []).some((d) => d.serial === intent.disk_serial) ? [[intent.disk_serial, intent.disk_serial + "（执行前重新核对）"]] : [])], intent.disk_serial || "")}</div><div class="live-note" id="intent-profile-summary">请选择安装方案。</div><span class="live-small" id="intent-disk-rule"></span><details><summary>设备覆盖设置</summary><div class="live-editor-grid">${control("os_id", "intent-os", "目标 OS", selectField("intent-os", "设备 OS", [["", "稍后选择"], ...os.map((o) => [o.id, o.name])], intent.os_id || ""))}${control("username", "intent-user", "OS 登录用户名", inputField("intent-user", "设备 OS 用户名", intent.username || ""))}${control(
+  return `<section class="subsection" id="install-intent-section"><h3>安装配置</h3><input id="intent-enable" type="checkbox" checked hidden><div class="live-editor-grid">${inputField("intent-hostname", "主机名", intent.hostname || "")}${selectField("intent-profile", "当前安装方案", [["", "请选择安装方案"], ...profiles.map((p) => [p.id, p.name + " · v" + (p.version || 1)])], intent.profile_id || "")}${selectField("intent-disk", "下次安装系统盘", [["", state.wizard.row?.instance_id ? "沿用当前系统盘" : "使用所选方案的选盘规则"], ...(state.wizard.row?.disks || []).map((d) => [d.serial, d.model + " / " + d.serial]), ...(intent.disk_serial && !(state.wizard.row?.disks || []).some((d) => d.serial === intent.disk_serial) ? [[intent.disk_serial, intent.disk_serial + "（执行前重新核对）"]] : [])], intent.disk_serial || "")}</div><div class="live-note" id="intent-profile-summary">请选择安装方案。</div><span class="live-small" id="intent-disk-rule"></span><details><summary>设备覆盖设置</summary><div class="live-editor-grid">${control("os_id", "intent-os", "目标 OS", selectField("intent-os", "设备 OS", [["", "稍后选择"], ...os.map((o) => [o.id, o.name])], intent.os_id || ""))}${control("username", "intent-user", "OS 登录用户名", inputField("intent-user", "设备 OS 用户名", intent.username || ""))}${control(
     "login_mode",
     "intent-mode",
     "登录方式",
@@ -303,18 +303,10 @@ function installIntentEditor(intent, profiles, os) {
       ],
       intent.login_mode || "password",
     ),
-  )}${control("credential", "intent-password", "OS 密码", inputField("intent-password", intent.password_present ? "设备密码（留空保留）" : "设备密码", "", 'type="password" autocomplete="new-password"'))}${control("authorized_keys", "intent-keys", "用户公钥", multiline("intent-keys", "设备公钥（替换方案用户公钥）", intent.authorized_keys))}</div></details><p class="live-small">保存后在下次安装生效。系统盘留空时按所选方案规则选择，重装沿用原盘。</p><div id="intent-conflicts" class="live-error"></div></section>`;
+  )}${control("credential", "intent-password", "OS 密码", inputField("intent-password", intent.password_present ? "设备密码（留空保留）" : "设备密码", "", 'type="password" autocomplete="new-password"'))}${control("authorized_keys", "intent-keys", "用户公钥", multiline("intent-keys", "设备公钥（替换方案用户公钥）", intent.authorized_keys))}</div></details><p class="live-small">保存后在下次安装生效。留空时首次安装按方案规则选盘，重装沿用当前系统盘；选择其他盘会在安装核对时明确显示。</p><div id="intent-conflicts" class="live-error"></div></section>`;
 }
 function refreshIntentDefaults() {
   if (!$("#intent-profile")) return;
-  if (state.wizard.row?.instance_id) {
-    const el = $("#intent-disk"),
-      value = state.wizard.row.disk_serial || state.wizard.row.disk_wwn || "";
-    if (value && ![...el.options].some((o) => o.value === value))
-      el.add(new Option(value, value));
-    el.value = state.wizard.row.disk_serial || "";
-    el.disabled = true;
-  }
   const p =
     (state.profiles || []).find((p) => p.id === $("#intent-profile").value) ||
     state.resources.first_install_profiles.find(

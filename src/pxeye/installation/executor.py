@@ -594,7 +594,13 @@ class Executor:
     def bind_synchronized_plan(task, actual):
         """Only our confirmed address synchronization may change its native address binding."""
         expected = task["installation_plan"]
-        dynamic = {"boot_addresses", "binding_revision"}
+        dynamic = {
+            "boot_addresses",
+            "binding_revision",
+            "disk_selection",
+            "previous_disk_serial",
+            "disk_change",
+        }
         allowed_addresses = set(expected.get("boot_addresses", [])) | {expected["management_ip"]}
         if (
             {k: v for k, v in expected.items() if k not in dynamic}

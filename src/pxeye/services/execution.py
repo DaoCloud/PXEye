@@ -17,6 +17,7 @@ from pxeye.clients.core import CoreClient
 from pxeye.clients.redfish import RedfishClient
 from pxeye.clients.ssh import SSHClient
 from pxeye.clients.process import run
+from pxeye.installation.storage_policy import scout_disks, select_disk
 from pxeye.installation.scripts import script_source
 from pxeye.common import sha, atomic_json
 
@@ -345,6 +346,8 @@ print(json.dumps({'serial':Path('/sys/class/dmi/id/product_serial').read_text().
         target = self.device(serial)
         checks = []
         snapshot = {}
+        disk_selection = None
+        hardware_checked_at = None
 
         def check(name, action):
             try:
@@ -357,6 +360,7 @@ print(json.dumps({'serial':Path('/sys/class/dmi/id/product_serial').read_text().
         plan = check("设备规划、已接管接口、子网与地址占用", lambda: self.installation_plan(serial))
 
         def core_check():
+            nonlocal disk_selection, hardware_checked_at
             if native_observation is None:
                 machine = self.machine(device)
                 instance = self.instance(device)
@@ -381,6 +385,31 @@ print(json.dumps({'serial':Path('/sys/class/dmi/id/product_serial').read_text().
                 config_version=instance["config_version"],
                 live_sha256=sha(instance["config"]["os"]["user_data"]),
             )
+            if target.get("disk_serial"):
+                from pxeye.services.onboarding import discovery_info
+
+                disks = scout_disks(discovery_info(machine))
+                disk_selection = select_disk(
+                    disks,
+                    target.get("storage"),
+                    target["disk_serial"],
+                )
+                disk_selection["source"] = (
+                    "设备规划"
+                    if target["disk_serial"] != device.get("disk_serial")
+                    else "当前系统盘"
+                )
+                plan.update(
+                    disk_serial=disk_selection["serial"],
+                    disk_selection=disk_selection,
+                )
+                if disk_selection["serial"] != device.get("disk_serial"):
+                    plan.update(
+                        previous_disk_serial=device.get("disk_serial"),
+                        disk_change=True,
+                    )
+                snapshot["discovery_sha256"] = sha(json.dumps(disks, sort_keys=True))
+                hardware_checked_at = time.time()
             snapshot["baseline_sha256"] = sha(json.dumps(self.baseline(target), sort_keys=True))
 
         check("Core mTLS、既有 Instance 与目标盘基线", core_check)
@@ -426,6 +455,9 @@ print(json.dumps({'serial':Path('/sys/class/dmi/id/product_serial').read_text().
         return {
             "device": serial,
             "hostname": hostname,
+            "disk_serial": target.get("disk_serial"),
+            "disk_selection": disk_selection,
+            "hardware_checked_at": hardware_checked_at,
             "passed": all(c["passed"] for c in checks),
             "checked_at": time.time(),
             "checks": checks,
@@ -434,7 +466,7 @@ print(json.dumps({'serial':Path('/sys/class/dmi/id/product_serial').read_text().
             "execution_device": target,
             "scope": {
                 "disk_wwn": device["disk_wwn"],
-                "disk_serial": device.get("disk_serial"),
+                "disk_serial": target.get("disk_serial"),
                 "current_management_ip": device["management_ip"],
                 "management_ip": (plan or {}).get("management_ip", device["management_ip"]),
                 "instance_id": device["instance_id"],

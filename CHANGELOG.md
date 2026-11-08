@@ -4,6 +4,12 @@
 
 Capability milestones for the current source lineage. Historical version headings identify development baselines, not published PXEye releases. Site addresses, device identities and operational logs are excluded.
 
+## 0.21.17 — Resolved system-disk review
+
+- Read current NICo/Scout hardware during installation preflight and return the uniquely resolved disk model, full serial, capacity, source and observation time to the review page.
+- Allow device system planning to select a different concrete disk for the next reinstall; freeze both the previous and target disks instead of silently restoring the old target.
+- Render only the preflight-resolved disk as the final installation target, and show a pending Scout state when a profile rule has not been resolved yet.
+
 ## 0.21.14 — Running state after boot recovery
 
 - Return a recovered task to the running installation state after receiving its authenticated installer-start event.

@@ -334,10 +334,16 @@ class DeviceConfig:
         library = InstallProfiles(self.adapter)
         resolved = library.resolve(intent, require=True)
         values, profile = resolved["values"], resolved["profile"]
-        if intent.get("disk_serial") and intent["disk_serial"] != device.get("disk_serial"):
-            raise ValueError(
-                "任务系统盘与设备规划不一致；首次安装请先保存所选盘，重装当前只支持已交付系统盘。"
+        planned_disk = intent.get("disk_serial")
+        current_disk = device.get("disk_serial")
+        if planned_disk and planned_disk != device.get("disk_serial"):
+            plan.update(
+                previous_disk_serial=current_disk,
+                disk_change=True,
             )
+            device["disk_serial"] = planned_disk
+        if device.get("disk_serial"):
+            plan["disk_serial"] = device["disk_serial"]
         plan.update(intent_revision=digest(self.get(device["serial"])))
         if profile.get("managed"):
             from pxeye.installation.storage_policy import normalize_storage
