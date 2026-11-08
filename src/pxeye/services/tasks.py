@@ -47,6 +47,7 @@ class TaskCoordinator:
 
     def recover(self):
         auto_continue = []
+        auto_repair = []
         for task in self.store.incomplete():
             if task["status"] == "queued" and task.get("batch_id"):
                 continue
@@ -84,8 +85,11 @@ class TaskCoordinator:
                 self.store.save(task)
                 if self.recovery_observation_active(task):
                     auto_continue.append(task["id"])
-        if auto_continue:
-            self.start_recovered(auto_continue)
+            if self.executor.can_start_automatic_recovery(task):
+                auto_repair.append(task["id"])
+        recovery_ids = list(dict.fromkeys(auto_repair + auto_continue))
+        if recovery_ids:
+            self.start_recovered(recovery_ids, set(auto_repair))
         elif self.store.queued():
             self.start_queue()
 
@@ -99,14 +103,30 @@ class TaskCoordinator:
         result["recovery_observing"] = (
             not result["resume_available"] and self.recovery_observation_active(result)
         )
+        recovery = result.get("automatic_recovery") or {}
+        if recovery.get("state") in ("observing", "waiting_installation"):
+            result["recovery_observing"] = True
         return result
 
-    def start_recovered(self, task_ids):
+    def start_recovered(self, task_ids, auto_repair=None):
+        auto_repair = auto_repair or set()
+
         def work():
             with self.worker_lock:
                 for task_id in task_ids:
                     task = self.store.get(task_id)
                     if not task or task["status"] != "needs_attention":
+                        continue
+                    if task_id in auto_repair:
+                        try:
+                            self.executor.automatic_boot_recovery(task)
+                        except Exception as error:
+                            task = self.store.get(task_id) or task
+                            task["error"] = "自动恢复停止：" + str(error)
+                            self.store.save(task)
+                            continue
+                        task = self.store.get(task_id) or task
+                    if not self.recovery_observation_active(task):
                         continue
                     remaining = max(
                         0, task.get("observation_deadline", time.time() + 600) - time.time()
@@ -114,7 +134,28 @@ class TaskCoordinator:
                     deadline = time.monotonic() + remaining
                     # Wait read-only until this same attempt has trustworthy identity.
                     while time.monotonic() < deadline:
+                        # Installer events are written by the HTTP request thread.  Reload the
+                        # task so recovery progress and any concurrent state change are never
+                        # hidden by the object captured before the reboot.
+                        task = self.store.get(task_id) or task
+                        if task.get("status") != "needs_attention":
+                            break
+                        try:
+                            self.executor.observe_automatic_recovery(task)
+                        except RuntimeError as error:
+                            task["automatic_recovery_observation_error"] = str(error)
+                            self.store.save(task)
                         if self.executor.can_resume(task):
+                            recovery = task.get("automatic_recovery") or {}
+                            if recovery.get("state") == "waiting_installation":
+                                recovery["state"] = "completed"
+                                recovery["completed_at"] = time.time()
+                                self.executor.recovery_step(
+                                    recovery,
+                                    "installation",
+                                    "completed",
+                                    "已取得本轮安装身份，进入系统验收。",
+                                )
                             task["status"] = "running"
                             task["error"] = None
                             self.store.save(task)

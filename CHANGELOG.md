@@ -4,6 +4,13 @@
 
 Capability milestones for the current source lineage. Historical version headings identify development baselines, not published PXEye releases. Site addresses, device identities and operational logs are excluded.
 
+## 0.21.8 — Automatic NICo boot recovery
+
+- Detect a bounded pre-installer `BiosSetupFailed` state and verify that the accepted Machine, Instance, boot interface and untouched-disk evidence still match the task.
+- Restore the vendor-confirmed network-first boot order, verify the read-back and request one restart through NICo without replaying custom PXE.
+- Resume observation of the original installation attempt and stop safely when a configuration or restart result is unknown.
+- Present the repair as a consistent five-step incident workflow with its scope and current evidence.
+
 ## 0.21.7 — OS-independent network boot recovery
 
 - Removed old-system SSH and root-disk inspection from reinstall preflight.

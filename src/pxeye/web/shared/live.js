@@ -242,8 +242,11 @@ const bmcLink = (ip) =>
     ? `<a class="link-button" href="https://${esc(ip)}" target="_blank" rel="noopener noreferrer">${esc(ip)} ↗</a>`
     : "—";
 const taskStatus = (t) =>
-  t.recovery_observing
-    ? { label: "等待安装结果", tone: "amber" }
+  t.automatic_recovery &&
+  !["completed", "blocked", "unknown"].includes(t.automatic_recovery.state)
+    ? { label: "自动修复中", tone: "amber" }
+    : t.recovery_observing
+      ? { label: "等待安装结果", tone: "amber" }
     : {
         label: statuses[t.status],
         tone:
@@ -669,7 +672,7 @@ function detail(id) {
     "物理机安装记录",
     t.id,
     body,
-    `<div class="actions">${t.status === "needs_attention" ? button(t.recovery_observing ? "查看恢复进度" : "处理问题", "task-problem", true, `data-id="${esc(t.id)}"`) : ""}${t.receipt ? `<a class="button" href="/api/tasks/${esc(t.id)}/receipt" download>下载验收报告</a>` : ""}${button("关闭", "close")}</div>`,
+    `<div class="actions">${t.status === "needs_attention" ? button(t.automatic_recovery ? "查看自动修复" : t.recovery_observing ? "查看恢复进度" : "处理问题", "task-problem", true, `data-id="${esc(t.id)}"`) : ""}${t.receipt ? `<a class="button" href="/api/tasks/${esc(t.id)}/receipt" download>下载验收报告</a>` : ""}${button("关闭", "close")}</div>`,
   );
   state.detail = id;
   refreshLogs(id);
@@ -677,6 +680,7 @@ function detail(id) {
 async function taskProblem(id) {
   const t = state.tasks.find((t) => t.id === id);
   if (!t || t.status !== "needs_attention") return;
+  if (t.automatic_recovery) return automaticRecoveryDialog(t);
   if (t.resume_available) return resumeDialog(id);
   if (t.restart_available) return restartInstallDialog(id);
   if (t.retry_available) return retryInstallDialog(id);
@@ -720,6 +724,49 @@ async function taskProblem(id) {
       false,
       `data-id="${esc(id)}"`,
     ) + button("关闭", "close"),
+  );
+}
+function automaticRecoveryDialog(t) {
+  const recovery = t.automatic_recovery;
+  const labels = {
+    diagnosing: "正在核对现场",
+    config_requesting: "正在修复启动配置",
+    config_verified: "启动配置已核对",
+    reset_requesting: "正在请求重启",
+    observing: "等待 NICo 恢复",
+    waiting_installation: "等待进入安装器",
+    completed: "自动修复完成",
+    blocked: "自动修复已停止",
+    unknown: "操作结果需要核对",
+  };
+  const done = recovery.steps.filter((step) => step.status === "completed").length;
+  const stepper = recovery.steps
+    .map(
+      (step) =>
+        `<li class="incident-step ${esc(step.status)}"><span class="incident-step-dot" aria-hidden="true"></span><strong>${esc(step.label)}</strong><span>${esc(step.detail || (step.status === "pending" ? "等待前序步骤" : step.status === "running" ? "正在执行" : step.status === "completed" ? "已完成" : "需要核对"))}</span></li>`,
+    )
+    .join("");
+  const change = recovery.change || {};
+  const impact = change.after
+    ? `<section class="incident-change"><span>启动顺序</span><div><del>${esc((change.before || []).join(" → "))}</del><strong>${esc(change.after.join(" → "))}</strong></div></section>`
+    : "";
+  const error = recovery.error
+    ? `<div class="incident-alert"><strong>${recovery.state === "unknown" ? "请求结果未知，系统不会自动重放" : "自动修复已安全停止"}</strong><span>${esc(recovery.error)}</span></div>`
+    : "";
+  state.detail = null;
+  state.wizard = { resource: "task-problem", id: t.id };
+  modal(
+    "故障处理",
+    t.device,
+    `<section class="incident-overview"><div><span class="incident-eyebrow">${esc(recovery.source)} · ${esc(recovery.code)}</span><h3>${esc(recovery.title)}</h3><p>${esc(labels[recovery.state] || recovery.state)}</p></div><span class="incident-state ${["blocked", "unknown"].includes(recovery.state) ? "attention" : recovery.state === "completed" ? "complete" : "running"}" aria-hidden="true"></span></section><progress class="incident-progress" value="${done}" max="${recovery.steps.length}" aria-label="自动修复进度"></progress><ol class="incident-stepper">${stepper}</ol>${impact}${error}<section class="incident-safety"><strong>本次恢复边界</strong><span>保留原 Machine、Instance、地址、系统盘和安装任务</span><span>不释放 Instance，不清理磁盘，不重发 custom PXE</span></section>`,
+    button("刷新状态", "problem-refresh", true, `data-id="${esc(t.id)}"`) +
+      button(
+        "查看任务与日志",
+        "problem-record",
+        false,
+        `data-id="${esc(t.id)}"`,
+      ) +
+      button("关闭", "close"),
   );
 }
 function resumeDialog(id) {

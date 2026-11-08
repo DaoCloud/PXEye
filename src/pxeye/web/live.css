@@ -1553,6 +1553,211 @@
   }
 }
 
+/* Installation incident recovery follows the same restrained operational visual language. */
+.incident-overview {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 24px;
+  padding: 2px 2px 18px;
+}
+.incident-eyebrow {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.9px;
+  text-transform: uppercase;
+}
+.incident-overview h3 {
+  margin: 7px 0 4px;
+  font-size: 21px;
+  font-weight: 650;
+  letter-spacing: -0.35px;
+}
+.incident-overview p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.incident-state {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--accent, #24885f);
+}
+.incident-state.running {
+  box-shadow: 0 0 0 6px #e0f1e8;
+  animation: bmc-breathe 1.8s ease-in-out infinite;
+}
+.incident-state.complete {
+  box-shadow: 0 0 0 4px #e0f1e8;
+}
+.incident-state.attention {
+  background: #d58b33;
+  box-shadow: 0 0 0 5px #fff2dc;
+}
+.incident-progress {
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  border: 0;
+  border-radius: 4px;
+  background: #edf1ee;
+  display: block;
+  margin: 0 0 27px;
+}
+.incident-progress::-webkit-progress-bar {
+  background: #edf1ee;
+  border-radius: 4px;
+}
+.incident-progress::-webkit-progress-value,
+.incident-progress::-moz-progress-bar {
+  background: var(--accent, #24885f);
+  border-radius: 4px;
+}
+.incident-stepper {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 24px;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+.incident-step {
+  position: relative;
+  min-width: 0;
+  padding-right: 18px;
+}
+.incident-step::before {
+  content: "";
+  position: absolute;
+  top: 8px;
+  left: 17px;
+  right: 5px;
+  height: 2px;
+  background: var(--line);
+}
+.incident-step:last-child::before {
+  display: none;
+}
+.incident-step.completed::before {
+  background: #aad5bf;
+}
+.incident-step-dot {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 17px;
+  height: 17px;
+  margin-bottom: 12px;
+  border: 4px solid #fff;
+  border-radius: 50%;
+  background: #cbd3cf;
+  box-shadow: 0 0 0 1px #dbe2de;
+}
+.incident-step.completed .incident-step-dot,
+.incident-step.running .incident-step-dot {
+  background: var(--accent, #24885f);
+}
+.incident-step.running .incident-step-dot {
+  box-shadow: 0 0 0 4px #e0f1e8;
+  animation: bmc-breathe 1.8s ease-in-out infinite;
+}
+.incident-step.failed .incident-step-dot {
+  background: #d58b33;
+  box-shadow: 0 0 0 3px #fff2dc;
+}
+.incident-step strong,
+.incident-step span:last-child {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.incident-step strong {
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.5;
+}
+.incident-step span:last-child {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.55;
+}
+.incident-change,
+.incident-safety,
+.incident-alert {
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 16px 18px;
+  margin-top: 13px;
+  background: #f8faf9;
+}
+.incident-change {
+  display: grid;
+  grid-template-columns: 105px minmax(0, 1fr);
+  gap: 15px;
+  font-size: 12px;
+}
+.incident-change > span {
+  color: var(--muted);
+}
+.incident-change del,
+.incident-change strong {
+  display: block;
+  line-height: 1.7;
+  text-decoration: none;
+}
+.incident-change del {
+  color: var(--muted);
+}
+.incident-change strong {
+  color: var(--accent, #24885f);
+}
+.incident-safety,
+.incident-alert {
+  display: grid;
+  gap: 7px;
+  font-size: 11px;
+  line-height: 1.65;
+}
+.incident-safety span {
+  color: var(--muted);
+}
+.incident-alert {
+  border-color: #ead4ae;
+  background: #fff9ed;
+}
+.incident-alert span {
+  color: #825a21;
+}
+@media (max-width: 720px) {
+  .incident-stepper {
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+  .incident-step {
+    padding-left: 29px;
+  }
+  .incident-step-dot {
+    position: absolute;
+    left: 0;
+    top: 1px;
+  }
+  .incident-step::before {
+    left: 8px;
+    top: 19px;
+    bottom: -16px;
+    width: 2px;
+    height: auto;
+    right: auto;
+  }
+  .incident-change {
+    grid-template-columns: 1fr;
+    gap: 5px;
+  }
+}
+
 /* Site control plane: compact operational summary with a consistent scan path. */
 .site-overview {
   display: flex;
