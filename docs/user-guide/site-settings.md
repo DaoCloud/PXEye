@@ -5,7 +5,7 @@ title: Site settings
 description: Inspect Core connections, client identity and storage, and configure installation concurrency.
 navigation_group: configuration
 updated_at: "2026-11-08"
-product_version: "0.21.26"
+product_version: "0.22.0"
 ---
 
 # Site settings
@@ -59,3 +59,5 @@ New batches run at most three devices concurrently. Existing batches retain thei
 - Switching Core does not migrate plans, profiles or history. Verify resource references and data ownership before switching.
 
 Related: [Deployment](../deployment.md) · [Network management](network-management.md) · [Installation tasks](installation-tasks.md)
+
+For a new cluster, deploy and apply the site from [NICo cluster](nico-cluster.md). An existing Core can be connected here with a valid client identity.

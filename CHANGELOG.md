@@ -4,6 +4,13 @@
 
 Capability milestones for the current source lineage. Historical version headings identify development baselines, not published PXEye releases. Site addresses, device identities and operational logs are excluded.
 
+## 0.22.0 — NICo cluster deployment
+
+- Start PXEye independently before NICo and open the cluster deployment page.
+- Run background Helm preflight/deployment from local versioned packages; display complete services, phases and command records.
+- Add a single-replica database/PKI/Vault bootstrap Chart, material mount adaptation and verified site handoff.
+- Document packages, permissions and page usage in both languages.
+
 ## 0.21.26 — Network action visibility
 
 - Remove the OS DNS action from the network list and show internal address segments without a Delete button.

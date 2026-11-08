@@ -30,17 +30,18 @@ PXEye is an independent community project. NICo provides the infrastructure cont
 | Operating systems | Upload or import Ubuntu ISOs from a service-accessible directory, extract boot artifacts, and register NICo OS definitions. |
 | Installation profiles | Reuse disk-selection, GPT/UEFI partitioning, ext4/XFS and installation defaults; freeze resolved device settings when creating tasks. |
 | Installation tasks | Prepare hardware when needed, allocate or reuse Instances, launch unattended installation, and inspect logs and OS acceptance results. |
+| NICo cluster | Deploy local Helm packages, inspect complete service status and connect the deployment to site settings. |
 | Instances and site | Inspect and release Instances; view Core connectivity, client identity, storage and supporting services. |
 
 See [Features and support boundaries](docs/features.md) for native resource mappings and hardware requirements.
 
 ## Getting started
 
-PXEye uses an existing NICo control plane. Prepare the site with the checklist below, deploy PXEye, then install one server before expanding the batch. OS materials and device settings can be prepared through the UI after deployment.
+PXEye can start independently and use the [NICo cluster page](docs/user-guide/nico-cluster.md) to deploy the control plane in its current Kubernetes cluster, or connect to existing NICo services. Prepare the control plane and installation networks, verify one server, then expand the batch.
 
 ### Before you begin
 
-- Compatible NICo services, administrative clients, Core mTLS credentials and persistent PXEye storage are available.
+- An existing Kubernetes cluster, compatible client tools and persistent PXEye storage are available; prepare a complete Helm package for new NICo deployment, or Core mTLS credentials for an existing site.
 - Target server serial numbers, CPU architectures and permanent BMC/PXE MAC addresses are verified.
 - The actual control-plane path can verify BMC Redfish identity and permissions, with the credentials required by the selected ingestion workflow.
 - BMC and host boot networks have agreed subnets, gateways, VLANs, relays and conflict-free address allocations.
@@ -53,9 +54,9 @@ Use the [full pre-installation checklist](docs/pre-installation-checklist.md) fo
 
 ### Deploy PXEye
 
-Follow the [deployment guide](docs/deployment.md) to prepare the image, configure credentials and storage, publish materials through NICo PXE HTTP, and expose the service. The repository supplies a [site configuration example](examples/site.example.json) and a [single-replica Kubernetes manifest](deploy/kubernetes.yaml); NICo and its network entry points must be provided separately.
+For a new control plane, follow [Start PXEye and deploy NICo](docs/nico-deployment.md). For an existing NICo site, follow the [deployment guide](docs/deployment.md) with the [site configuration](examples/site.example.json) and [single-replica manifest](deploy/kubernetes.yaml). Configure reachable installation network entry points in either case.
 
-Compatible `nico-admin-cli` and `grpcurl` binaries are build inputs; they are not bundled in the source repository. Build commands and mount locations are maintained in the deployment guide.
+Compatible `nico-admin-cli`, `grpcurl` and Helm 3 binaries are build inputs; they are not bundled in the source repository. Build commands and mount locations are maintained in the deployment guide.
 
 ### Install your first server
 
@@ -89,7 +90,7 @@ PXEye uses a Python HTTP backend, SQLite/WAL persistence and native JavaScript/C
 
 The current **technical preview** targets a single site, one service replica and a single operator, with configurable installation concurrency within a batch (default: 5). The principal physical validation path is Ubuntu Server 24.04 on x86_64 UEFI hardware. ARM64, GB200/GB300 and other OEM workflows require separate validation. Address operations depend on each device's Redfish or NVOS capabilities.
 
-Cluster creation, workload scheduling, firmware distribution, fabric configuration and multi-tenant RBAC are outside the current product scope. See [Architecture](docs/architecture.md) and [Security](SECURITY.md).
+Kubernetes provisioning, workload scheduling, firmware distribution, fabric configuration and multi-tenant RBAC are outside the current product scope. See [Architecture](docs/architecture.md) and [Security](SECURITY.md).
 
 ## Documentation
 
@@ -109,6 +110,7 @@ Browse by menu for purpose, field values and actions. See the [user guide index]
 | Networks | [Subnet creation, reservations and DHCP prerequisites](docs/user-guide/network-management.md) |
 | Installation profiles | [OS, disk, partition and login defaults](docs/user-guide/installation-profiles.md) |
 | Site settings | [Connections, storage and installation concurrency](docs/user-guide/site-settings.md) |
+| NICo cluster | [Deploy services and connect a site](docs/user-guide/nico-cluster.md) |
 
 ## Contributing
 

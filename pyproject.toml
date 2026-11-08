@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pxeye"
-version = "0.21.26"
+version = "0.22.0"
 description = "A visual operations console for NVIDIA Infra Controller"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -17,6 +17,8 @@ dev = ["ruff==0.14.3"]
 [project.scripts]
 pxeye = "pxeye.__main__:main"
 pxeye-sync-certificates = "pxeye.clients.certificate_sync:main"
+pxeye-bootstrap-vault = "pxeye.deployment.vault_bootstrap:main"
+pxeye-render-nico = "pxeye.deployment.renderer:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

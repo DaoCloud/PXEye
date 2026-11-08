@@ -1,0 +1,4 @@
+mode: vault-bootstrap
+prefix: "@{release_prefix}"
+bootstrapImage: registry.example.test/pxeye:0.22.0
+coreServiceAccount: "@{release_prefix}-nico-api"

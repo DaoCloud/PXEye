@@ -14,6 +14,7 @@ Each main menu page has one guide explaining its purpose, field values and actio
 | Resources → Networks (资源 → 网络管理) | [Networks](network-management.md) | Subnet creation, reservations and DHCP prerequisites |
 | Configuration → Installation profiles (配置 → 安装方案) | [Installation profiles](installation-profiles.md) | OS, disk, partition and login defaults |
 | Configuration → Site settings (配置 → 站点设置) | [Site settings](site-settings.md) | Connections, storage and installation concurrency |
+| Configuration → NICo cluster | [NICo cluster](nico-cluster.md) | Helm deployment, service status and site connection |
 
 ## Writing conventions
 

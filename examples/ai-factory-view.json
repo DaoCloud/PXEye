@@ -777,5 +777,12 @@
       }
     ],
     "drafts": []
+  },
+  "/api/readiness": {
+    "business_available": true,
+    "core_configured": true,
+    "site_name": "AI Factory Demo",
+    "deployment_enabled": false,
+    "reason": ""
   }
 }

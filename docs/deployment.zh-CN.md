@@ -2,13 +2,13 @@
 
 [English](deployment.md) · **简体中文** · [文档中心](README.zh-CN.md)
 
-PXEye 当前采用 Kubernetes 单副本部署。提供的清单是部署骨架，不负责安装 NICo。以下命令为通用示例，请使用已授权的 context 和命名空间；共享环境应遵守现场的资源命名规则。
+PXEye 当前采用 Kubernetes 单副本部署。本文介绍连接已有 NICo；新建控制面使用[先启动 PXEye，再部署 NICo](nico-deployment.zh-CN.md)。以下命令为通用示例，请使用已授权的 context 和命名空间；共享环境应遵守现场的资源命名规则。
 
 结合[装机前检查清单](pre-installation-checklist.zh-CN.md)使用本指南：首次 Scout 启动前完成发现前提，再按[首台装机指南](getting-started.zh-CN.md)准备写入 OS 的检查项。
 
 ## 1. 准备依赖
 
-准备可访问的 NICo Core、DHCP 和 PXE 服务，兼容的 Linux `nico-admin-cli` 和 `grpcurl`，Core CA、客户端证书与私钥，以及验收专用 SSH 密钥。二进制架构必须与镜像一致。已有实机路径在 amd64 验证，arm64 镜像需要独立验证。
+准备可访问的 NICo Core、DHCP 和 PXE 服务，兼容的 Linux `nico-admin-cli`、`grpcurl` 和 Helm 3，Core CA、客户端证书与私钥，以及验收专用 SSH 密钥。二进制架构必须与镜像一致。已有实机路径在 amd64 验证，arm64 镜像需要独立验证。
 
 PXEye 运行环境需要访问 Core 和硬件控制器。目标主机需要访问 DHCP/relay、引导文件、ISO、autoinstall 数据和安装器回调。UI 能打开不代表这些网络路径成立。
 
@@ -19,6 +19,7 @@ PXEye 运行环境需要访问 Core 和硬件控制器。目标主机需要访�
 ```bash
 install -m 0755 /path/to/nico-admin-cli bin/nico-admin-cli
 install -m 0755 /path/to/grpcurl bin/grpcurl
+install -m 0755 /path/to/helm bin/helm
 make image IMAGE=pxeye:dev BASE_IMAGE=ubuntu:24.04
 ```
 

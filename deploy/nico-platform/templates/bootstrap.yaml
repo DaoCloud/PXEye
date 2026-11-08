@@ -1,0 +1,113 @@
+{{- if eq .Values.mode "vault-bootstrap" }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Values.prefix }}-vault-bootstrap
+  namespace: {{ .Release.Namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ .Values.prefix }}-vault-bootstrap
+  namespace: {{ .Release.Namespace }}
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [get, create]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ .Values.prefix }}-vault-bootstrap
+  namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ .Values.prefix }}-vault-bootstrap
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.prefix }}-vault-bootstrap
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Values.prefix }}-vault-bootstrap
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-delete-policy: before-hook-creation
+  labels:
+    app.kubernetes.io/instance: {{ .Values.prefix }}-vault-bootstrap
+spec:
+  activeDeadlineSeconds: 600
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/instance: {{ .Values.prefix }}-vault-bootstrap
+    spec:
+      serviceAccountName: {{ .Values.prefix }}-vault-bootstrap
+      restartPolicy: Never
+      securityContext: {runAsNonRoot: true, runAsUser: 1000, fsGroup: 1000}
+      containers:
+        - name: bootstrap
+          image: {{ required "Set bootstrapImage to the PXEye image containing pxeye-bootstrap-vault" .Values.bootstrapImage | quote }}
+          imagePullPolicy: IfNotPresent
+          command: [pxeye-bootstrap-vault]
+          env:
+            - {name: NICO_PREFIX, value: "{{ .Values.prefix }}"}
+            - {name: NICO_VAULT_URL, value: "https://{{ .Values.prefix }}-nico-vault.{{ .Release.Namespace }}.svc:8200"}
+            - {name: NICO_CORE_SERVICE_ACCOUNT, value: "{{ .Values.coreServiceAccount }}"}
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 500m, memory: 256Mi}
+          securityContext: {readOnlyRootFilesystem: true, allowPrivilegeEscalation: false}
+          volumeMounts:
+            - {name: temporary, mountPath: /tmp}
+      volumes:
+        - name: temporary
+          emptyDir: {sizeLimit: 16Mi}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ .Values.prefix }}-vault-maintenance
+  namespace: {{ .Release.Namespace }}
+spec:
+  schedule: "0 */6 * * *"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 600
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 600
+      backoffLimit: 0
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/instance: {{ .Values.prefix }}-vault-maintenance
+        spec:
+          serviceAccountName: {{ .Values.prefix }}-vault-bootstrap
+          restartPolicy: Never
+          securityContext: {runAsNonRoot: true, runAsUser: 1000, fsGroup: 1000}
+          containers:
+            - name: maintenance
+              image: {{ required "Set bootstrapImage" .Values.bootstrapImage | quote }}
+              imagePullPolicy: IfNotPresent
+              command: [pxeye-bootstrap-vault]
+              env:
+                - {name: NICO_PREFIX, value: "{{ .Values.prefix }}"}
+                - {name: NICO_VAULT_URL, value: "https://{{ .Values.prefix }}-nico-vault.{{ .Release.Namespace }}.svc:8200"}
+                - {name: NICO_CORE_SERVICE_ACCOUNT, value: "{{ .Values.coreServiceAccount }}"}
+              resources:
+                requests: {cpu: 50m, memory: 64Mi}
+                limits: {cpu: 500m, memory: 256Mi}
+              securityContext: {readOnlyRootFilesystem: true, allowPrivilegeEscalation: false}
+              volumeMounts:
+                - {name: temporary, mountPath: /tmp}
+          volumes:
+            - name: temporary
+              emptyDir: {sizeLimit: 16Mi}
+{{- end }}

@@ -2,7 +2,7 @@
 
 import mimetypes
 import time
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 from pxeye import __version__
 
 
@@ -16,9 +16,25 @@ class QueryRoutes:
             if session is None:
                 return self.respond(401, {"error": "请先登录。"})
             if path == "/api/session":
-                return self.respond(200, {"operator": "站点操作员", "csrf": session["csrf"]})
+                return self.respond(
+                    200,
+                    {
+                        "operator": "站点操作员",
+                        "csrf": session["csrf"],
+                        "readiness": self.app.readiness(),
+                    },
+                )
+            if path == "/api/readiness":
+                return self.respond(200, self.app.readiness())
+            if path == "/api/nico-deployment":
+                refresh = parse_qs(urlsplit(self.path).query).get("refresh") == ["1"]
+                return self.respond(200, self.app.nico_deployment.view(refresh=refresh))
             if path == "/api/site":
                 return self.respond(200, self.app.site_information())
+            if not self.app.readiness()["business_available"]:
+                return self.respond(
+                    503, {"error": self.app.readiness()["reason"], "code": "NICO_NOT_CONNECTED"}
+                )
             if path == "/api/instances":
                 return self.respond(200, self.app.instances.list())
             if path == "/api/equipment":
@@ -29,7 +45,9 @@ class QueryRoutes:
             if path == "/api/equipment-planning":
                 from pxeye.services.equipment_planning import EquipmentPlanning
 
-                return self.respond(200, EquipmentPlanning(self.app.adapter, self.app.resources).list())
+                return self.respond(
+                    200, EquipmentPlanning(self.app.adapter, self.app.resources).list()
+                )
             if path == "/api/equipment-planning/template":
                 from pxeye.services.equipment_planning import EquipmentPlanning
 
@@ -37,7 +55,9 @@ class QueryRoutes:
                 self.send_response(200)
                 self.send_header("Content-Type", "text/csv; charset=utf-8")
                 self.send_header("Content-Length", str(len(data)))
-                self.send_header("Content-Disposition", "attachment; filename=device-planning-template.csv")
+                self.send_header(
+                    "Content-Disposition", "attachment; filename=device-planning-template.csv"
+                )
                 self.send_header("Cache-Control", "no-store")
                 self.end_headers()
                 return self.wfile.write(data)
@@ -48,8 +68,6 @@ class QueryRoutes:
                     200, self.app.management_addresses.bmc_jobs().status(path.split("/")[4])
                 )
             if path == "/api/equipment/template":
-                from urllib.parse import parse_qs
-
                 kind = parse_qs(urlsplit(self.path).query).get("kind", [""])[0]
                 data = ("\ufeff" + self.app.equipment.template(kind)).encode("utf-8")
                 self.send_response(200)
@@ -119,9 +137,7 @@ class QueryRoutes:
                             "cleanup": "首次接入可能清理本设备全部磁盘；系统盘授权不等于接入清理授权",
                             "boot_evidence": "未在本次资源读取中验证物理relay、PXE或Scout链路",
                             "max_batch": 50,
-                            "concurrency": self.app.config.get(
-                                "default_install_concurrency", 5
-                            ),
+                            "concurrency": self.app.config.get("default_install_concurrency", 5),
                         },
                         "devices": devices,
                         "materials": self.app.config["materials"],

@@ -1,0 +1,427 @@
+.nico-overview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 26px 28px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.nico-overview-title {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 13px;
+}
+.nico-cluster-mark {
+  display: grid;
+  place-items: center;
+  flex: 0 0 54px;
+  height: 54px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid #cfe9e1;
+  border-radius: 12px;
+}
+.nico-overview-title h2 {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.4px;
+}
+.nico-overview-title p,
+.nico-overview-state > span:last-child {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 5px;
+}
+.nico-overview-state {
+  display: flex;
+  align-items: flex-end;
+  flex-direction: column;
+  gap: 8px;
+}
+.nico-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 18px 0 24px;
+  padding: 20px 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.nico-metrics > div {
+  padding: 0 28px;
+  border-right: 1px solid var(--line);
+}
+.nico-metrics > div:last-child {
+  border: 0;
+}
+.nico-metrics span,
+.nico-metrics p {
+  color: var(--muted);
+  font-size: 12px;
+}
+.nico-metrics strong {
+  display: block;
+  font-size: 27px;
+  line-height: 1.4;
+  font-weight: 600;
+  margin: 5px 0;
+  font-variant-numeric: tabular-nums;
+}
+.nico-metrics strong small {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.nico-metrics .nico-metric-text {
+  font-size: 22px;
+  line-height: 1.7;
+}
+.nico-tabs {
+  display: flex;
+  gap: 24px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 20px;
+}
+.nico-tabs button {
+  padding: 0 3px 12px;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+}
+.nico-tabs button.active {
+  color: var(--accent);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.nico-config-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.8fr) minmax(280px, 1fr);
+  gap: 20px;
+}
+.nico-form {
+  padding: 24px;
+}
+.nico-field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+.nico-form .input {
+  width: 100%;
+}
+.nico-form input[readonly] {
+  background: var(--bg);
+  color: var(--muted);
+}
+.nico-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  border-top: 1px solid var(--line);
+  padding-top: 20px;
+  margin-top: 5px;
+}
+.nico-deployment-notes {
+  align-self: start;
+}
+.nico-deployment-notes ol {
+  list-style: none;
+  margin: 0;
+  padding: 24px;
+}
+.nico-deployment-notes li {
+  display: flex;
+  gap: 16px;
+  padding-bottom: 25px;
+}
+.nico-deployment-notes li:last-child {
+  padding-bottom: 0;
+}
+.nico-deployment-notes li > span {
+  font-size: 12px;
+  font-family: var(--mono);
+  color: var(--accent);
+  line-height: 24px;
+}
+.nico-deployment-notes strong {
+  font-weight: 600;
+}
+.nico-deployment-notes p {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 4px;
+}
+.nico-notice {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 14px 0;
+  padding: 14px 18px;
+  border: 1px solid #ead9bb;
+  border-radius: var(--radius);
+  background: var(--warning-soft);
+  color: #795a2c;
+  font-size: 13px;
+}
+.nico-notice strong {
+  font-weight: 600;
+}
+.nico-services .site-panel-header {
+  flex-wrap: wrap;
+}
+.nico-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.nico-filter button {
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 5px 9px;
+  border-radius: 5px;
+}
+.nico-filter button.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.nico-services .live-table-wrap {
+  border: 0;
+  border-radius: 0;
+  margin: 0;
+}
+.nico-services .live-table td {
+  padding-top: 16px;
+  padding-bottom: 16px;
+}
+.nico-service-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.nico-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #bdc5ce;
+  flex: 0 0 7px;
+}
+.nico-dot.ready {
+  background: var(--accent);
+}
+.nico-dot.starting {
+  background: var(--blue);
+}
+.nico-dot.failed {
+  background: var(--red);
+}
+.nico-dot.unknown {
+  background: var(--warning);
+}
+.nico-service-link {
+  text-align: left;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font-weight: 600;
+  font-size: 13px;
+}
+.nico-service-link:hover {
+  color: var(--accent);
+}
+.nico-optional {
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--muted);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 0 4px;
+}
+.nico-service-role {
+  margin: 4px 0 0 16px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.nico-workload {
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.nico-service-reason {
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 4px;
+  max-width: 180px;
+}
+.nico-progress-layout {
+  display: grid;
+  grid-template-columns: minmax(310px, 0.9fr) minmax(0, 1.4fr);
+  gap: 20px;
+  align-items: start;
+}
+.nico-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 26px;
+}
+.nico-timeline li {
+  position: relative;
+  display: flex;
+  gap: 17px;
+  padding-bottom: 30px;
+}
+.nico-timeline li:last-child {
+  padding-bottom: 0;
+}
+.nico-timeline li:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  left: 14px;
+  top: 31px;
+  bottom: 4px;
+  width: 1px;
+  background: var(--line);
+}
+.nico-step-marker {
+  width: 29px;
+  height: 29px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+  color: var(--muted);
+  flex: 0 0 29px;
+  font-size: 12px;
+}
+.nico-timeline .ready .nico-step-marker {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: #cfe9e1;
+}
+.nico-timeline .running .nico-step-marker {
+  color: var(--blue);
+  background: var(--blue-soft);
+  border-color: #c7d8f4;
+  animation: nico-pulse 2s ease-in-out infinite;
+}
+.nico-timeline .failed .nico-step-marker {
+  color: var(--red);
+  background: var(--red-soft);
+  border-color: #f0c9c5;
+}
+.nico-step-content {
+  flex: 1;
+  min-width: 0;
+}
+.nico-step-content > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 2px 0 6px;
+}
+.nico-step-content p {
+  font-size: 12px;
+  color: var(--muted);
+}
+.nico-step-content > span {
+  display: block;
+  font-size: 11px;
+  margin-top: 6px;
+}
+.nico-step-content > small {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 5px;
+}
+.nico-events {
+  max-height: 575px;
+  overflow-y: auto;
+  padding: 0 24px;
+}
+.nico-event {
+  padding: 16px 0;
+  border-bottom: 1px solid var(--line);
+}
+.nico-event:last-child {
+  border: 0;
+}
+.nico-event time {
+  font-size: 11px;
+  color: var(--muted);
+}
+.nico-event p {
+  margin-top: 4px;
+  font-size: 13px;
+}
+.nico-event code {
+  display: block;
+  margin-top: 9px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  font-size: 11px;
+  font-family: var(--mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.nico-initialization {
+  margin-top: 20px;
+}
+.nico-service-detail dd {
+  overflow-wrap: anywhere;
+}
+.nav-item:disabled {
+  opacity: 0.5;
+}
+@keyframes nico-pulse {
+  50% {
+    box-shadow: 0 0 0 4px var(--blue-soft);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nico-timeline .running .nico-step-marker {
+    animation: none;
+  }
+}
+@media (max-width: 1100px) {
+  .nico-config-layout,
+  .nico-progress-layout {
+    grid-template-columns: 1fr;
+  }
+  .nico-overview {
+    padding: 22px;
+  }
+  .nico-metrics > div {
+    padding: 0 20px;
+  }
+}
+@media (max-width: 700px) {
+  .nico-overview {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .nico-overview-state {
+    align-items: flex-start;
+  }
+  .nico-metrics {
+    grid-template-columns: repeat(2, 1fr);
+    row-gap: 20px;
+  }
+  .nico-metrics > div:nth-child(2) {
+    border: 0;
+  }
+  .nico-field-grid {
+    grid-template-columns: 1fr;
+  }
+  .nico-tabs {
+    gap: 20px;
+  }
+}

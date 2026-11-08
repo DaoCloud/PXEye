@@ -10,7 +10,7 @@ from pxeye.clients.errors import CoreConnectionError
 
 class CoreClient:
     def check_core_certificate(self):
-        path = self.secrets / "client.crt"
+        path = self.core_secrets / "client.crt"
         try:
             info = path.stat()
             revision = (info.st_ino, info.st_mtime_ns, info.st_size)
@@ -45,11 +45,11 @@ class CoreClient:
             "-a",
             self.config["core_url"],
             "--root-ca-path",
-            str(self.secrets / "ca.crt"),
+            str(self.core_secrets / "ca.crt"),
             "--client-cert-path",
-            str(self.secrets / "client.crt"),
+            str(self.core_secrets / "client.crt"),
             "--client-key-path",
-            str(self.secrets / "client.key"),
+            str(self.core_secrets / "client.key"),
         ]
         if data:
             base += ["-f", "json"]
@@ -76,11 +76,11 @@ class CoreClient:
             "-max-time",
             "45",
             "-cacert",
-            str(self.secrets / "ca.crt"),
+            str(self.core_secrets / "ca.crt"),
             "-cert",
-            str(self.secrets / "client.crt"),
+            str(self.core_secrets / "client.crt"),
             "-key",
-            str(self.secrets / "client.key"),
+            str(self.core_secrets / "client.key"),
             "-d",
             "@",
             endpoint,

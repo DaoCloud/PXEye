@@ -5,7 +5,7 @@ title: 站点设置
 description: 查看控制面连接、客户端身份和存储，设置站点及安装并发。
 navigation_group: configuration
 updated_at: "2026-11-08"
-product_version: "0.21.26"
+product_version: "0.22.0"
 ---
 
 # 站点设置
@@ -59,3 +59,5 @@ product_version: "0.21.26"
 - 更换 Core 不会自动迁移设备规划、方案和任务历史；切换前核对资源引用及数据归属。
 
 相关：[部署指南](../deployment.zh-CN.md) · [网络管理](network-management.zh-CN.md) · [安装任务](installation-tasks.zh-CN.md)
+
+首次没有 Core 时，先使用 [NICo 集群](nico-cluster.zh-CN.md) 部署并应用站点；已有 Core 可使用本页连接，客户端身份仍需有效。

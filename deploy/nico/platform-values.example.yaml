@@ -1,0 +1,7 @@
+mode: infrastructure
+prefix: "@{release_prefix}"
+storageClass: ""
+postgresStorage: 20Gi
+vaultStorage: 5Gi
+postgresImage: registry.example.test/library/postgres:16.6
+vaultImage: registry.example.test/hashicorp/vault:1.20.2

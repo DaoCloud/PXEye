@@ -7,6 +7,20 @@ from pxeye.domain.topology import normalize_topology_layout
 
 class CommandRoutes:
     def dispatch_command(self, path, body, session):
+        deployment_actions = {
+            "/api/nico-deployment/preflight": self.app.nico_deployment.preflight,
+            "/api/nico-deployment/start": self.app.nico_deployment.start,
+            "/api/nico-deployment/connect": self.app.nico_deployment.connect,
+        }
+        if path in deployment_actions:
+            return self.respond(202, deployment_actions[path](body))
+        if (
+            path not in ("/api/site", "/api/logout")
+            and not self.app.readiness()["business_available"]
+        ):
+            return self.respond(
+                503, {"error": self.app.readiness()["reason"], "code": "NICO_NOT_CONNECTED"}
+            )
         if path == "/api/resources/refresh":
             return self.respond(200, self.app.plan(self.app.resources.refresh_inventory))
         if path == "/api/topology-layout":
@@ -197,7 +211,9 @@ class CommandRoutes:
                 self.app.plan(lambda: DevicePlans(self.app.adapter, self.app.resources).save(body)),
             )
         if path == "/api/device-plans/preview":
-            raise ValueError("请在设备规划 TAB 下载新的 CSV 模板并导入，旧版设备声明不能作为规划导入。")
+            raise ValueError(
+                "请在设备规划 TAB 下载新的 CSV 模板并导入，旧版设备声明不能作为规划导入。"
+            )
         if path == "/api/device-plans/import":
             raise ValueError("旧版导入预览已失效，请在设备规划 TAB 重新导入。")
         if path == "/api/devices/installation-config/validate":

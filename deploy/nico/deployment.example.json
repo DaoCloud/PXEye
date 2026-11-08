@@ -1,0 +1,352 @@
+{
+  "schema_version": 1,
+  "name": "NICo complete site",
+  "version": "e703126e4-site-v1",
+  "description": "Core, PXE, network services, database, Vault, REST and workflows; x86 control plane.",
+  "defaults": {
+    "site_name": "Example site",
+    "release_prefix": "mmzhou",
+    "core_url": "https://mmzhou-nico-api.mmzhou.svc:1079",
+    "pxe_url": "http://192.0.2.50:31880"
+  },
+  "phases": [
+    {
+      "id": "cert-manager",
+      "name": "证书管理",
+      "release": "@{release_prefix}-cert-manager",
+      "chart": "charts/cert-manager-v1.17.1.tgz",
+      "values": [
+        "values/cert-manager.yaml"
+      ],
+      "timeout_seconds": 900,
+      "reuse_components": [
+        "cert-manager",
+        "cert-cainjector",
+        "cert-webhook"
+      ]
+    },
+    {
+      "id": "platform",
+      "name": "数据库与站点证书",
+      "release": "@{release_prefix}-platform",
+      "chart": "charts/pxeye-nico-platform-0.1.0.tgz",
+      "values": [
+        "values/platform.yaml"
+      ],
+      "timeout_seconds": 900
+    },
+    {
+      "id": "vault",
+      "name": "Vault 初始化与控制台身份",
+      "release": "@{release_prefix}-vault",
+      "chart": "charts/pxeye-nico-platform-0.1.0.tgz",
+      "values": [
+        "values/vault.yaml"
+      ],
+      "timeout_seconds": 900
+    },
+    {
+      "id": "core",
+      "name": "NICo Core 与网络引导",
+      "release": "@{release_prefix}-core",
+      "chart": "charts/nico-0.1.1.tgz",
+      "values": [
+        "values/core.yaml"
+      ],
+      "timeout_seconds": 900,
+      "pod_overrides": [
+        {
+          "kind": "Deployment",
+          "name": "@{release_prefix}-nico-pxe",
+          "fsGroup": 1000,
+          "volumes": [
+            {
+              "name": "pxeye-os-materials",
+              "persistentVolumeClaim": {
+                "claimName": "mmzhou-pxeye-materials"
+              }
+            }
+          ],
+          "containers": [
+            {
+              "name": "@{release_prefix}-nico-pxe",
+              "volumeMounts": [
+                {
+                  "name": "pxeye-os-materials",
+                  "mountPath": "/forge-boot-artifacts/blobs/internal/nico/os-library",
+                  "readOnly": true
+                }
+              ]
+            }
+          ],
+          "nodeSelector": {
+            "kubernetes.io/hostname": "@{pxeye_node}"
+          }
+        }
+      ]
+    },
+    {
+      "id": "temporal",
+      "name": "Temporal 与工作流初始化",
+      "release": "@{release_prefix}-temporal",
+      "chart": "charts/temporal-0.35.0.tgz",
+      "values": [
+        "values/temporal.yaml"
+      ],
+      "timeout_seconds": 900
+    },
+    {
+      "id": "keycloak",
+      "name": "REST 用户认证",
+      "release": "@{release_prefix}-keycloak",
+      "chart": "charts/site-keycloak.tgz",
+      "values": [
+        "values/keycloak.yaml"
+      ],
+      "timeout_seconds": 900
+    },
+    {
+      "id": "rest",
+      "name": "NICo REST 与工作流",
+      "release": "@{release_prefix}-rest",
+      "chart": "charts/nico-rest-0.1.13.tgz",
+      "values": [
+        "values/rest.yaml"
+      ],
+      "timeout_seconds": 900
+    },
+    {
+      "id": "site-agent",
+      "name": "站点 Agent 登记",
+      "release": "@{release_prefix}-site-agent",
+      "chart": "charts/nico-rest-site-agent-0.1.9.tgz",
+      "values": [
+        "values/site-agent.yaml"
+      ],
+      "timeout_seconds": 900
+    }
+  ],
+  "components": [
+    {
+      "id": "core",
+      "kind": "Deployment",
+      "name": "@{release_prefix}-nico-api",
+      "namespace": "@{namespace}",
+      "phase": "core"
+    },
+    {
+      "id": "bmc-proxy",
+      "kind": "Deployment",
+      "name": "@{release_prefix}-nico-bmc-proxy",
+      "namespace": "@{namespace}",
+      "phase": "core"
+    },
+    {
+      "id": "dhcp",
+      "kind": "Deployment",
+      "name": "@{release_prefix}-nico-dhcp",
+      "namespace": "@{namespace}",
+      "phase": "core"
+    },
+    {
+      "id": "pxe",
+      "kind": "Deployment",
+      "name": "@{release_prefix}-nico-pxe",
+      "namespace": "@{namespace}",
+      "phase": "core"
+    },
+    {
+      "id": "dns",
+      "kind": "StatefulSet",
+      "name": "@{release_prefix}-nico-dns",
+      "namespace": "@{namespace}",
+      "phase": "core"
+    },
+    {
+      "id": "resolver",
+      "kind": "Deployment",
+      "name": "@{release_prefix}-nico-site-resolver",
+      "namespace": "@{namespace}",
+      "phase": "core"
+    },
+    {
+      "id": "ntp",
+      "kind": "StatefulSet",
+      "name": "@{release_prefix}-nico-ntp",
+      "namespace": "@{namespace}",
+      "phase": "core"
+    },
+    {
+      "id": "hardware-health",
+      "kind": "Deployment",
+      "name": "@{release_prefix}-nico-hardware-health",
+      "namespace": "@{namespace}",
+      "phase": "core"
+    },
+    {
+      "id": "ssh-console",
+      "kind": "Deployment",
+      "name": "@{release_prefix}-nico-ssh-console-rs",
+      "namespace": "@{namespace}",
+      "phase": "core"
+    },
+    {
+      "id": "postgres",
+      "kind": "StatefulSet",
+      "name": "@{release_prefix}-nico-postgres",
+      "namespace": "@{namespace}",
+      "phase": "platform"
+    },
+    {
+      "id": "vault",
+      "kind": "StatefulSet",
+      "name": "@{release_prefix}-nico-vault",
+      "namespace": "@{namespace}",
+      "phase": "platform"
+    },
+    {
+      "id": "cert-manager",
+      "kind": "Deployment",
+      "name": "@{release_prefix}-cert-manager",
+      "namespace": "@{namespace}",
+      "phase": "cert-manager"
+    },
+    {
+      "id": "cert-cainjector",
+      "kind": "Deployment",
+      "name": "@{release_prefix}-cert-manager-cainjector",
+      "namespace": "@{namespace}",
+      "phase": "cert-manager"
+    },
+    {
+      "id": "cert-webhook",
+      "kind": "Deployment",
+      "name": "@{release_prefix}-cert-manager-webhook",
+      "namespace": "@{namespace}",
+      "phase": "cert-manager"
+    },
+    {
+      "id": "rest-api",
+      "kind": "Deployment",
+      "name": "@{release_prefix}-nico-rest-api",
+      "namespace": "@{namespace}",
+      "phase": "rest"
+    },
+    {
+      "id": "rest-cert-manager",
+      "kind": "Deployment",
+      "name": "@{release_prefix}-nico-rest-cert-manager",
+      "namespace": "@{namespace}",
+      "phase": "rest"
+    },
+    {
+      "id": "site-manager",
+      "kind": "Deployment",
+      "name": "@{release_prefix}-nico-rest-site-manager",
+      "namespace": "@{namespace}",
+      "phase": "rest"
+    },
+    {
+      "id": "site-agent",
+      "kind": "Deployment",
+      "name": "@{release_prefix}-nico-rest-site-agent",
+      "namespace": "@{namespace}",
+      "phase": "site-agent"
+    },
+    {
+      "id": "cloud-worker",
+      "kind": "Deployment",
+      "name": "@{release_prefix}-cloud-worker",
+      "namespace": "@{namespace}",
+      "phase": "rest"
+    },
+    {
+      "id": "site-worker",
+      "kind": "Deployment",
+      "name": "@{release_prefix}-site-worker",
+      "namespace": "@{namespace}",
+      "phase": "rest"
+    },
+    {
+      "id": "temporal-frontend",
+      "kind": "Deployment",
+      "name": "@{release_prefix}-temporal-frontend",
+      "namespace": "@{namespace}",
+      "phase": "temporal"
+    },
+    {
+      "id": "temporal-history",
+      "kind": "Deployment",
+      "name": "@{release_prefix}-temporal-history",
+      "namespace": "@{namespace}",
+      "phase": "temporal"
+    },
+    {
+      "id": "temporal-matching",
+      "kind": "Deployment",
+      "name": "@{release_prefix}-temporal-matching",
+      "namespace": "@{namespace}",
+      "phase": "temporal"
+    },
+    {
+      "id": "temporal-worker",
+      "kind": "Deployment",
+      "name": "@{release_prefix}-temporal-worker",
+      "namespace": "@{namespace}",
+      "phase": "temporal"
+    },
+    {
+      "id": "keycloak",
+      "kind": "Deployment",
+      "name": "@{release_prefix}-keycloak",
+      "namespace": "@{namespace}",
+      "phase": "keycloak"
+    }
+  ],
+  "initialization": {
+    "vault": "vault",
+    "core": "core",
+    "temporal": "temporal",
+    "rest": "rest"
+  },
+  "connection": {
+    "namespace": "@{namespace}",
+    "client_secret": "@{release_prefix}-nico-admin-client",
+    "ca_secret": "@{release_prefix}-nico-site-ca",
+    "ca_key": "tls.crt",
+    "pxe_internal_url": "http://@{release_prefix}-nico-pxe.@{namespace}.svc:8080"
+  },
+  "boot_checks": [
+    {
+      "architecture": "x86_64",
+      "url": "http://@{release_prefix}-nico-pxe.@{namespace}.svc:8080/public/blobs/internal/x86_64/ipxe.efi",
+      "min_bytes": 100000
+    },
+    {
+      "architecture": "aarch64",
+      "url": "http://@{release_prefix}-nico-pxe.@{namespace}.svc:8080/public/blobs/internal/aarch64/ipxe.efi",
+      "min_bytes": 100000
+    },
+    {
+      "architecture": "x86_64",
+      "url": "http://@{release_prefix}-nico-pxe.@{namespace}.svc:8080/public/blobs/internal/x86_64/scout.efi",
+      "min_bytes": 100000
+    },
+    {
+      "architecture": "x86_64",
+      "url": "http://@{release_prefix}-nico-pxe.@{namespace}.svc:8080/public/blobs/internal/x86_64/scout.squashfs",
+      "min_bytes": 100000000
+    },
+    {
+      "architecture": "aarch64",
+      "url": "http://@{release_prefix}-nico-pxe.@{namespace}.svc:8080/public/blobs/internal/aarch64/scout.efi",
+      "min_bytes": 100000
+    },
+    {
+      "architecture": "aarch64",
+      "url": "http://@{release_prefix}-nico-pxe.@{namespace}.svc:8080/public/blobs/internal/aarch64/scout.squashfs",
+      "min_bytes": 100000000
+    }
+  ],
+  "files": {}
+}

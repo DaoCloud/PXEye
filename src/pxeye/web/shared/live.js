@@ -17,12 +17,13 @@ const labels = {
   network: "网络管理",
   profiles: "安装方案",
   site: "站点设置",
+  nico: "NICo 集群",
 };
 const groups = [
   ["总览", ["topology"]],
   ["装机", ["tasks"]],
   ["资源", ["devices", "instances", "os", "network"]],
-  ["配置", ["profiles", "site"]],
+  ["配置", ["profiles", "site", "nico"]],
 ];
 const statuses = {
   queued: "待执行",
@@ -53,6 +54,8 @@ let state = {
   page: "topology",
   resources: null,
   siteInfo: null,
+  readiness: null,
+  nico: null,
   tasks: [],
   csrf: null,
   modal: null,
@@ -148,7 +151,15 @@ function nav() {
   $("#navigation").innerHTML = groups
     .map(
       ([group, pages]) =>
-        `<div class="nav-group"><div class="nav-label">${group}</div>${pages.map((id) => `<button class="nav-item ${state.page === id ? "active" : ""}" data-page="${id}"><span>${labels[id]}</span></button>`).join("")}</div>`,
+        `<div class="nav-group"><div class="nav-label">${group}</div>${pages
+          .map((id) => {
+            const unavailable =
+              state.readiness &&
+              !state.readiness.business_available &&
+              !["nico", "site"].includes(id);
+            return `<button class="nav-item ${state.page === id ? "active" : ""}" data-page="${id}" ${unavailable ? 'disabled title="请先部署 NICo 并连接站点"' : ""}><span>${labels[id]}</span></button>`;
+          })
+          .join("")}</div>`,
     )
     .join("");
   $("#breadcrumb").textContent = labels[state.page];
@@ -208,6 +219,16 @@ const sectionReads = {
 };
 async function load() {
   $("#operator").textContent = "站点操作员 · 已登录";
+  state.readiness = await api("/api/readiness");
+  $("#site-label").textContent = state.readiness.site_name;
+  if (!state.readiness.business_available) {
+    if (state.page !== "site") state.page = "nico";
+    location.hash = state.page;
+    syncPollers(state.page);
+    await refreshPage(state.page);
+    render();
+    return;
+  }
   render();
   await Promise.allSettled(
     ["resources", "tasks", "batches", "profiles", "os"].map((key) =>
@@ -216,6 +237,7 @@ async function load() {
   );
   if (["topology", "network", "instances", "devices"].includes(state.page))
     await refreshPage(state.page);
+  if (["nico", "site"].includes(state.page)) await refreshPage(state.page);
 }
 async function refreshPage(page = state.page) {
   const sections = {
@@ -227,12 +249,21 @@ async function refreshPage(page = state.page) {
     profiles: ["profiles"],
     network: ["network", "equipment"],
     site: ["site"],
+    nico: ["nico"],
   };
   await Promise.allSettled(
     (sections[page] || []).map((key) => readSection(key, sectionReads[key])),
   );
 }
 async function navigate(page) {
+  if (
+    state.readiness &&
+    !state.readiness.business_available &&
+    !["nico", "site"].includes(page)
+  ) {
+    toast("请先部署 NICo 并连接站点。");
+    return;
+  }
   state.page = page;
   location.hash = page;
   syncPollers(page);
@@ -256,9 +287,9 @@ const taskStatus = (t) =>
               ? "green"
               : t.status === "cancelled"
                 ? "gray"
-              : t.status === "needs_attention"
-                ? "red"
-                : "amber",
+                : t.status === "needs_attention"
+                  ? "red"
+                  : "amber",
         };
 function taskRows() {
   return state.tasks.map((t) => {
@@ -330,6 +361,7 @@ function editSite() {
   );
 }
 async function saveSite() {
+  const previouslyConnected = state.readiness?.business_available;
   const result = await api("/api/site", {
     name: $("#site-name").value.trim(),
     core_url: $("#site-core").value.trim(),
@@ -341,9 +373,11 @@ async function saveSite() {
     state.resources.core_url = result.site.core_url;
   }
   $("#site-label").textContent = result.site.site.name;
+  state.readiness = await api("/api/readiness");
   close();
   render();
   toast(result.detail);
+  if (!previouslyConnected && state.readiness.business_available) await load();
 }
 function render() {
   nav();
@@ -378,6 +412,14 @@ function render() {
   ) {
     const scroll = window.scrollY;
     $("#main").innerHTML = body;
+    if (
+      state.page === "nico" &&
+      (state.nico?.busy || state.nico?.operation?.started_at)
+    ) {
+      document
+        .querySelectorAll(".nico-form input,.nico-form select")
+        .forEach((input) => (input.disabled = true));
+    }
     if (state.page === "network") {
       state.renderedNetwork = body;
       window.scrollTo(0, scroll);

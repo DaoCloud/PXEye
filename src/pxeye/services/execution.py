@@ -27,10 +27,16 @@ class Adapter(CoreClient, RedfishClient, SSHClient):
         self.config = config
         self.resources = self.device_config = self.profiles = None
         self.secrets = Path(secret_dir)
+        self.core_secrets = Path(config.get("core_identity_directory", secret_dir))
         self.data = Path(data_dir)
         self.identity = self.data / "identity"
         self.identity.mkdir(mode=0o700, parents=True, exist_ok=True)
-        shutil.copyfile(self.secrets / "ssh_key", self.identity / "ssh_key")
+        if (self.secrets / "ssh_key").is_file():
+            shutil.copyfile(self.secrets / "ssh_key", self.identity / "ssh_key")
+        elif not (self.identity / "ssh_key").exists():
+            from pxeye.clients.process import run
+
+            run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(self.identity / "ssh_key")])
         (self.identity / "ssh_key").chmod(0o600)
 
     def device(self, serial, *, bind_intent=True):

@@ -2,13 +2,13 @@
 
 **English** · [简体中文](deployment.zh-CN.md) · [Documentation](README.md)
 
-PXEye currently runs as a single Kubernetes replica. The supplied manifest is a deployment skeleton, not an installer for NICo. Commands below are generic deployment examples; use your authorized context and namespace. In a shared environment, follow its resource-naming and namespace rules.
+PXEye currently runs as a single Kubernetes replica. This guide connects an existing NICo site; for a new control plane, use [Start PXEye and deploy NICo](nico-deployment.md). Commands below are generic deployment examples; use your authorized context and namespace. In a shared environment, follow its resource-naming and namespace rules.
 
 Use the [pre-installation checklist](pre-installation-checklist.md) alongside this guide: complete discovery prerequisites before the first Scout boot, then prepare the OS-writing checks through [Install your first server](getting-started.md).
 
 ## 1. Prepare dependencies
 
-Provide a reachable NICo Core, DHCP and PXE service; compatible Linux `nico-admin-cli` and `grpcurl` binaries; a Core CA and client certificate/key; and a dedicated SSH key for acceptance. Match both binaries to the image CPU architecture. The existing physical path was validated on amd64; an arm64 image requires separate validation.
+Provide a reachable NICo Core, DHCP and PXE service; compatible Linux `nico-admin-cli`, `grpcurl` and Helm 3 binaries; a Core CA and client certificate/key; and a dedicated SSH key for acceptance. Match both binaries to the image CPU architecture. The existing physical path was validated on amd64; an arm64 image requires separate validation.
 
 The PXEye runtime needs routes to Core and hardware controllers. Target hosts need routes to DHCP/relay, boot files, ISO, autoinstall data and installer callbacks. The UI being reachable does not establish these paths.
 
@@ -19,6 +19,7 @@ From the repository root, supply compatible binaries as [build inputs](../bin/RE
 ```bash
 install -m 0755 /path/to/nico-admin-cli bin/nico-admin-cli
 install -m 0755 /path/to/grpcurl bin/grpcurl
+install -m 0755 /path/to/helm bin/helm
 make image IMAGE=pxeye:dev BASE_IMAGE=ubuntu:24.04
 ```
 

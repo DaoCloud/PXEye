@@ -1,0 +1,15 @@
+{
+  "site": {"name": "PXEye", "namespace": "mmzhou", "deployment": "mmzhou-pxeye"},
+  "core_url": "",
+  "nico_deployment": {
+    "enabled": true,
+    "namespace": "mmzhou",
+    "packages_directory": "/nico-packages",
+    "allow_cluster_resources": false,
+    "observe_namespaces": []
+  },
+  "os_library": {
+    "directory": "/materials",
+    "sources": [{"id": "onsite", "name": "ISO directory", "directory": "/iso-sources"}]
+  }
+}

@@ -25,4 +25,5 @@ wheel:
 image:
 	test -x bin/nico-admin-cli
 	test -x bin/grpcurl
+	test -x bin/helm
 	docker build --build-arg BASE_IMAGE=$(BASE_IMAGE) -t $(IMAGE) .

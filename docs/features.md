@@ -4,6 +4,10 @@
 
 This guide describes current code capabilities. UI rendering, fixture-based demonstrations and physical hardware validation provide different evidence. Validate the workflow against your NICo revision and hardware before using it for delivery.
 
+## NICo cluster deployment
+
+Start PXEye before Core is configured, then deploy a complete local Helm package in its current Kubernetes cluster. Inspect services, replicas, initialization, storage and Boot delivery; explicitly connect the ready deployment to site settings. Kubernetes provisioning and preparation of complete site Charts/values remain prerequisites. See the [cluster guide](user-guide/nico-cluster.md).
+
 ## Rack topology
 
 Group servers, DPU endpoints, NVLink switches and power shelves by rack. View serial numbers, observed management addresses and reported power state. Drag devices within their category and save display order in PXEye SQLite. Layout changes do not change NICo Rack membership, U positions or cabling. A green indicator means the latest reported power state is on; it is not an OS health check.

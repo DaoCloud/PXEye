@@ -4,6 +4,7 @@ __pycache__/
 .env
 bin/nico-admin-cli
 bin/grpcurl
+bin/helm
 *.sqlite3
 *.sqlite3-*
 data/

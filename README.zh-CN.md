@@ -30,17 +30,18 @@ PXEye 是独立社区项目。NICo 提供基础设施控制面，PXEye 提供操
 | 操作系统 | 上传或从服务可访问目录导入 Ubuntu ISO，提取引导材料，登记 NICo OS 定义。 |
 | 安装方案 | 复用磁盘选择、GPT/UEFI 分区、ext4/XFS 和安装默认值，创建任务时冻结逐机配置。 |
 | 安装任务 | 按需准备硬件，分配或复用 Instance，启动无人值守安装，查看日志和 OS 验收结果。 |
+| NICo 集群 | 本地 Helm 包部署、完整服务状态与验证后站点连接。 |
 | 实例与站点 | 查询和回收 Instance，查看 Core 连接、客户端身份、存储和配套服务。 |
 
 原生资源映射和硬件前提见[功能与支持边界](docs/features.zh-CN.md)。
 
 ## 快速开始
 
-PXEye 使用已有的 NICo 控制面；先按清单准备站点，部署 PXEye，再完成一台服务器安装后扩大批次，OS 材料和设备配置可以在部署后通过界面准备。
+PXEye 可以先独立启动，再通过 [NICo 集群页面](docs/user-guide/nico-cluster.zh-CN.md) 在当前 Kubernetes 部署控制面；也可连接已有 NICo。先完成控制面与网络准备，再验证一台服务器安装并扩大批次。
 
 ### 开始前检查
 
-- 已准备兼容版本的 NICo、管理客户端、Core mTLS 凭据及 PXEye 持久存储。
+- 已有 Kubernetes 集群、兼容管理客户端及 PXEye 持久存储；新部署准备完整 Helm 包，连接已有站点时准备 Core mTLS 凭据。
 - 已核对目标主机序列号、CPU 架构、BMC MAC 和 PXE 接口永久 MAC。
 - 已从实际控制面路径验证 BMC Redfish 身份及所需权限，并准备所选接管流程要求的凭据。
 - 已确认 BMC 与主机引导网络的子网、网关、VLAN、Relay 和无冲突的地址分配方案。
@@ -53,9 +54,9 @@ PXEye 使用已有的 NICo 控制面；先按清单准备站点，部署 PXEye�
 
 ### 部署 PXEye
 
-按[部署指南](docs/deployment.zh-CN.md)准备镜像、配置凭据和存储、通过 NICo PXE HTTP 发布材料并开放服务入口；仓库提供[站点配置示例](examples/site.example.json)和[单副本 Kubernetes 清单](deploy/kubernetes.yaml)，NICo 及其网络入口需另外准备。
+新建控制面使用[先启动 PXEye，再部署 NICo](docs/nico-deployment.zh-CN.md)；连接已有 NICo 使用[部署指南](docs/deployment.zh-CN.md)、[站点配置示例](examples/site.example.json)和[单副本清单](deploy/kubernetes.yaml)。两种方式均需配置可达的装机网络入口。
 
-兼容的 `nico-admin-cli` 和 `grpcurl` 是镜像构建输入，不随源码分发；具体构建命令和挂载位置统一在部署指南维护。
+兼容的 `nico-admin-cli`、`grpcurl` 和 Helm 3 是镜像构建输入，不随源码分发；具体构建命令和挂载位置统一在部署指南维护。
 
 ### 首台装机
 
@@ -89,7 +90,7 @@ PXEye 使用 Python HTTP 后端、SQLite/WAL 和原生 JavaScript/CSS。同一�
 
 当前版本为**技术预览**，采用单站点、单副本、单操作员模型，安装批次支持可配置并发（默认 5 台）。主要实机验证路径是 x86_64 UEFI 硬件上的 Ubuntu Server 24.04；ARM64、GB200/GB300 和其他 OEM 流程需要独立验证。地址更新依赖设备实际提供的 Redfish 或 NVOS 能力。
 
-集群创建、工作负载调度、固件分发、Fabric 配置和多租户 RBAC 不属于当前产品范围。详见[系统架构](docs/architecture.zh-CN.md)和[安全说明](SECURITY.zh-CN.md)。
+Kubernetes 创建、工作负载调度、固件分发、Fabric 配置和多租户 RBAC 不属于当前产品范围。详见[系统架构](docs/architecture.zh-CN.md)和[安全说明](SECURITY.zh-CN.md)。
 
 ## 项目文档
 
@@ -109,6 +110,7 @@ PXEye 使用 Python HTTP 后端、SQLite/WAL 和原生 JavaScript/CSS。同一�
 | 网络管理 | [子网创建、地址保留与 DHCP 前提](docs/user-guide/network-management.zh-CN.md) |
 | 安装方案 | [OS、选盘、分区与登录默认值](docs/user-guide/installation-profiles.zh-CN.md) |
 | 站点设置 | [连接、存储与安装并发](docs/user-guide/site-settings.zh-CN.md) |
+| NICo 集群 | [部署服务与连接站点](docs/user-guide/nico-cluster.zh-CN.md) |
 
 ## 参与项目
 

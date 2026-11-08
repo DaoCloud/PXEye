@@ -18,6 +18,12 @@ def main():
     os.umask(0o077)
     config = json.loads(Path(os.environ.get("CONSOLE_CONFIG", "/config/site.json")).read_text())
     data_dir = Path(os.environ.get("CONSOLE_DATA", "/data"))
+    config.setdefault(
+        "site", {"name": "PXEye", "namespace": "mmzhou", "deployment": "mmzhou-pxeye"}
+    )
+    deployed_site = data_dir / "config" / "deployment-site.json"
+    if deployed_site.exists():
+        config.update(json.loads(deployed_site.read_text()))
     saved_site = data_dir / "config" / "site-settings.json"
     if saved_site.exists():
         saved = json.loads(saved_site.read_text())

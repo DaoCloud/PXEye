@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && (getent passwd 1000 >/dev/null || useradd --uid 1000 --create-home console)
 COPY bin/nico-admin-cli /usr/local/bin/nico-admin-cli
 COPY bin/grpcurl /usr/local/bin/grpcurl
+COPY bin/helm /usr/local/bin/helm
 COPY pyproject.toml README.md LICENSE /app/
 COPY src/ /app/src/
 RUN python3 -m venv /opt/pxeye && /opt/pxeye/bin/pip install --no-cache-dir /app

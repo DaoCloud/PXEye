@@ -35,6 +35,7 @@ registerPage("os", osPage);
 registerPage("network", networkPage);
 registerPage("profiles", profilePage);
 registerPage("site", sitePage);
+registerPage("nico", nicoClusterPage);
 observeUI("click", "navigation", async (e) => {
   const page = e.target.closest("[data-page]");
   if (page) {
