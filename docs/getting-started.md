@@ -22,7 +22,7 @@ Your ISO replaces the target installation media, not Scout's discovery environme
 
 In **Device management → Discover devices (设备管理 → 发现设备)**, select the source BMC network and refresh. Supply the controller credentials and use **Get device information (获取设备信息)** to retrieve identity. Match serial numbers and device types to the received hardware before enrollment.
 
-For a prepared inventory, use **Import devices (导入设备)** with the downloadable CSV/Excel template. Imports save plans; they do not install machines automatically.
+Import an arrival list with the CSV template under **Device management → Device plans (设备管理 → 设备规划)**. Plans are stored separately; discover and enroll devices using the steps above, then select **Match plans (一键匹配)** in Managed devices to apply address and management subnet configuration. See the [Device management guide](user-guide/device-management.md) for the format.
 
 ## 4. Save addresses and installation settings
 

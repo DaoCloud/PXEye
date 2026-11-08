@@ -29,6 +29,9 @@ class Store:
             db.executescript("""
                 PRAGMA journal_mode=WAL;
                 CREATE TABLE IF NOT EXISTS device_plans (serial TEXT PRIMARY KEY, data TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS equipment_planning (
+                    id TEXT PRIMARY KEY, serial TEXT NOT NULL UNIQUE, data TEXT NOT NULL
+                );
                 CREATE TABLE IF NOT EXISTS install_profiles (id TEXT PRIMARY KEY, data TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied REAL NOT NULL);
                 CREATE TABLE IF NOT EXISTS device_plan_versions (revision TEXT PRIMARY KEY, serial TEXT NOT NULL, data TEXT NOT NULL);
@@ -60,6 +63,10 @@ class Store:
             """)
             db.execute(
                 "INSERT OR IGNORE INTO schema_migrations(version,applied) VALUES(1,?)",
+                (time.time(),),
+            )
+            db.execute(
+                "INSERT OR IGNORE INTO schema_migrations(version,applied) VALUES(2,?)",
                 (time.time(),),
             )
 

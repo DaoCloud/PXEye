@@ -16,12 +16,15 @@ DHCP discovery requires an enabled DHCP client and correctly routed requests. A 
 
 ## Device and address management
 
-Import CSV or Excel inventories, edit individual device plans and keep their revisions. Server plans include BMC and host management addresses, boot MAC, hostname, target OS and profile. Other equipment uses address management without the server-installation workflow.
+Device management has Device plans, Discovered devices and Managed devices tabs. An independent planning CSV stores SN, management IP/MAC, management subnet CIDR, BMC IP/MAC and rack for comparison with managed device configuration. After enrollment, matching uses a unique SN, locates the actual interface by management MAC and resolves an exact CIDR to an existing subnet. Rack values are only compared.
+
+Server system configuration maintains hostname, target OS and installation profile with versioned device settings. Other equipment retains the existing address management flow. See the [Device management guide](user-guide/device-management.md) for fields and actions.
 
 Saving a plan persists product data and derived files. Batch actions perform separate operations:
 
 | Action | Effect |
 | --- | --- |
+| Match plans | Save the independent plan's target BMC address, management interface and subnet into enrolled server configuration; running addresses remain unchanged. |
 | Update BMC address | Preflight the target and identity, configure a supported Redfish management interface, verify the new address and synchronize records. |
 | Update management address | Operate on supported management endpoints; available behavior depends on device type and the interface driver. |
 | Refresh device details | Read hardware identity and supported interface details; does not change addresses. |

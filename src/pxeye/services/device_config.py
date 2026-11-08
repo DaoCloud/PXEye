@@ -234,11 +234,11 @@ class DeviceConfig:
         )
         intent["login_ref"] = key
 
-    def validate_networks(self, bindings, row):
+    def validate_networks(self, bindings, row, *, networks=None):
         # References constrain declarations; they do not configure the physical switch.
         if not isinstance(bindings, dict):
             raise ValueError("网卡网络引用格式无效。")
-        networks = {n["id"]: n for n in self.resources.networks()}
+        networks = {n["id"]: n for n in (self.resources.networks() if networks is None else networks)}
         nics = {n.get("mac_address", "").lower(): n for n in row.get("interfaces", [])}
         for mac, key in bindings.items():
             network, nic = networks.get(key), nics.get(mac.lower())

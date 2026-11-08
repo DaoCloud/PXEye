@@ -287,10 +287,10 @@ class DevicePlans:
         if changed:
             self.save(body)
 
-    def validate_conflicts(self, records):
+    def validate_conflicts(self, records, *, snapshot=None):
         from pxeye.services.equipment import Equipment
 
-        Equipment(self.adapter, self.resources).validate_server_plans(records)
+        Equipment(self.adapter, self.resources).validate_server_plans(records, snapshot=snapshot)
         macs, addresses, hostnames = {}, {}, {}
         for serial, record in records.items():
             hostname = record.get("intent", {}).get("hostname")

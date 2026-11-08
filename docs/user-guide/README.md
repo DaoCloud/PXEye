@@ -7,6 +7,7 @@ Each main menu page has one guide explaining its purpose, field values and actio
 | Menu | Guide |
 | --- | --- |
 | Resources → Networks (资源 → 网络管理) | [Network management](network-management.md) |
+| Resources → Devices (资源 → 设备管理) | [Device management](device-management.md) |
 
 ## Writing conventions
 

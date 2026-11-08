@@ -26,6 +26,21 @@ class QueryRoutes:
                 data = self.app.equipment.view(snapshot)
                 data["management_addresses"] = self.app.management_addresses.view(snapshot)
                 return self.respond(200, data)
+            if path == "/api/equipment-planning":
+                from pxeye.services.equipment_planning import EquipmentPlanning
+
+                return self.respond(200, EquipmentPlanning(self.app.adapter, self.app.resources).list())
+            if path == "/api/equipment-planning/template":
+                from pxeye.services.equipment_planning import EquipmentPlanning
+
+                data = ("\ufeff" + EquipmentPlanning.template()).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "text/csv; charset=utf-8")
+                self.send_header("Content-Length", str(len(data)))
+                self.send_header("Content-Disposition", "attachment; filename=device-planning-template.csv")
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                return self.wfile.write(data)
             if path == "/api/topology-layout":
                 return self.respond(200, self.app.store.topology_layout())
             if path.startswith("/api/equipment/bmc-jobs/") and len(path.split("/")) == 5:

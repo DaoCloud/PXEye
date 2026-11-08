@@ -50,6 +50,13 @@ function addressDialog(deviceIds) {
 function addressEdit(iid) {
   const row = addressRows().find((a) => a.interface_id === iid);
   if (!row) throw Error("接口已变化，请刷新。");
+  const device = state.resources?.devices.find((d) => d.serial === row.serial);
+  const networkId =
+    device?.intent?.network_bindings?.[row.mac_address?.toLowerCase()];
+  const network = state.networks?.networks.find((n) => n.id === networkId);
+  const subnet = networkId
+    ? network?.prefixes.map((p) => p.prefix).join(", ") || "待配置"
+    : (row.network_prefixes || []).join(", ") || "待配置";
   state.wizard = { resource: "address-edit", row };
   modal(
     "规划管理地址",
@@ -61,7 +68,7 @@ function addressEdit(iid) {
         .filter(([k]) => k !== "unknown")
         .concat([["unknown", "待识别"]]),
       row.address_kind || row.kind,
-    )}${selectField("eq-address-role", "接口角色", Object.entries(addressRoles), row.role)}${eqText("address-mac", "接口 MAC", row.mac_address, "readonly")}${eqText("address-network", "当前管理子网", row.network_name, "readonly")}${eqText("address-current", "当前 IPv4", row.addresses.join(", "), "readonly")}${eqText("address-target", "规划 IPv4", row.target_ip || row.addresses[0] || "")}${eqText("address-user", "此接口 BMC / PMC 用户名")}${eqText("address-password", row.credential_present ? "密码（留空保留）" : "此接口 BMC / PMC 密码", "", 'type="password" autocomplete="new-password"')}</div><div class="live-note">保存地址规划。BMC / PMC 地址在设备管理执行更新；LOM 地址由安装任务应用。</div>` +
+    )}${selectField("eq-address-role", "接口角色", Object.entries(addressRoles), row.role)}${eqText("address-mac", "接口 MAC", row.mac_address, "readonly")}${eqText("address-network", "管理子网", subnet, "readonly")}${eqText("address-current", "当前 IPv4", row.addresses.join(", "), "readonly")}${eqText("address-target", "规划 IPv4", row.target_ip || row.addresses[0] || "")}${eqText("address-user", "此接口 BMC / PMC 用户名")}${eqText("address-password", row.credential_present ? "密码（留空保留）" : "此接口 BMC / PMC 密码", "", 'type="password" autocomplete="new-password"')}</div><div class="live-note">保存地址规划。BMC / PMC 地址在设备管理执行更新；LOM 地址由安装任务应用。</div>` +
       eqError(),
     button("取消", "close") + button("保存规划", "address-save", true),
   );

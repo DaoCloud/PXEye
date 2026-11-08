@@ -4,6 +4,13 @@
 
 Capability milestones for the current source lineage. Historical version headings identify development baselines, not published PXEye releases. Site addresses, device identities and operational logs are excluded.
 
+## 0.21.19 — Independent device planning
+
+- Add a Device plans tab with a flat CSV template, validation preview, editable planning rows and comparison with managed server configuration.
+- Match selected enrolled servers by unique SN, locate the management interface by observed MAC and resolve an exact CIDR to an existing subnet; preserve credentials and running tasks.
+- Keep imports separate from discovery and enrollment. Matching saves configuration for the existing address and installation actions.
+- Display management subnet ranges without names, and add a bilingual device management guide.
+
 ## 0.21.17 — Resolved system-disk review
 
 - Read current NICo/Scout hardware during installation preflight and return the uniquely resolved disk model, full serial, capacity, source and observation time to the review page.

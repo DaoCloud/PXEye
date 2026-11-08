@@ -84,6 +84,9 @@ class Resources:
 
         rows = self.inventory(persist=True)
         DevicePlans(self.adapter, self).seed(rows)
+        from pxeye.services.equipment_planning import EquipmentPlanning
+
+        EquipmentPlanning(self.adapter, self).migrate_legacy(rows)
         return {"status": "refreshed", "count": len(rows), "observed_at": time.time()}
 
     def devices(self):

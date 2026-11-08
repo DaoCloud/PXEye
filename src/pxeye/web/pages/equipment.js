@@ -107,22 +107,31 @@ function equipmentMatches(row) {
 function devicePage() {
   if (state.deviceView === "management-addresses") state.deviceView = "managed";
   const data = state.equipment,
-    pending = state.deviceView === "equipment-endpoints";
-  const tools = pending
-    ? button("刷新发现结果", "eq-refresh", true)
-    : button("刷新数据", "eq-refresh") +
-      button("导入设备", "eq-choose-import") +
-      button("新增设备", "eq-choose-new", true) +
-      button("下载模板", "eq-choose-template");
+    pending = state.deviceView === "equipment-endpoints",
+    planning = state.deviceView === "equipment-planning";
+  const tools = planning
+    ? button("刷新规划", "planning-refresh") +
+      button("导入规划", "planning-import") +
+      button("下载模板", "planning-template") +
+      button("新增规划", "planning-new", true)
+    : pending
+      ? button("刷新发现结果", "eq-refresh", true)
+      : button("刷新数据", "eq-refresh") +
+        button("导入设备", "eq-choose-import") +
+        button("新增设备", "eq-choose-new", true) +
+        button("下载模板", "eq-choose-template");
   let body =
     heading(
       "设备管理",
-      pending
-        ? "发现通过 DHCP 获取临时管理地址的设备。"
-        : "查看纳管设备，维护地址和安装规划。",
+      planning
+        ? "导入设备规划，按序列号与纳管设备对比。"
+        : pending
+          ? "发现通过 DHCP 获取临时管理地址的设备。"
+          : "查看纳管设备，维护地址和安装规划。",
       tools,
     ) +
-    `<div class="live-tabs">${button("纳管设备", "eq-managed", !pending)}${button("发现设备", "eq-endpoints", pending)}</div>`;
+    `<div class="live-tabs">${button("设备规划", "planning-tab", planning)}${button("发现设备", "eq-endpoints", pending)}${button("纳管设备", "eq-managed", !pending && !planning)}</div>`;
+  if (planning) return body + equipmentPlanningTable();
   if (!data) return body + '<div class="live-empty">正在读取设备与接口…</div>';
   if (data.errors.length)
     body += `<div class="live-error">${esc(data.errors.join("；"))}</div>`;
@@ -131,7 +140,14 @@ function devicePage() {
   body += `<div class="live-editor-grid">${selectField("eq-filter-kind", "设备类型", [["", "全部类型"], ...Object.entries(equipmentKinds).filter(([k]) => k !== "unknown")], f.kind)}${selectField("eq-filter-rack", "机柜", [["", "全部机柜"], ...[...new Set(data.devices.map((d) => d.rack_id).filter(Boolean))].map((id) => [id, id])], f.rack)}${selectField("eq-filter-status", "纳管状态", [["", "全部状态"], ...["draft", "declared", "managed", "server"].map((k) => [k, equipmentStates[k]])], f.status)}${eqText("filter-search", "搜索 SN、名称、MAC 或 IP", f.search)}</div>`;
   const selected = state.equipmentDeviceSelection.length,
     disabled = selected ? "" : "disabled";
-  body += `<div class="equipment-batch-bar"><span>已选 ${selected} 台</span><div class="live-tools">${button("更新 BMC 地址", "eq-batch-bmc", true, disabled)}${button("更新管理地址", "eq-batch-management", false, disabled)}${button("刷新设备详情", "eq-batch-refresh", false, disabled)}</div></div>`;
+  const matchable =
+    selected > 0 &&
+    selected <= 50 &&
+    !state.equipmentPlanningMatching &&
+    data.devices
+      .filter((d) => state.equipmentDeviceSelection.includes(d.id))
+      .every((d) => d.kind === "server" && !d.address_only);
+  body += `<div class="equipment-batch-bar"><span>已选 ${selected} 台</span><div class="live-tools">${button("一键匹配", "planning-match", false, matchable ? "" : "disabled")}${button("更新 BMC 地址", "eq-batch-bmc", true, disabled)}${button("更新管理地址", "eq-batch-management", false, disabled)}${button("刷新设备详情", "eq-batch-refresh", false, disabled)}</div></div>`;
   const rows = data.devices.filter(equipmentMatches).map((d) => {
     const server = d.kind === "server" && !d.address_only,
       native = state.resources?.devices.find((x) => x.serial === d.serial);
@@ -477,8 +493,8 @@ function equipmentChooseConfirm() {
     kind = $("#eq-kind").value;
   if (kind === "server") {
     if (mode === "new") return deviceDialog();
-    if (mode === "import") return importDialog();
-    window.location.href = "/api/devices/template";
+    if (mode === "import") return equipmentPlanningImport();
+    window.location.href = "/api/equipment-planning/template";
     return close();
   }
   if (mode === "new") return equipmentEdit(null, kind);
@@ -878,7 +894,7 @@ registerActions(
         case "eq-managed":
           state.deviceView = "managed";
           render();
-          return;
+          return equipmentPlanningReload();
         case "eq-endpoints":
           state.deviceView = "equipment-endpoints";
           await equipmentReload();

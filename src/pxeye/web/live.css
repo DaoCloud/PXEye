@@ -2046,3 +2046,14 @@
     grid-template-columns: 88px minmax(0, 1fr);
   }
 }
+
+/* Arrival planning shares the device table and editor components. */
+.equipment-planning-toolbar {
+  display: flex;
+  align-items: flex-end;
+  gap: 24px;
+  margin-bottom: 18px;
+}
+.equipment-planning-toolbar label {
+  width: min(480px, 100%);
+}

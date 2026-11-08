@@ -24,7 +24,7 @@ PXEye is an independent community project. NICo provides the infrastructure cont
 | Area | What you can do |
 | --- | --- |
 | Rack topology | View servers, DPU endpoints, NVLink switches and power shelves; persist manual device ordering. |
-| Discovery and inventory | Observe DHCP endpoints, retrieve Redfish identity with shared credentials, enroll devices, and import CSV or Excel inventories. |
+| Discovery and planning | Import arrival CSV plans separately; discover DHCP endpoints, verify identity and enroll devices, then match address configuration by unique SN. |
 | Address management | Maintain planned BMC and host management addresses; update supported controllers and refresh observed details in batches. |
 | Networks | Inspect NICo network segments and allocations; prepare drafts and create supported segments. |
 | Operating systems | Upload or import Ubuntu ISOs from a service-accessible directory, extract boot artifacts, and register NICo OS definitions. |
@@ -65,7 +65,7 @@ Follow [Install your first server](docs/getting-started.md) on a dedicated devic
 
 1. **Prepare the site:** verify NICo connectivity, DHCP relay, network segments and artifact delivery.
 2. **Prepare an OS:** import an ISO, prepare boot artifacts and register its NICo definition.
-3. **Identify and enroll:** discover DHCP endpoints or import inventory, retrieve hardware identity and select devices to manage.
+3. **Identify and enroll:** import arrival plans, discover DHCP endpoints, retrieve hardware identity, enroll devices and match plans by SN.
 4. **Save the plan:** choose addresses, the target OS, an installation profile and device overrides.
 5. **Install and verify:** create a task, review its target and disk scope, then follow execution through SSH and normal-reboot verification.
 
@@ -102,6 +102,7 @@ Browse by menu for purpose, field values and actions. See the [user guide index]
 | Page | Guide |
 | --- | --- |
 | Network management | [Network configuration and subnet management](docs/user-guide/network-management.md) |
+| Device management | [Device plans, discovery, enrollment and matching](docs/user-guide/device-management.md) |
 
 ## Contributing
 

@@ -1350,8 +1350,8 @@ class Equipment:
                 else "请求结果尚不能确认；保留现场，请核对原生记录，不要重复提交。",
             }
 
-    def validate_server_plans(self, records):
-        snapshot = self.snapshot(servers=[])
+    def validate_server_plans(self, records, *, snapshot=None):
+        snapshot = self.snapshot(servers=[]) if snapshot is None else snapshot
         if snapshot["errors"]:
             raise ValueError("类型声明读取失败，无法完整核对设备冲突。")
         candidates = [

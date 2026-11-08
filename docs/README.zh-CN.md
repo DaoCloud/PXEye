@@ -23,6 +23,7 @@ PXEye 公开项目文档均提供内容对应的中英文版本。首次使用�
 | 菜单位置 | English | 简体中文 |
 | --- | --- | --- |
 | 资源 → 网络管理 | [Read](user-guide/network-management.md) | [阅读](user-guide/network-management.zh-CN.md) |
+| 资源 → 设备管理 | [Read](user-guide/device-management.md) | [阅读](user-guide/device-management.zh-CN.md) |
 
 ## 项目维护
 

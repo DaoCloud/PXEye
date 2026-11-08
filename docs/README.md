@@ -23,6 +23,7 @@ Browse by menu for purpose, field values, actions and result verification. Each 
 | Menu location | English | 简体中文 |
 | --- | --- | --- |
 | Resources → Networks (资源 → 网络管理) | [Read](user-guide/network-management.md) | [阅读](user-guide/network-management.zh-CN.md) |
+| Resources → Devices (资源 → 设备管理) | [Read](user-guide/device-management.md) | [阅读](user-guide/device-management.zh-CN.md) |
 
 ## Project maintenance
 

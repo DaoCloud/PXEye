@@ -221,7 +221,7 @@ async function refreshPage(page = state.page) {
   const sections = {
     topology: ["equipment", "network", "topologyLayout"],
     tasks: ["tasks", "batches", "resources"],
-    devices: ["resources", "equipment"],
+    devices: ["resources", "equipment", "equipmentPlanning", "network"],
     instances: ["instances"],
     os: ["os"],
     profiles: ["profiles"],
@@ -249,24 +249,22 @@ const taskStatus = (t) =>
     ? { label: "自动修复中", tone: "amber" }
     : t.recovery_observing
       ? { label: "等待安装结果", tone: "amber" }
-    : {
-        label: statuses[t.status],
-        tone:
-          t.status === "completed"
-            ? "green"
-            : t.status === "cancelled"
-              ? "gray"
+      : {
+          label: statuses[t.status],
+          tone:
+            t.status === "completed"
+              ? "green"
+              : t.status === "cancelled"
+                ? "gray"
               : t.status === "needs_attention"
                 ? "red"
                 : "amber",
-      };
+        };
 function taskRows() {
-  return state.tasks.map(
-    (t) => {
-      const status = taskStatus(t);
-      return `<tr><td><button class="link-button" data-task="${esc(t.id)}">${esc(t.id)}</button><span class="live-small">${when(t.created_at)}</span></td><td>${esc(t.device)}<span class="live-small">${esc(t.management_ip)}</span></td><td>${esc(t.hostname)}</td><td>${badge(status.label, status.tone)}<span class="live-small">${esc(stages[t.stage])}</span></td><td>${bmcLink(state.resources?.devices.find((d) => d.serial === t.device)?.bmc_ip)}</td><td><button class="link-button" data-task="${esc(t.id)}">实时日志 / 记录</button></td></tr>`;
-    },
-  );
+  return state.tasks.map((t) => {
+    const status = taskStatus(t);
+    return `<tr><td><button class="link-button" data-task="${esc(t.id)}">${esc(t.id)}</button><span class="live-small">${when(t.created_at)}</span></td><td>${esc(t.device)}<span class="live-small">${esc(t.management_ip)}</span></td><td>${esc(t.hostname)}</td><td>${badge(status.label, status.tone)}<span class="live-small">${esc(stages[t.stage])}</span></td><td>${bmcLink(state.resources?.devices.find((d) => d.serial === t.device)?.bmc_ip)}</td><td><button class="link-button" data-task="${esc(t.id)}">实时日志 / 记录</button></td></tr>`;
+  });
 }
 function sitePage() {
   const s = state.siteInfo;
@@ -335,9 +333,7 @@ async function saveSite() {
   const result = await api("/api/site", {
     name: $("#site-name").value.trim(),
     core_url: $("#site-core").value.trim(),
-    default_install_concurrency: Number(
-      $("#site-install-concurrency").value,
-    ),
+    default_install_concurrency: Number($("#site-install-concurrency").value),
   });
   state.siteInfo = result.site;
   if (state.resources) {
@@ -358,7 +354,7 @@ function render() {
     {
       topology: ["equipment", "network", "topologyLayout"],
       tasks: ["tasks", "batches", "resources"],
-      devices: ["resources", "equipment"],
+      devices: ["resources", "equipment", "equipmentPlanning", "network"],
       instances: ["instances"],
       os: ["os"],
       profiles: ["profiles"],
@@ -368,16 +364,6 @@ function render() {
   const errors = keys
     .filter((key) => state.readErrors?.[key])
     .map((key) => state.readErrors[key]);
-  if (!state.resources && state.page === "devices") {
-    $("#main").innerHTML =
-      heading(
-        labels[state.page],
-        "读取当前配置",
-        button("刷新数据", "refresh"),
-      ) +
-      `<div class="${errors.length ? "live-error" : "live-empty"}">${esc(errors.join("；") || "正在读取设备信息…")}</div>`;
-    return;
-  }
   body = pageRenderers.get(state.page)?.() || "";
   if (errors.length)
     body =
@@ -698,7 +684,10 @@ async function taskProblem(id) {
       t.device,
       defs([
         ["当前阶段", esc(stages[t.stage] || t.stage)],
-        ["当前状态", "安装程序已经启动，正在等待本轮安装退出和新系统可信身份。"],
+        [
+          "当前状态",
+          "安装程序已经启动，正在等待本轮安装退出和新系统可信身份。",
+        ],
         ["自动观察截止", when(t.observation_deadline)],
       ]) +
         `<div class="live-note">系统每 10 秒只读检查一次。收到可信身份后会自动继续验收，不会重复写盘或再次发送 PXE。</div>`,
@@ -778,7 +767,9 @@ function automaticRecoveryDialog(t) {
     blocked: "自动修复已停止",
     unknown: "操作结果需要核对",
   };
-  const done = recovery.steps.filter((step) => step.status === "completed").length;
+  const done = recovery.steps.filter(
+    (step) => step.status === "completed",
+  ).length;
   const stepper = recovery.steps
     .map(
       (step) =>
@@ -1125,13 +1116,7 @@ async function busy(action) {
   }
 }
 function importDialog() {
-  state.wizard = { resource: "csv" };
-  modal(
-    "批量导入设备",
-    "设备管理",
-    `<div class="live-note">填写模板后导入，支持 Excel 和 CSV。</div><label class="live-upload">选择文件<input id="csv-file" type="file" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"></label><div id="csv-preview"></div><div id="resource-error" class="live-error" role="alert"></div>`,
-    button("取消", "close") + button("校验并预览", "import-preview", true),
-  );
+  return equipmentPlanningImport();
 }
 async function previewCsv() {
   return busy(async () => {

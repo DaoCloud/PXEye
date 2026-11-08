@@ -2,7 +2,6 @@
 
 import uuid
 from pxeye.services.device_plans import DevicePlans
-from pxeye.domain.workbook import workbook_csv
 from pxeye.domain.topology import normalize_topology_layout
 
 
@@ -13,6 +12,23 @@ class CommandRoutes:
         if path == "/api/topology-layout":
             layout = normalize_topology_layout(self.app, body)
             return self.respond(200, self.app.store.save_topology_layout(layout))
+        if path.startswith("/api/equipment-planning/"):
+            from pxeye.services.equipment_planning import EquipmentPlanning
+
+            planning = EquipmentPlanning(self.app.adapter, self.app.resources)
+            action = path.removeprefix("/api/equipment-planning/")
+            if action == "preview":
+                if set(body) != {"csv"}:
+                    raise ValueError("请提交设备规划 CSV。")
+                return self.respond(200, planning.preview(body["csv"], session["token"]))
+            handlers = {
+                "save": lambda: planning.save(body),
+                "import": lambda: planning.import_csv(body, session["token"]),
+                "match": lambda: planning.match(body),
+            }
+            if action not in handlers:
+                return self.respond(404, {"error": "设备规划操作不存在。"})
+            return self.respond(200, self.app.plan(handlers[action]))
         if path.startswith("/api/equipment/"):
             action = path.removeprefix("/api/equipment/")
             equipment, owner = self.app.equipment, session["token"]
@@ -180,29 +196,9 @@ class CommandRoutes:
                 self.app.plan(lambda: DevicePlans(self.app.adapter, self.app.resources).save(body)),
             )
         if path == "/api/device-plans/preview":
-            if set(body) == {"xlsx"}:
-                text = workbook_csv(body["xlsx"])
-            elif set(body) == {"csv"}:
-                text = body["csv"]
-            else:
-                raise ValueError("请选择 Excel 或 CSV 设备清单。")
-            return self.respond(
-                200,
-                DevicePlans(self.app.adapter, self.app.resources).preview_csv(
-                    text, session["token"]
-                ),
-            )
+            raise ValueError("请在设备规划 TAB 下载新的 CSV 模板并导入，旧版设备声明不能作为规划导入。")
         if path == "/api/device-plans/import":
-            if set(body) != {"preview_id"}:
-                raise ValueError("请先预览规划。")
-            return self.respond(
-                200,
-                self.app.plan(
-                    lambda: DevicePlans(self.app.adapter, self.app.resources).import_csv(
-                        body["preview_id"], session["token"]
-                    )
-                ),
-            )
+            raise ValueError("旧版导入预览已失效，请在设备规划 TAB 重新导入。")
         if path == "/api/devices/installation-config/validate":
             proposed = body.pop("machine", None)
             return self.respond(

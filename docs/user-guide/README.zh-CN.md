@@ -7,6 +7,7 @@
 | 菜单 | 指南 |
 | --- | --- |
 | 资源 → 网络管理 | [网络管理](network-management.zh-CN.md) |
+| 资源 → 设备管理 | [设备管理](device-management.zh-CN.md) |
 
 ## 编写约定
 
