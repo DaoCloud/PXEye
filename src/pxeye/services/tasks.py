@@ -55,6 +55,7 @@ class TaskCoordinator:
                 "fallback_reset_requesting",
                 "standard_pxe_override_requesting",
                 "standard_pxe_reset_requesting",
+                "failed_bios_reset_requesting",
             ):
                 recovery["state"] = "unknown"
                 recovery["error"] = (
@@ -73,7 +74,9 @@ class TaskCoordinator:
             if task["status"] == "queued" and task.get("batch_id"):
                 continue
             if task["status"] in ("running", "queued"):
-                if self.recovery_observation_active(task):
+                if self.recovery_observation_active(task) or recovery.get(
+                    "state"
+                ) == "config_requesting":
                     auto_continue.append(task["id"])
                 task["status"] = "needs_attention"
                 try:
@@ -104,7 +107,9 @@ class TaskCoordinator:
                 task["retry_available"] = self.executor.can_retry_install(task)
                 task["restart_available"] = self.executor.can_restart_preinstall(task)
                 self.store.save(task)
-                if self.recovery_observation_active(task):
+                if self.recovery_observation_active(task) or recovery.get(
+                    "state"
+                ) == "config_requesting":
                     auto_continue.append(task["id"])
             if self.executor.can_start_automatic_recovery(task):
                 auto_repair.append(task["id"])
@@ -126,6 +131,7 @@ class TaskCoordinator:
         )
         recovery = result.get("automatic_recovery") or {}
         if recovery.get("state") in (
+            "config_requesting",
             "observing",
             "waiting_reboot",
             "waiting_installation",
@@ -135,6 +141,7 @@ class TaskCoordinator:
             "standard_pxe_override_requesting",
             "standard_pxe_reset_requesting",
             "waiting_standard_pxe_retry",
+            "failed_bios_reset_requesting",
         ):
             result["recovery_observing"] = True
         return result
@@ -216,6 +223,14 @@ class TaskCoordinator:
                             task["error"] = "自动恢复停止：" + str(error)
                             self.store.save(task)
                             continue
+                        task = self.store.get(task_id) or task
+                    recovery = task.get("automatic_recovery") or {}
+                    if recovery.get("state") == "config_requesting":
+                        try:
+                            self.executor.reconcile_interrupted_boot_recovery(task)
+                        except RuntimeError as error:
+                            task["automatic_recovery_observation_error"] = str(error)
+                            self.store.save(task)
                         task = self.store.get(task_id) or task
                     if not self.recovery_observation_active(task):
                         continue

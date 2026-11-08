@@ -932,12 +932,15 @@ class Executor:
                 recovery=True,
                 recovery_code=recovery["code"],
             )
+            if failed:
+                self.request_failed_bios_reboot(task, state)
             return True
         except Exception as error:
             state = recovery.get("state")
-            uncertain = state == "config_requesting"
-            recovery["state"] = "unknown" if uncertain else "blocked"
-            recovery["error"] = str(error)
+            if state != "unknown":
+                uncertain = state == "config_requesting"
+                recovery["state"] = "unknown" if uncertain else "blocked"
+                recovery["error"] = str(error)
             running = next(
                 (item for item in recovery["steps"] if item["status"] == "running"), None
             )
@@ -946,9 +949,142 @@ class Executor:
             self.store.save(task)
             raise
 
+    def reconcile_interrupted_boot_recovery(self, task):
+        """Resume observation only after an interrupted boot-order write is proven complete."""
+        recovery = task.get("automatic_recovery") or {}
+        if recovery.get("state") != "config_requesting":
+            return False
+        if not self.installation_not_started(task):
+            recovery["state"] = "unknown"
+            recovery["error"] = "服务更新后发现安装器或写盘证据；停止启动配置恢复。"
+            self.recovery_step(
+                recovery, "configuration", "failed", recovery["error"]
+            )
+            self.store.save(task)
+            return False
+
+        device = self.task_device(task)
+        self.check_bound(device, task)
+        machine = self.adapter.machine(device)
+        machine_state = str(machine.get("state", ""))
+        if machine.get("id") != device.get("machine_id"):
+            raise RuntimeError("NICo Machine 与任务绑定不一致。")
+        if not (
+            machine_state.startswith("Assigned/Failed")
+            or (
+                machine_state.startswith("Assigned/HostPlatformConfiguration")
+                and "PollingBiosSetup" in machine_state
+            )
+        ):
+            raise RuntimeError("NICo 已离开可核对的 BIOS 配置阶段。")
+
+        system = self.adapter.redfish(device)
+        plan = boot_selection(self.adapter, device, system, "Pxe")
+        expected = recovery.get("change", {}).get("after") or plan.get("body", {}).get(
+            "BootOrderNext"
+        )
+        current = plan.get("before", {}).get("BootOrderNext")
+        if plan.get("method") != "oem-order" or not expected or current != expected:
+            recovery["state"] = "unknown"
+            recovery["error"] = (
+                "服务在启动顺序写入期间更新，且当前值未与持久请求一致；不会自动重放。"
+            )
+            self.recovery_step(
+                recovery, "configuration", "failed", recovery["error"]
+            )
+            self.store.save(task)
+            return False
+
+        recovery["state"] = "observing"
+        recovery["error"] = None
+        recovery["deadline"] = time.time() + self.adapter.config.get(
+            "task_timeout_seconds", 2400
+        )
+        task["observation_deadline"] = recovery["deadline"]
+        task["error"] = None
+        self.recovery_step(
+            recovery,
+            "configuration",
+            "completed",
+            "服务恢复后已读回启动顺序，确认写入完成。",
+        )
+        self.recovery_step(
+            recovery, "nico", "running", "等待 NICo 重新检查 BIOS 与启动顺序。"
+        )
+        self.event(
+            task,
+            "boot",
+            "服务恢复后已核对启动顺序；继续原任务，不重复写入或重发安装请求。",
+            recovery=True,
+            recovery_code=recovery["code"],
+        )
+        if machine_state.startswith("Assigned/Failed"):
+            self.request_failed_bios_reboot(task, machine_state)
+        return True
+
+    def request_failed_bios_reboot(self, task, machine_state):
+        """Apply a proven pending boot order with one NICo reboot after retry exhaustion."""
+        recovery = task.get("automatic_recovery") or {}
+        if recovery.get("failed_bios_reboot"):
+            return False
+        if not (
+            machine_state.startswith("Assigned/Failed")
+            and "BiosSetupFailed" in machine_state
+            and self.installation_not_started(task)
+        ):
+            return False
+
+        device = self.task_device(task)
+        self.check_bound(device, task)
+        request = {
+            "state": "requesting",
+            "machine_id": device["machine_id"],
+            "requested_at": time.time(),
+        }
+        recovery["failed_bios_reboot"] = request
+        recovery["state"] = "failed_bios_reset_requesting"
+        self.recovery_step(
+            recovery,
+            "reboot",
+            "running",
+            "NICo 已耗尽 BIOS 重试；执行一次受控重启使已读回的启动顺序生效。",
+        )
+        self.store.save(task)
+        try:
+            self.adapter.core(["machine", "reboot", "--machine", device["machine_id"]])
+        except Exception as error:
+            request.update(state="unknown", error=str(error))
+            recovery["state"] = "unknown"
+            recovery["error"] = "受控重启结果需要核对：" + str(error)
+            self.recovery_step(recovery, "reboot", "failed", recovery["error"])
+            self.store.save(task)
+            raise RuntimeError(recovery["error"]) from error
+
+        request.update(state="accepted", accepted_at=time.time())
+        recovery["state"] = "observing"
+        recovery["deadline"] = time.time() + self.adapter.config.get(
+            "task_timeout_seconds", 2400
+        )
+        task["observation_deadline"] = recovery["deadline"]
+        self.recovery_step(
+            recovery,
+            "reboot",
+            "running",
+            "NICo 已受理一次重启，等待固件应用网络优先并恢复原状态机。",
+        )
+        self.event(
+            task,
+            "boot",
+            "NICo BIOS 重试已耗尽；已受理一次配置生效重启，不重发 custom PXE。",
+            recovery=True,
+            recovery_code=recovery["code"],
+        )
+        return True
+
     def observe_automatic_recovery(self, task, machine_state=None):
         recovery = task.get("automatic_recovery") or {}
         if recovery.get("state") not in (
+            "config_requesting",
             "observing",
             "waiting_reboot",
             "waiting_installation",
@@ -956,9 +1092,13 @@ class Executor:
             "waiting_standard_pxe_retry",
         ):
             return False
+        if recovery["state"] == "config_requesting":
+            return self.reconcile_interrupted_boot_recovery(task)
         if machine_state is None:
             machine_state = str(self.adapter.machine(self.task_device(task)).get("state", ""))
         if machine_state.startswith("Assigned/Failed"):
+            if recovery["state"] == "observing":
+                self.request_failed_bios_reboot(task, machine_state)
             return False
         if recovery["state"] == "observing" and (
             machine_state.startswith("Assigned/HostPlatformConfiguration")
