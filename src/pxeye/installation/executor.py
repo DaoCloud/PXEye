@@ -860,6 +860,13 @@ class Executor:
             raise RuntimeError("NICo Machine 与任务绑定不一致。")
         if not (polling or failed):
             return False
+        system = self.adapter.redfish(device)
+        plan = boot_selection(self.adapter, device, system, "Pxe")
+        if (
+            plan.get("method") != "oem-order"
+            or plan.get("body", {}).get("BootOrderNext", [None])[0] != "Network"
+        ):
+            return False
 
         previous = task.get("automatic_recovery")
         recovery = {
@@ -884,13 +891,6 @@ class Executor:
         task["automatic_recovery"] = recovery
         self.store.save(task)
         try:
-            system = self.adapter.redfish(device)
-            plan = boot_selection(self.adapter, device, system, "Pxe")
-            if (
-                plan.get("method") != "oem-order"
-                or plan.get("body", {}).get("BootOrderNext", [None])[0] != "Network"
-            ):
-                raise RuntimeError("当前硬件没有已认证的持久网络优先恢复适配器。")
             recovery.update(
                 machine_id=device["machine_id"],
                 instance_id=device["instance_id"],
