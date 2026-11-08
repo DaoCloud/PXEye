@@ -38,7 +38,8 @@ sectionReads.nico = async (refresh = false) => {
     };
   }
   if (!state.nicoTab)
-    state.nicoTab = state.nico.operation ? "services" : "config";
+    state.nicoTab =
+      state.nico.operation || state.nico.site_connected ? "services" : "config";
 };
 
 function nicoClusterPage() {
@@ -51,11 +52,20 @@ function nicoClusterPage() {
       ) + '<div class="live-empty">正在读取集群信息…</div>'
     );
   const op = data.operation,
-    status = op?.status || "missing",
     readyCount = data.components.filter(
       (c) => c.required && c.state === "ready",
     ).length,
     requiredCount = data.components.filter((c) => c.required).length,
+    existing = !op && data.components.some((c) => c.workloads.length),
+    status =
+      op?.status ||
+      (existing
+        ? data.error
+          ? "unknown"
+          : readyCount === requiredCount
+            ? "ready"
+            : "starting"
+        : "missing"),
     title =
       {
         missing: "准备部署 NICo",
@@ -64,12 +74,16 @@ function nicoClusterPage() {
         deploying: "正在部署 NICo",
         connecting: "正在连接站点",
         ready: "NICo 服务已就绪",
+        starting: "NICo 服务运行情况",
+        unknown: "NICo 服务状态待核对",
         connected: "NICo 已连接站点",
         needs_attention: "部署需要处理",
       }[status] || "NICo 集群",
     subtitle = op?.configuration
       ? `${op.configuration.site_name} · ${op.configuration.release_prefix}`
-      : "先检查部署材料，再按依赖顺序启动服务。";
+      : existing
+        ? `${state.readiness?.site_name || "NICo"} · 服务运行状态`
+        : "先检查部署材料，再按依赖顺序启动服务。";
   let action = "";
   if (status === "prepared")
     action = button(
