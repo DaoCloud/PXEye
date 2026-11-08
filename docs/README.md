@@ -16,6 +16,14 @@ Public PXEye documentation is maintained in English and Simplified Chinese. Star
 | Documentation references | [Read](documentation-references.md) | [阅读](documentation-references.zh-CN.md) | Review of NetBox, Tinkerbell, Metal3 and Argo CD. |
 | Public release preparation | [Read](publishing.md) | [阅读](publishing.zh-CN.md) | Repository boundary and release responsibilities. |
 
+## Page guides
+
+Browse by menu for purpose, field values, actions and result verification. Each main page has its own guide; see the [page guide index](user-guide/README.md) for the shared structure.
+
+| Menu location | English | 简体中文 |
+| --- | --- | --- |
+| Resources → Networks (资源 → 网络管理) | [Read](user-guide/network-management.md) | [阅读](user-guide/network-management.zh-CN.md) |
+
 ## Project maintenance
 
 | Document | English | 简体中文 |

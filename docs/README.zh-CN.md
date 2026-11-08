@@ -16,6 +16,14 @@ PXEye 公开项目文档均提供内容对应的中英文版本。首次使用�
 | 文档设计参考 | [Read](documentation-references.md) | [阅读](documentation-references.zh-CN.md) | NetBox、Tinkerbell、Metal3、Argo CD 调研。 |
 | 公开发布准备 | [Read](publishing.md) | [阅读](publishing.zh-CN.md) | 仓库边界与发布职责。 |
 
+## 页面使用指南
+
+按菜单查阅页面作用、字段填写、操作步骤和结果确认；每个大页面单独维护，统一结构见[页面使用指南索引](user-guide/README.zh-CN.md)。
+
+| 菜单位置 | English | 简体中文 |
+| --- | --- | --- |
+| 资源 → 网络管理 | [Read](user-guide/network-management.md) | [阅读](user-guide/network-management.zh-CN.md) |
+
 ## 项目维护
 
 | 文档 | English | 简体中文 |

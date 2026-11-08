@@ -30,7 +30,9 @@ DHCP 发现要求设备启用 DHCP，且请求能够正确转发。使用未知�
 
 ## 网络管理
 
-查看 NICo `NetworkSegment` 前缀、网关、MTU、接口引用和地址分配。草稿与 Core 生效配置分别管理。当前新增表单提供 HostInband、Admin 和 Underlay，地址策略为动态分配；已有生效子网在当前 UI 只读，集成版本没有原位更新接口。删除本地草稿不会删除生效子网；生效子网有占用时，删除仍受 NICo 生命周期约束。
+页面入口、字段格式和操作步骤见[网络管理使用指南](user-guide/network-management.zh-CN.md)。
+
+查看 NICo `NetworkSegment` 前缀、网关、MTU、接口引用和地址策略。草稿与 Core 生效配置分别管理。当前新增表单提供 HostInband、Admin 和 Underlay，地址策略为动态分配；已有生效子网在当前 UI 只读，集成版本没有原位更新接口。删除本地草稿不会删除生效子网；生效子网有占用时，删除仍受 NICo 生命周期约束。
 
 OS DNS 在网络管理中维护，属于 PXEye 安装数据，冻结到任务后生成目标 OS 网络配置，不是原生 NetworkSegment 的 DNS 字段。DHCP DNS 是租约下发给请求接口的信息，可能与 OS DNS 不同。relay 的 `giaddr` 和站点配置决定请求匹配哪个网段。PXEye 不配置交换机 relay、VLAN 或 ACL。
 

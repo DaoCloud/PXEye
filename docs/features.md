@@ -30,7 +30,9 @@ The list distinguishes current and planned addresses. Expected Machine declarati
 
 ## Network management
 
-Inspect NICo `NetworkSegment` prefixes, gateways, MTU, interface references and allocations. Maintain local drafts separately from live Core configuration. The current create form exposes HostInband, Admin and Underlay with dynamic allocation. Existing live segments are read-only in the current UI; native in-place updates are not available in the integrated revision. Deleting a local draft does not delete its live segment. Deleting an occupied live segment remains subject to NICo lifecycle constraints.
+For page navigation, field values and actions, see the [network management guide](user-guide/network-management.md).
+
+Inspect NICo `NetworkSegment` prefixes, gateways, MTU, interface references and allocation policies. Maintain local drafts separately from live Core configuration. The current create form exposes HostInband, Admin and Underlay with dynamic allocation. Existing live segments are read-only in the current UI; native in-place updates are not available in the integrated revision. Deleting a local draft does not delete its live segment. Deleting an occupied live segment remains subject to NICo lifecycle constraints.
 
 OS DNS is maintained through network management as PXEye installation data, frozen into the task and rendered into the target OS network configuration. It is not a native NetworkSegment DNS field. DHCP DNS is supplied to the requesting interface as lease information and may differ from OS DNS. Relay `giaddr` and site configuration determine which segment matches a request. PXEye does not configure relay, VLANs or ACLs on switches.
 
