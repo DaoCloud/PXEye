@@ -903,24 +903,18 @@ function equipmentIdentifyMany() {
     endpoints.length !== selected.length
   )
     throw Error("请选择 1–50 台可获取信息的设备；端点变化时请刷新后重选。");
-  state.wizard = { resource: "eq-identify-many", endpoints };
+  state.wizard = {
+    resource: "eq-identify-many",
+    endpoints: endpoints.map((row) => ({
+      interface_id: row.interface_id,
+      ip: equipmentDiscoveryAddresses(row)[0],
+      mac_address: row.mac_address,
+    })),
+  };
   modal(
     "批量获取设备信息",
     `为 ${endpoints.length} 台设备输入一次共用 BMC / PMC 账号密码`,
-    '<div class="live-note">仅通过 Redfish 读取设备信息。账号不同的设备请分批选择；获取完成后逐台核对并确认纳管。</div>' +
-      table(
-        ["临时管理地址", "管理 MAC"],
-        endpoints.map(
-          (row, index) =>
-            `<tr><td>${selectField(
-              "eq-batch-address-" + index,
-              "临时管理地址",
-              equipmentDiscoveryAddresses(row).map((ip) => [ip, ip]),
-              equipmentDiscoveryAddresses(row)[0],
-            )}</td><td>${esc(row.mac_address)}</td></tr>`,
-        ),
-      ) +
-      `<div class="live-form">${eqText("identity-user", "共用 BMC / PMC 用户名", "", 'autocomplete="off" maxlength="16"')}${eqText("identity-password", "共用 BMC / PMC 密码", "", 'type="password" autocomplete="new-password" maxlength="20"')}</div>` +
+    `<div class="live-form">${eqText("identity-user", "共用 BMC / PMC 用户名", "", 'autocomplete="off" maxlength="16"')}${eqText("identity-password", "共用 BMC / PMC 密码", "", 'type="password" autocomplete="new-password" maxlength="20"')}</div>` +
       eqError(),
     button("取消", "close") +
       button("获取设备信息", "eq-identify-many-submit", true),
@@ -930,9 +924,9 @@ async function equipmentIdentifyManySubmit() {
   if (state.equipmentDiscoveryReading) return;
   const w = state.wizard,
     payload = {
-      endpoints: w.endpoints.map((row, index) => ({
+      endpoints: w.endpoints.map((row) => ({
         interface_id: row.interface_id,
-        ip: $("#eq-batch-address-" + index).value,
+        ip: row.ip,
       })),
       username: $("#eq-identity-user").value,
       password: $("#eq-identity-password").value,

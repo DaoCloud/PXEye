@@ -5,7 +5,7 @@ title: Device management
 description: Arrival plans, discovery, enrollment and address configuration matching by serial number.
 navigation_group: resources
 updated_at: "2026-11-08"
-product_version: "0.21.24"
+product_version: "0.21.25"
 ---
 
 # Device management
@@ -54,7 +54,7 @@ CSV headers must contain all seven columns. Fields other than SN may be empty. W
 
 1. Enable DHCP on the device and provide working request and response paths to NICo.
 2. Under **Discovered devices**, select **Get device information (获取设备信息)** for the endpoint and enter valid BMC / PMC credentials.
-3. For devices sharing credentials, select endpoints (or all eligible endpoints in the current filtered list) and click **Get device information in bulk (批量获取设备信息)**. Enter the shared credentials once. Each batch supports up to 50 endpoints with four concurrent reads. Changing the discovery subnet clears selection; conflicting endpoints and those without a usable management IPv4 cannot be selected.
+3. For devices sharing credentials, select endpoints (or all eligible endpoints in the current filtered list) and click **Get device information in bulk (批量获取设备信息)**. The dialog contains only shared username and password fields and uses the selected devices’ observed management addresses. No second device list or address selection is required. Each batch supports up to 50 endpoints with four concurrent reads. Changing the discovery subnet clears selection; conflicting endpoints and those without a usable management IPv4 cannot be selected.
 4. Review each device’s SN, type, model and success or failure. Results remain on the current page and can be reopened with **View retrieval results (查看获取结果)**. Retry failed devices as a separate batch with the correct credentials; other devices continue independently.
 5. Select **Review and enroll (确认并纳管)** or **Confirm device information (确认设备信息)**, verify the details, then click **Add to managed devices (加入纳管设备)**. Review devices one at a time from the batch results without re-entering credentials. The managed list retains the detected type.
 

@@ -4,6 +4,10 @@
 
 Capability milestones for the current source lineage. Historical version headings identify development baselines, not published PXEye releases. Site addresses, device identities and operational logs are excluded.
 
+## 0.21.25 — Simplified batch credential dialog
+
+- Show only the shared BMC / PMC username and password fields when retrieving discovery information in bulk. Use the management addresses from the selected endpoints without repeating the device list or address selection.
+
 ## 0.21.24 — Batch discovery information retrieval
 
 - Select discovered endpoints and enter shared BMC / PMC credentials once for up to 50 devices, using four concurrent reads.
