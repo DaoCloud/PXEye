@@ -3,7 +3,7 @@
 <p align="center"><strong>See it. Plan it. Boot it.</strong></p>
 <p align="center">基于 NVIDIA Infra Controller 的裸金属运维控制台。</p>
 <p align="center"><a href="README.md">English</a> · <strong>简体中文</strong></p>
-<p align="center"><a href="docs/features.zh-CN.md">功能说明</a> · <a href="#快速开始">快速开始</a> · <a href="docs/architecture.zh-CN.md">系统架构</a> · <a href="docs/README.zh-CN.md">文档中心</a></p>
+<p align="center"><a href="docs/features.zh-CN.md">功能说明</a> · <a href="#快速开始">快速开始</a> · <a href="docs/user-guide/README.zh-CN.md">使用指南</a> · <a href="docs/architecture.zh-CN.md">系统架构</a> · <a href="docs/README.zh-CN.md">文档中心</a></p>
 
 PXEye 将设备发现、清单管理、地址规划和操作系统安装整合到统一界面。它基于 [NVIDIA Infra Controller（NICo）](https://docs.nvidia.com/infra-controller/documentation/home)，帮助基础设施团队从新到货硬件走到完成验收的操作系统交付，每次执行都有明确入口和持久安装记录。
 
@@ -94,6 +94,14 @@ PXEye 使用 Python HTTP 后端、SQLite/WAL 和原生 JavaScript/CSS。同一�
 ## 项目文档
 
 所有公开项目文档均提供英文和简体中文。操作指南、设计参考和贡献说明统一收录在[文档中心](docs/README.zh-CN.md)。[变更记录](CHANGELOG.zh-CN.md)按能力里程碑组织。
+
+### 页面使用指南
+
+按菜单查看功能用途、字段填写和操作步骤，完整目录见[使用指南索引](docs/user-guide/README.zh-CN.md)。
+
+| 页面 | 使用文档 |
+| --- | --- |
+| 网络管理 | [网络配置与子网管理](docs/user-guide/network-management.zh-CN.md) |
 
 ## 参与项目
 

@@ -3,7 +3,7 @@
 <p align="center"><strong>See it. Plan it. Boot it.</strong></p>
 <p align="center">A bare-metal operations console for NVIDIA Infra Controller.</p>
 <p align="center"><strong>English</strong> · <a href="README.zh-CN.md">简体中文</a></p>
-<p align="center"><a href="docs/features.md">Features</a> · <a href="#getting-started">Getting started</a> · <a href="docs/architecture.md">Architecture</a> · <a href="docs/README.md">Documentation</a></p>
+<p align="center"><a href="docs/features.md">Features</a> · <a href="#getting-started">Getting started</a> · <a href="docs/user-guide/README.md">User guides</a> · <a href="docs/architecture.md">Architecture</a> · <a href="docs/README.md">Documentation</a></p>
 
 PXEye brings device discovery, inventory, address planning and operating-system installation into one interface. Built on [NVIDIA Infra Controller (NICo)](https://docs.nvidia.com/infra-controller/documentation/home), it helps infrastructure teams move from newly arrived hardware to verified OS delivery, with explicit execution steps and persistent installation records.
 
@@ -94,6 +94,14 @@ Cluster creation, workload scheduling, firmware distribution, fabric configurati
 ## Documentation
 
 All public project documentation is available in English and Simplified Chinese. Start with the [documentation index](docs/README.md) for operational guides, design references and contribution information. The [changelog](CHANGELOG.md) records capability milestones.
+
+### Page guides
+
+Browse by menu for purpose, field values and actions. See the [user guide index](docs/user-guide/README.md) for the complete list.
+
+| Page | Guide |
+| --- | --- |
+| Network management | [Network configuration and subnet management](docs/user-guide/network-management.md) |
 
 ## Contributing
 
