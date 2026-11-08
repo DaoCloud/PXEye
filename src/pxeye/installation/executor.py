@@ -963,11 +963,14 @@ class Executor:
             self.recover_unconsumed_network_boot(task, machine_state)
         elif recovery["state"] == "waiting_installation_retry":
             self.recover_standard_pxe_boot(task, machine_state)
+        device = self.task_device(task)
+        folder = self.adapter.data / "tasks" / task["id"]
+        self.observe_installation(task, device, folder / "known_hosts")
         if task.get("installer_progress", {}).get("started"):
             recovery["state"] = "completed"
             recovery["completed_at"] = time.time()
             self.recovery_step(
-                recovery, "installation", "completed", "原安装请求已进入安装器。"
+                recovery, "installation", "completed", "原安装请求已进入安装器，正在安装系统。"
             )
             self.store.save(task)
         return True

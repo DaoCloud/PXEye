@@ -4,6 +4,11 @@
 
 Capability milestones for the current source lineage. Historical version headings identify development baselines, not published PXEye releases. Site addresses, device identities and operational logs are excluded.
 
+## 0.21.13 — Immediate installer progress
+
+- Persist the authenticated installer `started` event while observing an automatic boot recovery.
+- Mark boot recovery complete as soon as the retained request enters the installer instead of waiting for the installed-system SSH identity.
+
 ## 0.21.12 — Standard one-time PXE recovery
 
 - Detect when a verified OEM network-first recovery still returns to the existing operating system.
