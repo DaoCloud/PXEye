@@ -193,6 +193,18 @@ def project(objects, bindings=()):
         # Core cert-manager and the REST manager use different identities.
         if not binding and key == "cert-manager":
             selected = [o for o in selected if "rest-cert-manager" not in o["metadata"]["name"]]
+        # A simulator's release name may describe its lab rather than the executable.
+        if not binding and key == "machine-a-tron":
+            selected = [
+                o
+                for o in workloads
+                if re.search(pattern, o["metadata"]["name"])
+                or any(
+                    c["image"].rsplit("/", 1)[-1].split("@", 1)[0].split(":", 1)[0]
+                    == "machine-a-tron"
+                    for c in o["spec"]["template"]["spec"].get("containers", [])
+                )
+            ]
         row = {
             "id": key,
             "name": name,
