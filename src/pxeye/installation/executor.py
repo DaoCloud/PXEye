@@ -936,6 +936,7 @@ class Executor:
             "observing",
             "waiting_reboot",
             "waiting_installation",
+            "waiting_installation_retry",
         ):
             return False
         if machine_state is None:
@@ -956,6 +957,8 @@ class Executor:
                 recovery, "installation", "running", "等待原 custom PXE 进入安装器。"
             )
             self.event(task, "boot", "NICo 启动配置已恢复，等待原安装请求进入安装器。")
+        if recovery["state"] == "waiting_installation":
+            self.recover_unconsumed_network_boot(task, machine_state)
         if task.get("installer_progress", {}).get("started"):
             recovery["state"] = "completed"
             recovery["completed_at"] = time.time()
@@ -963,6 +966,107 @@ class Executor:
                 recovery, "installation", "completed", "原安装请求已进入安装器。"
             )
             self.store.save(task)
+        return True
+
+    def recover_unconsumed_network_boot(self, task, machine_state):
+        """Retry one proven disk fallback without creating another install request."""
+        recovery = task["automatic_recovery"]
+        if recovery.get("network_boot_retry"):
+            return False
+        grace = self.adapter.config.get("automatic_network_boot_grace_seconds", 180)
+        if isinstance(grace, bool) or not isinstance(grace, (int, float)):
+            grace = 180
+        reboot_step = next(item for item in recovery["steps"] if item["id"] == "reboot")
+        if time.time() - reboot_step.get("updated_at", recovery["started_at"]) < max(60, grace):
+            return False
+        if not machine_state.startswith("Assigned/Ready"):
+            return False
+        folder = self.adapter.data / "tasks" / task["id"]
+        known = folder / "known_hosts"
+        try:
+            text = self.attempt_text(task)
+        except OSError:
+            text = ""
+        if (
+            task.get("installer_progress")
+            or task.get("installer_failure")
+            or (known.exists() and known.read_text().strip())
+            or installer_execution_started(text)
+            or installer_disk_phase_started(text)
+            or observations(self.adapter, self.store, task)
+        ):
+            return False
+
+        device = self.task_device(task)
+        self.check_bound(device, task)
+        system = self.adapter.redfish(device)
+        plan = boot_selection(self.adapter, device, system, "Pxe")
+        before = plan.get("before", {}).get("BootOrderNext", [])
+        after = plan.get("body", {}).get("BootOrderNext", [])
+        if (
+            plan.get("method") != "oem-order"
+            or before[:1] != ["Hard Disk"]
+            or after[:1] != ["Network"]
+        ):
+            return False
+
+        retry = {
+            "state": "config_requesting",
+            "reason": "NICo 已 Ready，但安装器未启动且固件启动顺序已回退到硬盘。",
+            "before": before,
+            "after": after,
+            "requested_at": time.time(),
+        }
+        recovery["network_boot_retry"] = retry
+        recovery["state"] = "fallback_config_requesting"
+        self.recovery_step(
+            recovery,
+            "installation",
+            "running",
+            "检测到硬盘回退；恢复一次网络优先，不重发 custom PXE。",
+        )
+        self.store.save(task)
+        try:
+            apply_boot(self.adapter, device, plan)
+            retry["state"] = "reset_requesting"
+            retry["configured_at"] = time.time()
+            recovery["state"] = "fallback_reset_requesting"
+            self.check_bound(device, task)
+            current = str(self.adapter.machine(device).get("state", ""))
+            if not current.startswith("Assigned/Ready"):
+                raise RuntimeError("NICo 已离开 Assigned/Ready，不执行网络启动恢复。")
+            self.store.save(task)
+            self.adapter.redfish(
+                device, "/Actions/ComputerSystem.Reset", "POST", {"ResetType": "ForceRestart"}
+            )
+        except Exception as error:
+            recovery["state"] = "unknown"
+            recovery["error"] = "网络启动恢复结果需要核对：" + str(error)
+            retry["state"] = "unknown"
+            retry["error"] = str(error)
+            self.recovery_step(recovery, "installation", "failed", recovery["error"])
+            self.store.save(task)
+            raise RuntimeError(recovery["error"]) from error
+
+        retry.update(state="reset_accepted", reboot_accepted=True, accepted_at=time.time())
+        recovery["state"] = "waiting_installation_retry"
+        recovery["deadline"] = time.time() + self.adapter.config.get(
+            "task_timeout_seconds", 2400
+        )
+        task["observation_deadline"] = recovery["deadline"]
+        self.recovery_step(
+            recovery,
+            "installation",
+            "running",
+            "已执行一次网络启动恢复，等待原安装请求进入安装器。",
+        )
+        self.event(
+            task,
+            "boot",
+            "固件回退到旧系统；已恢复网络优先并执行一次受控重启，不重发 custom PXE。",
+            recovery=True,
+            recovery_code=recovery["code"],
+        )
         return True
 
     def recover_disk_boot(self, task, device, system):

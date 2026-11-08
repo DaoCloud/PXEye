@@ -49,6 +49,25 @@ class TaskCoordinator:
         auto_continue = []
         auto_repair = []
         for task in self.store.incomplete():
+            recovery = task.get("automatic_recovery") or {}
+            if recovery.get("state") in (
+                "fallback_config_requesting",
+                "fallback_reset_requesting",
+            ):
+                recovery["state"] = "unknown"
+                recovery["error"] = (
+                    "服务在网络启动恢复写操作期间重启；结果需要核对，系统不会自动重放。"
+                )
+                running = next(
+                    (item for item in recovery.get("steps", []) if item["status"] == "running"),
+                    None,
+                )
+                if running:
+                    self.executor.recovery_step(
+                        recovery, running["id"], "failed", recovery["error"]
+                    )
+                task["observation_deadline"] = 0
+                self.store.save(task)
             if task["status"] == "queued" and task.get("batch_id"):
                 continue
             if task["status"] in ("running", "queued"):
@@ -104,7 +123,14 @@ class TaskCoordinator:
             not result["resume_available"] and self.recovery_observation_active(result)
         )
         recovery = result.get("automatic_recovery") or {}
-        if recovery.get("state") in ("observing", "waiting_reboot", "waiting_installation"):
+        if recovery.get("state") in (
+            "observing",
+            "waiting_reboot",
+            "waiting_installation",
+            "fallback_config_requesting",
+            "fallback_reset_requesting",
+            "waiting_installation_retry",
+        ):
             result["recovery_observing"] = True
         return result
 
@@ -140,6 +166,10 @@ class TaskCoordinator:
                         task = self.store.get(task_id) or task
                         if task.get("status") != "needs_attention":
                             break
+                        remaining = max(
+                            0, task.get("observation_deadline", time.time()) - time.time()
+                        )
+                        deadline = max(deadline, time.monotonic() + remaining)
                         try:
                             self.executor.observe_automatic_recovery(task)
                         except RuntimeError as error:
@@ -147,7 +177,10 @@ class TaskCoordinator:
                             self.store.save(task)
                         if self.executor.can_resume(task):
                             recovery = task.get("automatic_recovery") or {}
-                            if recovery.get("state") == "waiting_installation":
+                            if recovery.get("state") in (
+                                "waiting_installation",
+                                "waiting_installation_retry",
+                            ):
                                 recovery["state"] = "completed"
                                 recovery["completed_at"] = time.time()
                                 self.executor.recovery_step(

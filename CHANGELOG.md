@@ -4,6 +4,12 @@
 
 Capability milestones for the current source lineage. Historical version headings identify development baselines, not published PXEye releases. Site addresses, device identities and operational logs are excluded.
 
+## 0.21.11 — Bounded network-boot fallback recovery
+
+- Detect a completed NICo restart that returned to disk before the retained custom-PXE request reached the installer.
+- Restore network-first boot and issue one ledgered recovery restart without recreating the installation request, Instance or disk operation.
+- Stop with an unknown result after a service interruption during either write operation instead of replaying it.
+
 ## 0.21.10 — Single-owner recovery restart
 
 - Let NICo's recovered state machine perform the retained custom-PXE restart after PXEye verifies the repaired boot order.
