@@ -12,6 +12,11 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 
 from pxeye.common import atomic_json, digest, value_id, omit_unset_fields, redact
+from pxeye.services.device_identity import (
+    chassis_identity as chassis_identity,
+    verify_manager_mac as verify_manager_mac,
+    read_device_identity,
+)
 
 KINDS = {
     "switch": {
@@ -1400,14 +1405,9 @@ class Equipment:
             for v, limit in [(credential["username"], 16), (credential["password"], 20)]
         ):
             raise ValueError("请输入 BMC 账号（最多16字符）和密码（最多20字符）。")
-        identity = chassis_identity(self.adapter, address, credential)
-        if identity["kind"] == "unknown":
-            from pxeye.services.discovery import read_identity
-
-            report = read_identity(self.adapter, address, endpoint["mac_address"], credential)
-            identity = {"kind": "server", **report}
-        else:
-            verify_manager_mac(self.adapter, address, endpoint["mac_address"], credential)
+        identity = read_device_identity(
+            self.adapter, address, endpoint["mac_address"], credential
+        )
         if endpoint["kind"] not in ("unknown", identity["kind"]):
             raise ValueError("硬件类型与现有声明或原生关联冲突。")
         if endpoint.get("serial") and identity["serial"] != endpoint["serial"]:
@@ -1431,7 +1431,7 @@ class Equipment:
             "identity": identity,
             "verified_at": proof["verified_at"],
             "device_id": endpoint.get("device_id"),
-            "can_enroll": not any(
+            "can_enroll": identity["kind"] in ("server", *KINDS) and not any(
                 endpoint.get(k)
                 for k in (
                     "device_id",
@@ -1477,6 +1477,8 @@ class Equipment:
             ):
                 raise ValueError("接口或归属已变化，请重新验证身份。")
             identity = proof["identity"]
+            if identity["kind"] not in ("server", *KINDS):
+                raise ValueError("此设备类型不支持通过当前入口纳管。")
             if identity["kind"] == "server":
                 # Preserve the existing paused ExpectedMachine registration and history contract.
                 candidate = next(
@@ -1525,62 +1527,3 @@ class Equipment:
             proof.update(used=True, device_id=result["id"])
             self.write("proofs", proof["id"], proof)
             return result
-
-
-def chassis_identity(adapter, address, credential):
-    collection = adapter.redfish_read(address, "/redfish/v1/Chassis", credential)
-    members = collection.get("Members", [])
-    if len(members) > 16:
-        raise ValueError("Chassis 数量超出支持范围，请核对设备型号。")
-    recognized = []
-    for member in members:
-        report = adapter.redfish_read(address, member["@odata.id"], credential)
-        ident = str(report.get("Id", "")).lower()
-        maker = str(report.get("Manufacturer", "")).lower()
-        kind = (
-            "switch"
-            if "mgx_nvswitch_0" in ident
-            else "power_shelf"
-            if "powershelf" in ident
-            or ident == "chassis"
-            and ("lite-on" in maker or "delta" in maker)
-            else "unknown"
-        )
-        if kind != "unknown":
-            serial = str(report.get("SerialNumber") or "").strip()
-            if not serial or len(serial) > 128 or any(ord(c) < 32 for c in serial):
-                raise ValueError("已识别设备类型，但没有有效的 Chassis SN。")
-            recognized.append(
-                {
-                    "kind": kind,
-                    "serial": serial,
-                    "model": report.get("Model"),
-                    "evidence": {
-                        "chassis_id": report.get("Id"),
-                        "manufacturer": report.get("Manufacturer"),
-                    },
-                }
-            )
-    if len(recognized) > 1:
-        raise ValueError("返回多个受支持 Chassis，无法唯一确认设备身份。")
-    return recognized[0] if recognized else {"kind": "unknown"}
-
-
-def verify_manager_mac(adapter, address, hardware, credential):
-    managers = adapter.redfish_read(address, "/redfish/v1/Managers", credential)
-    if len(managers.get("Members", [])) > 8:
-        raise ValueError("Manager 数量超出支持范围。")
-    reported = set()
-    for member in managers.get("Members", []):
-        report = adapter.redfish_read(address, member["@odata.id"], credential)
-        path = (report.get("EthernetInterfaces") or {}).get("@odata.id")
-        if not path:
-            continue
-        ports = adapter.redfish_read(address, path, credential)
-        if len(ports.get("Members", [])) > 32:
-            raise ValueError("Manager 接口数量超出支持范围。")
-        for port in ports.get("Members", []):
-            nic = adapter.redfish_read(address, port["@odata.id"], credential)
-            reported.add(str(nic.get("MACAddress", "")).lower())
-    if hardware not in reported:
-        raise ValueError("BMC / PMC 报告的管理 MAC 与观察端点不符。")

@@ -100,6 +100,7 @@ class Hardware:
         plan = DevicePlans(self.adapter, self.resources).public(serial)
         result = {
             "serial": serial,
+            "kind": "server",
             "device_id": row["id"],
             "read_at": time.time(),
             "source": "NICo / Scout最近回报",

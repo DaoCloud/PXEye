@@ -4,6 +4,12 @@
 
 Capability milestones for the current source lineage. Historical version headings identify development baselines, not published PXEye releases. Site addresses, device identities and operational logs are excluded.
 
+## 0.21.20 — Shared device identification
+
+- Use shared Redfish and NICo-report parsing to identify physical servers, supported NVLink switches, power shelves and BlueField DPUs.
+- Retain the detected type during supported-device enrollment and reuse identity parsing for discovery, management-address refresh and server BMC checks.
+- Verify the observed management MAC and hardware serial; reject ambiguous identities and conflicting declared types. Server Scout details now include the device type.
+
 ## 0.21.19 — Independent device planning
 
 - Add a Device plans tab with a flat CSV template, validation preview, editable planning rows and comparison with managed server configuration.

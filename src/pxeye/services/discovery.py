@@ -7,73 +7,30 @@ import time
 import uuid
 
 from pxeye.common import atomic_json, digest, value_id
+from pxeye.services.device_identity import (
+    classify_device,
+    field,
+    text,
+    read_device_identity,
+)
 
 
 def report_identity(endpoint, mac):
     report = (endpoint or {}).get("report") or {}
-    if str(report.get("endpointType", "")).lower() != "bmc":
+    if str(report.get("endpointType", report.get("endpoint_type", ""))).lower() != "bmc":
         return {}
     manager_macs = {
-        str(n.get("macAddress", "")).lower()
+        text(nic, "MACAddress").lower()
         for manager in report.get("managers", [])
-        for n in manager.get("ethernetInterfaces", [])
+        for nic in field(manager, "EthernetInterfaces") or []
     }
-    systems = [x for x in report.get("systems", []) if x.get("serialNumber")]
-    if mac not in manager_macs or len(systems) != 1:
-        return {"note": "请登录 BMC 读取序列号。"}
-    return {
-        "serial": systems[0]["serialNumber"],
-        "model": systems[0].get("model"),
-        "note": "请验证 BMC 账号后加入清单。",
-    }
-
-
-def read_identity(adapter, ip, mac, cred):
-    from pxeye.services.equipment import chassis_identity
-
-    if chassis_identity(adapter, ip, cred)["kind"] != "unknown":
-        raise ValueError("此端点为交换机或供电框，请从统一设备发现入口读取。")
-    collection = adapter.redfish_read(ip, "/redfish/v1/Systems", cred)
-    systems = [
-        adapter.redfish_read(ip, m["@odata.id"], cred) for m in collection.get("Members", [])[:16]
-    ]
-    if any(s.get("Id") in ("Bluefield", "BlueField_0") for s in systems):
-        raise ValueError("此端点为 BlueField DPU，不可按服务器加入装机清单。")
-    systems = [
-        s
-        for s in systems
-        if s.get("SerialNumber") and s.get("SystemType", "Physical") == "Physical"
-    ]
-    if len(systems) != 1:
-        raise ValueError("未返回唯一物理主机 SN；请核对机型和 BMC。")
-    system = systems[0]
-    serial = system["SerialNumber"].strip()
-    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", serial):
-        raise ValueError("BMC 返回的主机 SN 无效。")
-    # Verify the observed MAC through the BMC's own Ethernet inventory.
-    managers = adapter.redfish_read(ip, "/redfish/v1/Managers", cred)
-    bmc_macs = []
-    for member in managers.get("Members", [])[:16]:
-        manager = adapter.redfish_read(ip, member["@odata.id"], cred)
-        path = (manager.get("EthernetInterfaces") or {}).get("@odata.id")
-        if not path:
-            continue
-        collection = adapter.redfish_read(ip, path, cred)
-        for nic in collection.get("Members", [])[:64]:
-            info = adapter.redfish_read(ip, nic["@odata.id"], cred)
-            bmc_macs.append(str(info.get("MACAddress", "")).lower())
-    if mac not in bmc_macs:
-        raise ValueError("BMC 返回的管理 MAC 与 NICo 候选不匹配；不可纳管。")
-    nics = []
-    path = (system.get("EthernetInterfaces") or {}).get("@odata.id")
-    if path:
-        collection = adapter.redfish_read(ip, path, cred)
-        for member in collection.get("Members", [])[:64]:
-            nic = adapter.redfish_read(ip, member["@odata.id"], cred)
-            mac = str(nic.get("MACAddress", "")).lower()
-            if re.fullmatch(r"(?:[0-9a-f]{2}:){5}[0-9a-f]{2}", mac):
-                nics.append({"mac_address": mac, "name": nic.get("Name", nic.get("Id", ""))})
-    return {"serial": serial, "model": system.get("Model"), "nics": nics}
+    if mac.lower() not in manager_macs:
+        return {"note": "请登录 BMC / PMC 读取设备信息。"}
+    try:
+        result = classify_device(report.get("chassis", []), report.get("systems", []))
+    except ValueError:
+        return {"note": "请登录 BMC / PMC 读取设备信息。"}
+    return result | {"note": "请验证 BMC / PMC 账号后加入清单。"}
 
 
 class Discovery:
@@ -182,6 +139,7 @@ class Discovery:
                         "serial": existing["chassis_serial_number"]
                         if existing
                         else identity.get("serial"),
+                        "kind": identity.get("kind", "unknown"),
                         "model": identity.get("model"),
                         "nics": proof.get("nics", []),
                         "identity_source": proof.get("identity_source")
@@ -259,7 +217,7 @@ class Discovery:
             }
             try:
                 cred = {"username": body["username"], "password": body["password"]}
-                identity = read_identity(
+                identity = read_device_identity(
                     self.adapter, candidate["bmc_ip"], candidate["bmc_mac"], cred
                 )
                 proof.update(
@@ -270,7 +228,13 @@ class Discovery:
                     identity_source="ui-redfish",
                 )
                 results.append(
-                    {"id": candidate["id"], "passed": True, "serial": identity["serial"]}
+                    {
+                        "id": candidate["id"],
+                        "passed": True,
+                        "serial": identity["serial"],
+                        "kind": identity["kind"],
+                        "model": identity["model"],
+                    }
                 )
             except (ValueError, RuntimeError) as error:
                 proof["error"] = str(error).replace(body["password"], "[已隐藏]")
@@ -288,6 +252,8 @@ class Discovery:
             proof = json.loads(path.read_text()) if c["authenticated"] and path.exists() else {}
             if not proof or proof["owner"] != owner or proof.get("status"):
                 raise ValueError("请先使用本会话提供的 BMC 凭据重新读取身份。")
+            if proof.get("kind", "server") != "server":
+                raise ValueError("非服务器请使用统一设备发现入口加入纳管清单。")
             if proof["serial"] in serials:
                 raise ValueError("所选候选具有重复主机 SN。")
             serials.add(proof["serial"])
@@ -363,6 +329,7 @@ class Discovery:
             "results": [
                 {
                     "serial": row["chassis_serial_number"],
+                    "kind": "server",
                     "status": "registered",
                     "detail": "已加入清单，可继续规划。",
                 }

@@ -6,7 +6,7 @@ import time
 import uuid
 
 from pxeye.common import sha
-from pxeye.services.discovery import read_identity
+from pxeye.services.device_identity import read_server_identity
 from pxeye.common import atomic_json, digest, value_id
 
 
@@ -84,7 +84,7 @@ class BMCAddresses:
     def identity(self, row, ip):
         if not ip or not row.get("bmc_username") or not row.get("bmc_password"):
             raise ValueError("需要可达 BMC 地址和用户提供的账号密码。")
-        identity = read_identity(
+        identity = read_server_identity(
             self.adapter,
             ip,
             row["bmc_mac_address"].lower(),

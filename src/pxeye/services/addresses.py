@@ -13,12 +13,11 @@ from pxeye.services.equipment import (
     snake,
     mac,
     ipv4,
-    chassis_identity,
-    verify_manager_mac,
     ROLE_LABELS,
 )
 from pxeye.common import redact
 from pxeye.clients.errors import RedfishRequestError
+from pxeye.services.device_identity import read_device_identity
 
 MANAGER_ROLES = {"host_bmc", "switch_bmc", "pmc", "dpu_bmc"}
 STATES = {
@@ -387,6 +386,9 @@ class ManagementAddresses:
                         "mac_address": row["mac_address"],
                         "serial": identity["serial"],
                         "kind": identity["kind"],
+                        "model": identity["model"],
+                        "manufacturer": identity["manufacturer"],
+                        "evidence": identity["evidence"],
                         "credential": credential,
                         "verified_at": time.time(),
                         "verified_ip": row["addresses"][0],
@@ -405,35 +407,7 @@ class ManagementAddresses:
             if row.get("role", "").startswith("dpu_")
             else row.get("address_kind", row["kind"])
         )
-        if kind == "server" and row.get("role") not in ("dpu_bmc", "dpu_os"):
-            from pxeye.services.discovery import read_identity
-
-            identity = {
-                "kind": "server",
-                **read_identity(self.adapter, address, row["mac_address"], credential),
-            }
-        else:
-            identity = chassis_identity(self.adapter, address, credential)
-            if identity["kind"] == "unknown":
-                systems = self.adapter.redfish_read(address, "/redfish/v1/Systems", credential).get(
-                    "Members", []
-                )
-                if len(systems) > 16:
-                    raise ValueError("Systems 数量超限。")
-                reports = [
-                    self.adapter.redfish_read(address, x["@odata.id"], credential) for x in systems
-                ]
-                reports = [r for r in reports if r.get("SerialNumber")]
-                if len(reports) != 1:
-                    raise ValueError("无法读取唯一设备 SN。")
-                report = reports[0]
-                identity = {
-                    "kind": "dpu"
-                    if str(report.get("Id", "")).lower() in ("bluefield", "bluefield_0")
-                    else "other",
-                    "serial": report["SerialNumber"].strip(),
-                }
-            verify_manager_mac(self.adapter, address, row["mac_address"], credential)
+        identity = read_device_identity(self.adapter, address, row["mac_address"], credential)
         if row.get("serial") and row["serial"] != identity["serial"]:
             raise ValueError("BMC 返回的 SN 与地址规划不同。")
         if kind not in ("unknown", "other") and identity["kind"] != kind:
@@ -608,6 +582,9 @@ class ManagementAddresses:
                     "mac_address": row["mac_address"],
                     "serial": identity["serial"],
                     "kind": identity["kind"],
+                    "model": identity["model"],
+                    "manufacturer": identity["manufacturer"],
+                    "evidence": identity["evidence"],
                     "credential": credential,
                     "verified_at": time.time(),
                     "verified_ip": row["addresses"][0],
@@ -619,7 +596,9 @@ class ManagementAddresses:
                     "passed": True,
                     "serial": identity["serial"],
                     "kind": identity["kind"],
-                    "model": identity.get("model", ""),
+                    "model": identity["model"],
+                    "manufacturer": identity["manufacturer"],
+                    "evidence": identity["evidence"],
                     "address": row["addresses"][0],
                     "refreshed_at": proof["verified_at"],
                 }
