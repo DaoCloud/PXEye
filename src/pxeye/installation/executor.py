@@ -511,15 +511,19 @@ class Executor:
                         task["network_entry_observation_error"] = str(error)
                         self.store.save(task)
                     else:
+                        recovery = task.get("automatic_recovery") or {}
+                        bios_blocked = machine_state.startswith(("Assigned/Failed", "Failed")) or (
+                            machine_state.startswith("Assigned/HostPlatformConfiguration")
+                            and "PollingBiosSetup" in machine_state
+                        )
+                        if bios_blocked and not recovery:
+                            if self.automatic_boot_recovery(task):
+                                duration = self.adapter.config.get("task_timeout_seconds", 2400)
+                                deadline = max(deadline, time.monotonic() + duration)
+                                began = time.monotonic()
+                                continue
                         if machine_state.startswith(("Assigned/Failed", "Failed")):
-                            recovery = task.get("automatic_recovery") or {}
-                            if not recovery:
-                                if self.automatic_boot_recovery(task):
-                                    duration = self.adapter.config.get("task_timeout_seconds", 2400)
-                                    deadline = max(deadline, time.monotonic() + duration)
-                                    began = time.monotonic()
-                                    continue
-                            elif recovery.get("state") in (
+                            if recovery.get("state") in (
                                 "observing",
                                 "waiting_reboot",
                                 "waiting_installation",
@@ -822,7 +826,7 @@ class Executor:
         recovery["updated_at"] = step["updated_at"]
 
     def automatic_boot_recovery(self, task):
-        """Repair one proven pre-installer BiosSetupFailed without replaying custom PXE."""
+        """Repair one proven pre-installer BIOS convergence block without replaying PXE."""
         if not self.can_start_automatic_recovery(task):
             return False
         folder = self.adapter.data / "tasks" / task["id"]
@@ -871,12 +875,15 @@ class Executor:
             self.check_bound(device, task)
             machine = self.adapter.machine(device)
             state = str(machine.get("state", ""))
+            polling = state.startswith("Assigned/HostPlatformConfiguration") and (
+                "PollingBiosSetup" in state
+            )
+            failed = state.startswith("Assigned/Failed") and "BiosSetupFailed" in state
             if (
                 machine.get("id") != device.get("machine_id")
-                or not state.startswith("Assigned/Failed")
-                or "BiosSetupFailed" not in state
+                or not (polling or failed)
             ):
-                raise RuntimeError("NICo 当前状态不是可自动恢复的 Assigned/BiosSetupFailed。")
+                raise RuntimeError("NICo 当前状态不是可自动恢复的 BIOS 配置阻塞状态。")
             system = self.adapter.redfish(device)
             plan = boot_selection(self.adapter, device, system, "Pxe")
             if (
@@ -897,7 +904,7 @@ class Executor:
                 recovery,
                 "diagnosis",
                 "completed",
-                "设备、Instance、启动口、NICo故障和未写盘证据一致。",
+                "设备、Instance、启动口、NICo BIOS状态和未写盘证据一致。",
             )
             self.recovery_step(recovery, "configuration", "running", "写入网络优先并读回。")
             recovery["state"] = "config_requesting"
@@ -915,11 +922,13 @@ class Executor:
             )
             task["observation_deadline"] = recovery["deadline"]
             task["error"] = None
-            self.recovery_step(recovery, "nico", "running", "等待原状态机确认配置并接管重启。")
+            self.recovery_step(
+                recovery, "nico", "running", "等待 NICo 重新检查 BIOS 与启动顺序。"
+            )
             self.event(
                 task,
                 "boot",
-                "已自动修复网络启动顺序；等待 NICo 接管原 custom PXE 重启，不重发安装请求。",
+                "已修复 NICo 等待的网络启动顺序；等待原状态机继续，不重发安装请求。",
                 recovery=True,
                 recovery_code=recovery["code"],
             )
@@ -951,6 +960,11 @@ class Executor:
             machine_state = str(self.adapter.machine(self.task_device(task)).get("state", ""))
         if machine_state.startswith("Assigned/Failed"):
             return False
+        if recovery["state"] == "observing" and (
+            machine_state.startswith("Assigned/HostPlatformConfiguration")
+            and "PollingBiosSetup" in machine_state
+        ):
+            return True
         if recovery["state"] == "observing":
             recovery["state"] = "waiting_reboot"
             self.recovery_step(
