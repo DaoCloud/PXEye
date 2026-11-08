@@ -1366,7 +1366,7 @@ function networkPage() {
   const data = state.networks;
   let body = heading(
     "网络管理",
-    "管理 NICo 子网，配置 OS DNS。",
+    "管理 NICo 子网。",
     button("刷新数据", "refresh") + button("新增子网", "network-new", true),
   );
   if (!data)
@@ -1387,7 +1387,7 @@ function networkPage() {
       ],
       data.networks.map(
         (n) =>
-          `<tr><td>${esc(n.name)}<span class="live-small">${esc(n.segment_type)} · ${n.interface_count} 个接口</span></td><td>${n.prefixes.map((p) => `${esc(p.prefix)}<span class="live-small">网关 ${esc(p.gateway || "—")}</span>`).join("")}<span class="live-small">OS DNS：${esc((n.services?.dns_servers || []).join(", ") || "待配置")} · ${esc(n.services?.source)}</span></td><td title="${esc(networkPolicyDisplay(n).note)}">${esc(networkPolicyDisplay(n).label)}</td><td>${esc(n.mtu)} / ${n.prefixes.map((p) => esc(p.reserveFirst ?? 0)).join(", ")}</td><td>${badge(n.state, n.state === "READY" ? "green" : "gray")}<span class="live-small">${n.deletion ? esc(networkDeletionLabel(n.deletion.status)) : "NICo 当前配置"}</span></td><td>${n.name === "static-assignments" ? "系统地址段" : button("查看", "network-edit", false, `data-id="${esc(n.id)}"`)} ${n.segment_type === "HOST_INBAND" ? button("OS DNS", "network-dns", false, `data-id="${esc(n.id)}"`) : ""}${button("删除", "network-delete", false, `data-id="${esc(n.id)}" ${n.delete_allowed ? "" : "disabled"} title="${esc(n.delete_reason || "删除前重新检查占用和设备规划")}"`)}${!n.delete_allowed ? `<span class="live-small">${esc(n.delete_reason)}</span>` : ""}</td></tr>`,
+          `<tr><td>${esc(n.name)}<span class="live-small">${esc(n.segment_type)} · ${n.interface_count} 个接口</span></td><td>${n.prefixes.map((p) => `${esc(p.prefix)}<span class="live-small">网关 ${esc(p.gateway || "—")}</span>`).join("")}<span class="live-small">OS DNS：${esc((n.services?.dns_servers || []).join(", ") || "待配置")} · ${esc(n.services?.source)}</span></td><td title="${esc(networkPolicyDisplay(n).note)}">${esc(networkPolicyDisplay(n).label)}</td><td>${esc(n.mtu)} / ${n.prefixes.map((p) => esc(p.reserveFirst ?? 0)).join(", ")}</td><td>${badge(n.state, n.state === "READY" ? "green" : "gray")}<span class="live-small">${n.deletion ? esc(networkDeletionLabel(n.deletion.status)) : "NICo 当前配置"}</span></td><td>${n.name === "static-assignments" ? "系统地址段" : button("查看", "network-edit", false, `data-id="${esc(n.id)}"`) + " " + button("删除", "network-delete", false, `data-id="${esc(n.id)}" ${n.delete_allowed ? "" : "disabled"} title="${esc(n.delete_reason || "删除前重新检查占用和设备规划")}"`) + (!n.delete_allowed ? `<span class="live-small">${esc(n.delete_reason)}</span>` : "")}</td></tr>`,
       ),
     );
   if (data.drafts.length)

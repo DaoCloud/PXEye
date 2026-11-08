@@ -5,7 +5,7 @@ title: Network management
 description: Subnet purpose, field values, creation and deletion.
 navigation_group: resources
 updated_at: "2026-11-08"
-product_version: "0.21.7"
+product_version: "0.21.26"
 ---
 
 # Network management
@@ -62,7 +62,7 @@ Click **Refresh data (刷新数据)**, locate the segment and click **View (查�
 2. Click **Delete (删除)**, check the name and range, select the confirmation checkbox and submit.
 3. Follow **Subnet deletion progress (子网删除进度)** and refresh until the segment disappears.
 
-If deletion is disabled, read the adjacent reason. Internal, tenant and site-configuration-owned segments cannot be deleted here.
+Internal segments show an explanation without a Delete button. For other segments, read the adjacent reason when deletion is disabled. Tenant and site-configuration-owned segments cannot be deleted here.
 
 ## 4. Example
 
