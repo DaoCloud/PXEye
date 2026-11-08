@@ -535,7 +535,7 @@ async function deviceDialog(id) {
           )
           .map((n) => [
             n.id,
-            n.name + " · " + n.prefixes.map((p) => p.prefix).join(","),
+            n.prefixes.map((p) => p.prefix).join(","),
           ]),
       ],
       "",
