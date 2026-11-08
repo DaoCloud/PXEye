@@ -16,7 +16,7 @@ function batchSummary() {
     ["批次", "类型", "设备进度", "操作"],
     state.batches.map(
       (b) =>
-        `<tr><td>${esc(b.id)}<span class="live-small">${when(b.created_at)}</span></td><td>${installMode(b.mode)}</td><td>${badge(statuses[b.status], b.status === "completed" ? "green" : b.status === "needs_attention" ? "red" : "amber")}<span class="live-small">完成 ${b.counts.completed} / ${b.task_ids.length} · 排队 ${b.counts.queued} · 需处理 ${b.counts.needs_attention}</span></td><td>${button("逐台查看", "batch-detail", false, `data-id="${esc(b.id)}"`)}</td></tr>`,
+        `<tr><td>${esc(b.id)}<span class="live-small">${when(b.created_at)}</span></td><td>${installMode(b.mode)}</td><td>${badge(statuses[b.status], b.status === "completed" ? "green" : b.status === "needs_attention" ? "red" : b.status === "cancelled" ? "gray" : "amber")}<span class="live-small">完成 ${b.counts.completed} / ${b.task_ids.length} · 排队 ${b.counts.queued} · 需处理 ${b.counts.needs_attention} · 已终止 ${b.counts.cancelled}</span></td><td>${button("逐台查看", "batch-detail", false, `data-id="${esc(b.id)}"`)}</td></tr>`,
     ),
   )}</section>`;
 }

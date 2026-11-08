@@ -29,6 +29,7 @@ const statuses = {
   running: "执行中",
   completed: "已完成",
   needs_attention: "需处理",
+  cancelled: "已终止",
 };
 const stages = {
   queued: "等待执行",
@@ -46,6 +47,7 @@ const stages = {
   firstboot: "验证登录",
   reboot: "验证登录",
   completed: "完成",
+  cancelled: "任务已终止",
 };
 let state = {
   page: "topology",
@@ -252,9 +254,11 @@ const taskStatus = (t) =>
         tone:
           t.status === "completed"
             ? "green"
-            : t.status === "needs_attention"
-              ? "red"
-              : "amber",
+            : t.status === "cancelled"
+              ? "gray"
+              : t.status === "needs_attention"
+                ? "red"
+                : "amber",
       };
 function taskRows() {
   return state.tasks.map(
@@ -724,8 +728,35 @@ async function taskProblem(id) {
       "problem-record",
       false,
       `data-id="${esc(id)}"`,
-    ) + button("关闭", "close"),
+    ) +
+      button("结束任务", "task-close-dialog", false, `data-id="${esc(id)}"`) +
+      button("关闭", "close"),
   );
+}
+
+function closeTaskDialog(id) {
+  const task = state.tasks.find((item) => item.id === id);
+  if (!task || task.status !== "needs_attention") return;
+  state.wizard = { resource: "close-task", id, serial: task.device };
+  modal(
+    "结束任务",
+    task.device,
+    `<p>结束后释放设备占用，任务历史和日志仍会保留。</p><div class="live-note">此操作不会停止物理机上可能仍在运行的安装程序，也不会修改 NICo Instance、Machine、BMC、启动顺序或磁盘。</div><label class="live-check"><input id="close-task-confirm" type="checkbox">确认现场已经停止处理，并结束此任务。</label><div id="resource-error" class="live-error"></div>`,
+    button("取消", "close") + button("确认结束", "task-close-confirm", true),
+  );
+}
+
+async function closeTask() {
+  return busy(async () => {
+    if (!$("#close-task-confirm").checked) throw Error("请确认结束任务。");
+    const wizard = state.wizard;
+    await api("/api/tasks/" + encodeURIComponent(wizard.id) + "/close", {
+      confirm_serial: wizard.serial,
+    });
+    close();
+    await load();
+    toast("任务已结束，设备占用已释放。");
+  });
 }
 function automaticRecoveryDialog(t) {
   const recovery = t.automatic_recovery;
@@ -774,6 +805,14 @@ function automaticRecoveryDialog(t) {
         false,
         `data-id="${esc(t.id)}"`,
       ) +
+      (["blocked", "unknown"].includes(recovery.state)
+        ? button(
+            "结束任务",
+            "task-close-dialog",
+            false,
+            `data-id="${esc(t.id)}"`,
+          )
+        : "") +
       button("关闭", "close"),
   );
 }
@@ -813,6 +852,8 @@ registerActions(
     "problem-record",
     "problem-refresh",
     "task-problem",
+    "task-close-dialog",
+    "task-close-confirm",
     "batch-new",
     "batch-next",
     "batch-back",
@@ -868,6 +909,10 @@ registerActions(
           return detail(el.dataset.id);
         case "task-problem":
           return await taskProblem(el.dataset.id);
+        case "task-close-dialog":
+          return closeTaskDialog(el.dataset.id);
+        case "task-close-confirm":
+          return await closeTask();
         case "problem-refresh":
           await refreshTasks();
           return await taskProblem(el.dataset.id);

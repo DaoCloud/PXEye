@@ -283,3 +283,6 @@ class Application:
 
     def resume(self, task_id, body, actor):
         return self.coordinator.resume(task_id, body, actor)
+
+    def close_task(self, task_id, body, actor):
+        return self.coordinator.close_task(task_id, body, actor)

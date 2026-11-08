@@ -143,13 +143,15 @@ class Store:
         result["tasks"] = [by_id[k] for k in result["task_ids"]]
         result["counts"] = {
             status: sum(t["status"] == status for t in children)
-            for status in ACTIVE + ("completed",)
+            for status in ACTIVE + ("completed", "cancelled")
         }
         result["status"] = (
             "running"
             if result["counts"]["running"] or result["counts"]["queued"]
             else "needs_attention"
             if result["counts"]["needs_attention"]
+            else "cancelled"
+            if result["counts"]["cancelled"] and not result["counts"]["completed"]
             else "completed"
         )
         return result

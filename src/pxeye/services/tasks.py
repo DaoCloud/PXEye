@@ -139,6 +139,66 @@ class TaskCoordinator:
             result["recovery_observing"] = True
         return result
 
+    def close_task(self, task_id, body, actor):
+        """Close a stopped incident without issuing any device or NICo operation."""
+        def claim():
+            task = self.store.get(task_id)
+            if task is None:
+                raise ValueError("任务不存在。")
+            if set(body) != {"confirm_serial"} or body["confirm_serial"] != task["device"]:
+                raise ValueError("请确认要结束任务的设备序列号。")
+            if task["status"] != "needs_attention":
+                raise ValueError("只有已经停止并等待处理的任务可以结束。")
+            if self.recovery_observation_active(task):
+                raise ValueError("任务仍在等待本轮安装结果，请等待观察结束后再结束任务。")
+            recovery = task.get("automatic_recovery") or {}
+            if recovery.get("state") in (
+                "diagnosing",
+                "config_requesting",
+                "reset_requesting",
+                "observing",
+                "waiting_reboot",
+                "waiting_installation",
+                "fallback_config_requesting",
+                "fallback_reset_requesting",
+                "waiting_installation_retry",
+                "standard_pxe_override_requesting",
+                "standard_pxe_reset_requesting",
+                "waiting_standard_pxe_retry",
+            ):
+                raise ValueError("自动修复仍在执行，请等待它停止后再结束任务。")
+            now = time.time()
+            task.update(
+                status="cancelled",
+                stage="cancelled",
+                error=None,
+                observation_deadline=0,
+                resume_available=False,
+                prepare_available=False,
+                retry_available=False,
+                restart_available=False,
+                recovery_observing=False,
+                closed_at=now,
+                closed_by=actor,
+            )
+            task.setdefault("events", []).append(
+                {
+                    "at": now,
+                    "stage": "cancelled",
+                    "message": (
+                        "操作员结束任务并释放设备占用；保留任务历史和 NICo 资源，"
+                        "未向设备、BMC 或 NICo 下发操作。"
+                    ),
+                }
+            )
+            self.store.save(task)
+            return task
+
+        task = self.configure(claim)
+        if self.store.queued():
+            self.start_queue()
+        return task
+
     def start_recovered(self, task_ids, auto_repair=None):
         auto_repair = auto_repair or set()
 

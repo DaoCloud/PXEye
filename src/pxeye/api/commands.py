@@ -327,4 +327,8 @@ class CommandRoutes:
             return self.respond(
                 202, self.app.resume(parts[3], body, "operator@" + self.client_address[0])
             )
+        if len(parts) == 5 and parts[2] == "tasks" and parts[4] == "close":
+            return self.respond(
+                200, self.app.close_task(parts[3], body, "operator@" + self.client_address[0])
+            )
         return self.respond(404, {"error": "接口不存在。"})
