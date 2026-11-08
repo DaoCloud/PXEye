@@ -4,6 +4,13 @@
 
 Capability milestones for the current source lineage. Historical version headings identify development baselines, not published PXEye releases. Site addresses, device identities and operational logs are excluded.
 
+## 0.21.7 — OS-independent network boot recovery
+
+- Removed old-system SSH and root-disk inspection from reinstall preflight.
+- Leave custom-PXE retries, boot-order convergence and pre-install restarts exclusively to NICo.
+- Observe and report NICo boot failures without issuing a competing Redfish or SSH restart.
+- Keep strict task-bound SSH verification for the newly installed operating system.
+
 ## 0.21.6 — Lenovo disk handoff
 
 - Handle the nested hard-disk order exposed by older Lenovo firmware during post-install recovery.

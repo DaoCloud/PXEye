@@ -379,15 +379,10 @@ class RenderTests(unittest.TestCase):
             )
             self.assertEqual(ssh.call_args.args[0]["management_ip"], "192.0.2.90")
 
-    def test_preflight_inspects_current_ip_and_renders_target(self):
+    def test_preflight_does_not_require_old_ssh_and_renders_target(self):
         self.network_fixture()
         self.device.update(management_ip="192.0.2.10", prefixlen=24, gateway="192.0.2.1")
         self.adapter.config["materials"] = []
-        host = {
-            "interfaces": [
-                {"address": self.device["boot_mac"], "addr_info": [{"local": "192.0.2.10"}]}
-            ]
-        }
         with (
             patch.object(self.adapter, "installation_plan", return_value=self.plan),
             patch.object(self.adapter, "machine", return_value={"state": "Assigned/Ready"}),
@@ -401,11 +396,12 @@ class RenderTests(unittest.TestCase):
                 "redfish",
                 return_value={"SerialNumber": "SERIAL-1", "PowerState": "On"},
             ),
-            patch.object(self.adapter, "host_snapshot", return_value=host) as snapshot,
+            patch.object(self.adapter, "host_snapshot") as snapshot,
         ):
             result = self.adapter.preflight("SERIAL-1", "nico")
         self.assertTrue(result["passed"], result["checks"])
-        self.assertEqual(snapshot.call_args.args[0]["management_ip"], "192.0.2.10")
+        snapshot.assert_not_called()
+        self.assertNotIn("host", result["snapshot"])
         self.assertEqual(result["scope"]["management_ip"], "192.0.2.90")
         self.assertEqual(
             result["snapshot"]["rendered_network"]["ethernets"]["port"]["addresses"],

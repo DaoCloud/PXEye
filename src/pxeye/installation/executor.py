@@ -329,16 +329,6 @@ class Executor:
             if task.get("deferred_bootstrap"):
                 self.bootstrap_first(task, folder)
             device = self.task_device(task)
-            current_device = device | {
-                "management_ip": task.get("current_management_ip", device["management_ip"])
-            }
-            if task.get("mode") != "first_install" and device.get("first_install_profile"):
-                delivered = self.adapter.device(task["device"], bind_intent=False)
-                current_device.update(
-                    ssh_user=delivered["ssh_user"],
-                    login_mode=delivered.get("login_mode", "key"),
-                    login_ref=delivered.get("login_ref"),
-                )
             task["status"] = "running"
             old = task["preflight"]["snapshot"]
             if task.get("retry_existing_install"):
@@ -346,7 +336,7 @@ class Executor:
             elif task.get("mode") == "first_install":
                 console = self.start_first(task, device, folder)
             else:
-                self.event(task, "preflight", "执行前重新核对 Core、BMC、严格 SSH 与目标盘。")
+                self.event(task, "preflight", "执行前重新核对 Core、BMC、网络规划与目标盘。")
                 fresh = self.adapter.preflight(task["device"], task["hostname"])
                 if not fresh["passed"]:
                     raise RuntimeError(
@@ -358,11 +348,8 @@ class Executor:
                     "synchronized_plan", task.get("installation_plan")
                 ) or fresh["snapshot"].get("baseline_sha256") != old.get("baseline_sha256"):
                     raise RuntimeError("预检后设备、网络或安装模板发生变化，停止执行。")
-                if (
-                    fresh["snapshot"]["live_sha256"] != old["live_sha256"]
-                    or fresh["snapshot"]["host"]["root_uuid"] != old["host"]["root_uuid"]
-                ):
-                    raise RuntimeError("预检后配置或根系统发生变化，停止执行。")
+                if fresh["snapshot"]["live_sha256"] != old["live_sha256"]:
+                    raise RuntimeError("预检后 Instance 配置发生变化，停止执行。")
                 from pxeye.services.device_plans import DevicePlans
                 from pxeye.services.resources import Resources
 
@@ -445,7 +432,6 @@ class Executor:
             deadline = time.monotonic() + duration
             began = time.monotonic()
             last_probe = 0
-            entry_recovered = False
             exit_recovered = bool(task.get("disk_exit_recovery_requested"))
             install_started = False
             install_finished = None
@@ -517,46 +503,19 @@ class Executor:
                 if time.monotonic() - last_probe < 12:
                     continue
                 last_probe = time.monotonic()
-                if (
-                    task.get("mode") != "first_install"
-                    and not install_started
-                    and not entry_recovered
-                    and not task.get("network_entry_recovery")
-                    and time.monotonic() - began > 140
-                ):
-                    # Core on the legacy OEM may select disk-only. Confirm the *unchanged* old OS first.
+                if not install_started and time.monotonic() - began > 140:
+                    # NICo owns custom-PXE retry and boot-order convergence.  PXEye observes the
+                    # state only; it must not race the controller with another boot write/reset.
                     try:
-                        host = self.adapter.host_snapshot(
-                            current_device, self.adapter.current_known(current_device)
-                        )
-                    except Exception:
-                        host = None
-                    if host and host["root_uuid"] == old["host"]["root_uuid"]:
-                        self.check_bound(device, task)
-                        self.event(
-                            task,
-                            "boot",
-                            "旧机启动兼容：确认仍是旧根盘且安装未开始，恢复网络优先并正常重启。",
-                            recovery=True,
-                        )
-                        system = self.adapter.redfish(device)
-                        plan = boot_selection(self.adapter, device, system, "Pxe")
-                        task["network_entry_recovery"] = {
-                            "state": "config_requesting",
-                            "plan": plan,
-                        }
+                        machine_state = str(self.adapter.machine(device).get("state", ""))
+                    except RuntimeError as error:
+                        task["network_entry_observation_error"] = str(error)
                         self.store.save(task)
-                        apply_boot(self.adapter, device, plan)
-                        task["network_entry_recovery"]["state"] = "reboot_requesting"
-                        self.store.save(task)
-                        self.adapter.ssh(
-                            current_device,
-                            "import subprocess\nsubprocess.run(['systemctl','reboot','--no-block'],check=True)\n",
-                            known=self.adapter.current_known(current_device),
-                        )
-                        task["network_entry_recovery"]["state"] = "reboot_accepted"
-                        self.store.save(task)
-                        entry_recovered = True
+                    else:
+                        if machine_state.endswith("/Failed"):
+                            raise RuntimeError(
+                                "NICo 启动配置已失败；PXEye 未重复写入启动顺序或重启。"
+                            )
                 if not trusted_key or (
                     not install_finished and not self.identity_candidate(task, text, trusted_key)
                 ):
@@ -638,7 +597,6 @@ class Executor:
             and task.get("mode", "reinstall") == "reinstall"
             and task.get("stage") in allowed
             and all(event.get("stage") in allowed for event in task.get("events", []))
-            and bool(task.get("preflight", {}).get("snapshot", {}).get("host", {}).get("root_uuid"))
             and not any(
                 task.get(key)
                 for key in (
@@ -684,12 +642,8 @@ class Executor:
                 current.get(key) != old.get(key)
                 for key in ("baseline_sha256", "live_sha256", "config_version")
             )
-            or any(
-                current.get("host", {}).get(key) != old.get("host", {}).get(key)
-                for key in ("root_uuid", "boot_id", "host_key")
-            )
         ):
-            raise ValueError("原任务的规划、Instance配置或当前OS身份已变化，停止继续。")
+            raise ValueError("原任务的规划或 Instance 配置已变化，停止继续。")
         return {
             "task_id": task["id"],
             "device": task["device"],
@@ -708,10 +662,6 @@ class Executor:
                     "snapshot": {
                         key: current.get(key)
                         for key in ("baseline_sha256", "live_sha256", "config_version")
-                    },
-                    "host": {
-                        key: current.get("host", {}).get(key)
-                        for key in ("root_uuid", "boot_id", "host_key")
                     },
                 }
             ),

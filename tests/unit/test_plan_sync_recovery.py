@@ -107,7 +107,6 @@ class RecoveryTests(unittest.TestCase):
             "baseline_sha256": "baseline",
             "live_sha256": "live",
             "config_version": "v1",
-            "host": {"root_uuid": "root", "boot_id": "boot", "host_key": "key"},
         }
         self.fresh = {
             "passed": True,
@@ -196,12 +195,6 @@ class RecoveryTests(unittest.TestCase):
         )
 
     def test_changed_os_config_or_planning_cannot_continue(self):
-        for key in ("root_uuid", "boot_id", "host_key"):
-            old = self.snapshot["host"][key]
-            self.snapshot["host"][key] = "changed"
-            with self.assertRaisesRegex(ValueError, "身份已变化"):
-                self.executor.restart_preflight(self.task)
-            self.snapshot["host"][key] = old
         for key in ("live_sha256", "baseline_sha256", "config_version"):
             old = self.snapshot[key]
             self.snapshot[key] = "changed"

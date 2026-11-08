@@ -478,13 +478,7 @@ function wizard() {
             ],
             ["当前连接地址", esc(check.scope.current_management_ip)],
             ["本次安装目标地址", esc(check.scope.management_ip)],
-            [
-              "当前系统",
-              esc(check.snapshot.host?.hostname) +
-                " · root " +
-                esc(check.snapshot.host?.root_uuid),
-            ],
-            ["预检有效期", "5 分钟；执行前再次核对配置、身份和占用"],
+            ["预检有效期", "5 分钟；执行前再次核对配置与占用"],
           ],
         )}<div class="live-note live-warning">将应用规划地址、覆盖所选系统盘，并重启验证。</div><div class="live-form"><label for="confirm-serial">输入设备 SN 确认范围<input class="input" id="confirm-serial" autocomplete="off" placeholder="${esc(d.serial)}"></label><label class="live-check"><input type="checkbox" id="confirm-disk">确认覆盖所选系统盘，保留其他磁盘。</label><label class="live-check"><input type="checkbox" id="confirm-reboot">允许安装及重启验证。</label></div>`
       : `<div class="live-empty">正在检查安装条件…</div>`;

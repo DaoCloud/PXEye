@@ -392,24 +392,9 @@ print(json.dumps({'serial':Path('/sys/class/dmi/id/product_serial').read_text().
             snapshot["bmc_boot"] = system.get("Boot")
 
         check("BMC 认证与序列号", bmc_check)
-        host = check(
-            "严格 SSH、当前系统身份及根盘",
-            lambda: self.host_snapshot(device, self.current_known(device)),
-        )
-        if host:
-            snapshot["host"] = host
         if plan:
 
             def network_check():
-                links = [
-                    n
-                    for n in (host or {}).get("interfaces", [])
-                    if n.get("address", "").lower() == device["boot_mac"].lower()
-                ]
-                if len(links) != 1 or not any(
-                    x.get("local") == device["management_ip"] for x in links[0].get("addr_info", [])
-                ):
-                    raise RuntimeError("当前可信 OS 的管理地址与主启动网卡不匹配。")
                 rendered = self.render(
                     self.target_device(serial, plan),
                     {
@@ -423,7 +408,7 @@ print(json.dumps({'serial':Path('/sys/class/dmi/id/product_serial').read_text().
                     "network"
                 ]
 
-            check("当前管理口身份与下一次安装网络配置", network_check)
+            check("管理地址与下一次安装网络配置", network_check)
 
         def material_check():
             opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
