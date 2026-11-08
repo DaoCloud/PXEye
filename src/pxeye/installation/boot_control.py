@@ -64,20 +64,51 @@ def selection(adapter, device, system, target):
     ):
         raise RuntimeError("BMC启动顺序能力或目标读回不完整。")
     wanted = [name] + list(dict.fromkeys(x for x in order if x != name))
-    return {
+    plan = {
         "method": "oem-order",
         "suffix": suffix,
         "before": current,
         "body": {"BootOrderNext": wanted},
     }
+    if target == "Hdd":
+        # Older Lenovo firmware represents Hard Disk as a category with its own
+        # order.  A valid Ubuntu NVRAM entry can still hang when it is first in
+        # that category, while the unique physical-disk entry boots the same ESP
+        # through EFI/BOOT.  Change this nested order only when the physical
+        # target is unambiguous; never guess among multiple disks.
+        disk_suffix = uri[len(root) :] + "/BootOrder.HardDiskBootOrder"
+        disk_order = adapter.redfish(device, disk_suffix)
+        supported = disk_order.get("BootOrderSupported", [])
+        order = disk_order.get("BootOrderNext", [])
+        physical = [entry for entry in order if entry.startswith("UEFI:")]
+        if (
+            disk_order.get("@odata.type", "").startswith("#LenovoBootManager.")
+            and len(physical) == 1
+            and order
+            and all(entry in supported for entry in order)
+            and order[0] != physical[0]
+        ):
+            plan["suborders"] = [
+                {
+                    "suffix": disk_suffix,
+                    "before": disk_order,
+                    "body": {
+                        "BootOrderNext": [physical[0]]
+                        + [entry for entry in order if entry != physical[0]]
+                    },
+                }
+            ]
+    return plan
 
 
 def apply(adapter, device, plan):
-    adapter.redfish(device, plan["suffix"], "PATCH", plan["body"])
-    actual = adapter.redfish(device, plan["suffix"])
-    expected = plan["body"]
-    if plan["method"] == "redfish-once":
-        expected = expected["Boot"]
-        actual = actual.get("Boot", {})
-    if any(actual.get(k) != v for k, v in expected.items()):
-        raise RuntimeError("启动目标未读回确认，不发送重启或重复写请求。")
+    writes = [*plan.get("suborders", []), plan]
+    for write in writes:
+        adapter.redfish(device, write["suffix"], "PATCH", write["body"])
+        actual = adapter.redfish(device, write["suffix"])
+        expected = write["body"]
+        if plan["method"] == "redfish-once":
+            expected = expected["Boot"]
+            actual = actual.get("Boot", {})
+        if any(actual.get(k) != v for k, v in expected.items()):
+            raise RuntimeError("启动目标未读回确认，不发送重启或重复写请求。")

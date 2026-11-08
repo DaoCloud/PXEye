@@ -4,6 +4,12 @@
 
 Capability milestones for the current source lineage. Historical version headings identify development baselines, not published PXEye releases. Site addresses, device identities and operational logs are excluded.
 
+## 0.21.6 — Lenovo disk handoff
+
+- Handle the nested hard-disk order exposed by older Lenovo firmware during post-install recovery.
+- Prefer a physical-disk fallback only when the BMC exposes exactly one unambiguous physical target.
+- Preserve the standard Redfish one-time boot path and existing behavior on other platforms.
+
 ## 0.21.5 — Installation recovery visibility
 
 - Displayed restarted installation observation as “Waiting for installation result” with its deadline and an explicit refresh action.
