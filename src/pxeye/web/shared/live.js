@@ -295,7 +295,7 @@ function sitePage() {
       "查看和维护 NICo 控制面。",
       button("刷新数据", "refresh") + button("编辑站点", "site-edit", true),
     ) +
-    `<section class="site-overview"><div class="site-overview-main"><span class="site-eyebrow">当前站点</span><h2>${esc(s.site.name)}</h2><div class="site-overview-meta"><span>${esc(s.site.namespace)} / ${esc(s.site.deployment)}</span><span class="live-code">${esc(s.core_url)}</span></div></div><div class="site-health"><span class="site-status-dot ${healthy ? "ok" : "bad"}"></span><div><strong>${healthy ? "Core 连接正常" : "Core 连接异常"}</strong><span>${esc(core.detail || "尚未获得连接状态")}</span><small>检查于 ${when(s.checked_at)}</small></div></div></section>` +
+    `<section class="site-overview"><div class="site-overview-main"><span class="site-eyebrow">当前站点</span><h2>${esc(s.site.name)}</h2><div class="site-overview-meta"><span>${esc(s.site.namespace)} / ${esc(s.site.deployment)}</span><span class="live-code">${esc(s.core_url)}</span><span>新建安装批次默认并发 ${esc(s.default_install_concurrency || 5)} 台</span></div></div><div class="site-health"><span class="site-status-dot ${healthy ? "ok" : "bad"}"></span><div><strong>${healthy ? "Core 连接正常" : "Core 连接异常"}</strong><span>${esc(core.detail || "尚未获得连接状态")}</span><small>检查于 ${when(s.checked_at)}</small></div></div></section>` +
     `<div class="site-layout"><section class="site-panel"><header class="site-panel-header"><div><span class="site-eyebrow">安全连接</span><h2>连接身份</h2></div></header><dl class="site-identity"><div><dt>客户端身份</dt><dd>${esc(identity.subject || identity.error || "未提供")}</dd></div><div><dt>签发者</dt><dd>${esc(identity.issuer || "—")}</dd></div><div><dt>有效期</dt><dd>${esc(identity.valid_from || "—")}<span>至 ${esc(identity.valid_until || "—")}</span></dd></div></dl></section><section class="site-panel"><header class="site-panel-header"><div><span class="site-eyebrow">本地存储</span><h2>数据目录</h2></div></header><div class="site-storage-list">${storage}</div></section></div>` +
     `<section class="site-panel site-services-panel"><header class="site-panel-header"><div><span class="site-eyebrow">运行依赖</span><h2>网络与基础服务</h2></div>${button("管理 OS DNS", "site-network")}</header><div class="site-services">${services}</div><p class="site-panel-note">${esc(s.dns_maintenance.detail)}</p></section>`
   );
@@ -306,7 +306,7 @@ function editSite() {
   modal(
     "编辑站点",
     "修改站点标识和 NICo Core 连接",
-    `<div class="live-form">${inputField("site-name", "站点名称", s.site.name, 'maxlength="100"')}${inputField("site-core", "Core HTTPS 地址", s.core_url, 'type="url"')}<p class="live-small">Core 地址保存前会使用当前 mTLS 身份验证；验证失败不会切换。DNS、目录和组件地址在各自唯一配置入口维护。</p><div id="resource-error" class="live-error"></div></div>`,
+    `<div class="live-form">${inputField("site-name", "站点名称", s.site.name, 'maxlength="100"')}${inputField("site-core", "Core HTTPS 地址", s.core_url, 'type="url"')}${inputField("site-install-concurrency", "默认安装并发", s.default_install_concurrency || 5, 'type="number" min="1" max="50" step="1"')}<p class="live-small">新建安装批次使用保存时的默认并发；已创建批次保持原值。Core 地址保存前会使用当前 mTLS 身份验证。</p><div id="resource-error" class="live-error"></div></div>`,
     button("取消", "close") + button("验证并保存", "site-save", true),
   );
 }
@@ -314,6 +314,9 @@ async function saveSite() {
   const result = await api("/api/site", {
     name: $("#site-name").value.trim(),
     core_url: $("#site-core").value.trim(),
+    default_install_concurrency: Number(
+      $("#site-install-concurrency").value,
+    ),
   });
   state.siteInfo = result.site;
   if (state.resources) {

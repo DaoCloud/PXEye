@@ -4,6 +4,12 @@
 
 Capability milestones for the current source lineage. Historical version headings identify development baselines, not published PXEye releases. Site addresses, device identities and operational logs are excluded.
 
+## 0.21.2 — Installation concurrency
+
+- Added a site-level default installation concurrency from 1 to 50, with a default of 5.
+- Froze the current default into each new batch so later site changes do not alter existing work.
+- Added bounded parallel execution within a batch while keeping batches ordered and resource operations excluded during installation.
+
 ## 0.21.1 — Installation preflight
 
 - Reduced the installation review to device identity, installation configuration and operating-system materials, with batch progress and failure-only details.

@@ -5,6 +5,7 @@ import os
 import threading
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from contextlib import nullcontext
 from pxeye.installation.executor import terminal_installer_failure
@@ -22,6 +23,12 @@ class TaskCoordinator:
         self.onboarding, self.device_config = onboarding, device_config
         self.os_library = os_library
         self.worker_lock = threading.Lock()
+
+    def install_concurrency(self):
+        value = self.config.get("default_install_concurrency", 5)
+        if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 50:
+            return 5
+        return value
 
     def recover(self):
         data_dir = self.adapter.data
@@ -227,7 +234,7 @@ class TaskCoordinator:
                 "checks": checks,
                 "passed": all(c["passed"] for c in checks),
                 "checked_at": time.time(),
-                "max_concurrency": 1,
+                "max_concurrency": self.install_concurrency(),
             }
             self.store.preflight(result["id"], result, lifetime=900)
             return {k: v for k, v in result.items() if k != "owner"}
@@ -353,7 +360,9 @@ class TaskCoordinator:
                 "preflight_id": body["preflight_id"],
                 "created_at": time.time(),
                 "actor": actor,
-                "max_concurrency": 1,
+                # Freeze the site default when the batch is created. Later site changes only
+                # affect new batches and cannot change the execution contract already accepted.
+                "max_concurrency": self.install_concurrency(),
                 "task_ids": [t["id"] for t in tasks],
             }
             key, _ = self.store.claim_batch(
@@ -371,8 +380,27 @@ class TaskCoordinator:
 
         def work():
             try:
-                for task in self.store.queued():
-                    self.executor.run(task)
+                while True:
+                    queued = self.store.queued()
+                    if not queued:
+                        break
+                    first = queued[0]
+                    batch_id = first.get("batch_id")
+                    if not batch_id:
+                        self.executor.run(first)
+                        continue
+                    batch = self.store.batch(batch_id)
+                    batch_tasks = [task for task in queued if task.get("batch_id") == batch_id]
+                    limit = (batch or {}).get("max_concurrency", 1)
+                    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 50:
+                        limit = 1
+                    with ThreadPoolExecutor(
+                        max_workers=min(limit, len(batch_tasks)),
+                        thread_name_prefix="installation",
+                    ) as pool:
+                        futures = [pool.submit(self.executor.run, task) for task in batch_tasks]
+                        for future in futures:
+                            future.result()
             finally:
                 self.worker_lock.release()
 

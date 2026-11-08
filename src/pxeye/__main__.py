@@ -23,6 +23,14 @@ def main():
         saved = json.loads(saved_site.read_text())
         if isinstance(saved.get("name"), str) and isinstance(saved.get("core_url"), str):
             config["site"]["name"], config["core_url"] = saved["name"], saved["core_url"]
+        concurrency = saved.get("default_install_concurrency", 5)
+        if (
+            isinstance(concurrency, int)
+            and not isinstance(concurrency, bool)
+            and 1 <= concurrency <= 50
+        ):
+            config["default_install_concurrency"] = concurrency
+    config.setdefault("default_install_concurrency", 5)
     app = Application(
         config,
         os.environ.get("CONSOLE_SECRETS", "/secrets"),

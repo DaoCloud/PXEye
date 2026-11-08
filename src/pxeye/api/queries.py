@@ -104,7 +104,9 @@ class QueryRoutes:
                             "cleanup": "首次接入可能清理本设备全部磁盘；系统盘授权不等于接入清理授权",
                             "boot_evidence": "未在本次资源读取中验证物理relay、PXE或Scout链路",
                             "max_batch": 50,
-                            "concurrency": 1,
+                            "concurrency": self.app.config.get(
+                                "default_install_concurrency", 5
+                            ),
                         },
                         "devices": devices,
                         "materials": self.app.config["materials"],

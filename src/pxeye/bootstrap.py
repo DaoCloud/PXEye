@@ -151,6 +151,7 @@ class Application:
         return {
             "site": self.config["site"],
             "core_url": self.config["core_url"],
+            "default_install_concurrency": self.config.get("default_install_concurrency", 5),
             "identity": certificate(),
             "storage": [
                 storage("/data", "任务、规划和安装历史"),
@@ -178,9 +179,16 @@ class Application:
         }
 
     def save_site(self, body):
-        if set(body) != {"name", "core_url"}:
+        if set(body) != {"name", "core_url", "default_install_concurrency"}:
             raise ValueError("站点设置字段无效。")
         name, core_url = str(body["name"]).strip(), str(body["core_url"]).strip()
+        concurrency = body["default_install_concurrency"]
+        if (
+            isinstance(concurrency, bool)
+            or not isinstance(concurrency, int)
+            or not 1 <= concurrency <= 50
+        ):
+            raise ValueError("默认安装并发应为 1–50 的整数。")
         if not 1 <= len(name) <= 100:
             raise ValueError("站点名称长度应为 1–100 个字符。")
         parsed = urlsplit(core_url)
@@ -203,10 +211,15 @@ class Application:
                 raise ValueError("无法使用当前 mTLS 身份读取新的 Core，未应用修改。") from None
         atomic_json(
             self.adapter.data / "config" / "site-settings.json",
-            {"name": name, "core_url": core_url},
+            {
+                "name": name,
+                "core_url": core_url,
+                "default_install_concurrency": concurrency,
+            },
         )
         self.config["site"]["name"] = name
         self.config["core_url"] = core_url
+        self.config["default_install_concurrency"] = concurrency
         return {"status": "saved", "detail": "站点设置已应用。", "site": self.site_information()}
 
     def task_view(self, task):
