@@ -4,6 +4,11 @@
 
 Capability milestones for the current source lineage. Historical version headings identify development baselines, not published PXEye releases. Site addresses, device identities and operational logs are excluded.
 
+## 0.21.14 — Running state after boot recovery
+
+- Return a recovered task to the running installation state after receiving its authenticated installer-start event.
+- Keep the bounded observer active for installed-system identity and acceptance instead of leaving the task marked as needing attention.
+
 ## 0.21.13 — Immediate installer progress
 
 - Persist the authenticated installer `started` event while observing an automatic boot recovery.

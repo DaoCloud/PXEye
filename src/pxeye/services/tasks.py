@@ -169,7 +169,7 @@ class TaskCoordinator:
                         # task so recovery progress and any concurrent state change are never
                         # hidden by the object captured before the reboot.
                         task = self.store.get(task_id) or task
-                        if task.get("status") != "needs_attention":
+                        if task.get("status") not in ("needs_attention", "running"):
                             break
                         remaining = max(
                             0, task.get("observation_deadline", time.time()) - time.time()
@@ -180,6 +180,19 @@ class TaskCoordinator:
                         except RuntimeError as error:
                             task["automatic_recovery_observation_error"] = str(error)
                             self.store.save(task)
+                        recovery = task.get("automatic_recovery") or {}
+                        if (
+                            task.get("status") == "needs_attention"
+                            and recovery.get("state") == "completed"
+                            and task.get("installer_progress", {}).get("started")
+                        ):
+                            task["status"] = "running"
+                            task["error"] = None
+                            self.executor.event(
+                                task,
+                                "install",
+                                "自动启动恢复完成，安装器正在运行。",
+                            )
                         if self.executor.can_resume(task):
                             recovery = task.get("automatic_recovery") or {}
                             if recovery.get("state") in (
