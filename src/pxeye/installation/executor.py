@@ -21,6 +21,7 @@ from pxeye.installation.install_events import observations
 from pxeye.installation.boot_control import (
     in_uefi,
     selection as boot_selection,
+    standard_once as standard_boot_once,
     apply as apply_boot,
 )
 
@@ -937,6 +938,7 @@ class Executor:
             "waiting_reboot",
             "waiting_installation",
             "waiting_installation_retry",
+            "waiting_standard_pxe_retry",
         ):
             return False
         if machine_state is None:
@@ -959,6 +961,8 @@ class Executor:
             self.event(task, "boot", "NICo 启动配置已恢复，等待原安装请求进入安装器。")
         if recovery["state"] == "waiting_installation":
             self.recover_unconsumed_network_boot(task, machine_state)
+        elif recovery["state"] == "waiting_installation_retry":
+            self.recover_standard_pxe_boot(task, machine_state)
         if task.get("installer_progress", {}).get("started"):
             recovery["state"] = "completed"
             recovery["completed_at"] = time.time()
@@ -967,6 +971,23 @@ class Executor:
             )
             self.store.save(task)
         return True
+
+    def installation_not_started(self, task):
+        """Return true only while this attempt has no installer or disk-write evidence."""
+        folder = self.adapter.data / "tasks" / task["id"]
+        known = folder / "known_hosts"
+        try:
+            text = self.attempt_text(task)
+        except OSError:
+            text = ""
+        return not (
+            task.get("installer_progress")
+            or task.get("installer_failure")
+            or (known.exists() and known.read_text().strip())
+            or installer_execution_started(text)
+            or installer_disk_phase_started(text)
+            or observations(self.adapter, self.store, task)
+        )
 
     def recover_unconsumed_network_boot(self, task, machine_state):
         """Retry one proven disk fallback without creating another install request."""
@@ -981,20 +1002,7 @@ class Executor:
             return False
         if not machine_state.startswith("Assigned/Ready"):
             return False
-        folder = self.adapter.data / "tasks" / task["id"]
-        known = folder / "known_hosts"
-        try:
-            text = self.attempt_text(task)
-        except OSError:
-            text = ""
-        if (
-            task.get("installer_progress")
-            or task.get("installer_failure")
-            or (known.exists() and known.read_text().strip())
-            or installer_execution_started(text)
-            or installer_disk_phase_started(text)
-            or observations(self.adapter, self.store, task)
-        ):
+        if not self.installation_not_started(task):
             return False
 
         device = self.task_device(task)
@@ -1064,6 +1072,95 @@ class Executor:
             task,
             "boot",
             "固件回退到旧系统；已恢复网络优先并执行一次受控重启，不重发 custom PXE。",
+            recovery=True,
+            recovery_code=recovery["code"],
+        )
+        return True
+
+    def recover_standard_pxe_boot(self, task, machine_state):
+        """Use one standard Redfish PXE override after a proven OEM-order fallback."""
+        recovery = task["automatic_recovery"]
+        if recovery.get("standard_pxe_retry"):
+            return False
+        previous = recovery.get("network_boot_retry") or {}
+        if previous.get("state") != "reset_accepted":
+            return False
+        grace = self.adapter.config.get("automatic_network_boot_grace_seconds", 180)
+        if isinstance(grace, bool) or not isinstance(grace, (int, float)):
+            grace = 180
+        if time.time() - previous.get("accepted_at", time.time()) < max(60, grace):
+            return False
+        if not machine_state.startswith("Assigned/Ready"):
+            return False
+        if (
+            task.get("native_allocation_requests") != 1
+            and task.get("native_reinstall_requests") != 1
+        ):
+            return False
+        if not self.installation_not_started(task):
+            return False
+
+        device = self.task_device(task)
+        self.check_bound(device, task)
+        system = self.adapter.redfish(device)
+        plan = standard_boot_once(self.adapter, device, system, "Pxe")
+        retry = {
+            "state": "override_requesting",
+            "reason": "持久网络优先已被固件忽略，改用标准Redfish单次PXE。",
+            "before": {
+                "target": plan["before"].get("BootSourceOverrideTarget"),
+                "enabled": plan["before"].get("BootSourceOverrideEnabled"),
+            },
+            "after": {"target": "Pxe", "enabled": "Once"},
+            "requested_at": time.time(),
+        }
+        recovery["standard_pxe_retry"] = retry
+        recovery["state"] = "standard_pxe_override_requesting"
+        self.recovery_step(
+            recovery,
+            "installation",
+            "running",
+            "持久启动顺序未被固件采用；正在设置一次性PXE启动。",
+        )
+        self.store.save(task)
+        try:
+            apply_boot(self.adapter, device, plan)
+            retry["state"] = "reset_requesting"
+            retry["configured_at"] = time.time()
+            recovery["state"] = "standard_pxe_reset_requesting"
+            self.check_bound(device, task)
+            current = str(self.adapter.machine(device).get("state", ""))
+            if not current.startswith("Assigned/Ready"):
+                raise RuntimeError("NICo 已离开 Assigned/Ready，不执行单次PXE重启。")
+            self.store.save(task)
+            self.adapter.redfish(
+                device, "/Actions/ComputerSystem.Reset", "POST", {"ResetType": "ForceRestart"}
+            )
+        except Exception as error:
+            recovery["state"] = "unknown"
+            recovery["error"] = "单次PXE恢复结果需要核对：" + str(error)
+            retry["state"] = "unknown"
+            retry["error"] = str(error)
+            self.recovery_step(recovery, "installation", "failed", recovery["error"])
+            self.store.save(task)
+            raise RuntimeError(recovery["error"]) from error
+
+        retry.update(state="reset_accepted", reboot_accepted=True, accepted_at=time.time())
+        recovery["state"] = "waiting_standard_pxe_retry"
+        recovery["deadline"] = time.time() + self.adapter.config.get(
+            "task_timeout_seconds", 2400
+        )
+        task["observation_deadline"] = recovery["deadline"]
+        self.recovery_step(
+            recovery,
+            "installation",
+            "running",
+            "已设置标准Redfish单次PXE并重启，等待原安装请求进入安装器。",
+        )
+        self.event(
+            task,
+            "boot",
+            "持久网络优先未生效；已设置一次性PXE并受控重启，不重发custom PXE。",
             recovery=True,
             recovery_code=recovery["code"],
         )

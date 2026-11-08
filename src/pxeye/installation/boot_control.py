@@ -9,6 +9,26 @@ def in_uefi(system):
     )
 
 
+def standard_once(adapter, device, system, target):
+    """Build a standard Redfish one-time boot plan, ignoring site OEM preference."""
+    if system.get("SerialNumber") != device["serial"] or target not in ("Hdd", "Pxe"):
+        raise RuntimeError("启动控制目标或BMC身份不一致。")
+    boot = system.get("Boot", {})
+    if (
+        target not in boot.get("BootSourceOverrideTarget@Redfish.AllowableValues", [])
+        or "Once" not in boot.get("BootSourceOverrideEnabled@Redfish.AllowableValues", [])
+    ):
+        raise RuntimeError("BMC不支持标准Redfish单次网络启动。")
+    return {
+        "method": "redfish-once",
+        "suffix": "",
+        "before": boot,
+        "body": {
+            "Boot": {"BootSourceOverrideTarget": target, "BootSourceOverrideEnabled": "Once"}
+        },
+    }
+
+
 def selection(adapter, device, system, target):
     if system.get("SerialNumber") != device["serial"] or target not in ("Hdd", "Pxe"):
         raise RuntimeError("启动控制目标或BMC身份不一致。")
@@ -21,14 +41,7 @@ def selection(adapter, device, system, target):
         and target in boot.get("BootSourceOverrideTarget@Redfish.AllowableValues", [])
         and "Once" in boot.get("BootSourceOverrideEnabled@Redfish.AllowableValues", [])
     ):
-        return {
-            "method": "redfish-once",
-            "suffix": "",
-            "before": boot,
-            "body": {
-                "Boot": {"BootSourceOverrideTarget": target, "BootSourceOverrideEnabled": "Once"}
-            },
-        }
+        return standard_once(adapter, device, system, target)
     # This adapter is selected by discovered links/schema, never by CPU architecture.
     links = system.get("Oem", {}).get("Lenovo", {}).get("BootSettings", {})
     root = device["redfish_system"]

@@ -53,6 +53,8 @@ class TaskCoordinator:
             if recovery.get("state") in (
                 "fallback_config_requesting",
                 "fallback_reset_requesting",
+                "standard_pxe_override_requesting",
+                "standard_pxe_reset_requesting",
             ):
                 recovery["state"] = "unknown"
                 recovery["error"] = (
@@ -130,6 +132,9 @@ class TaskCoordinator:
             "fallback_config_requesting",
             "fallback_reset_requesting",
             "waiting_installation_retry",
+            "standard_pxe_override_requesting",
+            "standard_pxe_reset_requesting",
+            "waiting_standard_pxe_retry",
         ):
             result["recovery_observing"] = True
         return result
@@ -180,6 +185,7 @@ class TaskCoordinator:
                             if recovery.get("state") in (
                                 "waiting_installation",
                                 "waiting_installation_retry",
+                                "waiting_standard_pxe_retry",
                             ):
                                 recovery["state"] = "completed"
                                 recovery["completed_at"] = time.time()

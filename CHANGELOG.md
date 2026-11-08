@@ -4,6 +4,12 @@
 
 Capability milestones for the current source lineage. Historical version headings identify development baselines, not published PXEye releases. Site addresses, device identities and operational logs are excluded.
 
+## 0.21.12 — Standard one-time PXE recovery
+
+- Detect when a verified OEM network-first recovery still returns to the existing operating system.
+- Use the BMC's advertised standard Redfish `Pxe` plus `Once` override for one final, ledgered restart.
+- Preserve the original custom-PXE request, Machine, Instance and disks; stop instead of replaying an uncertain write or restart.
+
 ## 0.21.11 — Bounded network-boot fallback recovery
 
 - Detect a completed NICo restart that returned to disk before the retained custom-PXE request reached the installer.
