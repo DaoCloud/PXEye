@@ -235,6 +235,16 @@ class TaskCoordinator:
                             0, task.get("observation_deadline", time.time()) - time.time()
                         )
                         deadline = max(deadline, time.monotonic() + remaining)
+                        if (
+                            not task.get("automatic_recovery")
+                            and self.executor.can_start_automatic_recovery(task)
+                        ):
+                            try:
+                                self.executor.automatic_boot_recovery(task)
+                            except RuntimeError as error:
+                                task["automatic_recovery_observation_error"] = str(error)
+                                self.store.save(task)
+                            task = self.store.get(task_id) or task
                         try:
                             self.executor.observe_automatic_recovery(task)
                         except RuntimeError as error:

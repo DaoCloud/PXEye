@@ -848,6 +848,19 @@ class Executor:
         ):
             return False
 
+        device = self.task_device(task)
+        self.check_bound(device, task)
+        machine = self.adapter.machine(device)
+        state = str(machine.get("state", ""))
+        polling = state.startswith("Assigned/HostPlatformConfiguration") and (
+            "PollingBiosSetup" in state
+        )
+        failed = state.startswith("Assigned/Failed") and "BiosSetupFailed" in state
+        if machine.get("id") != device.get("machine_id"):
+            raise RuntimeError("NICo Machine 与任务绑定不一致。")
+        if not (polling or failed):
+            return False
+
         previous = task.get("automatic_recovery")
         recovery = {
             "version": 2,
@@ -871,19 +884,6 @@ class Executor:
         task["automatic_recovery"] = recovery
         self.store.save(task)
         try:
-            device = self.task_device(task)
-            self.check_bound(device, task)
-            machine = self.adapter.machine(device)
-            state = str(machine.get("state", ""))
-            polling = state.startswith("Assigned/HostPlatformConfiguration") and (
-                "PollingBiosSetup" in state
-            )
-            failed = state.startswith("Assigned/Failed") and "BiosSetupFailed" in state
-            if (
-                machine.get("id") != device.get("machine_id")
-                or not (polling or failed)
-            ):
-                raise RuntimeError("NICo 当前状态不是可自动恢复的 BIOS 配置阻塞状态。")
             system = self.adapter.redfish(device)
             plan = boot_selection(self.adapter, device, system, "Pxe")
             if (
