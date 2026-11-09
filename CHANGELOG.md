@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.22.8 — Network acceptance diagnostics
+
+- Report the missing planned IPv4 address when an interface has no IPv4 data, instead of an index error.
+- Clarify installation acceptance labels, including system disk and EFI partition verification.
+
 ## 0.22.7 — Manual acceptance entry
 
 - Add Start acceptance to the right of failure dialogs and remove the task/log shortcut.

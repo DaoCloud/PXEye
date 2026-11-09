@@ -45,8 +45,8 @@ const stages = {
   pxe: "安装系统",
   install: "安装系统",
   handoff: "启动系统盘",
-  firstboot: "验证登录",
-  reboot: "验证登录",
+  firstboot: "安装验收",
+  reboot: "重启验收",
   completed: "完成",
   cancelled: "任务已终止",
 };
@@ -671,12 +671,12 @@ function detail(id) {
   body += `<section class="subsection"><h3>实时安装日志</h3><p class="live-small">BMC 串口日志 · 每 5 秒刷新 · 最近 64 KiB</p><div class="live-log-tools"><label><input type="checkbox" id="log-follow" ${state.logFollow ? "checked" : ""}> 跟随最新输出</label><span id="log-time" class="live-small"></span></div><pre id="sol-output" class="live-log" tabindex="0">正在读取安装日志…</pre></section><section class="subsection"><h3>执行与恢复记录</h3><ol class="live-events">${t.events.map((e) => `<li><time>${when(e.at)}</time>${e.recovery ? "<strong>启动兼容恢复 · </strong>" : ""}${esc(e.message)}</li>`).join("") || "<li>等待后台执行</li>"}</ol></section><section class="subsection"><h3>安装验收</h3><div class="live-checks">${Object.entries(
     {
       installer: "安装器成功",
-      identity: "任务 / 配置 / 主机名",
-      disk: "新根盘及 ESP",
-      network: "固定网络与路由",
-      ssh: "可信新 SSH 身份",
-      services: "DNS / HTTP / NTP / 服务",
-      normal_reboot: "普通重启复验",
+      identity: "主机配置",
+      disk: "系统盘与 EFI 分区验证",
+      network: "网络配置",
+      ssh: "SSH 连通",
+      services: "DNS / HTTP / NTP 连通",
+      normal_reboot: "重启验收",
     },
   )
     .map(

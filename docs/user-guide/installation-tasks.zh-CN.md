@@ -5,7 +5,7 @@ title: 安装任务
 description: 选择设备、核对配置、执行安装并查看日志和验收结果。
 navigation_group: installation
 updated_at: "2026-11-09"
-product_version: "0.22.7"
+product_version: "0.22.8"
 ---
 
 # 安装任务
@@ -60,7 +60,8 @@ product_version: "0.22.7"
 
 - 首次接入可能清理全部磁盘，包括非系统盘；不能仅凭最终选中的系统盘判断清理范围。
 - 一台失败会暂停该设备的任务，其余设备继续执行；不要重复创建任务来绕过待处理状态。
-- 已创建任务使用配置快照；后续编辑设备或方案不会自动改变本轮安装。
+- 已创建任务使用配置快照；后续编辑设备或方案不会自动改变本轮安装。 删除网口地址后，验收仍会按本轮规划报告缺失地址。
+- “系统盘与 EFI 分区验证”通过 SSH 只读核对根分区、EFI 分区及分区方案；不调整固件启动顺序。
 - “排队”“运行中”或已创建 Instance 均不表示 OS 安装完成；以安装与启动验收结果为准。
 
 相关：[设备管理](device-management.zh-CN.md) · [操作系统](operating-systems.zh-CN.md) · [安装方案](installation-profiles.zh-CN.md) · [首台装机](../getting-started.zh-CN.md)

@@ -18,6 +18,15 @@ def command(args):
     return subprocess.check_output(args, text=True, timeout=25).strip()
 
 
+def ipv4_interface(name, expected_address):
+    interfaces = json.loads(command(["ip", "-j", "-4", "addr", "show", name]))
+    if not interfaces:
+        raise ValueError(f"网口 {name} 未配置 IPv4 地址；本轮安装规划要求 {expected_address}。")
+    if len(interfaces) != 1:
+        raise ValueError(f"无法唯一确认网口 {name} 的 IPv4 配置。")
+    return interfaces[0]
+
+
 def collect(context):
     device, task = context["device"], context["task"]
     old = task["preflight"]["snapshot"].get("host")
@@ -101,7 +110,9 @@ def collect(context):
     ]
     assert len(interfaces) == 1, "BOOT_MAC_MISMATCH"
     interface = interfaces[0]
-    addresses = json.loads(command(["ip", "-j", "-4", "addr", "show", interface]))[0]["addr_info"]
+    addresses = ipv4_interface(
+        interface, device["management_ip"] + "/" + str(device["prefixlen"])
+    )["addr_info"]
     assert any(
         a["local"] == device["management_ip"] and a["prefixlen"] == device["prefixlen"]
         for a in addresses
@@ -117,7 +128,7 @@ def collect(context):
             if p.read_text().strip().lower() == nic["mac"]
         ]
         assert len(names) == 1, "ADDITIONAL_MAC_MISMATCH_" + nic["mac"]
-        info = json.loads(command(["ip", "-j", "-4", "addr", "show", names[0]]))[0]
+        info = ipv4_interface(names[0], nic["address"])
         assert any(
             str(a["local"]) + "/" + str(a["prefixlen"]) == nic["address"] for a in info["addr_info"]
         ), "ADDITIONAL_IP_MISMATCH_" + nic["mac"]

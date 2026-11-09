@@ -5,7 +5,7 @@ title: Installation tasks
 description: Select devices, review configuration, install and inspect logs and acceptance results.
 navigation_group: installation
 updated_at: "2026-11-09"
-product_version: "0.22.7"
+product_version: "0.22.8"
 ---
 
 # Installation tasks
@@ -60,7 +60,8 @@ Save hostname `gpu-01`, management address `192.0.2.10`, a published Ubuntu prof
 
 - Initial onboarding can clean all disks, including data disks. The selected installation disk alone does not define cleanup scope.
 - A failed device pauses while the others continue. Do not create duplicate tasks to bypass a pending issue.
-- Created tasks use snapshots; later device or profile edits do not automatically change the current installation.
+- Created tasks use snapshots; later device or profile edits do not automatically change the current installation. Removing an interface address does not remove its requirement from this attempt; acceptance reports the missing address.
+- System disk and EFI partition verification reads the root disk, EFI partition and partition layout over SSH. It does not change firmware boot order.
 - Queued/running tasks or an allocated Instance do not indicate a completed OS installation; review installation and boot acceptance results.
 
 Related: [Device management](device-management.md) · [Operating systems](operating-systems.md) · [Installation profiles](installation-profiles.md) · [Install your first server](../getting-started.md)
