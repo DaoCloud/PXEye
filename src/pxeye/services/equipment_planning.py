@@ -366,6 +366,7 @@ class EquipmentPlanning:
     def host_macs(self, record):
         machine = record["machine"]
         serial, bmc = machine["chassis_serial_number"], machine["bmc_mac_address"].lower()
+        observed = set()
         path = self.adapter.data / "observations" / "hardware" / (sha(serial) + ".json")
         if path.exists():
             cached = json.loads(path.read_text())
@@ -374,7 +375,7 @@ class EquipmentPlanning:
                 hardware.get("product_serial"),
                 hardware.get("chassis_serial"),
             }:
-                return {n["mac"].lower() for n in hardware.get("nics", []) if n.get("mac")}
+                observed.update(n["mac"] for n in hardware.get("nics", []) if n.get("mac"))
         proofs = []
         for path in (self.adapter.data / "config" / "management-addresses" / "proofs").glob(
             "*.json"
@@ -390,7 +391,8 @@ class EquipmentPlanning:
                 proofs.append(proof)
         if proofs:
             proof = max(proofs, key=lambda p: p["verified_at"])
-            return {n["mac_address"].lower() for n in proof["nics"]}
+            observed.update(n["mac_address"] for n in proof["nics"])
+        proofs = []
         for path in (self.adapter.data / "config" / "discovery").glob("*.json"):
             proof = json.loads(path.read_text())
             if (
@@ -400,8 +402,17 @@ class EquipmentPlanning:
                 and str(proof.get("bmc_mac", bmc)).lower() == bmc
                 and proof.get("verified_at")
             ):
-                return {n["mac_address"].lower() for n in proof.get("nics", [])}
-        return set()
+                proofs.append(proof)
+        if proofs:
+            proof = max(proofs, key=lambda p: p["verified_at"])
+            observed.update(n["mac_address"] for n in proof.get("nics", []))
+        result = set()
+        for value in observed:
+            try:
+                result.add(mac(value))
+            except ValueError:
+                continue
+        return result - {bmc}
 
     def prepare_match(self, source, old, records, networks, network_revisions):
         values = source["values"]

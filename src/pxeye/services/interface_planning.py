@@ -101,7 +101,8 @@ class InterfacePlanning:
             or len(set(ids)) != len(ids)
         ):
             raise ValueError("请选择1–50台已获取硬件信息的服务器。")
-        catalog = self.catalog(self.snapshot(), owner)
+        snapshot = self.snapshot()
+        catalog = self.catalog(snapshot, owner)
         selected = [(s, c) for s, c in catalog.items() if c["id"] in ids]
         if len(selected) != len(ids) or any(not c["macs"] for _, c in selected):
             raise ValueError(
@@ -113,13 +114,59 @@ class InterfacePlanning:
         stream = io.StringIO(newline="")
         writer = csv.writer(stream)
         writer.writerow(FIELDS)
+        with self.store.db() as db:
+            records = {
+                r["serial"]: json.loads(r["data"]) for r in db.execute("SELECT * FROM device_plans")
+            }
+            sources = {r["values"]["serial"]: r for r in self.planning.records(db).values()}
         for serial, item in sorted(selected):
             if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", serial):
                 raise ValueError("主机 SN 不能安全导出，请先核对硬件身份。")
-            # Export identities, not an observed DHCP lease mistaken for a desired IP.
+            record = records.get(serial)
+            if (digest(record) if record else "") != item["revision"]:
+                raise ValueError("设备配置已变化，请重新导出：" + serial)
+            source = sources.get(serial, {})
+            pending = {
+                r["mac"]: r
+                for r in source.get("interface_rows", [])
+                if source.get("interface_bmc") == item["bmc"]
+            }
+            # Saved intent is authoritative; observed DHCP leases are not user configuration.
             for hardware in item["macs"]:
-                writer.writerow([serial, hardware, "", "", ""])
+                values = self.saved_address(record, hardware, snapshot["networks"])
+                if not record:
+                    values = {k: pending.get(hardware, {}).get(k, "") for k in FIELDS[2:]}
+                writer.writerow([serial, hardware, *(values[k] for k in FIELDS[2:])])
         return {"csv": stream.getvalue(), "count": sum(len(c["macs"]) for _, c in selected)}
+
+    @staticmethod
+    def saved_address(record, hardware, networks):
+        result = {k: "" for k in FIELDS[2:]}
+        if not record:
+            return result
+        matches = [
+            n
+            for n in record["machine"].get("interfaces", [])
+            if n.get("mac_address", "").lower() == hardware
+            and n.get("role", "host") in ("host", "unspecified", 0, 1)
+        ]
+        if len(matches) != 1 or not matches[0].get("fixed_ip"):
+            return result
+        nic = matches[0]
+        result["ip"] = nic["fixed_ip"]
+        binding = record.get("intent", {}).get("network_bindings", {}).get(hardware)
+        network = next((n for n in networks if n["id"] == binding), {})
+        if nic.get("fixed_mask"):
+            result["subnet"] = str(
+                ipaddress.IPv4Interface(nic["fixed_ip"] + "/" + nic["fixed_mask"]).network
+            )
+        elif len(network.get("prefixes", [])) == 1:
+            result["subnet"] = network["prefixes"][0]["prefix"]
+        prefix = next(
+            (p for p in network.get("prefixes", []) if p["prefix"] == result["subnet"]), {}
+        )
+        result["gateway"] = nic.get("fixed_gateway", prefix.get("gateway")) or ""
+        return result
 
     @staticmethod
     def network(row, networks):
@@ -131,14 +178,28 @@ class InterfacePlanning:
             and len(n["prefixes"]) == 1
             and n["prefixes"][0]["prefix"] == row["subnet"]
         ]
-        if len(matches) != 1:
-            raise ValueError("子网未唯一匹配已有 HostInband 网络，请先在网络管理中配置。")
+        if not matches:
+            exists = any(
+                p["prefix"] == row["subnet"] for n in networks for p in n["prefixes"]
+            )
+            raise ValueError(
+                "子网 " + row["subnet"]
+                + (
+                    " 已存在，但不是单 IPv4 前缀的 HostInband 网络，请在网络管理中核对。"
+                    if exists else " 尚未创建，请先在网络管理中创建 HostInband 子网。"
+                )
+            )
+        if len(matches) > 1:
+            raise ValueError("子网 " + row["subnet"] + " 匹配多个网络，请在网络管理中核对。")
         network = matches[0]
         if type(network.get("mtu")) is not int or not 576 <= network["mtu"] <= 9216:
             raise ValueError("子网 MTU 配置不可用，请在网络管理中核对。")
         prefix = network["prefixes"][0]
         if (prefix.get("gateway") or "") != row["gateway"]:
-            raise ValueError("网关与网络管理中的子网配置不同，请核对。")
+            raise ValueError(
+                "子网 " + row["subnet"] + " 的网关不一致：表格为 "
+                + (row["gateway"] or "空") + "，系统为 " + (prefix.get("gateway") or "空") + "。"
+            )
         address = ipaddress.IPv4Address(row["ip"])
         subnet = ipaddress.IPv4Network(row["subnet"])
         if int(address) - int(subnet.network_address) < int(prefix.get("reserveFirst", 0)):
@@ -232,7 +293,7 @@ class InterfacePlanning:
     def preview(self, text, owner):
         reader = csv.DictReader(io.StringIO(text.lstrip("\ufeff")), strict=True)
         if len(reader.fieldnames or []) != len(FIELDS) or set(reader.fieldnames) != set(FIELDS):
-            raise ValueError("网卡规划请使用 serial,mac,ip,subnet,gateway 五列。")
+            raise ValueError("设备网卡列表请使用 serial,mac,ip,subnet,gateway 五列。")
         snapshot = self.snapshot()
         catalog = self.catalog(snapshot, owner)
         incoming, seen, addresses, errors, skipped = {}, set(), set(), [], 0
@@ -284,7 +345,8 @@ class InterfacePlanning:
                     errors.append(
                         {
                             "line": reader.line_num,
-                            "serial": raw.get("serial") or "",
+                            "serial": (raw.get("serial") or "").strip()[:128],
+                            "interfaces": [{k: (raw.get(k) or "")[:128] for k in FIELDS}],
                             "operation": "invalid",
                             "detail": str(error),
                         }
@@ -306,7 +368,7 @@ class InterfacePlanning:
                 self.protect_services(rows)
                 if old_source and old_source.get("interface_bmc", item["bmc"]) != item["bmc"]:
                     raise ValueError("SN 对应的 BMC 身份与已保存接口规划不同，请核对设备。")
-                if old and item["revision"] != digest(old):
+                if (digest(old) if old else "") != item["revision"]:
                     raise ValueError("设备配置已变化，请重新预览。")
                 if old:
                     prepared = self.merge(old, rows, records, snapshot["networks"], item["macs"])
@@ -373,7 +435,10 @@ class InterfacePlanning:
                 )
             except (ValueError, RuntimeError) as error:
                 display.append(
-                    {"line": "—", "serial": serial, "operation": "invalid", "detail": str(error)}
+                    {
+                        "line": "—", "serial": serial, "operation": "invalid",
+                        "interfaces": rows, "detail": str(error),
+                    }
                 )
         try:
             self.plans.validate_conflicts(records, snapshot=snapshot)
@@ -404,6 +469,9 @@ class InterfacePlanning:
             "counts": counts,
             "skipped": skipped,
             "format": "interfaces",
+            "failed_devices": sorted(
+                {r["serial"] for r in display if r["operation"] == "invalid" and r["serial"]}
+            ),
         }
 
     @staticmethod
@@ -459,6 +527,14 @@ class InterfacePlanning:
             if preview["used"]:
                 return {"status": "saved", "count": data["count"], "format": "interfaces"}
             if data["networks"] != {n["id"]: n["revision"] for n in snapshot["networks"]}:
+                for item in data["updates"]:
+                    for row in item["rows"]:
+                        try:
+                            self.network(row, snapshot["networks"])
+                        except ValueError as error:
+                            raise ValueError(
+                                f"设备 {item['serial']} / MAC {row['mac']}：{error} 本批未保存。"
+                            ) from None
                 raise ValueError("子网配置已变化，请重新预览；本批未保存。")
             sources = self.planning.records(db)
             records = {
@@ -476,7 +552,9 @@ class InterfacePlanning:
                     or (digest(records.get(serial)) if serial in records else "")
                     != item["catalog"]["revision"]
                 ):
-                    raise ValueError("设备、硬件或规划已变化，请重新预览；本批未保存。")
+                    raise ValueError(
+                        "设备 " + serial + " 的硬件或规划已变化，请重新预览；本批未保存。"
+                    )
                 if serial in records:
                     prepared[serial] = self.merge(
                         records[serial],

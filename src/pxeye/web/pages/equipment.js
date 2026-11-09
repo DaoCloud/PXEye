@@ -176,9 +176,9 @@ function devicePage() {
     data.devices
       .filter((d) => state.equipmentDeviceSelection.includes(d.id))
       .every((d) => d.kind === "server" && !d.address_only);
-  body += `<div class="equipment-batch-bar"><span>已选 ${selected} 台</span><div class="live-tools">${button("清空选择", "eq-clear-selection", false, disabled)}${button("导出网卡规划表", "eq-export-interfaces", false, exportable ? "" : "disabled")}${button("一键匹配", "planning-match", false, matchable ? "" : "disabled")}${button("更新 BMC 地址", "eq-batch-bmc", true, disabled)}${button("更新管理地址", "eq-batch-management", false, disabled)}${button("刷新设备详情", "eq-batch-refresh", false, disabled)}</div></div>`;
+  body += `<div class="equipment-batch-bar"><span>已选 ${selected} 台</span><div class="live-tools">${button("清空选择", "eq-clear-selection", false, disabled)}${button("导出设备网卡列表", "eq-export-interfaces", false, exportable ? "" : "disabled")}${button("一键匹配", "planning-match", false, matchable ? "" : "disabled")}${button("更新 BMC 地址", "eq-batch-bmc", true, disabled)}${button("更新管理地址", "eq-batch-management", false, disabled)}${button("刷新设备详情", "eq-batch-refresh", false, disabled)}</div></div>`;
   if (selected)
-    body += `<div class="live-note">网卡规划表仅导出所选 ${servers.length} 台服务器${excluded ? `；${excluded} 台其他设备或纯地址记录不包含在内` : ""}。每批最多导出 50 台服务器。</div>`;
+    body += `<div class="live-note">设备网卡列表仅包含所选 ${servers.length} 台服务器${excluded ? `；${excluded} 台其他设备或纯地址记录不包含在内` : ""}。每批最多导出 50 台服务器。</div>`;
   const rows = visible.map((d) => {
     const server = d.kind === "server" && !d.address_only,
       native = state.resources?.devices.find((x) => x.serial === d.serial);
@@ -502,7 +502,7 @@ function equipmentDiscovery(rows) {
     '<div class="live-note">设备上电后，管理控制器发出 DHCP 请求，NICo 按请求来源匹配子网并从动态地址池分配临时地址。选择端点并使用 BMC / PMC 账号读取序列号、设备类型和硬件信息，确认后加入纳管设备。</div>';
   const filter = `<div class="live-form" style="margin-bottom:18px">${selectField("eq-discovery-network", "发现子网", [["", "全部发现子网"], ...networks.map((n) => [n, n])], state.candidateNetwork)}</div>`;
   const exportable = !reading && selected > 0 && selected <= 50 && selectable.filter((a) => state.equipmentDiscoverySelection.includes(a.interface_id)).every((a) => equipmentDiscoveryProof(a)?.identity.kind === "server");
-  const bar = `<div class="equipment-batch-bar"><span>已选 ${selected} 台 · 每批最多 50 台</span><div class="live-tools">${state.equipmentDiscoveryBatch ? button("查看获取结果", "eq-discovery-results") : ""}${button("导出网卡规划表", "eq-export-interfaces", false, exportable ? "" : "disabled")}${button(reading ? "正在获取设备信息…" : "批量获取设备信息", "eq-identify-many", false, !reading && selected > 0 && selected <= 50 ? "" : "disabled")}</div></div>`;
+  const bar = `<div class="equipment-batch-bar"><span>已选 ${selected} 台 · 每批最多 50 台</span><div class="live-tools">${state.equipmentDiscoveryBatch ? button("查看获取结果", "eq-discovery-results") : ""}${button("导出设备网卡列表", "eq-export-interfaces", false, exportable ? "" : "disabled")}${button(reading ? "正在获取设备信息…" : "批量获取设备信息", "eq-identify-many", false, !reading && selected > 0 && selected <= 50 ? "" : "disabled")}</div></div>`;
   const rowsHtml = visible.map((a) => {
     const result = equipmentDiscoveryProof(a),
       failure = state.equipmentDiscoveryResults[a.interface_id],

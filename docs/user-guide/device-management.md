@@ -136,13 +136,15 @@ After enrolling the server with SN `SERIAL-1`, matching selects `02:00:00:00:00:
 
 ## 6. Export and import interface addresses
 
-1. Retrieve server information in **Discovered devices**, select servers and click **Export interface plan (导出网卡规划表)**. Managed servers can also be selected for export; select 1–50 per export.
-2. Keep the exported serial numbers and host MACs. Fill in `ip`, `subnet` (CIDR) and `gateway`. Leave all three blank for unused ports; blanks preserve existing settings.
+1. Retrieve server information in **Discovered devices**, select servers and click **Export device interface list (导出设备网卡列表)**. Managed servers can also be selected for export; select 1–50 per export.
+2. The file is named `device-interfaces.csv` and uses the exact header `serial,mac,ip,subnet,gateway`, with one row per collected host port. Identity-verified Scout inventory, BMC refresh and enrollment discovery are combined and deduplicated by MAC. Saved IPs, subnet CIDRs and gateways are included; unconfigured values stay blank. Keep SN/MAC and fill the blanks. Completely blank address rows preserve existing settings. Temporary DHCP leases are not exported as planned addresses.
 3. Use the existing **Import devices → Server** or **Import plans** action, upload the CSV, review and save. No subnet IDs, netmasks or NICo JSON are required.
-4. Managed servers receive local **System configuration** updates immediately. Unenrolled servers retain a source plan which is applied after explicit enrollment. If application fails, correct the issue and use existing **Match plans** to retry.
+4. Managed servers receive updates in the existing device interface structure and **System configuration**. Reopening the same device shows each MAC's IP, subnet and gateway; subsequent exports include the saved values. Unenrolled servers retain a source plan which is applied after explicit enrollment. If application fails, correct the issue and use existing **Match plans** to retry.
 5. Confirm the existing boot interface, installation profile and other requirements, then install normally. Ubuntu matches interfaces by MAC. First-boot and reboot acceptance check their addresses, prefix lengths and MTUs.
 
 The managed-device header checkbox selects or deselects only the current filtered list. It stays checked when all visible rows are selected; click again to deselect them. **Clear selection (清空选择)** also clears hidden selections. With mixed device types selected, interface export includes only servers; the note below the action bar shows included and excluded counts. Switches, power shelves and address-only records are excluded from the host OS interface sheet. **Match plans** still requires a server-only selection.
+
+If a subnet has not been created, preview identifies the failed device by SN and shows MAC, IP, CIDR and the reason. Gateway mismatches, ownership errors and address conflicts also report their causes. Any validation error prevents the entire batch from being saved; other preview rows do not represent successful imports. Create the required HostInband subnet or correct the CSV, then preview and confirm again. CSV import never creates subnets automatically.
 
 ```csv
 serial,mac,ip,subnet,gateway

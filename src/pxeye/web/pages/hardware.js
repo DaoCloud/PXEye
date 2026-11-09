@@ -49,6 +49,30 @@ async function readDeviceHardware(w) {
     w.loading = false;
   }
 }
+function deviceInterfaceTable(device, hardware) {
+  const ports = new Map(
+    (hardware?.nics || []).filter((n) => n.mac).map((n) => [n.mac.toLowerCase(), n]),
+  );
+  const planned = (device.interfaces || []).filter(
+    (n) => ["host", "unspecified", 0, 1].includes(n.role ?? "host"),
+  );
+  for (const nic of planned) {
+    const mac = nic.mac_address?.toLowerCase();
+    if (mac && !ports.has(mac)) ports.set(mac, { mac });
+  }
+  ports.delete(device.bmc_mac_address?.toLowerCase());
+  return '<section class="subsection"><h3>设备网卡列表</h3>' + table(
+    ["MAC / 型号", "用途", "规划 IP", "所属子网", "网关"],
+    [...ports.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([mac, port]) => {
+      const nic = planned.find((n) => n.mac_address?.toLowerCase() === mac),
+        binding = device.intent?.network_bindings?.[mac],
+        network = state.networks?.networks.find((n) => n.id === binding),
+        subnet = network?.prefixes.map((p) => p.prefix).join(", ") ||
+          (nic?.fixed_mask ? `掩码 ${nic.fixed_mask}` : "");
+      return `<tr><td>${esc(mac)}${port.model ? `<span class="live-small">${esc(port.model)}</span>` : ""}</td><td>${nic?.primary ? "启动 / 管理口" : "主机接口"}</td><td>${esc(nic?.fixed_ip || "")}</td><td>${esc(subnet)}</td><td>${esc(nic?.fixed_gateway || "")}</td></tr>`;
+    }),
+  ) + '<p class="live-small">地址为已保存的设备配置；空白表示未配置，下次安装时生效。</p></section>';
+}
 function renderDeviceDetail(w, scroll = 0) {
   if (state.wizard !== w) return;
   const d = state.resources.devices.find((d) => d.serial === w.serial),
@@ -132,18 +156,6 @@ function renderDeviceDetail(w, scroll = 0) {
           : []),
       ]);
       body +=
-        '<section class="subsection"><h3>主机网卡</h3>' +
-        table(
-          ["MAC / 型号", "规划用途 / 地址"],
-          f.nics.map((n) => {
-            const p = d.interfaces.find(
-              (i) => i.mac_address?.toLowerCase() === n.mac,
-            );
-            return `<tr><td>${esc(n.mac)}${n.model ? `<span class="live-small">${esc(n.model)}</span>` : ""}</td><td>${p?.primary ? "启动 / 管理口" : "—"}<span class="live-small">${esc(p?.fixed_ip || "")}</span></td></tr>`;
-          }),
-        ) +
-        "</section>";
-      body +=
         '<section class="subsection"><h3>磁盘</h3>' +
         table(
           ["型号", "序列号", "容量", "规划用途"],
@@ -159,6 +171,7 @@ function renderDeviceDetail(w, scroll = 0) {
       body +=
         '<div class="live-empty">暂无硬件信息。主机进入 Scout 后可采集网卡和磁盘。</div>';
   }
+  body += deviceInterfaceTable(d, h.hardware);
   if (h.can_prepare && !w.check)
     body += button("检查接入条件", "hardware-check", false);
   if (w.check) {

@@ -19,7 +19,7 @@ const equipmentPlanningStates = {
   create: "新增",
   update: "更新",
   unchanged: "无变化",
-  invalid: "格式错误",
+  invalid: "校验失败",
   saved: "已保存",
   failed: "未匹配",
 };
@@ -161,7 +161,7 @@ function equipmentPlanningImport() {
   state.wizard = { resource: "equipment-planning-import" };
   modal(
     "导入设备规划",
-    "支持设备规划表，以及导出的网卡规划表",
+    "支持设备规划表，以及导出的设备网卡列表",
     '<div class="live-form"><a class="link-button" href="/api/equipment-planning/template">下载 CSV 模板</a><label class="live-upload">选择 CSV 文件<input id="planning-file" type="file" accept=".csv,text/csv"></label></div><div id="planning-preview"></div>' +
       '<div class="live-note">网卡表每行一个 MAC，填写 IP、子网 CIDR、网关；不使用的网口留空。子网需已在网络管理中配置。主启动接口保持不变，默认路由只使用管理口；其他网关只保存，不自动生成额外路由。已纳管设备直接保存到系统配置，未纳管设备在确认纳管后带入；均在下次安装时生效。</div>' + eqError(),
     button("取消", "close") + button("校验并预览", "planning-preview", true),
@@ -179,12 +179,15 @@ async function equipmentPlanningPreview() {
   if (state.wizard !== marker) return;
   marker.preview_id = r.preview_id;
   $("#planning-preview").innerHTML =
-    `<div class="live-note">新增 ${r.counts.create} · 更新 ${r.counts.update} · 无变化 ${r.counts.unchanged} · 格式错误 ${r.counts.invalid}${r.format === "interfaces" ? ` · 跳过空白网口 ${r.skipped}` : ""}</div>` +
+    (r.counts.invalid
+      ? `<div class="live-error">校验未通过，本批尚未导入或保存。${r.format === "interfaces" && r.failed_devices?.length ? `失败设备 ${r.failed_devices.length} 台；请按下表 SN、MAC 和原因修正后重新预览。` : "请修正下表错误后重新预览。"}</div>`
+      : '<div class="live-note">校验通过；点击“保存导入规划”后才会写入。</div>') +
+    `<div class="live-note">待新增 ${r.counts.create} · 待更新 ${r.counts.update} · 无变化 ${r.counts.unchanged} · 校验失败 ${r.counts.invalid}${r.format === "interfaces" ? ` · 跳过空白网口 ${r.skipped}` : ""}</div>` +
     table(
       ["行号", "SN", "操作", "说明"],
       r.rows.map(
         (row) =>
-          `<tr><td>${esc(row.line)}</td><td>${esc(row.serial)}</td><td>${esc(equipmentPlanningStates[row.operation])}</td><td>${esc(row.detail || [row.values?.management_ip, row.values?.management_subnet, row.values?.bmc_ip].filter(Boolean).join(" / "))}${(row.interfaces || []).map((p) => `<span class="live-small">${esc(p.mac)} → ${esc(p.ip)} · ${esc(p.subnet)} · 网关 ${esc(p.gateway || "无")}</span>`).join("")}</td></tr>`,
+          `<tr><td>${esc(row.line)}</td><td>${esc(row.serial)}</td><td>${esc(row.operation === "invalid" && r.format === "interfaces" ? "导入校验失败" : equipmentPlanningStates[row.operation])}</td><td>${esc(row.detail || [row.values?.management_ip, row.values?.management_subnet, row.values?.bmc_ip].filter(Boolean).join(" / "))}${(row.interfaces || []).map((p) => `<span class="live-small">MAC ${esc(p.mac)} → IP ${esc(p.ip || "空")} · 子网 ${esc(p.subnet || "空")} · 网关 ${esc(p.gateway || "空")}</span>`).join("")}</td></tr>`,
       ),
     );
   $(".modal-footer").innerHTML =
@@ -200,7 +203,9 @@ async function equipmentPlanningImportApply() {
   });
   close();
   await equipmentPlanningReload();
-  toast(`已保存 ${r.count} 条设备规划。`);
+  toast(r.format === "interfaces"
+    ? `已保存 ${r.count} 台设备的网卡信息；已纳管设备可在系统配置中查看。`
+    : `已保存 ${r.count} 条设备规划。`);
 }
 
 async function equipmentExportInterfaces() {
@@ -214,17 +219,17 @@ async function equipmentExportInterfaces() {
     ? [...state.equipmentDiscoverySelection]
     : equipmentSelectedServers().map((d) => d.id);
   if (!ids.length || ids.length > 50)
-    throw Error("一次请选择1–50台服务器导出网卡规划表。");
+    throw Error("一次请选择1–50台服务器导出设备网卡列表。");
   const r = await api("/api/equipment-planning/export-interfaces", { ids });
   const url = URL.createObjectURL(new Blob(["\ufeff", r.csv], { type: "text/csv;charset=utf-8" }));
   const link = document.createElement("a");
   link.href = url;
-  link.download = "interface-planning.csv";
+  link.download = "device-interfaces.csv";
   document.body.append(link);
   link.click();
   link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-  toast(`已导出 ${r.count} 个已采集主机网口；请填写地址后使用现有导入入口。`);
+  toast(`已导出 ${r.count} 个已采集主机网口，含已保存的地址；填写空白后可用原入口导入。`);
 }
 async function equipmentPlanningMatch() {
   if (state.equipmentPlanningMatching) return;
