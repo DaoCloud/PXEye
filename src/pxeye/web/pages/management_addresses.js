@@ -91,44 +91,6 @@ async function addressSave() {
   await equipmentReload();
   toast(r.detail);
 }
-observeUI(
-  "change",
-  "management_addresses.js",
-  (e) => {
-    if (e.target.name === "eq-all") {
-      for (const input of document.querySelectorAll("input[name=eq-device]")) {
-        input.checked = e.target.checked;
-        state.equipmentDeviceSelection = state.equipmentDeviceSelection.filter(
-          (x) => x !== input.value,
-        );
-        if (input.checked) state.equipmentDeviceSelection.push(input.value);
-      }
-      state.planSelection = state.equipment.devices
-        .filter(
-          (d) =>
-            d.kind === "server" &&
-            !d.address_only &&
-            state.equipmentDeviceSelection.includes(d.id),
-        )
-        .map((d) => d.serial);
-    }
-    if (e.target.name === "eq-device") {
-      const id = e.target.value;
-      state.equipmentDeviceSelection = state.equipmentDeviceSelection.filter(
-        (x) => x !== id,
-      );
-      if (e.target.checked) state.equipmentDeviceSelection.push(id);
-      state.planSelection = state.equipment.devices
-        .filter(
-          (d) =>
-            d.kind === "server" &&
-            state.equipmentDeviceSelection.includes(d.id),
-        )
-        .map((d) => d.serial);
-    }
-  },
-  false,
-);
 registerActions(
   "management_addresses.js",
   ["address-device", "address-endpoint", "address-edit", "address-save"],

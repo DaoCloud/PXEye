@@ -108,6 +108,23 @@ function equipmentMatches(row) {
         .includes(f.search.toLowerCase()))
   );
 }
+function equipmentSelectedDevices() {
+  return (state.equipment?.devices || []).filter((d) =>
+    state.equipmentDeviceSelection.includes(d.id),
+  );
+}
+function equipmentSelectedServers() {
+  return equipmentSelectedDevices().filter(
+    (d) => d.kind === "server" && !d.address_only,
+  );
+}
+function equipmentSetSelection(ids) {
+  const available = new Set((state.equipment?.devices || []).map((d) => d.id));
+  state.equipmentDeviceSelection = [...new Set(ids)].filter((id) =>
+    available.has(id),
+  );
+  state.planSelection = equipmentSelectedServers().map((d) => d.serial);
+}
 function devicePage() {
   if (state.deviceView === "management-addresses") state.deviceView = "managed";
   const data = state.equipment,
@@ -140,10 +157,18 @@ function devicePage() {
   if (data.errors.length)
     body += `<div class="live-error">${esc(data.errors.join("；"))}</div>`;
   if (pending) return body + equipmentDiscovery(data.endpoints);
+  equipmentSetSelection(state.equipmentDeviceSelection);
+  const visible = data.devices.filter(equipmentMatches),
+    allSelected =
+      visible.length > 0 &&
+      visible.every((d) => state.equipmentDeviceSelection.includes(d.id));
   const f = state.equipmentFilters;
   body += `<div class="live-editor-grid">${selectField("eq-filter-kind", "设备类型", [["", "全部类型"], ...Object.entries(equipmentKinds).filter(([k]) => k !== "unknown")], f.kind)}${selectField("eq-filter-rack", "机柜", [["", "全部机柜"], ...[...new Set(data.devices.map((d) => d.rack_id).filter(Boolean))].map((id) => [id, id])], f.rack)}${selectField("eq-filter-status", "纳管状态", [["", "全部状态"], ...["draft", "declared", "managed", "server"].map((k) => [k, equipmentStates[k]])], f.status)}${eqText("filter-search", "搜索 SN、名称、MAC 或 IP", f.search)}</div>`;
   const selected = state.equipmentDeviceSelection.length,
-    disabled = selected ? "" : "disabled";
+    disabled = selected ? "" : "disabled",
+    servers = equipmentSelectedServers(),
+    exportable = servers.length > 0 && servers.length <= 50,
+    excluded = selected - servers.length;
   const matchable =
     selected > 0 &&
     selected <= 50 &&
@@ -151,8 +176,10 @@ function devicePage() {
     data.devices
       .filter((d) => state.equipmentDeviceSelection.includes(d.id))
       .every((d) => d.kind === "server" && !d.address_only);
-  body += `<div class="equipment-batch-bar"><span>已选 ${selected} 台</span><div class="live-tools">${button("导出网卡规划表", "eq-export-interfaces", false, matchable ? "" : "disabled")}${button("一键匹配", "planning-match", false, matchable ? "" : "disabled")}${button("更新 BMC 地址", "eq-batch-bmc", true, disabled)}${button("更新管理地址", "eq-batch-management", false, disabled)}${button("刷新设备详情", "eq-batch-refresh", false, disabled)}</div></div>`;
-  const rows = data.devices.filter(equipmentMatches).map((d) => {
+  body += `<div class="equipment-batch-bar"><span>已选 ${selected} 台</span><div class="live-tools">${button("清空选择", "eq-clear-selection", false, disabled)}${button("导出网卡规划表", "eq-export-interfaces", false, exportable ? "" : "disabled")}${button("一键匹配", "planning-match", false, matchable ? "" : "disabled")}${button("更新 BMC 地址", "eq-batch-bmc", true, disabled)}${button("更新管理地址", "eq-batch-management", false, disabled)}${button("刷新设备详情", "eq-batch-refresh", false, disabled)}</div></div>`;
+  if (selected)
+    body += `<div class="live-note">网卡规划表仅导出所选 ${servers.length} 台服务器${excluded ? `；${excluded} 台其他设备或纯地址记录不包含在内` : ""}。每批最多导出 50 台服务器。</div>`;
+  const rows = visible.map((d) => {
     const server = d.kind === "server" && !d.address_only,
       native = state.resources?.devices.find((x) => x.serial === d.serial);
     const detail = d.address_only
@@ -201,7 +228,7 @@ function devicePage() {
       rows,
     ).replace(
       "<th>选择</th>",
-      '<th><input type="checkbox" name="eq-all" aria-label="选择当前列表全部设备"></th>',
+      `<th><input type="checkbox" name="eq-all" ${allSelected ? "checked" : ""} ${visible.length ? "" : "disabled"} aria-label="选择当前列表全部设备"></th>`,
     ) +
     bmcUpdateHistory()
   );
@@ -1038,15 +1065,22 @@ observeUI(
         state.equipmentDiscoverySelection.push(e.target.value);
       render();
     }
-  },
-  false,
-);
-observeUI(
-  "change",
-  "equipment.js",
-  (e) => {
-    if (e.target.name === "eq-device" || e.target.name === "eq-all")
-      queueMicrotask(render);
+    if (e.target.name === "eq-all") {
+      const ids = new Set(state.equipmentDeviceSelection);
+      for (const d of state.equipment.devices.filter(equipmentMatches)) {
+        if (e.target.checked) ids.add(d.id);
+        else ids.delete(d.id);
+      }
+      equipmentSetSelection([...ids]);
+      render();
+    }
+    if (e.target.name === "eq-device") {
+      const ids = new Set(state.equipmentDeviceSelection);
+      if (e.target.checked) ids.add(e.target.value);
+      else ids.delete(e.target.value);
+      equipmentSetSelection([...ids]);
+      render();
+    }
   },
   false,
 );
@@ -1068,6 +1102,7 @@ registerActions(
   "equipment.js",
   [
     "eq-refresh",
+    "eq-clear-selection",
     "eq-managed",
     "eq-endpoints",
     "eq-choose-new",
@@ -1112,6 +1147,9 @@ registerActions(
       switch (el.dataset.live) {
         case "eq-refresh":
           return await equipmentReload();
+        case "eq-clear-selection":
+          equipmentSetSelection([]);
+          return render();
         case "eq-managed":
           state.deviceView = "managed";
           render();

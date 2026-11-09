@@ -142,6 +142,8 @@ After enrolling the server with SN `SERIAL-1`, matching selects `02:00:00:00:00:
 4. Managed servers receive local **System configuration** updates immediately. Unenrolled servers retain a source plan which is applied after explicit enrollment. If application fails, correct the issue and use existing **Match plans** to retry.
 5. Confirm the existing boot interface, installation profile and other requirements, then install normally. Ubuntu matches interfaces by MAC. First-boot and reboot acceptance check their addresses, prefix lengths and MTUs.
 
+The managed-device header checkbox selects or deselects only the current filtered list. It stays checked when all visible rows are selected; click again to deselect them. **Clear selection (清空选择)** also clears hidden selections. With mixed device types selected, interface export includes only servers; the note below the action bar shows included and excluded counts. Switches, power shelves and address-only records are excluded from the host OS interface sheet. **Match plans** still requires a server-only selection.
+
 ```csv
 serial,mac,ip,subnet,gateway
 SERVER001,02:00:00:00:01:01,192.0.2.11,192.0.2.0/24,192.0.2.1

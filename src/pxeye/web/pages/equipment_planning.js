@@ -204,7 +204,17 @@ async function equipmentPlanningImportApply() {
 }
 
 async function equipmentExportInterfaces() {
-  const ids = [...(state.deviceView === "equipment-endpoints" ? state.equipmentDiscoverySelection : state.equipmentDeviceSelection)];
+  const discovery = state.deviceView === "equipment-endpoints";
+  if (
+    !discovery &&
+    equipmentSelectedDevices().length !== state.equipmentDeviceSelection.length
+  )
+    throw Error("所选设备已变化，请刷新后重新选择。");
+  const ids = discovery
+    ? [...state.equipmentDiscoverySelection]
+    : equipmentSelectedServers().map((d) => d.id);
+  if (!ids.length || ids.length > 50)
+    throw Error("一次请选择1–50台服务器导出网卡规划表。");
   const r = await api("/api/equipment-planning/export-interfaces", { ids });
   const url = URL.createObjectURL(new Blob(["\ufeff", r.csv], { type: "text/csv;charset=utf-8" }));
   const link = document.createElement("a");
