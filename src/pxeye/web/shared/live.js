@@ -733,14 +733,7 @@ async function taskProblem(id) {
         ["自动观察截止", when(t.observation_deadline)],
       ]) +
         `<div class="live-note">系统每 10 秒只读检查一次。收到可信身份后会自动继续验收，不会重复写盘或再次发送 PXE。</div>`,
-      button("刷新状态", "problem-refresh", true, `data-id="${esc(id)}"`) +
-        button(
-          "查看原任务与日志",
-          "problem-record",
-          false,
-          `data-id="${esc(id)}"`,
-        ) +
-        button("关闭", "close"),
+      problemFooter(t, { refresh: true }),
     );
   }
   state.detail = null;
@@ -754,14 +747,29 @@ async function taskProblem(id) {
       ["下一步", "查看执行记录、串口日志和 BMC 控制台，确认实际状态。"],
     ]) +
       `<div class="live-note">请先确认故障原因和实际状态，再恢复任务。</div>`,
-    button(
-      "查看原任务与日志",
-      "problem-record",
-      false,
-      `data-id="${esc(id)}"`,
-    ) +
-      button("结束任务", "task-close-dialog", false, `data-id="${esc(id)}"`) +
-      button("关闭", "close"),
+    problemFooter(t, { end: true }),
+  );
+}
+
+function problemFooter(task, { refresh = false, end = false } = {}) {
+  return (
+    (refresh
+      ? button(
+          "刷新状态",
+          "problem-refresh",
+          false,
+          `data-id="${esc(task.id)}"`,
+        )
+      : "") +
+    (end
+      ? button(
+          "结束任务",
+          "task-close-dialog",
+          false,
+          `data-id="${esc(task.id)}"`,
+        )
+      : "") +
+    `<div class="actions">${button("开始验收", "resume", true, `data-resume-id="${esc(task.id)}"`)}${button("关闭", "close")}</div>`
   );
 }
 
@@ -831,34 +839,22 @@ function automaticRecoveryDialog(t) {
     "故障处理",
     t.device,
     `<section class="incident-overview"><div><span class="incident-eyebrow">${esc(recovery.source)} · ${esc(recovery.code)}</span><h3>${esc(recovery.title)}</h3><p>${esc(labels[recovery.state] || recovery.state)}</p></div><span class="incident-state ${["blocked", "unknown"].includes(recovery.state) ? "attention" : recovery.state === "completed" ? "complete" : "running"}" aria-hidden="true"></span></section><progress class="incident-progress" value="${done}" max="${recovery.steps.length}" aria-label="自动修复进度"></progress><ol class="incident-stepper">${stepper}</ol>${impact}${error}<section class="incident-safety"><strong>本次恢复边界</strong><span>保留原 Machine、Instance、地址、系统盘和安装任务</span><span>不释放 Instance，不清理磁盘，不重发 custom PXE</span></section>`,
-    button("刷新状态", "problem-refresh", true, `data-id="${esc(t.id)}"`) +
-      button(
-        "查看任务与日志",
-        "problem-record",
-        false,
-        `data-id="${esc(t.id)}"`,
-      ) +
-      (["blocked", "unknown"].includes(recovery.state)
-        ? button(
-            "结束任务",
-            "task-close-dialog",
-            false,
-            `data-id="${esc(t.id)}"`,
-          )
-        : "") +
-      button("关闭", "close"),
+    problemFooter(t, {
+      refresh: true,
+      end: ["blocked", "unknown"].includes(recovery.state),
+    }),
   );
 }
 function resumeDialog(id) {
   const t = state.tasks.find((t) => t.id === id);
-  if (!t || !t.resume_available) return;
+  if (!t || t.status !== "needs_attention") return;
   state.detail = null;
   state.wizard = { resume_id: id };
   modal(
-    "继续本轮安装验收",
+    "开始本轮安装验收",
     id,
-    `<div class="live-note">检查系统身份和安装结果，必要时恢复启动并重启验证；不会重新写盘。</div><form class="live-form"><label for="resume-serial">输入设备 SN<input class="input" id="resume-serial" placeholder="${esc(t.device)}"></label><label class="live-check"><input type="checkbox" id="resume-reboot">允许继续启动及重启验证。</label></form>`,
-    button("取消", "close") + button("确认并继续验收", "resume-confirm", true),
+    `<div class="live-note">检查本轮安装的系统身份、磁盘和网络配置，并执行启动及重启验收。不会重装系统；检查失败会显示具体原因。</div><form class="live-form"><label for="resume-serial">输入设备 SN<input class="input" id="resume-serial" placeholder="${esc(t.device)}"></label><label class="live-check"><input type="checkbox" id="resume-reboot">允许继续启动及重启验证。</label></form>`,
+    button("取消", "close") + button("开始验收", "resume-confirm", true),
   );
 }
 async function resumeAcceptance() {

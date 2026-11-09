@@ -4,8 +4,8 @@ language: en
 title: Installation tasks
 description: Select devices, review configuration, install and inspect logs and acceptance results.
 navigation_group: installation
-updated_at: "2026-11-08"
-product_version: "0.21.26"
+updated_at: "2026-11-09"
+product_version: "0.22.7"
 ---
 
 # Installation tasks
@@ -47,7 +47,7 @@ Click **Handle problem (处理问题)** and use the action offered for the curre
 | Action | Situation / impact |
 | --- | --- |
 | View automatic repair / recovery progress | Inspect recovery steps or installation-result observation before taking further action. |
-| Continue this installation's acceptance (继续本轮安装验收) | The current system is ready for acceptance. Confirm SN and permit boot/reboot verification; this does not rewrite the disk. |
+| Start acceptance (开始验收) | Click at the lower right of the failure dialog, confirm the SN and permit boot/reboot verification to start acceptance for the original task. Recovery progress does not hide this entry. The current attempt must still have a trusted identity; all acceptance checks remain enforced and the disk is not rewritten. |
 | Continue preparing device (继续准备设备) | Uses current device plans to resume onboarding preparation. Confirm the dialog's cleanup scope. |
 | Retry installation / Recheck and continue (重试安装 / 重新检查并继续) | Reuses the original Instance and task plan. Review the new preflight and confirmation; continuing installation may overwrite the system disk again. |
 | End task (结束任务) | Releases the PXEye task reservation and keeps history. It does not stop the physical installer or release the NICo Instance. |

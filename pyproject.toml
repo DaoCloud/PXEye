@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pxeye"
-version = "0.22.6"
+version = "0.22.7"
 description = "A visual operations console for NVIDIA Infra Controller"
 readme = "README.md"
 requires-python = ">=3.11"

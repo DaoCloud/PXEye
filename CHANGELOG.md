@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.22.7 — Manual acceptance entry
+
+- Add Start acceptance to the right of failure dialogs and remove the task/log shortcut.
+- Resume the original installation checks without stale recovery progress hiding the action; settle waiting boot recovery when acceptance starts.
+
 ## 0.22.6
 
 - Store local switch/power-shelf Expected-shaped records in SQLite; manage controller addresses without native lifecycle declaration writes.

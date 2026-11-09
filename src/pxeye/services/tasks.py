@@ -995,9 +995,25 @@ class TaskCoordinator:
         if not self.worker_lock.acquire(blocking=False):
             raise ValueError("已有任务执行中。")
         try:
+            task = self.store.get(task_id)
+            if task is None or task["status"] != "needs_attention":
+                raise ValueError("任务当前不允许继续验收。")
             if not self.executor.can_resume(task):
                 raise ValueError(
                     "缺少本轮可信 SSH 身份、安装已报告失败，或已请求普通重启，须先核对现场。"
+                )
+            recovery = task.get("automatic_recovery") or {}
+            if recovery.get("state") in (
+                "observing",
+                "waiting_reboot",
+                "waiting_installation",
+                "waiting_installation_retry",
+                "waiting_standard_pxe_retry",
+            ):
+                recovery["state"] = "completed"
+                recovery["completed_at"] = time.time()
+                self.executor.recovery_step(
+                    recovery, "installation", "completed", "已取得本轮安装身份，进入系统验收。"
                 )
             task["status"] = "running"
             task["error"] = None
