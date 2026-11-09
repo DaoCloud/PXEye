@@ -28,6 +28,7 @@ class CommandRoutes:
             return self.respond(200, self.app.store.save_topology_layout(layout))
         if path.startswith("/api/equipment-planning/"):
             from pxeye.services.equipment_planning import EquipmentPlanning
+            from pxeye.services.interface_planning import InterfacePlanning
 
             planning = EquipmentPlanning(self.app.adapter, self.app.resources)
             action = path.removeprefix("/api/equipment-planning/")
@@ -36,6 +37,9 @@ class CommandRoutes:
                     raise ValueError("请提交设备规划 CSV。")
                 return self.respond(200, planning.preview(body["csv"], session["token"]))
             handlers = {
+                "export-interfaces": lambda: InterfacePlanning(planning).export(
+                    body, session["token"]
+                ),
                 "save": lambda: planning.save(body),
                 "import": lambda: planning.import_csv(body, session["token"]),
                 "match": lambda: planning.match(body),

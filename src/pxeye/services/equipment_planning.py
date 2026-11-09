@@ -61,6 +61,19 @@ def normalize(values):
     return row
 
 
+def check_interface_values(record, values):
+    if (record or {}).get("interface_rows") and record["values"]["serial"] != values["serial"]:
+        raise ValueError("带网卡规划的主机 SN 来自已采集硬件，不能通过编辑更换。")
+    for row in (record or {}).get("interface_rows", []):
+        if row["mac"] == values["management_mac"] and (
+            values["management_ip"]
+            and values["management_ip"] != row["ip"]
+            or values["management_subnet"]
+            and values["management_subnet"] != row["subnet"]
+        ):
+            raise ValueError("该 MAC 已有网卡地址规划，请通过网卡规划表统一更新 IP 和子网。")
+
+
 class EquipmentPlanning:
     def __init__(self, adapter, resources):
         self.adapter, self.resources, self.store = adapter, resources, resources.store
@@ -76,7 +89,8 @@ class EquipmentPlanning:
     @staticmethod
     def public(record):
         return {k: record[k] for k in ("id", "values", "saved_at", "source")} | {
-            "revision": digest(record)
+            "revision": digest(record),
+            "interface_rows": record.get("interface_rows", []),
         }
 
     @staticmethod
@@ -124,6 +138,7 @@ class EquipmentPlanning:
             old = records.get(body["id"])
             if body["id"] and not old or body["revision"] != (digest(old) if old else ""):
                 raise ValueError("设备规划已变化，请刷新后编辑。")
+            check_interface_values(old, values)
             if any(
                 r["values"]["serial"] == values["serial"] and r != old for r in records.values()
             ):
@@ -144,6 +159,14 @@ class EquipmentPlanning:
         if not isinstance(text, str) or len(text.encode()) > 1024 * 1024:
             raise ValueError("规划 CSV 最大1 MiB。")
         reader = csv.DictReader(io.StringIO(text.lstrip("\ufeff")), strict=True)
+        from pxeye.services.interface_planning import InterfacePlanning, FIELDS as INTERFACE_FIELDS
+
+        try:
+            header = reader.fieldnames or []
+        except csv.Error:
+            raise ValueError("CSV 表头格式错误，请检查引号。") from None
+        if set(header) == set(INTERFACE_FIELDS):
+            return InterfacePlanning(self).preview(text, owner)
         if (
             not reader.fieldnames
             or len(reader.fieldnames) != len(FIELDS)
@@ -179,6 +202,7 @@ class EquipmentPlanning:
                         k: v if v.strip() else old["values"].get(k, "") for k, v in raw.items()
                     }
                 values = normalize(merged)
+                check_interface_values(old, values)
                 operation = (
                     "create" if not old else "unchanged" if old["values"] == values else "update"
                 )
@@ -219,6 +243,14 @@ class EquipmentPlanning:
     def import_csv(self, body, owner):
         if set(body) != {"preview_id"} or not isinstance(body["preview_id"], str):
             raise ValueError("请先预览设备规划。")
+        with self.store.db() as db:
+            row = db.execute(
+                "SELECT data FROM preflights WHERE id=?", (body["preview_id"],)
+            ).fetchone()
+        if row and json.loads(row["data"]).get("kind") == "interface-planning-import":
+            from pxeye.services.interface_planning import InterfacePlanning
+
+            return InterfacePlanning(self).apply(body, owner)
         with self.store.db() as db:
             db.execute("BEGIN IMMEDIATE")
             preview = db.execute(
@@ -343,6 +375,22 @@ class EquipmentPlanning:
                 hardware.get("chassis_serial"),
             }:
                 return {n["mac"].lower() for n in hardware.get("nics", []) if n.get("mac")}
+        proofs = []
+        for path in (self.adapter.data / "config" / "management-addresses" / "proofs").glob(
+            "*.json"
+        ):
+            proof = json.loads(path.read_text())
+            if (
+                proof.get("serial") == serial
+                and proof.get("kind") == "server"
+                and proof.get("mac_address", "").lower() == bmc
+                and proof.get("verified_at")
+                and "nics" in proof
+            ):
+                proofs.append(proof)
+        if proofs:
+            proof = max(proofs, key=lambda p: p["verified_at"])
+            return {n["mac_address"].lower() for n in proof["nics"]}
         for path in (self.adapter.data / "config" / "discovery").glob("*.json"):
             proof = json.loads(path.read_text())
             if (
@@ -449,10 +497,26 @@ class EquipmentPlanning:
         if prepared["intent"].get("login_ref") != old["intent"].get("login_ref"):
             raise ValueError("现有 OS 凭据无法原样保留，请先核对系统配置。")
         prepared["intent"] = intent
+        if source.get("interface_rows"):
+            from pxeye.services.interface_planning import InterfacePlanning
+
+            if source.get("interface_bmc") != machine["bmc_mac_address"].lower():
+                raise ValueError("网卡规划的 BMC 身份与纳管设备不同。")
+            for row in source["interface_rows"]:
+                network = InterfacePlanning.network(row, networks)
+                if network_revisions.get(network["id"]) != network["revision"]:
+                    raise ValueError("网卡子网配置已变化，请刷新后重新匹配。")
+            prepared = InterfacePlanning(self).merge(
+                prepared,
+                source["interface_rows"],
+                records | {machine["chassis_serial_number"]: prepared},
+                networks,
+                self.host_macs(old),
+            )
         if (
             confirms_fields(old["machine"], prepared["machine"])
             and confirms_fields(prepared["machine"], old["machine"])
-            and old["intent"] == intent
+            and old["intent"] == prepared["intent"]
         ):
             return copy.deepcopy(old)
         return prepared
@@ -561,6 +625,33 @@ class EquipmentPlanning:
                         for k in before
                         if before[k] != after[k]
                     ]
+                    for planned in source.get("interface_rows", []):
+                        hardware = planned["mac"]
+                        previous = next(
+                            (
+                                n
+                                for n in old["machine"].get("interfaces", [])
+                                if n.get("mac_address") == hardware
+                            ),
+                            {},
+                        )
+                        current = next(
+                            (
+                                n
+                                for n in prepared["machine"].get("interfaces", [])
+                                if n.get("mac_address") == hardware
+                            ),
+                            {},
+                        )
+                        fields = ("fixed_ip", "fixed_mask", "fixed_gateway")
+                        if any(previous.get(k) != current.get(k) for k in fields):
+                            result["changes"].append(
+                                {
+                                    "field": "网卡 " + hardware,
+                                    "before": " / ".join(previous.get(k) or "—" for k in fields),
+                                    "after": " / ".join(current.get(k) or "—" for k in fields),
+                                }
+                            )
                     if (
                         old["machine"] == prepared["machine"]
                         and old["intent"] == prepared["intent"]

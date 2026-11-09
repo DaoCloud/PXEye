@@ -4,8 +4,8 @@ language: en
 title: Device management
 description: Device plans, discovery, enrollment, address updates and server system configuration.
 navigation_group: resources
-updated_at: "2026-11-08"
-product_version: "0.21.26"
+updated_at: "2026-11-09"
+product_version: "0.22.2"
 ---
 
 # Device management
@@ -22,7 +22,7 @@ Open **Resources → Device management (资源 → 设备管理)** to import arr
 | Managed devices (纳管设备) | View existing devices and use matching, system configuration and address management. This tab opens by default. |
 | Device plans (设备规划) | Import or edit serial numbers, addresses, MACs, management subnets and racks; compare them with enrolled device configuration. |
 
-Device plans are stored separately. Continue the existing discovery, authentication and enrollment steps after import; imported plans do not automatically become managed devices.
+Seven-column arrival plans are stored separately. Continue the existing discovery, authentication and enrollment steps after import; imported plans do not automatically become managed devices. See section 6 for five-column interface plans.
 
 Device plans is the last tab. Search by SN, IP, MAC or rack.
 
@@ -80,7 +80,7 @@ Under **Address management → Plan address (地址管理 → 规划地址)**, v
 
 1. Under **Device plans**, select **Download template (下载模板)**, fill in the CSV and select **Import plans (导入规划)**.
 2. Select **Validate and preview (校验并预览)** and review new, updated, unchanged and invalid rows. Correct errors and preview again.
-3. Select **Save imported plans (保存导入规划)**. Use **Edit plan** to change any row, including its SN.
+3. Select **Save imported plans (保存导入规划)**. Use **Edit plan** to change a row. Its SN can be changed only while it has no hardware-linked interface plan.
 
 **Import devices / Download template (导入设备 / 下载模板)** in the managed list asks for a device type. Servers use the same planning CSV. Switches and power shelves have separate templates with JSON for nested fields; preview them and click **Confirm saving local plans (确认保存本地规划)**. **New device (新增设备)** enters one device by type. For non-server local plans, separately click **Synchronize to NICo (同步至 NICo)**, review the declaration and impact, enter SN and confirm enrollment. Synchronization may start native device management and credential handling.
 
@@ -133,5 +133,29 @@ After enrolling the server with SN `SERIAL-1`, matching selects `02:00:00:00:00:
 - **Errors and concurrency**: A failed device is not saved; other valid devices can continue. Refresh and match again if a plan or device configuration changes. Finish outstanding address operations first.
 - **Format**: Server planning CSV files support up to 1 MiB and 5,000 rows; switch/power shelf templates support up to 2 MiB. Legacy Expected Machine CSV/Excel files use a different format; download the template for the selected entry point.
 - **Other devices**: Switches and power shelves have their own system configuration and address management; they do not receive server OS installation tasks. Unknown DHCP endpoints can have address plans without being treated as authenticated, installable servers.
+
+## 6. Export and import interface addresses
+
+1. Retrieve server information in **Discovered devices**, select servers and click **Export interface plan (导出网卡规划表)**. Managed servers can also be selected for export; select 1–50 per export.
+2. Keep the exported serial numbers and host MACs. Fill in `ip`, `subnet` (CIDR) and `gateway`. Leave all three blank for unused ports; blanks preserve existing settings.
+3. Use the existing **Import devices → Server** or **Import plans** action, upload the CSV, review and save. No subnet IDs, netmasks or NICo JSON are required.
+4. Managed servers receive local **System configuration** updates immediately. Unenrolled servers retain a source plan which is applied after explicit enrollment. If application fails, correct the issue and use existing **Match plans** to retry.
+5. Confirm the existing boot interface, installation profile and other requirements, then install normally. Ubuntu matches interfaces by MAC. First-boot and reboot acceptance check their addresses, prefix lengths and MTUs.
+
+```csv
+serial,mac,ip,subnet,gateway
+SERVER001,02:00:00:00:01:01,192.0.2.11,192.0.2.0/24,192.0.2.1
+SERVER001,02:00:00:00:01:02,198.51.100.11,198.51.100.0/24,
+```
+
+These are documentation addresses. One row represents one port; serials may repeat, MACs and IPs must not. The limit is 5,000 rows and 1 MiB.
+Each CIDR must exactly match a unique existing single-IPv4-prefix HostInband network. Gateways must agree with the network definition; leave blank only when the network has no gateway.
+Import preserves credentials and boot selection. A server without a boot interface still needs an explicit selection in System configuration; CSV order never selects it.
+Previews expire after 15 minutes. Device, hardware, source-plan or network changes, address conflicts and active tasks block saving the batch; no partial import occurs.
+
+**Routing and application:** Only the existing management interface supplies the default route. Additional interfaces inherit the subnet MTU; their gateway is retained without inventing extra default or destination routes.
+Saving does not change the running OS, BMC or switch. Changes apply during the next installation; differences between source plans and system configuration remain visible.
+This feature covers collected host Ethernet MACs, excluding BMC/DPU management ports, InfiniBand, bonds, VLANs, IPv6 and policy routing.
+If the BMC omits ports, use the existing hardware information workflow to obtain Scout inventory. Export never starts Scout or reboots a machine.
 
 Related: [Network management](network-management.md) · [Installation profiles](installation-profiles.md) · [Installation tasks](installation-tasks.md) · [Pre-installation checks](../pre-installation-checklist.md) · [NVIDIA host ingestion](https://docs.nvidia.com/infra-controller/documentation/provisioning-day-0/ingesting-hosts)

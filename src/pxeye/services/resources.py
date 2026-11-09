@@ -243,6 +243,13 @@ class Resources:
         saved = DevicePlans(self.adapter, self).get(serial)
         if saved:
             plan["device_plan_revision"] = digest(saved)
+        from pxeye.installation.network_interfaces import additional_interfaces
+
+        extra = additional_interfaces(
+            row, (saved or {}).get("intent", {}), networks, device["boot_mac"]
+        )
+        if extra:
+            plan["os_interfaces"] = extra
         if use_current_bmc(serial):
             plan["bmc_choice"] = "use_current"
             plan["current_bmc_ip"] = device["bmc_ip"]

@@ -54,6 +54,25 @@ def validate_config(result, device, task):
             str(ipaddress.ip_address(a)) for a in expected_dns
         ]:
             raise ValueError("NETPLAN_DNS_MISMATCH")
+        for extra in plan.get("os_interfaces", []):
+            matches = [
+                n
+                for n in network.get("ethernets", {}).values()
+                if str(n.get("match", {}).get("macaddress", "")).lower() == extra["mac"]
+            ]
+            if len(matches) != 1:
+                raise ValueError("NETPLAN_ADDITIONAL_INTERFACE_MISMATCH")
+            n = matches[0]
+            if (
+                n.get("dhcp4") is not False
+                or extra["address"] not in n.get("addresses", [])
+                or n.get("mtu") != extra["mtu"]
+            ):
+                raise ValueError("NETPLAN_ADDITIONAL_ADDRESS_MISMATCH")
+            if n.get("gateway4") or any(
+                r.get("to") in ("default", "0.0.0.0/0") for r in n.get("routes", [])
+            ):
+                raise ValueError("NETPLAN_ADDITIONAL_DEFAULT_ROUTE")
         installer = yaml.safe_load(documents["installer"])
         if installer["autoinstall"]["identity"]["hostname"] != task["hostname"]:
             raise ValueError("INSTALLER_HOSTNAME_MISMATCH")

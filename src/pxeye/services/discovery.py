@@ -325,13 +325,28 @@ class Discovery:
                 verified_ip=c["bmc_ip"],
             )
             atomic_json(self.directory / (c["id"] + ".json"), proof)
+        from pxeye.services.equipment_planning import EquipmentPlanning
+        from pxeye.services.interface_planning import InterfacePlanning
+
+        interface_planning = InterfacePlanning(EquipmentPlanning(self.adapter, self.resources))
+        network_results = {}
+        for _, _, row in plans:
+            serial = row["chassis_serial_number"]
+            try:
+                network_results[serial] = interface_planning.apply_pending(serial)
+            except (ValueError, RuntimeError, OSError) as error:
+                # Registration already succeeded. Preserve the plan for explicit re-application.
+                network_results[serial] = "接口规划未应用，请核对后在纳管设备一键匹配：" + str(
+                    error
+                )
         return {
             "results": [
                 {
                     "serial": row["chassis_serial_number"],
                     "kind": "server",
                     "status": "registered",
-                    "detail": "已加入清单，可继续规划。",
+                    "detail": "已加入清单。"
+                    + (network_results[row["chassis_serial_number"]] or "可继续规划。"),
                 }
                 for _, _, row in plans
             ],

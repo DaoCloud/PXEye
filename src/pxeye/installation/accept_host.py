@@ -110,6 +110,18 @@ def collect(context):
     assert any(
         r.get("gateway") == device["gateway"] and r.get("dev") == interface for r in routes
     ), "DEFAULT_ROUTE_MISMATCH"
+    for nic in (task.get("installation_plan") or {}).get("os_interfaces", []):
+        names = [
+            p.parent.name
+            for p in Path("/sys/class/net").glob("*/address")
+            if p.read_text().strip().lower() == nic["mac"]
+        ]
+        assert len(names) == 1, "ADDITIONAL_MAC_MISMATCH_" + nic["mac"]
+        info = json.loads(command(["ip", "-j", "-4", "addr", "show", names[0]]))[0]
+        assert any(
+            str(a["local"]) + "/" + str(a["prefixlen"]) == nic["address"] for a in info["addr_info"]
+        ), "ADDITIONAL_IP_MISMATCH_" + nic["mac"]
+        assert info["mtu"] == nic["mtu"], "ADDITIONAL_MTU_MISMATCH_" + nic["mac"]
     netplan_yaml = command(["netplan", "get"])
     folder = Path("/var/log/installer")
     logpath = folder / "subiquity-server-debug.log"

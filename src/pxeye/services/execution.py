@@ -538,6 +538,9 @@ print(json.dumps({'serial':Path('/sys/class/dmi/id/product_serial').read_text().
                 nic["nameservers"] = {"addresses": plan["dns_servers"]}
             if "network" in data:
                 raise RuntimeError("模板同时存在顶层 network，请先统一网络来源。")
+            from pxeye.installation.network_interfaces import render_interfaces
+
+            render_interfaces(network, plan.get("os_interfaces", []))
         key = (self.secrets / "ssh_key.pub").read_text().strip()
         if key not in ai["ssh"]["authorized-keys"]:
             ai["ssh"]["authorized-keys"].append(key)

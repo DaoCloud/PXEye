@@ -68,6 +68,12 @@ function equipmentPlanningComparison(row) {
     ([key]) =>
       key !== "serial" && row.values[key] && row.values[key] !== current[key],
   );
+  if ((row.interface_rows || []).some((p) => {
+    const native = state.resources?.devices.find((d) => d.serial === row.values.serial);
+    const nic = native?.interfaces?.find((n) => n.mac_address?.toLowerCase() === p.mac);
+    const net = state.networks?.networks.find((n) => n.id === native?.intent?.network_bindings?.[p.mac]);
+    return nic?.fixed_ip !== p.ip || (nic?.fixed_gateway || "") !== p.gateway || !net?.prefixes.some((n) => n.prefix === p.subnet);
+  })) fields.push(["interfaces", "网卡地址规划"]);
   return {
     label: fields.length ? "存在差异" : "配置一致",
     tone: fields.length ? "gray" : "green",
@@ -96,6 +102,7 @@ function equipmentPlanningTable() {
         "管理子网",
         "BMC 地址 / MAC",
         "机柜",
+        "网卡地址规划",
         "配置对比",
         "操作",
       ],
@@ -103,7 +110,9 @@ function equipmentPlanningTable() {
         const v = row.values,
           comparison = equipmentPlanningComparison(row),
           c = comparison.current;
-        return `<tr><td>${esc(v.serial)}</td><td>${equipmentPlanningCell(v.management_ip, c?.management_ip)}<span class="live-small live-code">${equipmentPlanningCell(v.management_mac, c?.management_mac)}</span></td><td>${equipmentPlanningCell(v.management_subnet, c?.management_subnet)}</td><td>${equipmentPlanningCell(v.bmc_ip, c?.bmc_ip)}<span class="live-small live-code">${equipmentPlanningCell(v.bmc_mac, c?.bmc_mac)}</span></td><td>${equipmentPlanningCell(v.rack, c?.rack)}</td><td>${badge(comparison.label, comparison.tone)}</td><td>${button("编辑规划", "planning-edit", false, `data-id="${esc(row.id)}"`)}</td></tr>`;
+        const ports = row.interface_rows || [];
+        const interfaces = ports.length ? `<details><summary>${ports.length} 个网口</summary>${ports.map((p) => `<div class="live-small">${esc(p.mac)} · ${esc(p.ip)} · ${esc(p.subnet)} · 网关 ${esc(p.gateway || "无")}</div>`).join("")}</details>` : "—";
+        return `<tr><td>${esc(v.serial)}</td><td>${equipmentPlanningCell(v.management_ip, c?.management_ip)}<span class="live-small live-code">${equipmentPlanningCell(v.management_mac, c?.management_mac)}</span></td><td>${equipmentPlanningCell(v.management_subnet, c?.management_subnet)}</td><td>${equipmentPlanningCell(v.bmc_ip, c?.bmc_ip)}<span class="live-small live-code">${equipmentPlanningCell(v.bmc_mac, c?.bmc_mac)}</span></td><td>${equipmentPlanningCell(v.rack, c?.rack)}</td><td>${interfaces}</td><td>${badge(comparison.label, comparison.tone)}</td><td>${button("编辑规划", "planning-edit", false, `data-id="${esc(row.id)}"`)}</td></tr>`;
       }),
     ) +
     '<div class="live-note">按序列号与纳管设备对比。规划可随时编辑，在纳管设备中点击“一键匹配”后写入设备配置；机柜用于对比。</div>'
@@ -152,9 +161,9 @@ function equipmentPlanningImport() {
   state.wizard = { resource: "equipment-planning-import" };
   modal(
     "导入设备规划",
-    "每行一台主机，SN 唯一",
+    "支持设备规划表，以及导出的网卡规划表",
     '<div class="live-form"><a class="link-button" href="/api/equipment-planning/template">下载 CSV 模板</a><label class="live-upload">选择 CSV 文件<input id="planning-file" type="file" accept=".csv,text/csv"></label></div><div id="planning-preview"></div>' +
-      eqError(),
+      '<div class="live-note">网卡表每行一个 MAC，填写 IP、子网 CIDR、网关；不使用的网口留空。子网需已在网络管理中配置。主启动接口保持不变，默认路由只使用管理口；其他网关只保存，不自动生成额外路由。已纳管设备直接保存到系统配置，未纳管设备在确认纳管后带入；均在下次安装时生效。</div>' + eqError(),
     button("取消", "close") + button("校验并预览", "planning-preview", true),
   );
 }
@@ -170,12 +179,12 @@ async function equipmentPlanningPreview() {
   if (state.wizard !== marker) return;
   marker.preview_id = r.preview_id;
   $("#planning-preview").innerHTML =
-    `<div class="live-note">新增 ${r.counts.create} · 更新 ${r.counts.update} · 无变化 ${r.counts.unchanged} · 格式错误 ${r.counts.invalid}</div>` +
+    `<div class="live-note">新增 ${r.counts.create} · 更新 ${r.counts.update} · 无变化 ${r.counts.unchanged} · 格式错误 ${r.counts.invalid}${r.format === "interfaces" ? ` · 跳过空白网口 ${r.skipped}` : ""}</div>` +
     table(
       ["行号", "SN", "操作", "说明"],
       r.rows.map(
         (row) =>
-          `<tr><td>${row.line}</td><td>${esc(row.serial)}</td><td>${esc(equipmentPlanningStates[row.operation])}</td><td>${esc(row.detail || [row.values.management_ip, row.values.management_subnet, row.values.bmc_ip].filter(Boolean).join(" / "))}</td></tr>`,
+          `<tr><td>${esc(row.line)}</td><td>${esc(row.serial)}</td><td>${esc(equipmentPlanningStates[row.operation])}</td><td>${esc(row.detail || [row.values?.management_ip, row.values?.management_subnet, row.values?.bmc_ip].filter(Boolean).join(" / "))}${(row.interfaces || []).map((p) => `<span class="live-small">${esc(p.mac)} → ${esc(p.ip)} · ${esc(p.subnet)} · 网关 ${esc(p.gateway || "无")}</span>`).join("")}</td></tr>`,
       ),
     );
   $(".modal-footer").innerHTML =
@@ -192,6 +201,20 @@ async function equipmentPlanningImportApply() {
   close();
   await equipmentPlanningReload();
   toast(`已保存 ${r.count} 条设备规划。`);
+}
+
+async function equipmentExportInterfaces() {
+  const ids = [...(state.deviceView === "equipment-endpoints" ? state.equipmentDiscoverySelection : state.equipmentDeviceSelection)];
+  const r = await api("/api/equipment-planning/export-interfaces", { ids });
+  const url = URL.createObjectURL(new Blob(["\ufeff", r.csv], { type: "text/csv;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "interface-planning.csv";
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  toast(`已导出 ${r.count} 个已采集主机网口；请填写地址后使用现有导入入口。`);
 }
 async function equipmentPlanningMatch() {
   if (state.equipmentPlanningMatching) return;

@@ -389,6 +389,7 @@ class ManagementAddresses:
                         "model": identity["model"],
                         "manufacturer": identity["manufacturer"],
                         "evidence": identity["evidence"],
+                        "nics": identity.get("nics", []),
                         "credential": credential,
                         "verified_at": time.time(),
                         "verified_ip": row["addresses"][0],
@@ -586,6 +587,7 @@ class ManagementAddresses:
                     "manufacturer": identity["manufacturer"],
                     "evidence": identity["evidence"],
                     "credential": credential,
+                    "nics": identity.get("nics", []),
                     "verified_at": time.time(),
                     "verified_ip": row["addresses"][0],
                 }
