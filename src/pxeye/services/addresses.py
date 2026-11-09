@@ -111,7 +111,9 @@ class ManagementAddresses:
             plan = plans.get(row["interface_id"], {})
             row["address_revision"] = digest(plan) if plan else ""
             if plan:
-                if not plan.get("target_from_device_plan"):
+                if row["kind"] not in ("switch", "power_shelf") and not plan.get(
+                    "target_from_device_plan"
+                ):
                     row["target_ip"] = plan["target_ip"]
                 row["address_name"] = plan.get("name", "")
                 row["serial"] = row.get("serial") or plan.get("serial", "")
@@ -264,7 +266,7 @@ class ManagementAddresses:
                 raise ValueError("接口角色与已知设备归属不符。")
             if row["kind"] == "unknown" and role == "host":
                 raise ValueError("LOM 需先关联服务器规划。")
-            credential = copy.deepcopy(old.get("credential", {}))
+            credential = copy.deepcopy(self.credentials(row, snapshot))
             if body.get("username") or body.get("password"):
                 credential = {
                     "username": body.get("username", ""),
@@ -327,10 +329,25 @@ class ManagementAddresses:
                 plan.pop("target_ip")
                 # Only optional own-interface credentials/name are stored here for servers.
                 plan["target_from_device_plan"] = True
+            if row["kind"] in ("switch", "power_shelf") and row["role"] in ("switch_bmc", "pmc"):
+                item = next(i for i in snapshot["items"] if i["id"] == row["device_id"])
+                self.equipment.controller_plan(item, target, credential)
+                plan.pop("target_ip")
+                plan.pop("credential")
+                plan["target_from_device_plan"] = True
             self.write("plans", row["interface_id"], plan)
             return {"saved": True, "revision": digest(plan), "detail": "地址规划已保存。"}
 
     def credentials(self, row, snapshot):
+        if row["kind"] in ("switch", "power_shelf") and row.get("role") in ("switch_bmc", "pmc"):
+            item = next((i for i in snapshot["items"] if i["id"] == row.get("device_id")), {})
+            local = self.equipment.record("plans", item["id"]) if item else {}
+            declaration = local.get("declaration", {})
+            if declaration.get("bmc_username") and declaration.get("bmc_password"):
+                return {
+                    "username": declaration["bmc_username"],
+                    "password": declaration["bmc_password"],
+                }
         saved = self.record("plans", row["interface_id"]).get("credential")
         if saved:
             return saved

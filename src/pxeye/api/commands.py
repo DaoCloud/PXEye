@@ -46,7 +46,7 @@ class CommandRoutes:
                 "export-interfaces": lambda: InterfacePlanning(planning).export(
                     body, session["token"]
                 ),
-                "save": lambda: planning.save(body),
+                "save": lambda: planning.save(body, session["token"]),
                 "import": lambda: planning.import_csv(body, session["token"]),
                 "match": lambda: planning.match(body),
             }

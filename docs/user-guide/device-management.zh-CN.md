@@ -167,3 +167,21 @@ SERVER001,02:00:00:00:01:02,0000:3b:00.1,198.51.100.11,198.51.100.0/24,
 BMC未回报全部网口时，先用现有硬件读取入口补齐Scout信息；导出不自动启动Scout或重启机器。
 
 相关：[网络管理](network-management.zh-CN.md) · [安装方案](installation-profiles.zh-CN.md) · [安装任务](installation-tasks.zh-CN.md) · [装机前检查](../pre-installation-checklist.zh-CN.md) · [NVIDIA 主机接入](https://docs.nvidia.com/infra-controller/documentation/provisioning-day-0/ingesting-hosts)
+
+
+### 在设备规划中编辑网口
+
+“编辑规划”展示已采集主机网口与已有网口规划，按 MAC 编辑 IP、子网 CIDR 和网关。管理 MAC 在列表中时，管理 IP/子网从该网口自动同步，请在对应网口修改。MAC/PCIe 不能在此更改。空白网口保留原配置。保存使用与表格导入相同的校验和原子写入；已纳管网口写入系统配置，下次安装生效，设备级字段仍通过“一键匹配”应用。
+
+列表和编辑框显示匹配子网的实际 MTU（含默认值）；MTU 在网络管理维护。子网缺失、歧义或读取失败会显示“未配置 / 无法匹配”。搜索支持 SN、IP、MAC、机柜及已保存网口规划。
+
+纳管列表的管理地址仅显示地址；服务器、交换机和供电框的 BMC/PMC 列统一显示当前地址、规划地址和 MAC。纳管状态不展示原始 JSON。服务器登记时创建暂停接管的 ExpectedMachine；交换机和供电框仅在本地数据库保存对应 Expected 字段结构，不提交 NICo Expected 声明。
+
+
+### 交换机与供电框的本地管理
+
+发现后确认纳管，将真实 SN、BMC/PMC MAC、地址和凭据保存到 SQLite 的 `equipment_records`，声明字段分别对应 ExpectedSwitch / ExpectedPowerShelf。NVOS 信息允许为空，不生成 mock。列表显示“本地已纳管”；已有 NICo 原生设备保留其原有状态。两种设备均不提供“系统配置”和“同步至 NICo”按钮，查看详情及地址管理仍可用，服务器流程不变。
+
+在“地址管理”规划地址，再执行“更新 BMC 地址”。地址与凭据从本地设备声明读取；通过身份核对和 Redfish 配置验证后，记录实际地址并同步 NICo 接口静态分配，不创建或修改 ExpectedSwitch / ExpectedPowerShelf。原生声明因此可能仍显示旧地址，其完整生命周期不在本地管理范围内。设备不支持标准 DHCP/IPv4 写入时返回具体失败原因。
+
+升级自动将历史设备 plans/versions 文件导入数据库，保留原文件及历史版本。已关联本地设备的历史控制器地址规划和凭据一次性带入；数据库为后续维护入口。没有本地声明且仅有不完整原生资产的设备，仍需先获取身份并建立本地记录，不能猜测身份或凭据。

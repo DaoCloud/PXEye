@@ -309,33 +309,13 @@ class BMCJobs:
                 },
             )
         elif row["kind"] in ("switch", "power_shelf"):
-            from pxeye.services.equipment import KINDS, native_payload
-
             item = a.equipment.item(record["device_id"], a.equipment.snapshot())
-            native = item.get("native_declaration")
-            if not native and (row.get("switch_id") or row.get("power_shelf_id")):
-                raise ValueError("已受管设备的原生声明缺失，管理入口同步需要核对。")
-            if native:
-                cfg = KINDS[row["kind"]]
-                if native.get("bmc_ip_address") != record["target_ip"]:
-                    payload = native_payload(
-                        row["kind"],
-                        {cfg["id"]: native[cfg["id"]], "bmc_ip_address": record["target_ip"]},
-                    )
-                    self.adapter.rpc(
-                        "PatchExpected" + cfg["rpc"],
-                        {
-                            "expected_" + row["kind"]: payload,
-                            "update_mask": {"paths": ["bmc_ip_address"]},
-                        },
-                    )
-                    item = a.equipment.item(record["device_id"], a.equipment.snapshot())
-                    if (
-                        item.get("native_declaration", {}).get("bmc_ip_address")
-                        != record["target_ip"]
-                    ):
-                        raise RuntimeError("原生设备声明的新地址尚未读回。")
-            # An address-only device has no native lifecycle declaration to change.
+            if (
+                item.get("declaration", {}).get("bmc_mac_address", "").lower()
+                != record["mac_address"]
+            ):
+                raise ValueError("本地设备身份与管理 MAC 不一致。")
+            a.equipment.controller_plan(item, record["target_ip"], verified=True)
         record.update(status="verified", verified_at=time.time())
         self.step(record, "sync", "completed", "管理联系地址与 NICo 静态分配已同步。")
 

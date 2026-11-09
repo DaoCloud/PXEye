@@ -274,18 +274,87 @@ class Equipment:
         for name in ("plans", "versions", "operations", "proofs", "imports"):
             (self.directory / name).mkdir(mode=0o700, parents=True, exist_ok=True)
         self.lock = threading.RLock()
+        # Import historical files once per key. SQLite is authoritative thereafter.
+        with self.store.db() as db:
+            for bucket in ("plans", "versions"):
+                for path in sorted((self.directory / bucket).glob("*.json")):
+                    data = json.loads(path.read_text())
+                    db.execute(
+                        "INSERT OR IGNORE INTO equipment_records VALUES (?,?,?)",
+                        (bucket, path.stem, json.dumps(data)),
+                    )
+            # Preserve historical address-editor overrides before switching authority.
+            legacy = self.adapter.data / "config" / "management-addresses" / "plans"
+            for path in sorted(legacy.glob("*.json")):
+                address = json.loads(path.read_text())
+                if address.get("kind") not in KINDS or address.get("role") not in (
+                    "switch_bmc",
+                    "pmc",
+                ):
+                    continue
+                if db.execute(
+                    "SELECT 1 FROM equipment_records WHERE bucket='address-migration' AND id=?",
+                    (path.stem,),
+                ).fetchone():
+                    continue
+                key = equipment_id(address["kind"], address["mac_address"])
+                stored = db.execute(
+                    "SELECT data FROM equipment_records WHERE bucket='plans' AND id=?", (key,)
+                ).fetchone()
+                if not stored:
+                    continue
+                plan = json.loads(stored["data"])
+                declaration = plan["declaration"]
+                if address.get("target_ip"):
+                    declaration["bmc_ip_address"] = address["target_ip"]
+                credential = address.get("credential")
+                if credential:
+                    declaration.update(
+                        bmc_username=credential["username"], bmc_password=credential["password"]
+                    )
+                plan["ports"] = interfaces_for(plan["kind"], declaration)
+                db.execute(
+                    "UPDATE equipment_records SET data=? WHERE bucket='plans' AND id=?",
+                    (json.dumps(plan), key),
+                )
+                db.execute(
+                    "INSERT INTO equipment_records VALUES ('address-migration',?,?)",
+                    (path.stem, json.dumps({"migrated_at": time.time()})),
+                )
 
     def records(self, name):
+        if name in ("plans", "versions"):
+            with self.store.db() as db:
+                return [
+                    json.loads(r["data"])
+                    for r in db.execute(
+                        "SELECT data FROM equipment_records WHERE bucket=? ORDER BY id", (name,)
+                    )
+                ]
         return [json.loads(p.read_text()) for p in sorted((self.directory / name).glob("*.json"))]
 
     def record(self, name, key):
         if not isinstance(key, str) or not re.fullmatch(r"[a-zA-Z0-9-]{1,80}", key):
             raise ValueError("记录 ID 无效。")
+        if name in ("plans", "versions"):
+            with self.store.db() as db:
+                row = db.execute(
+                    "SELECT data FROM equipment_records WHERE bucket=? AND id=?", (name, key)
+                ).fetchone()
+            return json.loads(row["data"]) if row else {}
         path = self.directory / name / (key + ".json")
         return json.loads(path.read_text()) if path.exists() else {}
 
     def write(self, name, key, record):
         self.record(name, key)  # Validate the path component before writing.
+        if name in ("plans", "versions"):
+            with self.store.db() as db:
+                db.execute(
+                    "INSERT INTO equipment_records VALUES (?,?,?) "
+                    "ON CONFLICT(bucket,id) DO UPDATE SET data=excluded.data",
+                    (name, key, json.dumps(record)),
+                )
+            return
         atomic_json(self.directory / name / (key + ".json"), record)
 
     def native(self):
@@ -423,7 +492,7 @@ class Equipment:
                     if asset
                     else None,
                     "ports": interfaces_for(kind, row),
-                    "status": "managed" if asset else "declared" if current else "draft",
+                    "status": "managed" if asset else "declared" if current else "local_managed",
                 }
                 items.append(item)
             for asset in assets:
@@ -604,12 +673,7 @@ class Equipment:
             row["declaration"] = redact(declaration)
             row["credential_present"] = bool(declaration.get("bmc_password"))
             row["nvos_credential_present"] = bool(declaration.get("nvos_password"))
-            row["can_sync"] = (
-                item["kind"] in KINDS
-                and not item.get("unplanned")
-                and not item.get("address_only")
-                and not any(k.startswith(item["kind"] + ":") for k in snapshot["errors"])
-            )
+            row["can_sync"] = False
             items.append(row)
         endpoints = [
             a
@@ -770,9 +834,48 @@ class Equipment:
 
     def persist(self, plan):
         version = digest(plan)
-        self.write("versions", plan["id"] + "-" + version[:16], plan)
-        self.write("plans", plan["id"], plan)
-        return {"id": plan["id"], "revision": version, "status": "draft"}
+        with self.store.db() as db:
+            for bucket, key in (
+                ("versions", plan["id"] + "-" + version[:16]),
+                ("plans", plan["id"]),
+            ):
+                db.execute(
+                    "INSERT INTO equipment_records VALUES (?,?,?) "
+                    "ON CONFLICT(bucket,id) DO UPDATE SET data=excluded.data",
+                    (bucket, key, json.dumps(plan)),
+                )
+        return {"id": plan["id"], "revision": version, "status": "local_managed"}
+
+    def controller_plan(self, item, target, credential=None, *, verified=False):
+        """Keep local Expected-shaped intent separate from verified observations."""
+        with self.lock:
+            return self._controller_plan(item, target, credential, verified=verified)
+
+    def _controller_plan(self, item, target, credential=None, *, verified=False):
+        plan = self.record("plans", item["id"])
+        if not plan:
+            declaration = validate(item["kind"], item["declaration"])
+            plan = {
+                "id": item["id"],
+                "kind": item["kind"],
+                "serial": item["serial"],
+                "declaration": declaration,
+                "bindings": {},
+            }
+        declaration = copy.deepcopy(plan["declaration"])
+        if verified and declaration.get("bmc_ip_address") != target:
+            raise ValueError("本地设备地址规划已变化，停止同步。")
+        declaration["bmc_ip_address"] = target
+        if credential:
+            declaration.update(
+                bmc_username=credential["username"], bmc_password=credential["password"]
+            )
+        plan["declaration"] = validate(item["kind"], declaration)
+        if verified:
+            plan.update(current_bmc_ip=target, bmc_verified_at=time.time())
+        plan["ports"] = interfaces_for(item["kind"], plan["declaration"])
+        plan["updated_at"] = time.time()
+        return self.persist(plan)
 
     def save(self, body):
         with self.lock:
@@ -1010,55 +1113,7 @@ class Equipment:
         )
 
     def sync_context(self, key):
-        snapshot = self.snapshot()
-        item = self.item(key, snapshot)
-        if snapshot["errors"] or self.pending(key):
-            raise ValueError("原生能力读取失败或上次写入结果待核对；请先刷新记录。")
-        declaration = copy.deepcopy(item["declaration"])
-        for port in item["ports"]:
-            if port["role"] in ("switch_bmc", "pmc"):
-                declaration["bmc_ip_address"] = port.get("target_ip", "")
-            elif port["role"] == "nvos" and len(declaration.get("nvos_interfaces", [])) == 1:
-                declaration["nvos_ip_address"] = port.get("target_ip", "")
-        row = validate(item["kind"], declaration, complete=True)
-        self.check_conflicts([item], snapshot, [key])
-        bindings = self.record("plans", key).get("bindings", {})
-        for port in item["ports"]:
-            target = port.get("target_ip")
-            if not target:
-                continue
-            address = ipaddress.IPv4Address(target)
-            matches = [
-                (n, p)
-                for n in snapshot["networks"]
-                if n["segment_type"] == "UNDERLAY" and n["name"] != "static-assignments"
-                for p in n["prefixes"]
-                if address.version == ipaddress.ip_network(p["prefix"]).version
-                and address in ipaddress.ip_network(p["prefix"])
-            ]
-            if len(matches) != 1 or bindings.get(port["mac_address"]) not in (
-                None,
-                "",
-                matches[0][0]["id"],
-            ):
-                raise ValueError("接入前目标 IP 必须唯一匹配已生效的 Underlay 网络及接口引用。")
-            prefix = ipaddress.ip_network(matches[0][1]["prefix"])
-            if address in (prefix.network_address, prefix.broadcast_address) or target == matches[
-                0
-            ][1].get("gateway"):
-                raise ValueError("目标管理地址不能使用网段、广播或网关地址。")
-        # A local declaration cannot reuse a native ID owned by a different MAC.
-        cfg = KINDS[item["kind"]]
-        expected = [
-            normal_native(item["kind"], r) for r in snapshot["native"][item["kind"] + ":expected"]
-        ]
-        if any(
-            value_id(r.get(cfg["id"])) == value_id(row[cfg["id"]])
-            and r["bmc_mac_address"].lower() != row["bmc_mac_address"]
-            for r in expected
-        ):
-            raise ValueError("原生声明 ID 已归属于另一 MAC。")
-        return snapshot, item, row
+        raise ValueError("交换机和供电框仅在本地纳管，不支持同步 Expected 声明至 NICo。")
 
     def sync_preview(self, body, owner):
         with self.lock:

@@ -167,3 +167,21 @@ This feature covers collected host Ethernet MACs, excluding BMC/DPU management p
 If the BMC omits ports, use the existing hardware information workflow to obtain Scout inventory. Export never starts Scout or reboots a machine.
 
 Related: [Network management](network-management.md) · [Installation profiles](installation-profiles.md) · [Installation tasks](installation-tasks.md) · [Pre-installation checks](../pre-installation-checklist.md) · [NVIDIA host ingestion](https://docs.nvidia.com/infra-controller/documentation/provisioning-day-0/ingesting-hosts)
+
+
+### Edit interface addresses in equipment planning
+
+Edit planning lists collected host MACs and existing interface plans. Edit IP, subnet CIDR and gateway per MAC; MAC and PCIe identities are read-only. When the management MAC is listed, its management IP/subnet fields mirror that interface. Blank interfaces preserve existing configuration. Saving reuses spreadsheet import validation and atomic application. Enrolled interface changes are saved to system configuration for the next installation; device-level fields still require Match planning.
+
+The table and editor display the matched subnet's actual MTU, including defaults. Network management remains the sole MTU configuration source. Missing, ambiguous or unreadable networks show an unavailable indication. Search covers SN, IP, MAC, rack and saved interface plans.
+
+The managed list shows management addresses without role prefixes. Server, switch and power-shelf controller columns share current address, planned address and MAC formatting. Status cells omit raw JSON. Server registration creates a paused ExpectedMachine; switches and power shelves store Expected-shaped declarations locally without submitting them to NICo.
+
+
+### Local switch and power-shelf management
+
+Enrollment stores real serial, controller MAC, address and credentials in SQLite `equipment_records`, using ExpectedSwitch / ExpectedPowerShelf declaration fields. NVOS data may remain empty; no mock values are generated. Local records display Local managed; existing native assets keep their original status. System configuration and Sync to NICo actions are hidden for both types. Details and address management remain available; the server workflow is unchanged.
+
+Plan an address in Address management, then run Update BMC address. Controller address intent and credentials come from the local declaration. After identity and Redfish address verification, the service records the actual address and synchronizes the NICo interface static allocation without creating or patching ExpectedSwitch / ExpectedPowerShelf. Existing native declarations can therefore retain their previous addresses; their complete lifecycle is outside this local management workflow. Unsupported DHCP/IPv4 writes return an explicit failure.
+
+Upgrade imports historical equipment plans and versions into SQLite, preserving original files and history. Historical controller address overrides and credentials for matching local devices migrate once. SQLite is authoritative thereafter. Incomplete native-only assets require identity collection and a local record before address updates; identities and credentials are never guessed.

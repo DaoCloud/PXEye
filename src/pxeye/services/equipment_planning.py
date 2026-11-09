@@ -104,6 +104,13 @@ class EquipmentPlanning:
     def list(self):
         with self.store.db() as db:
             rows = [self.public(r) for r in self.records(db).values()]
+            devices = {
+                r["serial"]: json.loads(r["data"])
+                for r in db.execute("SELECT serial,data FROM device_plans")
+            }
+        for row in rows:
+            device = devices.get(row["values"]["serial"])
+            row["editable_nics"] = self.host_nics(device) if device else []
         return {"rows": rows}
 
     @staticmethod
@@ -124,7 +131,67 @@ class EquipmentPlanning:
         )
         return stream.getvalue()
 
-    def save(self, body):
+    def save(self, body, owner=""):
+        if "interfaces" in body:
+            return self.save_interfaces(body, owner)
+        return self.save_values(body)
+
+    def save_interfaces(self, body, owner):
+        """Use the import validator and atomic apply for the interactive NIC editor."""
+        from pxeye.services.interface_planning import FIELDS as PORT_FIELDS, InterfacePlanning
+
+        if set(body) != {"id", "revision", "values", "interfaces"}:
+            raise ValueError("设备规划字段无效。")
+        values = normalize(body["values"])
+        rows = body["interfaces"]
+        if not isinstance(rows, list) or not 1 <= len(rows) <= 500:
+            raise ValueError("网卡规划数量无效。")
+        with self.store.db() as db:
+            old = self.records(db).get(body["id"])
+        if (
+            not old
+            or digest(old) != body["revision"]
+            or old["values"]["serial"] != values["serial"]
+        ):
+            raise ValueError("设备规划已变化，或硬件 SN 被修改，请刷新后编辑。")
+        stream = io.StringIO(newline="")
+        writer = csv.DictWriter(stream, fieldnames=PORT_FIELDS)
+        writer.writeheader()
+        for row in rows:
+            if not isinstance(row, dict) or set(row) != set(PORT_FIELDS) - {"serial"}:
+                raise ValueError("网卡规划字段无效。")
+            if any(not isinstance(v, str) for v in row.values()):
+                raise ValueError("网卡规划必须为文本。")
+            writer.writerow({**row, "serial": values["serial"]})
+        if not any(r[k].strip() for r in rows for k in ("ip", "subnet", "gateway")):
+            return self.save_values({k: v for k, v in body.items() if k != "interfaces"})
+        service = InterfacePlanning(self)
+        preview = service.preview(stream.getvalue(), owner)
+        if not preview["preview_id"]:
+            raise ValueError(
+                "；".join(r["detail"] for r in preview["rows"] if r["operation"] == "invalid")
+            )
+        with self.store.db() as db:
+            db.execute("BEGIN IMMEDIATE")
+            saved = db.execute(
+                "SELECT data FROM preflights WHERE id=?", (preview["preview_id"],)
+            ).fetchone()
+            data = json.loads(saved["data"])
+            item = data["updates"][0]
+            if item["source_revision"] != body["revision"]:
+                raise ValueError("设备规划已变化，请刷新后编辑。")
+            check_interface_values(item["record"], values)
+            item["record"]["values"] = values
+            item["record"]["source"] = "ui"
+            if values != old["values"]:
+                item["operation"] = "update"
+            db.execute(
+                "UPDATE preflights SET data=? WHERE id=?", (json.dumps(data), preview["preview_id"])
+            )
+        result = service.apply({"preview_id": preview["preview_id"]}, owner)
+        return {"status": "saved" if result["count"] else "unchanged"}
+
+    def save_values(self, body):
         if (
             set(body) != {"id", "revision", "values"}
             or not isinstance(body["id"], str)

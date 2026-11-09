@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.22.6
+
+- Store local switch/power-shelf Expected-shaped records in SQLite; manage controller addresses without native lifecycle declaration writes.
+- Unify managed-device address display, expand per-MAC planning edits and display actual subnet MTU.
+
+
 **English** · [简体中文](CHANGELOG.zh-CN.md)
 
 Capability milestones for the current source lineage. Historical version headings identify development baselines, not published PXEye releases. Site addresses, device identities and operational logs are excluded.

@@ -10,6 +10,7 @@ const equipmentKinds = {
 };
 const equipmentStates = {
   draft: "本地规划",
+  local_managed: "本地已纳管",
   declared: "已同步声明",
   managed: "已纳管",
   server: "服务器",
@@ -54,15 +55,22 @@ function equipmentManagementAddresses(d) {
   const ports = d.ports.filter((p) => !equipmentControllerRoles.has(p.role));
   const port =
     ports.find((p) => p.primary) || ports.find((p) => equipmentPortAddress(p));
-  return port
-    ? `${esc(port.role_label)} ${esc(equipmentPortAddress(port) || "待分配")}`
-    : "待分配";
+  return port ? esc(equipmentPortAddress(port) || "待分配") : "待分配";
 }
-const equipmentBmcAddresses = (d, native) =>
-  d.kind === "server" && native
-    ? deviceBmcAddress(native)
-    : eqNames(d.ports.filter((p) => equipmentControllerRoles.has(p.role))) ||
-      "—";
+function equipmentBmcAddresses(d, native) {
+  if (d.kind === "server" && native) return deviceBmcAddress(native);
+  const ports = d.ports.filter((p) => equipmentControllerRoles.has(p.role));
+  return (
+    ports
+      .map((p) => {
+        const current = p.observed?.flatMap((o) => o.addresses)[0] || "";
+        const planned = p.target_ip || "";
+        const mismatch = Boolean(current && planned && current !== planned);
+        return `<div class="${mismatch ? "bmc-address-mismatch" : ""}">${bmcLink(current)}<span class="live-small">规划 ${esc(planned || "待规划")}</span>${mismatch ? '<span class="live-small">规划与当前地址不一致</span>' : ""}</div><span class="live-small">${esc(p.mac_address || "")}</span>`;
+      })
+      .join("") || "—"
+  );
+}
 function equipmentOnlineState(d) {
   const value = String(d.power_state ?? "")
     .toLowerCase()
@@ -136,7 +144,8 @@ function devicePage() {
       button("下载模板", "planning-template") +
       button("新增规划", "planning-new", true)
     : pending
-      ? button("刷新发现结果", "eq-refresh", true) + button("导入规划", "planning-import")
+      ? button("刷新发现结果", "eq-refresh", true) +
+        button("导入规划", "planning-import")
       : button("刷新数据", "eq-refresh") +
         button("导入设备", "eq-choose-import") +
         button("新增设备", "eq-choose-new", true) +
@@ -163,7 +172,7 @@ function devicePage() {
       visible.length > 0 &&
       visible.every((d) => state.equipmentDeviceSelection.includes(d.id));
   const f = state.equipmentFilters;
-  body += `<div class="live-editor-grid">${selectField("eq-filter-kind", "设备类型", [["", "全部类型"], ...Object.entries(equipmentKinds).filter(([k]) => k !== "unknown")], f.kind)}${selectField("eq-filter-rack", "机柜", [["", "全部机柜"], ...[...new Set(data.devices.map((d) => d.rack_id).filter(Boolean))].map((id) => [id, id])], f.rack)}${selectField("eq-filter-status", "纳管状态", [["", "全部状态"], ...["draft", "declared", "managed", "server"].map((k) => [k, equipmentStates[k]])], f.status)}${eqText("filter-search", "搜索 SN、名称、MAC 或 IP", f.search)}</div>`;
+  body += `<div class="live-editor-grid">${selectField("eq-filter-kind", "设备类型", [["", "全部类型"], ...Object.entries(equipmentKinds).filter(([k]) => k !== "unknown")], f.kind)}${selectField("eq-filter-rack", "机柜", [["", "全部机柜"], ...[...new Set(data.devices.map((d) => d.rack_id).filter(Boolean))].map((id) => [id, id])], f.rack)}${selectField("eq-filter-status", "纳管状态", [["", "全部状态"], ...["draft", "local_managed", "declared", "managed", "server"].map((k) => [k, equipmentStates[k]])], f.status)}${eqText("filter-search", "搜索 SN、名称、MAC 或 IP", f.search)}</div>`;
   const selected = state.equipmentDeviceSelection.length,
     disabled = selected ? "" : "disabled",
     servers = equipmentSelectedServers(),
@@ -209,7 +218,7 @@ function devicePage() {
             ),
           )}</details>`
         : ""
-    }</td><td>${equipmentManagementAddresses(d)}</td><td>${equipmentBmcAddresses(d, native)}</td><td>${badge(status)}${d.native_state ? `<span class="live-small">${esc(d.native_state)}</span>` : ""}</td><td>${esc(d.rack_id || "—")}</td><td><div class="device-row-actions">${button("地址管理", "address-device", false, eqAttr(d.id))}${server ? button("系统配置", "device-edit", false, eqAttr(d.legacy_id)) : d.address_only ? "" : !d.unplanned ? button("系统配置", "eq-edit", false, eqAttr(d.id)) + button("同步至 NICo", "eq-sync-preview", false, `${eqAttr(d.id)} ${!d.can_sync ? "disabled" : ""}`) : button("查看", "eq-detail", false, eqAttr(d.id))}</div></td><td>${equipmentOnline(d)}</td></tr>`;
+    }</td><td>${equipmentManagementAddresses(d)}</td><td>${equipmentBmcAddresses(d, native)}</td><td>${badge(status)}</td><td>${esc(d.rack_id || "—")}</td><td><div class="device-row-actions">${button("地址管理", "address-device", false, eqAttr(d.id))}${server ? button("系统配置", "device-edit", false, eqAttr(d.legacy_id)) : d.address_only ? "" : button("查看", "eq-detail", false, eqAttr(d.id))}</div></td><td>${equipmentOnline(d)}</td></tr>`;
   });
   return (
     body +
@@ -501,7 +510,13 @@ function equipmentDiscovery(rows) {
   const note =
     '<div class="live-note">设备上电后，管理控制器发出 DHCP 请求，NICo 按请求来源匹配子网并从动态地址池分配临时地址。选择端点并使用 BMC / PMC 账号读取序列号、设备类型和硬件信息，确认后加入纳管设备。</div>';
   const filter = `<div class="live-form" style="margin-bottom:18px">${selectField("eq-discovery-network", "发现子网", [["", "全部发现子网"], ...networks.map((n) => [n, n])], state.candidateNetwork)}</div>`;
-  const exportable = !reading && selected > 0 && selected <= 50 && selectable.filter((a) => state.equipmentDiscoverySelection.includes(a.interface_id)).every((a) => equipmentDiscoveryProof(a)?.identity.kind === "server");
+  const exportable =
+    !reading &&
+    selected > 0 &&
+    selected <= 50 &&
+    selectable
+      .filter((a) => state.equipmentDiscoverySelection.includes(a.interface_id))
+      .every((a) => equipmentDiscoveryProof(a)?.identity.kind === "server");
   const bar = `<div class="equipment-batch-bar"><span>已选 ${selected} 台 · 每批最多 50 台</span><div class="live-tools">${state.equipmentDiscoveryBatch ? button("查看获取结果", "eq-discovery-results") : ""}${button("导出设备网卡列表", "eq-export-interfaces", false, exportable ? "" : "disabled")}${button(reading ? "正在获取设备信息…" : "批量获取设备信息", "eq-identify-many", false, !reading && selected > 0 && selected <= 50 ? "" : "disabled")}</div></div>`;
   const rowsHtml = visible.map((a) => {
     const result = equipmentDiscoveryProof(a),
@@ -614,10 +629,7 @@ async function equipmentDetail(id) {
       `<details><summary>声明与身份依据</summary><pre>${esc(JSON.stringify({ local: d.declaration, native: d.native_declaration, proofs: d.proofs }, null, 2))}</pre></details>` +
       eqError(),
     button("关闭", "close") +
-      (!d.unplanned
-        ? button("系统配置", "eq-edit", false, eqAttr(id)) +
-          button("同步至 NICo", "eq-sync-preview", true, eqAttr(id))
-        : ""),
+      button("地址管理", "address-device", false, eqAttr(id)),
   );
 }
 function equipmentNetworkOptions(selected) {
@@ -1256,7 +1268,10 @@ registerActions(
             await equipmentReload();
             if (w.returnToBatch && state.wizard === w)
               equipmentDiscoveryResults();
-            toast(enrollment.results?.map((row) => row.detail).join("；") || "已加入纳管设备；可继续维护地址和安装规划。");
+            toast(
+              enrollment.results?.map((row) => row.detail).join("；") ||
+                "已加入纳管设备；可继续维护地址和安装规划。",
+            );
           });
         case "eq-reconcile":
           return await busy(async () => {
