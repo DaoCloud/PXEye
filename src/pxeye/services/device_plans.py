@@ -182,8 +182,8 @@ class DevicePlans:
         if body["revision"] != (digest(old) if old else ""):
             raise ValueError("规划已被修改，请刷新后核对；本次内容尚未保存。")
         before = old["machine"] if old else {}
-        if old:
-            self.resources.check_address_operation(before)
+        # Local edits create a new revision; running operations keep their
+        # frozen inputs. Execution paths check outstanding address operations.
         if old and any(
             changes.get(k, before.get(k)) != before.get(k) for k in ("chassis_serial_number", "id")
         ):

@@ -602,6 +602,7 @@ class ManagementAddresses:
                     "manufacturer": identity["manufacturer"],
                     "evidence": identity["evidence"],
                     "address": row["addresses"][0],
+                    "nics": identity.get("nics", []),
                     "refreshed_at": proof["verified_at"],
                 }
             except (ValueError, RuntimeError) as error:

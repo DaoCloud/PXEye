@@ -49,9 +49,11 @@ async function readDeviceHardware(w) {
     w.loading = false;
   }
 }
-function deviceInterfaceTable(device, hardware) {
+function deviceInterfaceTable(device, hardware, observed = []) {
   const ports = new Map(
-    (hardware?.nics || []).filter((n) => n.mac).map((n) => [n.mac.toLowerCase(), n]),
+    [...(hardware?.nics || []), ...observed]
+      .filter((n) => n.mac || n.mac_address)
+      .map((n) => [(n.mac || n.mac_address).toLowerCase(), n]),
   );
   const planned = (device.interfaces || []).filter(
     (n) => ["host", "unspecified", 0, 1].includes(n.role ?? "host"),
@@ -62,16 +64,16 @@ function deviceInterfaceTable(device, hardware) {
   }
   ports.delete(device.bmc_mac_address?.toLowerCase());
   return '<section class="subsection"><h3>设备网卡列表</h3>' + table(
-    ["MAC / 型号", "用途", "规划 IP", "所属子网", "网关"],
+    ["MAC / 型号", "PCIe 地址", "用途", "规划 IP", "所属子网", "网关"],
     [...ports.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([mac, port]) => {
       const nic = planned.find((n) => n.mac_address?.toLowerCase() === mac),
         binding = device.intent?.network_bindings?.[mac],
         network = state.networks?.networks.find((n) => n.id === binding),
         subnet = network?.prefixes.map((p) => p.prefix).join(", ") ||
           (nic?.fixed_mask ? `掩码 ${nic.fixed_mask}` : "");
-      return `<tr><td>${esc(mac)}${port.model ? `<span class="live-small">${esc(port.model)}</span>` : ""}</td><td>${nic?.primary ? "启动 / 管理口" : "主机接口"}</td><td>${esc(nic?.fixed_ip || "")}</td><td>${esc(subnet)}</td><td>${esc(nic?.fixed_gateway || "")}</td></tr>`;
+      return `<tr><td>${esc(mac)}${port.model || port.name ? `<span class="live-small">${esc(port.model || port.name)}</span>` : ""}</td><td>${esc(port.pci_address || "")}${port.pci_note ? `<span class="live-small">${esc(port.pci_note)}</span>` : ""}</td><td>${nic?.primary ? "启动 / 管理口" : "主机接口"}</td><td>${esc(nic?.fixed_ip || "")}</td><td>${esc(subnet)}</td><td>${esc(nic?.fixed_gateway || "")}</td></tr>`;
     }),
-  ) + '<p class="live-small">地址为已保存的设备配置；空白表示未配置，下次安装时生效。</p></section>';
+  ) + '<p class="live-small">IP 为已保存的设备配置，下次安装时生效。PCIe 地址来自硬件回报，未获取或映射不唯一时留空。</p></section>';
 }
 function renderDeviceDetail(w, scroll = 0) {
   if (state.wizard !== w) return;
@@ -171,7 +173,7 @@ function renderDeviceDetail(w, scroll = 0) {
       body +=
         '<div class="live-empty">暂无硬件信息。主机进入 Scout 后可采集网卡和磁盘。</div>';
   }
-  body += deviceInterfaceTable(d, h.hardware);
+  body += deviceInterfaceTable(d, h.hardware, h.nics);
   if (h.can_prepare && !w.check)
     body += button("检查接入条件", "hardware-check", false);
   if (w.check) {

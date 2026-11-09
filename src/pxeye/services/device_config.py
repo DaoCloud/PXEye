@@ -35,8 +35,6 @@ class DeviceConfig:
             if proposed is not None
             else Onboarding(self.adapter, None, self.resources).inventory_row(body["serial"])
         )
-        if self.resources.store.active(body["serial"]):
-            raise ValueError("设备已有任务或待处理现场，暂不能修改。")
         old = self.get(body["serial"])
         if digest(old) != body["revision"] and not (not old and body["revision"] == ""):
             raise ValueError("安装配置已变化，请刷新后编辑。")

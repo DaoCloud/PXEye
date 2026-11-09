@@ -6,10 +6,10 @@ import ipaddress
 def additional_interfaces(machine, intent, networks, boot_mac):
     result = []
     segments = {n["id"]: n for n in networks}
-    primary = next(
-        n for n in machine["interfaces"] if n.get("mac_address", "").lower() == boot_mac.lower()
-    )
-    prefixes = [ipaddress.IPv4Interface(primary["fixed_ip"] + "/" + primary["fixed_mask"]).network]
+    if not any(
+        n.get("mac_address", "").lower() == boot_mac.lower() for n in machine["interfaces"]
+    ):
+        raise ValueError("主启动接口未在设备网卡中找到。")
     for nic in machine.get("interfaces", []):
         mac = nic.get("mac_address", "").lower()
         if (
@@ -34,9 +34,6 @@ def additional_interfaces(machine, intent, networks, boot_mac):
                 address.network.broadcast_address,
             ):
                 raise ValueError()
-            if any(address.network.overlaps(p) for p in prefixes):
-                raise ValueError("多网口子网重叠；请使用独立子网，Bond/VLAN需单独规划。")
-            prefixes.append(address.network)
             result.append(
                 {
                     "mac": mac,

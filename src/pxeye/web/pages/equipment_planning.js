@@ -162,20 +162,26 @@ function equipmentPlanningImport() {
   modal(
     "导入设备规划",
     "支持设备规划表，以及导出的设备网卡列表",
-    '<div class="live-form"><a class="link-button" href="/api/equipment-planning/template">下载 CSV 模板</a><label class="live-upload">选择 CSV 文件<input id="planning-file" type="file" accept=".csv,text/csv"></label></div><div id="planning-preview"></div>' +
-      '<div class="live-note">网卡表每行一个 MAC，填写 IP、子网 CIDR、网关；不使用的网口留空。子网需已在网络管理中配置。主启动接口保持不变，默认路由只使用管理口；其他网关只保存，不自动生成额外路由。已纳管设备直接保存到系统配置，未纳管设备在确认纳管后带入；均在下次安装时生效。</div>' + eqError(),
+    '<div class="live-form"><a class="link-button" href="/api/equipment-planning/template">下载 CSV 模板</a><label class="live-upload">选择 Excel 或 CSV 文件<input id="planning-file" type="file" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"></label></div><div id="planning-preview"></div>' +
+      '<div class="live-note">网卡表每行一个 MAC，填写 IP、子网 CIDR、网关；不使用的网口留空。PCIe 地址为采集信息，导入不会覆盖。子网需已在网络管理中配置。主启动接口保持不变，默认路由只使用管理口；其他网关只保存，不自动生成额外路由。已纳管设备直接保存到系统配置，未纳管设备在确认纳管后带入；均在下次安装时生效。</div>' + eqError(),
     button("取消", "close") + button("校验并预览", "planning-preview", true),
   );
 }
 async function equipmentPlanningPreview() {
   const file = $("#planning-file").files[0];
-  if (!file || !/\.csv$/i.test(file.name))
-    throw Error("请选择设备规划 CSV 文件。");
-  if (file.size > 1024 * 1024) throw Error("CSV 最大1 MiB。");
+  if (!file || !/\.(csv|xlsx)$/i.test(file.name))
+    throw Error("请选择设备规划 Excel 或 CSV 文件。");
+  if (file.size > 1024 * 1024) throw Error("文件最大1 MiB。");
   const marker = state.wizard;
-  const r = await api("/api/equipment-planning/preview", {
-    csv: await file.text(),
-  });
+  let payload;
+  if (/\.xlsx$/i.test(file.name)) {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    let binary = "";
+    for (let i = 0; i < bytes.length; i += 8192)
+      binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
+    payload = { xlsx: btoa(binary) };
+  } else payload = { csv: await file.text() };
+  const r = await api("/api/equipment-planning/preview", payload);
   if (state.wizard !== marker) return;
   marker.preview_id = r.preview_id;
   $("#planning-preview").innerHTML =
@@ -221,15 +227,18 @@ async function equipmentExportInterfaces() {
   if (!ids.length || ids.length > 50)
     throw Error("一次请选择1–50台服务器导出设备网卡列表。");
   const r = await api("/api/equipment-planning/export-interfaces", { ids });
-  const url = URL.createObjectURL(new Blob(["\ufeff", r.csv], { type: "text/csv;charset=utf-8" }));
+  const data = Uint8Array.from(atob(r.xlsx), (c) => c.charCodeAt(0));
+  const url = URL.createObjectURL(new Blob([data], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  }));
   const link = document.createElement("a");
   link.href = url;
-  link.download = "device-interfaces.csv";
+  link.download = "device-interfaces.xlsx";
   document.body.append(link);
   link.click();
   link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-  toast(`已导出 ${r.count} 个已采集主机网口，含已保存的地址；填写空白后可用原入口导入。`);
+  toast(`已导出 ${r.count} 个主机网口，含 PCIe 和已保存地址；填写后可用原入口导入。`);
 }
 async function equipmentPlanningMatch() {
   if (state.equipmentPlanningMatching) return;

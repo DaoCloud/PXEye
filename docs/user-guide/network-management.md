@@ -4,8 +4,8 @@ language: en
 title: Network management
 description: Create installation subnets and review DHCP relay, reservations and device subnet bindings.
 navigation_group: resources
-updated_at: "2026-11-08"
-product_version: "0.21.26"
+updated_at: "2026-11-09"
+product_version: "0.22.5"
 ---
 
 # Network management
@@ -48,7 +48,7 @@ Click **Add subnet (新增子网)** and enter the site plan:
 
 ### View
 
-Click **Refresh data (刷新数据)**, locate the segment and click **View (查看)** to check type, prefix, gateway, MTU and associated interfaces. Existing segment names and network settings cannot currently be edited.
+Click **Refresh data (刷新数据)**, locate the segment and click **View (查看)** to check type, prefix, gateway, MTU and associated interfaces. Existing segment names and network settings cannot currently be edited. Set MTU under **Add subnet** or in a draft before creation; it defaults to 1500. Existing segment details show MTU without an edit control. Device planning sheets do not define MTU; additional static interfaces inherit their subnet MTU during installation.
 
 ### Create
 

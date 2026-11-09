@@ -11,9 +11,16 @@ import uuid
 from urllib.parse import urlsplit
 
 from pxeye.common import digest
+from pxeye.domain.pci import merge_host_nics
+from pxeye.domain.workbook import interface_workbook
 from pxeye.services.equipment import Equipment, mac
 
 FIELDS = ("serial", "mac", "ip", "subnet", "gateway")
+EXPORT_FIELDS = ("serial", "mac", "pci_address", "ip", "subnet", "gateway")
+
+
+def interface_header(header):
+    return len(header) == len(set(header)) and set(header) in (set(FIELDS), set(EXPORT_FIELDS))
 
 
 class InterfacePlanning:
@@ -43,10 +50,12 @@ class InterfacePlanning:
             bmc = native["bmc_mac_address"].lower()
             if old["machine"]["bmc_mac_address"].lower() != bmc or serial in result:
                 raise ValueError("设备 SN 或 BMC 身份冲突：" + serial)
+            nics = self.planning.host_nics(old)
             result[serial] = {
                 "id": "server-" + native["id"],
                 "bmc": bmc,
-                "macs": sorted(self.planning.host_macs(old) - {bmc}),
+                "macs": [n["mac_address"] for n in nics],
+                "nics": nics,
                 "revision": digest(old),
             }
         endpoints = {a["interface_id"]: a for a in snapshot["allocations"]}
@@ -80,10 +89,12 @@ class InterfacePlanning:
             ):
                 continue
             serial, bmc = identity["serial"], endpoint["mac_address"].lower()
+            nics = merge_host_nics([identity.get("nics", [])], bmc)
             item = {
                 "id": endpoint["interface_id"],
                 "bmc": bmc,
-                "macs": sorted({mac(n["mac_address"]) for n in identity.get("nics", [])} - {bmc}),
+                "macs": [n["mac_address"] for n in nics],
+                "nics": nics,
                 "revision": "",
             }
             if serial in result and result[serial] != item:
@@ -113,7 +124,8 @@ class InterfacePlanning:
             raise ValueError("所选设备存在重复 MAC，请核对硬件归属。")
         stream = io.StringIO(newline="")
         writer = csv.writer(stream)
-        writer.writerow(FIELDS)
+        writer.writerow(EXPORT_FIELDS)
+        rows = []
         with self.store.db() as db:
             records = {
                 r["serial"]: json.loads(r["data"]) for r in db.execute("SELECT * FROM device_plans")
@@ -132,12 +144,20 @@ class InterfacePlanning:
                 if source.get("interface_bmc") == item["bmc"]
             }
             # Saved intent is authoritative; observed DHCP leases are not user configuration.
-            for hardware in item["macs"]:
+            for nic in item["nics"]:
+                hardware = nic["mac_address"]
                 values = self.saved_address(record, hardware, snapshot["networks"])
                 if not record:
                     values = {k: pending.get(hardware, {}).get(k, "") for k in FIELDS[2:]}
-                writer.writerow([serial, hardware, *(values[k] for k in FIELDS[2:])])
-        return {"csv": stream.getvalue(), "count": sum(len(c["macs"]) for _, c in selected)}
+                rows.append(
+                    [serial, hardware, nic["pci_address"], *(values[k] for k in FIELDS[2:])]
+                )
+        writer.writerows(rows)
+        return {
+            "csv": stream.getvalue(),
+            "xlsx": interface_workbook(EXPORT_FIELDS, rows),
+            "count": len(rows),
+        }
 
     @staticmethod
     def saved_address(record, hardware, networks):
@@ -215,9 +235,6 @@ class InterfacePlanning:
             raise ValueError("规划 IP 与站点服务地址冲突。")
 
     def merge(self, old, rows, records, networks, hardware):
-        serial = old["machine"]["chassis_serial_number"]
-        if self.store.active(serial):
-            raise ValueError("设备有活动任务或待处理现场，暂不能修改接口规划。")
         machine, intent = copy.deepcopy(old["machine"]), copy.deepcopy(old["intent"])
         changed = {}
         self.protect_services(rows)
@@ -258,23 +275,6 @@ class InterfacePlanning:
         DeviceConfig(self.adapter, self.resources).validate_networks(
             changed, machine, networks=networks
         )
-        configured = [
-            n
-            for n in machine.get("interfaces", [])
-            if n.get("role", "host") in ("host", "unspecified", 0, 1)
-            and n.get("fixed_ip")
-            and n.get("fixed_mask")
-        ]
-        self.check_overlap(
-            [
-                {
-                    "subnet": str(
-                        ipaddress.IPv4Interface(n["fixed_ip"] + "/" + n["fixed_mask"]).network
-                    )
-                }
-                for n in configured
-            ]
-        )
         clean = {k: v for k, v in intent.items() if k not in ("serial", "login_ref")}
         _, prepared = self.plans.prepare(
             {"id": machine["id"], "revision": digest(old), "machine": machine, "intent": clean},
@@ -292,8 +292,8 @@ class InterfacePlanning:
 
     def preview(self, text, owner):
         reader = csv.DictReader(io.StringIO(text.lstrip("\ufeff")), strict=True)
-        if len(reader.fieldnames or []) != len(FIELDS) or set(reader.fieldnames) != set(FIELDS):
-            raise ValueError("设备网卡列表请使用 serial,mac,ip,subnet,gateway 五列。")
+        if not interface_header(reader.fieldnames or []):
+            raise ValueError("设备网卡列表请保留 serial,mac,ip,subnet,gateway；可带 pci_address 信息列。")
         snapshot = self.snapshot()
         catalog = self.catalog(snapshot, owner)
         incoming, seen, addresses, errors, skipped = {}, set(), set(), [], 0
@@ -307,7 +307,8 @@ class InterfacePlanning:
                         for v in raw.values()
                     ):
                         raise ValueError("列数、文本长度或控制字符无效。")
-                    row = {k: v.strip() for k, v in raw.items()}
+                    # PCIe is an observed information column, never imported hardware truth.
+                    row = {k: raw[k].strip() for k in FIELDS}
                     row["mac"] = mac(row["mac"])
                     serial, hardware = row["serial"], row["mac"]
                     if serial not in catalog or hardware not in catalog[serial]["macs"]:
@@ -475,21 +476,11 @@ class InterfacePlanning:
         }
 
     @staticmethod
-    def check_overlap(rows):
-        prefixes = []
-        for row in rows:
-            prefix = ipaddress.IPv4Network(row["subnet"])
-            if any(prefix.overlaps(p) for p in prefixes):
-                raise ValueError("同一机器的网口子网重叠；Bond/VLAN需单独规划。")
-            prefixes.append(prefix)
-
-    @staticmethod
     def check_pending(sources, updates, records, snapshot):
         desired = {s: r.get("interface_rows", []) for s, r in sources.items()}
         desired.update({u["serial"]: u["record"]["interface_rows"] for u in updates})
         owners, macs = {}, {}
         for serial, rows in desired.items():
-            InterfacePlanning.check_overlap(rows)
             for row in rows:
                 owner = (serial, row["mac"])
                 if row["mac"] in macs and macs[row["mac"]] != serial:

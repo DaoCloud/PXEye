@@ -1,6 +1,9 @@
 """Shared Redfish device classification and management-MAC verification."""
 
 import re
+import time
+
+from pxeye.clients.redfish import REDFISH_DEADLINE
 
 
 def field(report, name):
@@ -147,15 +150,18 @@ def read_device_identity(adapter, address, hardware, credential):
     if result["kind"] == "server":
         system = next(s for s in systems if text(s, "SerialNumber") == result["serial"])
         path = (field(system, "EthernetInterfaces") or {}).get("@odata.id")
-        if path:
-            result["nics"] = [
-                {
-                    "mac_address": text(nic, "MACAddress").lower(),
-                    "name": text(nic, "Name") or text(nic, "Id"),
-                }
-                for nic in members(read, path, 64, "主机接口")
-                if re.fullmatch(r"(?:[0-9a-f]{2}:){5}[0-9a-f]{2}", text(nic, "MACAddress").lower())
-            ]
+        ethernet = members(read, path, 64, "主机接口") if path else []
+        from pxeye.services.redfish_nics import host_nics
+
+        # Optional PCI inventory must not turn a successful identity read into
+        # an unbounded walk through slow or unsupported firmware resources.
+        deadline = time.monotonic() + 15
+        existing = REDFISH_DEADLINE.get()
+        token = REDFISH_DEADLINE.set(min(existing, deadline) if existing else deadline)
+        try:
+            result["nics"] = host_nics(read, system, chassis, ethernet, hardware.lower())
+        finally:
+            REDFISH_DEADLINE.reset(token)
     return result
 
 

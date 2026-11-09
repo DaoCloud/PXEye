@@ -33,9 +33,15 @@ class CommandRoutes:
             planning = EquipmentPlanning(self.app.adapter, self.app.resources)
             action = path.removeprefix("/api/equipment-planning/")
             if action == "preview":
-                if set(body) != {"csv"}:
-                    raise ValueError("请提交设备规划 CSV。")
-                return self.respond(200, planning.preview(body["csv"], session["token"]))
+                from pxeye.domain.workbook import workbook_csv
+
+                if set(body) == {"xlsx"}:
+                    text = workbook_csv(body["xlsx"])
+                elif set(body) == {"csv"}:
+                    text = body["csv"]
+                else:
+                    raise ValueError("请提交设备规划 Excel 或 CSV。")
+                return self.respond(200, planning.preview(text, session["token"]))
             handlers = {
                 "export-interfaces": lambda: InterfacePlanning(planning).export(
                     body, session["token"]

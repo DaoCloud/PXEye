@@ -5,7 +5,7 @@ title: Device management
 description: Device plans, discovery, enrollment, address updates and server system configuration.
 navigation_group: resources
 updated_at: "2026-11-09"
-product_version: "0.22.2"
+product_version: "0.22.5"
 ---
 
 # Device management
@@ -137,25 +137,29 @@ After enrolling the server with SN `SERIAL-1`, matching selects `02:00:00:00:00:
 ## 6. Export and import interface addresses
 
 1. Retrieve server information in **Discovered devices**, select servers and click **Export device interface list (导出设备网卡列表)**. Managed servers can also be selected for export; select 1–50 per export.
-2. The file is named `device-interfaces.csv` and uses the exact header `serial,mac,ip,subnet,gateway`, with one row per collected host port. Identity-verified Scout inventory, BMC refresh and enrollment discovery are combined and deduplicated by MAC. Saved IPs, subnet CIDRs and gateways are included; unconfigured values stay blank. Keep SN/MAC and fill the blanks. Completely blank address rows preserve existing settings. Temporary DHCP leases are not exported as planned addresses.
-3. Use the existing **Import devices → Server** or **Import plans** action, upload the CSV, review and save. No subnet IDs, netmasks or NICo JSON are required.
+2. The file is named `device-interfaces.xlsx` with the header `serial,mac,pci_address,ip,subnet,gateway` and one row per collected host port. Columns and rows are enlarged and sized for their contents, with wrapping and grid borders on every cell, including blank address cells. The header is frozen and supports filtering. Identity-verified Scout inventory, BMC refresh and enrollment discovery are combined and deduplicated by MAC. Saved IPs, subnet CIDRs and gateways are included; unconfigured values stay blank. Keep SN/MAC and fill the blanks. Completely blank address rows preserve existing settings. Temporary DHCP leases are not exported as planned addresses.
+3. Use the existing **Import devices → Server** or **Import plans** action, upload the completed Excel file, review and save. Existing five-column CSV files remain supported. No subnet IDs, netmasks or NICo JSON are required.
 4. Managed servers receive updates in the existing device interface structure and **System configuration**. Reopening the same device shows each MAC's IP, subnet and gateway; subsequent exports include the saved values. Unenrolled servers retain a source plan which is applied after explicit enrollment. If application fails, correct the issue and use existing **Match plans** to retry.
 5. Confirm the existing boot interface, installation profile and other requirements, then install normally. Ubuntu matches interfaces by MAC. First-boot and reboot acceptance check their addresses, prefix lengths and MTUs.
 
 The managed-device header checkbox selects or deselects only the current filtered list. It stays checked when all visible rows are selected; click again to deselect them. **Clear selection (清空选择)** also clears hidden selections. With mixed device types selected, interface export includes only servers; the note below the action bar shows included and excluded counts. Switches, power shelves and address-only records are excluded from the host OS interface sheet. **Match plans** still requires a server-only selection.
 
-If a subnet has not been created, preview identifies the failed device by SN and shows MAC, IP, CIDR and the reason. Gateway mismatches, ownership errors and address conflicts also report their causes. Any validation error prevents the entire batch from being saved; other preview rows do not represent successful imports. Create the required HostInband subnet or correct the CSV, then preview and confirm again. CSV import never creates subnets automatically.
+If a subnet has not been created, preview identifies the failed device by SN and shows MAC, IP, CIDR and the reason. Gateway mismatches, ownership errors and address conflicts also report their causes. Any validation error prevents the entire batch from being saved; other preview rows do not represent successful imports. Create the required HostInband subnet or correct the spreadsheet, then preview and confirm again. Import never creates subnets automatically.
 
 ```csv
-serial,mac,ip,subnet,gateway
-SERVER001,02:00:00:00:01:01,192.0.2.11,192.0.2.0/24,192.0.2.1
-SERVER001,02:00:00:00:01:02,198.51.100.11,198.51.100.0/24,
+serial,mac,pci_address,ip,subnet,gateway
+SERVER001,02:00:00:00:01:01,0000:3b:00.0,192.0.2.11,192.0.2.0/24,192.0.2.1
+SERVER001,02:00:00:00:01:02,0000:3b:00.1,198.51.100.11,198.51.100.0/24,
 ```
+
+The example shows the six Excel columns as text. `pci_address` is observed information: discovery and device-detail refresh share the same parser, and device details also show it. Missing, ambiguous or conflicting reports leave it blank; a missing PCI domain is never invented. Fill only the three address columns. Import ignores the PCIe column and never changes hardware identity. Legacy `serial,mac,ip,subnet,gateway` CSV files remain accepted through the same entry point.
 
 These are documentation addresses. One row represents one port; serials may repeat, MACs and IPs must not. The limit is 5,000 rows and 1 MiB.
 Each CIDR must exactly match a unique existing single-IPv4-prefix HostInband network. Gateways must agree with the network definition; leave blank only when the network has no gateway.
-Import preserves credentials and boot selection. A server without a boot interface still needs an explicit selection in System configuration; CSV order never selects it.
-Previews expire after 15 minutes. Device, hardware, source-plan or network changes, address conflicts and active tasks block saving the batch; no partial import occurs.
+Import preserves credentials and boot selection. A server without a boot interface still needs an explicit selection in System configuration; CSV order never selects it. The selected host interface has `primary: true`, with at most one per server. Change it in **System configuration → Host management and boot port → Boot NIC MAC (系统配置 → 主机管理与启动口 → 启动网卡 MAC)**. The seven-column arrival plan can also change it through `management_mac` followed by **Match plans**. This per-MAC interface sheet does not contain a primary flag.
+Previews expire after 15 minutes. Device, hardware, source-plan or network changes and address conflicts block saving the batch; no partial import occurs. Installation tasks, outstanding attention items and address-operation records do not block saving a future plan. Running tasks retain their frozen revisions; execution entry points still check task and address-operation state.
+
+**Multiple ports on one server:** Independent physical ports may use the same or overlapping subnets; bonds or VLANs are not required. Address format, hardware ownership, existing subnet/gateway definitions and IP conflicts are still validated.
 
 **Routing and application:** Only the existing management interface supplies the default route. Additional interfaces inherit the subnet MTU; their gateway is retained without inventing extra default or destination routes.
 Saving does not change the running OS, BMC or switch. Changes apply during the next installation; differences between source plans and system configuration remain visible.

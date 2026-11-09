@@ -5,6 +5,7 @@ import time
 from pxeye.common import sha
 from pxeye.services.onboarding import Onboarding, discovery_info, architecture
 from pxeye.common import atomic_json, digest
+from pxeye.domain.pci import scout_pci_address
 
 
 def facts(machine):
@@ -42,6 +43,7 @@ def facts(machine):
                 "mac": n.get("mac_address", "").lower(),
                 "vendor": n.get("pci_properties", {}).get("vendor"),
                 "model": n.get("pci_properties", {}).get("device"),
+                "pci_address": scout_pci_address(n.get("pci_properties") or {}),
             }
             for n in info.get("network_interfaces", [])
         ],
@@ -263,4 +265,10 @@ class Hardware:
                     {"label": "Scout硬件已获取", "complete": False},
                 ],
             )
+        from pxeye.services.equipment_planning import EquipmentPlanning
+
+        record = DevicePlans(self.adapter, self.resources).get(serial)
+        result["nics"] = (
+            EquipmentPlanning(self.adapter, self.resources).host_nics(record) if record else []
+        )
         return result

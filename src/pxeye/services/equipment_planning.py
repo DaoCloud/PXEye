@@ -159,13 +159,13 @@ class EquipmentPlanning:
         if not isinstance(text, str) or len(text.encode()) > 1024 * 1024:
             raise ValueError("规划 CSV 最大1 MiB。")
         reader = csv.DictReader(io.StringIO(text.lstrip("\ufeff")), strict=True)
-        from pxeye.services.interface_planning import InterfacePlanning, FIELDS as INTERFACE_FIELDS
+        from pxeye.services.interface_planning import InterfacePlanning, interface_header
 
         try:
             header = reader.fieldnames or []
         except csv.Error:
             raise ValueError("CSV 表头格式错误，请检查引号。") from None
-        if set(header) == set(INTERFACE_FIELDS):
+        if interface_header(header):
             return InterfacePlanning(self).preview(text, owner)
         if (
             not reader.fieldnames
@@ -364,9 +364,14 @@ class EquipmentPlanning:
             self.plans.export()
 
     def host_macs(self, record):
+        return {nic["mac_address"] for nic in self.host_nics(record)}
+
+    def host_nics(self, record):
+        from pxeye.domain.pci import merge_host_nics
+
         machine = record["machine"]
         serial, bmc = machine["chassis_serial_number"], machine["bmc_mac_address"].lower()
-        observed = set()
+        observed = []
         path = self.adapter.data / "observations" / "hardware" / (sha(serial) + ".json")
         if path.exists():
             cached = json.loads(path.read_text())
@@ -375,7 +380,7 @@ class EquipmentPlanning:
                 hardware.get("product_serial"),
                 hardware.get("chassis_serial"),
             }:
-                observed.update(n["mac"] for n in hardware.get("nics", []) if n.get("mac"))
+                observed.append(hardware.get("nics", []))
         proofs = []
         for path in (self.adapter.data / "config" / "management-addresses" / "proofs").glob(
             "*.json"
@@ -391,7 +396,7 @@ class EquipmentPlanning:
                 proofs.append(proof)
         if proofs:
             proof = max(proofs, key=lambda p: p["verified_at"])
-            observed.update(n["mac_address"] for n in proof["nics"])
+            observed.append(proof["nics"])
         proofs = []
         for path in (self.adapter.data / "config" / "discovery").glob("*.json"):
             proof = json.loads(path.read_text())
@@ -405,14 +410,8 @@ class EquipmentPlanning:
                 proofs.append(proof)
         if proofs:
             proof = max(proofs, key=lambda p: p["verified_at"])
-            observed.update(n["mac_address"] for n in proof.get("nics", []))
-        result = set()
-        for value in observed:
-            try:
-                result.add(mac(value))
-            except ValueError:
-                continue
-        return result - {bmc}
+            observed.append(proof.get("nics", []))
+        return merge_host_nics(observed, bmc)
 
     def prepare_match(self, source, old, records, networks, network_revisions):
         values = source["values"]

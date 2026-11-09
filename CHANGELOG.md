@@ -4,6 +4,13 @@
 
 Capability milestones for the current source lineage. Historical version headings identify development baselines, not published PXEye releases. Site addresses, device identities and operational logs are excluded.
 
+## 0.22.5 — PCIe interface inventory and planning updates
+
+- Collect MAC-to-PCIe function addresses through shared Redfish/Scout parsing and show them in device details and interface exports.
+- Export formatted Excel interface lists with a PCIe column, wider columns, grid borders and text-preserving cells; accept the completed file through the existing import flow and retain legacy CSV support.
+- Allow independent host interfaces to share a subnet through import and installation rendering, and allow local planning updates while tasks keep their frozen revisions.
+- Clarify existing MTU configuration and primary boot-interface selection.
+
 ## 0.22.1 — Online and offline Helm deployment
 
 - Default to online Chart downloads from URLs, Helm repositories or OCI; accept browser uploads for offline Charts and complete recipes.
