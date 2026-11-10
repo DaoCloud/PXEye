@@ -58,6 +58,7 @@ Replace example URLs with actual sources. See [Deployment](../nico-deployment.md
 - The Core Chart does not include all PostgreSQL, Vault, certificate management, REST and Temporal dependencies. Install their Charts separately or use a complete ordered recipe.
 - Offline Charts must include dependencies, and images must already be available. A Chart upload does not import node images.
 - Existing services remain observable; same-name resources are not automatically adopted. Failed installations retain releases and persistent data.
+- Components in multi-phase recipes are assigned to their actual rendered phases. Declared connection settings and Boot checks are preserved rather than replaced with standalone Chart defaults.
 - Service readiness, physical DHCP/Relay, PXE and OS installation require separate checks. Deployment does not automatically install hosts or update firmware.
 
 Related: [Deployment and permissions](../nico-deployment.md) · [Site settings](site-settings.md) · [Network management](network-management.md)

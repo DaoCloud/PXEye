@@ -58,6 +58,7 @@ NICo 的镜像、数据库、Vault、服务暴露和 Boot 配置按 Chart 的 va
 - NICo Core Chart 不包含全部 PostgreSQL、Vault、证书管理、REST 和 Temporal 依赖；它们可分别用 Chart 部署，也可由完整部署包按顺序安装。
 - 离线 Chart 必须包含子 Chart 依赖，相关镜像应提前可用；上传 Chart 不会向节点导入镜像。
 - 已有服务用于观察，安装不会自动接管同名资源。失败保留发布和持久数据，核对后继续。
+- 多阶段部署包的组件按实际渲染阶段归属汇总；包内声明的连接信息和Boot检查会保留，不按单Chart默认值覆盖。
 - 服务 Ready 与物理 DHCP、Relay、PXE 和 OS 安装分别验证。部署不会自动启动真实主机装机或固件更新。
 
 相关：[部署与权限](../nico-deployment.zh-CN.md) · [站点设置](site-settings.zh-CN.md) · [网络管理](network-management.zh-CN.md)

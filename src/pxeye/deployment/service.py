@@ -475,6 +475,7 @@ class NicoDeployment:
             ]
         objects = self.observe()["objects"]
         rendered = []
+        rendered_objects = []
         phases = []
         permissions = set()
         for phase in package["manifest"]["phases"]:
@@ -631,16 +632,20 @@ class NicoDeployment:
                     f"{phase['name']} 未包含初始化 Job / Helm hook，不能作为完整部署阶段。"
                 )
             self._event(f"{phase['name']} 渲染与权限检查完成")
+            rendered_objects.extend(docs)
         if simple:
             # Recognize services from the rendered Chart; no user-maintained component manifest.
-            projected = project(docs)
+            projected = project(rendered_objects)
+            resource_phases = {
+                (obj["kind"], obj["name"], obj["namespace"]): obj["phase"] for obj in rendered
+            }
             package["bindings"] = [
                 {
                     "id": c["id"],
                     "kind": w["kind"],
                     "name": w["name"],
                     "namespace": w["namespace"],
-                    "phase": "helm",
+                    "phase": resource_phases[(w["kind"], w["name"], w["namespace"])],
                 }
                 for c in projected
                 if len(c["workloads"]) == 1
@@ -656,19 +661,23 @@ class NicoDeployment:
                         "kind": workload["kind"],
                         "name": workload["name"],
                         "namespace": workload["namespace"],
-                        "phase": "helm",
+                        "phase": phases[0]["id"],
                         "external": True,
                     }
                     package["bindings"].append(pxe)
-            source = package["connection"] = {
+            source = package["connection"] or {
                 "namespace": settings["namespace"],
                 "client_secret": settings.get("client_secret")
                 or settings["release_prefix"] + "-nico-admin-client",
                 "ca_secret": settings.get("ca_secret")
                 or settings["release_prefix"] + "-nico-site-ca",
             }
+            package["connection"] = source
             if pxe:
-                source["pxe_internal_url"] = f"http://{pxe['name']}.{pxe['namespace']}.svc:8080"
+                source.setdefault(
+                    "pxe_internal_url", f"http://{pxe['name']}.{pxe['namespace']}.svc:8080"
+                )
+            if pxe and not package["boot_checks"]:
                 architectures = (
                     ("x86_64", "aarch64")
                     if settings.get("architecture", "both") == "both"
