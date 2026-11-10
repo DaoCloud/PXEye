@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.22.10 — Manual acceptance skips
+
+- Add a Manual pass action to each installation acceptance item; persist task-scoped operator decisions and display Skipped.
+- Apply skips to base, GPU and reboot acceptance without claiming automatic verification or changing the frozen installation plan.
+- Keep operator/time/evidence audit records and preserve skip decisions during concurrent worker updates.
+
 ## 0.22.9 — Per-check installation acceptance
 
 - Retain individual acceptance results and continue read-only base checks after network mismatches; show failures without bypassing required checks or reboot gates.
