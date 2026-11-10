@@ -41,6 +41,24 @@ When `deployment/` is absent, the page reports the bundle inventory but refuses 
 
 If a site explicitly requires one heavyweight PXEye image, build `Dockerfile.bundle` on top of the normal PXEye image with the bundle as a separate approximately 17GiB layer. This is supported as an exception, but the read-only mount remains the default because upgrades and rollbacks otherwise move the entire archive.
 
+For the field bundle currently shipped with the Core, cert-manager and platform Charts,
+generate the PXEye-discoverable Core-only recipe before running
+`package-nico-field-bundle.py`:
+
+```bash
+python3 tools/build-nico-core-recipe.py \
+  --bundle /srv/nico-bundle \
+  --output /srv/nico-bundle/deployment \
+  --chart-source deploy/nico-platform
+```
+
+The builder creates `deployment/deployment.json`, locks every referenced Chart/value
+with SHA256, and writes `deployment/charts/` and `deployment/values/`. It deliberately
+selects only the versioned Core Chart (`nico-<version>.tgz`), not the optional
+`nico-rest-*` Charts. This recipe covers a single-node Core/PXE lab; REST, Temporal,
+Keycloak and HA database/Vault remain site-supplied phases until their complete Charts
+and values are available.
+
 After checks, inspect the command in the confirmation dialog:
 
 ```bash

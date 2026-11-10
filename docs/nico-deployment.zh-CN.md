@@ -51,6 +51,22 @@ PXEye Deployment 只需额外挂载一个只读目录，并在 `site.json` 中�
 
 如果现场明确要求单一 PXEye 镜像携带全部材料，可把 bundle 作为独立的大镜像层构建：先构建常规 PXEye，再在包含 bundle 目录的构建上下文执行 `docker build -f Dockerfile.bundle --build-arg PXEYE_BASE_IMAGE=<pxeye-image> --build-arg BUNDLE_DIRECTORY=<bundle-dir> -t <pxeye-with-bundle> .`。这会产生约 17GiB 的额外层，升级、缓存和回滚成本高，默认不采用。
 
+当前 bundle 已包含 Core、cert-manager 和 platform Chart 时，先运行下面的构建器，再执行
+`package-nico-field-bundle.py`：
+
+```bash
+python3 tools/build-nico-core-recipe.py \
+  --bundle /srv/nico-bundle \
+  --output /srv/nico-bundle/deployment \
+  --chart-source deploy/nico-platform
+```
+
+构建器会生成 `deployment/deployment.json`，为每个引用的 Chart/value 写入 SHA256 锁，
+并生成 `deployment/charts/` 和 `deployment/values/`。它只选择版本化的 Core Chart
+（`nico-<version>.tgz`），不会把可选的 `nico-rest-*` Chart 误当成 Core。当前 recipe
+覆盖单节点 Core/PXE 学习环境；REST、Temporal、Keycloak 以及高可用数据库/Vault 仍需
+在拿到完整 Chart 和 values 后作为现场阶段加入。
+
 检查通过后在确认窗口查看将执行的命令：
 
 ```bash
