@@ -151,6 +151,7 @@ def main():
                     "--retry-times",
                     "3",
                     "--preserve-digests",
+                    "--dest-oci-accept-uncompressed-layers",
                     source,
                     f"docker://{target}",
                 ],
