@@ -175,8 +175,7 @@ function devicePage() {
   const selected = state.equipmentDeviceSelection.length,
     disabled = selected ? "" : "disabled",
     servers = equipmentSelectedServers(),
-    exportable = servers.length > 0 && servers.length <= 50,
-    excluded = selected - servers.length;
+    exportable = servers.length > 0 && servers.length <= 50;
   const matchable =
     selected > 0 &&
     selected <= 50 &&
@@ -185,8 +184,6 @@ function devicePage() {
       .filter((d) => state.equipmentDeviceSelection.includes(d.id))
       .every((d) => d.kind === "server" && !d.address_only);
   body += `<div class="equipment-batch-bar"><span>已选 ${selected} 台</span><div class="live-tools">${button("清空选择", "eq-clear-selection", false, disabled)}${button("导出设备网卡列表", "eq-export-interfaces", false, exportable ? "" : "disabled")}${button("一键匹配", "planning-match", false, matchable ? "" : "disabled")}${button("更新 BMC 地址", "eq-batch-bmc", true, disabled)}${button("更新管理地址", "eq-batch-management", false, disabled)}${button("刷新设备详情", "eq-batch-refresh", false, disabled)}</div></div>`;
-  if (selected)
-    body += `<div class="live-note">设备网卡列表仅包含所选 ${servers.length} 台服务器${excluded ? `；${excluded} 台其他设备或纯地址记录不包含在内` : ""}。每批最多导出 50 台服务器。</div>`;
   const rows = visible.map((d) => {
     const server = d.kind === "server" && !d.address_only,
       native = state.resources?.devices.find((x) => x.serial === d.serial);
