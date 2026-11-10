@@ -26,13 +26,13 @@ Open **Configuration → NICo cluster** to run Helm in the Kubernetes cluster ho
 | Chart version | Optional for repository or OCI sources; blank uses the source default. A download URL selects its own version. |
 | Offline material | Upload a `.tgz` Chart or a complete `.tar.gz` / `.zip` recipe, up to 128 MiB. No server login or deployment-package mount is required. |
 | Site name | Site identifier, up to 100 characters. |
-| Helm release | Use `mmzhou` or the `mmzhou-` prefix, such as `mmzhou-postgres`. |
+| Helm release | Lowercase letters, digits and hyphens, starting with a letter, up to 49 characters; for example `nico-system`. Defaults to the current namespace. Multi-phase recipes also validate names after adding phase suffixes. |
 | Namespace | The PXEye namespace; read-only. |
 | Timeout | 900 seconds by default; 60–1800 seconds. |
 | values YAML | Paste Chart parameters or read a YAML file. Ordinary Charts need no separate component manifest; complete recipes use their per-phase values. |
 | Site connection | Optional section for Core HTTPS, public PXE URL, client and CA Secrets, and target architecture. Service URLs can also be supplied when connecting after installation. |
 
-Set image, database, Vault, service exposure and Boot options through the Chart values. The NICo Core Chart receives `mmzhou` workload names and the shared PXEye materials PVC.
+Set image, database, Vault, service exposure and Boot options through the Chart values. A standalone NICo Core Chart uses the selected release prefix for default workload names and mounts the shared PXEye materials PVC. Complete recipes must keep workload names, Service DNS and Secret references aligned through their per-phase values. The materials PVC comes from site configuration and is independent of the Helm release name.
 
 ## 3. Steps
 

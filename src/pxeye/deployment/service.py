@@ -442,7 +442,7 @@ class NicoDeployment:
             package["manifest"]["phases"][0]["pod_overrides"] = [
                 {
                     "kind": "Deployment",
-                    "name": "mmzhou-nico-pxe",
+                    "name": settings["release_prefix"] + "-nico-pxe",
                     "fsGroup": 1000,
                     "nodeSelector": {"kubernetes.io/hostname": settings["pxeye_node"]}
                     if settings["pxeye_node"]
@@ -452,14 +452,16 @@ class NicoDeployment:
                             "name": "pxeye-os-materials",
                             "persistentVolumeClaim": {
                                 "claimName": self.settings.get(
-                                    "materials_claim", "mmzhou-pxeye-materials"
+                                    "materials_claim",
+                                    self.app.config.get("site", {}).get("deployment", "mmzhou-pxeye")
+                                    + "-materials",
                                 )
                             },
                         }
                     ],
                     "containers": [
                         {
-                            "name": "mmzhou-nico-pxe",
+                            "name": settings["release_prefix"] + "-nico-pxe",
                             "volumeMounts": [
                                 {
                                     "name": "pxeye-os-materials",
@@ -525,7 +527,7 @@ class NicoDeployment:
                 plan,
                 {
                     "namespace": settings["namespace"],
-                    "prefix": "mmzhou" if simple else settings["release_prefix"],
+                    "prefix": settings["release_prefix"],
                     "overrides": substitute(phase.get("pod_overrides", []), settings),
                 },
             )
@@ -552,7 +554,7 @@ class NicoDeployment:
                 docs = [x for o in docs for x in (o["items"] if o.get("kind") == "List" else [o])]
             for obj in docs:
                 validate_workload(
-                    obj, settings["namespace"], "mmzhou" if simple else settings["release_prefix"]
+                    obj, settings["namespace"], settings["release_prefix"]
                 )
                 if obj.get("kind") == "ConfigMap":
                     for name, content in obj.get("data", {}).items():
@@ -660,8 +662,10 @@ class NicoDeployment:
                     package["bindings"].append(pxe)
             source = package["connection"] = {
                 "namespace": settings["namespace"],
-                "client_secret": settings.get("client_secret") or "mmzhou-nico-admin-client",
-                "ca_secret": settings.get("ca_secret") or "mmzhou-nico-site-ca",
+                "client_secret": settings.get("client_secret")
+                or settings["release_prefix"] + "-nico-admin-client",
+                "ca_secret": settings.get("ca_secret")
+                or settings["release_prefix"] + "-nico-site-ca",
             }
             if pxe:
                 source["pxe_internal_url"] = f"http://{pxe['name']}.{pxe['namespace']}.svc:8080"

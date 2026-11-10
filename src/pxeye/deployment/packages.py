@@ -51,11 +51,9 @@ def configuration(body, namespace):
         if set(body) - fields or body.get("mode") not in ("online", "offline"):
             raise ValueError("部署方式或字段无效。")
         values = {k: str(body.get(k, "")).strip() for k in fields - {"timeout_seconds"}}
-        if not NAME.fullmatch(values["release_prefix"]) or not (
-            values["release_prefix"] == "mmzhou" or values["release_prefix"].startswith("mmzhou-")
-        ):
+        if not NAME.fullmatch(values["release_prefix"]):
             raise ValueError(
-                "Helm 发布名使用 mmzhou 或 mmzhou- 前缀、小写字母和数字，最长 49 字符。"
+                "Helm 发布名使用小写字母、数字和连字符，以字母开头，最长 49 字符。"
             )
         if not 1 <= len(values["site_name"]) <= 100:
             raise ValueError("请填写站点名称，最长 100 字符。")

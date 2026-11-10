@@ -42,7 +42,7 @@ sectionReads.nico = async (refresh = false) => {
       ...state.nico.source_defaults,
       package_id: p?.id || "",
       site_name: state.readiness?.site_name || "PXEye",
-      release_prefix: "mmzhou",
+      release_prefix: state.nico.namespace || "nico",
       core_url: "",
       pxe_url: "",
       ...(p?.defaults || {}),
@@ -190,7 +190,7 @@ function nicoConfigPanel(data) {
     )
     .join(
       "",
-    )}</div>${sourceFields}<div class="nico-field-grid">${inputField("nico-site-name", "站点名称", values.site_name, 'maxlength="100"')}${inputField("nico-prefix", "Helm 发布名", values.release_prefix, 'maxlength="49"')}${inputField("nico-namespace", "命名空间", data.namespace, "readonly")}${inputField("nico-timeout", "部署超时（秒）", values.timeout_seconds, 'type="number" min="60" max="1800"')}</div><div class="nico-values-header"><label for="nico-values">安装参数 · values YAML</label><label class="nico-values-file">从文件读取<input type="file" id="nico-values-file" accept=".yaml,.yml"></label></div><textarea id="nico-values" class="input nico-values-editor" spellcheck="false" rows="10" placeholder="在这里粘贴 Chart 的 values，也可以从 YAML 文件读取。">${esc(values.values_yaml || "")}</textarea><p class="live-small">参数按所选 Chart 生效。NICo Core 的数据库、Vault、镜像和 Boot 配置在 values 中填写；普通 Chart 不需要额外的组件清单。</p><details class="nico-connection-settings"><summary>站点连接（可选，安装后应用）</summary><div class="nico-field-grid">${inputField("nico-core-url", "Core HTTPS 地址", values.core_url, 'type="url" placeholder="https://mmzhou-nico-api.mmzhou.svc:1079"')}${inputField("nico-pxe-url", "PXE / HTTP 对外地址", values.pxe_url, 'type="url" placeholder="http://192.0.2.50:8080"')}${inputField("nico-client-secret", "Core 客户端 Secret", values.client_secret, 'placeholder="mmzhou-nico-admin-client"')}${inputField("nico-ca-secret", "Core CA Secret", values.ca_secret, 'placeholder="mmzhou-nico-site-ca"')}${selectField(
+    )}</div>${sourceFields}<div class="nico-field-grid">${inputField("nico-site-name", "站点名称", values.site_name, 'maxlength="100"')}${inputField("nico-prefix", "Helm 发布名", values.release_prefix, 'maxlength="49"')}${inputField("nico-namespace", "命名空间", data.namespace, "readonly")}${inputField("nico-timeout", "部署超时（秒）", values.timeout_seconds, 'type="number" min="60" max="1800"')}</div><div class="nico-values-header"><label for="nico-values">安装参数 · values YAML</label><label class="nico-values-file">从文件读取<input type="file" id="nico-values-file" accept=".yaml,.yml"></label></div><textarea id="nico-values" class="input nico-values-editor" spellcheck="false" rows="10" placeholder="在这里粘贴 Chart 的 values，也可以从 YAML 文件读取。">${esc(values.values_yaml || "")}</textarea><p class="live-small">参数按所选 Chart 生效。NICo Core 的数据库、Vault、镜像和 Boot 配置在 values 中填写；普通 Chart 不需要额外的组件清单。</p><details class="nico-connection-settings"><summary>站点连接（可选，安装后应用）</summary><div class="nico-field-grid">${inputField("nico-core-url", "Core HTTPS 地址", values.core_url, `type="url" placeholder="https://${esc(values.release_prefix)}-nico-api.${esc(data.namespace)}.svc:1079"`)}${inputField("nico-pxe-url", "PXE / HTTP 对外地址", values.pxe_url, 'type="url" placeholder="http://192.0.2.50:8080"')}${inputField("nico-client-secret", "Core 客户端 Secret", values.client_secret, `placeholder="${esc(values.release_prefix)}-nico-admin-client"`)}${inputField("nico-ca-secret", "Core CA Secret", values.ca_secret, `placeholder="${esc(values.release_prefix)}-nico-site-ca"`)}${selectField(
     "nico-architecture",
     "被安装主机架构",
     [

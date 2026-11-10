@@ -285,7 +285,9 @@ class Sources:
                 values = yaml.safe_load(settings.get("values_yaml") or "{}")
                 for dependency in metadata.get("dependencies", []):
                     name = dependency["name"]
-                    values.setdefault(name, {}).setdefault("nameOverride", "mmzhou-" + name)
+                    values.setdefault(name, {}).setdefault(
+                        "nameOverride", settings["release_prefix"] + "-" + name
+                    )
                 settings["values_yaml"] = yaml.safe_dump(values, allow_unicode=True)
             dependencies = metadata.get("dependencies", [])
             missing = [

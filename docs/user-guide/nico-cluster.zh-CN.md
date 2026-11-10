@@ -26,13 +26,13 @@ product_version: "0.22.1"
 | Chart 版本 | 仓库或 OCI 可选；留空使用来源默认版本。下载地址直接决定版本。 |
 | 离线部署材料 | 从本机上传 `.tgz` Chart，或 `.tar.gz` / `.zip` 完整部署包，最大 128 MiB。无需登录服务器或挂载部署包目录。 |
 | 站点名称 | 站点标识，最长 100 字符。 |
-| Helm 发布名 | 使用 `mmzhou` 或 `mmzhou-` 前缀，例如 `mmzhou`、`mmzhou-postgres`。 |
+| Helm 发布名 | 使用小写字母、数字和连字符，以字母开头，最长49字符，例如 `nico-system`；默认使用当前命名空间。多阶段包会校验追加阶段后缀后的名称。 |
 | 命名空间 | PXEye 所在命名空间，页面只读。 |
 | 部署超时 | 默认 900 秒，可填 60–1800 秒。 |
 | values YAML | 粘贴所选 Chart 的安装参数，或点击**从文件读取**。普通 Chart 无需另外编写组件映射表；完整部署包使用包内各阶段 values。 |
 | 站点连接 | 可选展开。填写 Core HTTPS、PXE 对外地址、客户端和 CA Secret，以及目标主机架构；也可在安装后的连接确认中补填服务地址。 |
 
-NICo 的镜像、数据库、Vault、服务暴露和 Boot 配置按 Chart 的 values 填写。NICo Core Chart 会自动适配 `mmzhou` 工作负载命名，并使用 PXEye 的共享材料 PVC。
+NICo 的镜像、数据库、Vault、服务暴露和 Boot 配置按 Chart 的 values 填写。单个 NICo Core Chart 的默认工作负载名沿用所填发布名前缀，并使用 PXEye 的共享材料 PVC。完整部署包需在各阶段values中显式保持名称、Service DNS及Secret引用一致；材料PVC使用站点配置，不随Helm发布名改名。
 
 ## 3. 操作步骤
 
