@@ -1,5 +1,14 @@
 {{- if eq .Values.mode "vault-bootstrap" }}
 apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.prefix }}-vault-bootstrap-code
+  namespace: {{ .Release.Namespace }}
+data:
+  roles.py: |
+{{ .Files.Get "files/vault-roles.py" | indent 4 }}
+---
+apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: {{ .Values.prefix }}-vault-bootstrap
@@ -54,7 +63,7 @@ spec:
         - name: bootstrap
           image: {{ required "Set bootstrapImage to the PXEye image containing pxeye-bootstrap-vault" .Values.bootstrapImage | quote }}
           imagePullPolicy: IfNotPresent
-          command: [pxeye-bootstrap-vault]
+          command: [sh, -ec, "pxeye-bootstrap-vault; python3 /bootstrap/roles.py"]
           env:
             - {name: NICO_PREFIX, value: "{{ .Values.prefix }}"}
             - {name: NICO_VAULT_URL, value: "https://{{ .Values.prefix }}-nico-vault.{{ .Release.Namespace }}.svc:8200"}
@@ -65,7 +74,10 @@ spec:
           securityContext: {readOnlyRootFilesystem: true, allowPrivilegeEscalation: false}
           volumeMounts:
             - {name: temporary, mountPath: /tmp}
+            - {name: bootstrap-code, mountPath: /bootstrap, readOnly: true}
       volumes:
+        - name: bootstrap-code
+          configMap: {name: "{{ .Values.prefix }}-vault-bootstrap-code"}
         - name: temporary
           emptyDir: {sizeLimit: 16Mi}
 ---
@@ -96,7 +108,7 @@ spec:
             - name: maintenance
               image: {{ required "Set bootstrapImage" .Values.bootstrapImage | quote }}
               imagePullPolicy: IfNotPresent
-              command: [pxeye-bootstrap-vault]
+              command: [sh, -ec, "pxeye-bootstrap-vault; python3 /bootstrap/roles.py"]
               env:
                 - {name: NICO_PREFIX, value: "{{ .Values.prefix }}"}
                 - {name: NICO_VAULT_URL, value: "https://{{ .Values.prefix }}-nico-vault.{{ .Release.Namespace }}.svc:8200"}
@@ -107,7 +119,10 @@ spec:
               securityContext: {readOnlyRootFilesystem: true, allowPrivilegeEscalation: false}
               volumeMounts:
                 - {name: temporary, mountPath: /tmp}
+                - {name: bootstrap-code, mountPath: /bootstrap, readOnly: true}
           volumes:
+            - name: bootstrap-code
+              configMap: {name: "{{ .Values.prefix }}-vault-bootstrap-code"}
             - name: temporary
               emptyDir: {sizeLimit: 16Mi}
 {{- end }}

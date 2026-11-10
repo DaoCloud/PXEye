@@ -1,0 +1,30 @@
+crds:
+  enabled: true
+  keep: true
+image:
+  repository: m.daocloud.io/quay.io/jetstack/cert-manager-controller
+  tag: v1.17.1
+  pullPolicy: IfNotPresent
+cainjector:
+  image:
+    repository: m.daocloud.io/quay.io/jetstack/cert-manager-cainjector
+    tag: v1.17.1
+    pullPolicy: IfNotPresent
+webhook:
+  image:
+    repository: m.daocloud.io/quay.io/jetstack/cert-manager-webhook
+    tag: v1.17.1
+    pullPolicy: IfNotPresent
+startupapicheck:
+  image:
+    repository: m.daocloud.io/quay.io/jetstack/cert-manager-startupapicheck
+    tag: v1.17.1
+    pullPolicy: IfNotPresent
+  jobAnnotations: null
+  serviceAccount:
+    annotations: null
+  rbac:
+    annotations: null
+global:
+  leaderElection:
+    namespace: '@{namespace}'

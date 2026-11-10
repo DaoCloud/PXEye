@@ -211,6 +211,8 @@ spec:
           imagePullPolicy: IfNotPresent
           {{- if eq $name "vault" }}
           command: [vault, server, -config=/vault/config/vault.hcl]
+          {{- else }}
+          args: [postgres, -c, ssl=on, -c, ssl_cert_file=/var/lib/postgresql/tls/tls.crt, -c, ssl_key_file=/var/lib/postgresql/tls/tls.key]
           {{- end }}
           securityContext:
             runAsNonRoot: true
@@ -244,6 +246,8 @@ spec:
             {{- if eq $name "vault" }}
             - {name: config, mountPath: /vault/config, readOnly: true}
             - {name: tls, mountPath: /vault/tls, readOnly: true}
+            {{- else }}
+            - {name: postgres-tls, mountPath: /var/lib/postgresql/tls, readOnly: true}
             {{- end }}
       volumes:
         - name: data
@@ -253,6 +257,9 @@ spec:
           configMap: {name: "{{ $prefix }}-nico-vault-config"}
         - name: tls
           secret: {secretName: "{{ $prefix }}-nico-vault-tls", defaultMode: 0440}
+        {{- else }}
+        - name: postgres-tls
+          secret: {secretName: "{{ $prefix }}-nico-postgres-tls", defaultMode: 0640}
         {{- end }}
 {{- end }}
 {{- end }}

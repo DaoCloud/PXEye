@@ -1,0 +1,33 @@
+import base64,json,os,tempfile,urllib.request,subprocess
+from pathlib import Path
+from pxeye.deployment.kubernetes import CurrentCluster
+from pxeye.services.execution import Adapter
+k=CurrentCluster({'namespace':'@@NAMESPACE@@'},'/data');p='@@RELEASE@@'
+with tempfile.TemporaryDirectory() as d:
+ os.chmod(d,0o700)
+ client=k.get('secrets',p+'-nico-admin-client')['data'];ca=k.get('secrets',p+'-nico-site-ca')['data']
+ for name,value in [('client.crt',client['tls.crt']),('client.key',client['tls.key']),('ca.crt',ca['tls.crt'])]:
+  path=Path(d)/name;path.write_bytes(base64.b64decode(value));path.chmod(0o600)
+ # Client convention is root.crt; keep only temporary public CA aliases.
+ (Path(d)/'root.crt').write_bytes(base64.b64decode(ca['tls.crt']))
+ a=Adapter({'core_url':'https://'+p+'-nico-api.@@NAMESPACE@@.svc.cluster.local:1079','core_identity_directory':d},d,'/data')
+ cmd=['grpcurl','-connect-timeout','5','-max-time','20','-cacert',d+'/ca.crt','-cert',d+'/client.crt','-key',d+'/client.key','-d','{}',p+'-nico-api.@@NAMESPACE@@.svc.cluster.local:1079','forge.Forge/FindNetworkSegmentIds']
+ r=subprocess.run(cmd,capture_output=True,text=True,timeout=25,env={k:v for k,v in os.environ.items() if k.lower() not in ('http_proxy','https_proxy','all_proxy')})
+ print('GRPC_EXIT',r.returncode,'ERROR',r.stderr[:1500]);assert r.returncode==0
+ result=json.loads(r.stdout)
+ print('CORE_MTLS_RPC_OK','FindNetworkSegmentIds','RESPONSE_KEYS',sorted(result))
+o=urllib.request.build_opener(urllib.request.ProxyHandler({}))
+for name,minimum in [('ipxe.efi',100000),('scout.efi',100000),('scout.squashfs',100000000)]:
+ url='http://'+p+'-nico-pxe.@@NAMESPACE@@.svc:8080/public/blobs/internal/x86_64/'+name
+ with o.open(urllib.request.Request(url,method='HEAD'),timeout=15) as r:
+  size=int(r.headers.get('Content-Length','0'));assert size>=minimum,(name,size)
+ with o.open(urllib.request.Request(url,headers={'Range':'bytes=0-15'}),timeout=15) as r:
+  assert r.read(16)
+ print('BOOT_OK',name,'BYTES',size)
+
+import ssl
+vault_opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),urllib.request.HTTPSHandler(context=ssl.create_default_context(cadata=base64.b64decode(ca['tls.crt']).decode())))
+with vault_opener.open('https://'+p+'-nico-vault.@@NAMESPACE@@.svc:8200/v1/sys/health',timeout=15) as response:
+    health=json.load(response)
+assert health['initialized'] and not health['sealed']
+print('VAULT_OK',json.dumps({key:health.get(key) for key in ('initialized','sealed','standby','version')}))

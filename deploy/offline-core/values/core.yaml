@@ -1,0 +1,232 @@
+global:
+  image:
+    repository: docker.io/library/nico-api
+    tag: mmzhou-e703126e4
+    pullPolicy: IfNotPresent
+  certificate:
+    useCertManager: false
+    issuerRef:
+      kind: Issuer
+      name: '@{release_prefix}-nico-site-issuer'
+      group: cert-manager.io
+  spiffe:
+    trustDomain: nico.local
+nico-api:
+  siteConfig:
+    enabled: true
+    nicoApiSiteConfig: 'tpm_required = false
+
+      attestation_enabled = false
+
+      allow_insecure_discovery = false
+
+      sitename = "@{site_name}"
+
+      initial_domain_name = "nico.internal"
+
+      ntp_servers = []
+
+      dhcp_servers = []
+
+      route_servers = []
+
+      enable_route_servers = false
+
+      site_fabric_prefixes = []
+
+
+      [pools.lo-ip]
+
+      type = "ipv4"
+
+      ranges = [{ start = "10.254.250.1", end = "10.254.250.254" }]
+
+      [pools.vlan-id]
+
+      type = "integer"
+
+      ranges = [{ start = "3000", end = "3099" }]
+
+      [pools.vni]
+
+      type = "integer"
+
+      ranges = [{ start = "100000", end = "100999" }]
+
+      [pools.vpc-vni]
+
+      type = "integer"
+
+      ranges = [{ start = "200000", end = "200999" }]
+
+
+      [site_explorer]
+
+      enabled = false
+
+      create_machines = false
+
+      dpu_policy = "ignore"
+
+      [firmware_global]
+
+      autoupdate = false
+
+      [dpf]
+
+      enabled = false
+
+      [machine_validation_config]
+
+      enabled = false
+
+
+      [networks.mmzhou-host-boot]
+
+      type = "hostinband"
+
+      prefix = "192.0.2.0/24"
+
+      gateway = "192.0.2.1"
+
+      mtu = 1500
+
+      reserve_first = 5
+
+      allocation_strategy = "reserved"
+
+      '
+  hostname: nico.local
+  vaultClusterInfo:
+    VAULT_SERVICE: https://@{release_prefix}-nico-vault.@{namespace}.svc:8200
+    VAULT_NAMESPACE: ''
+    NICO_VAULT_MOUNT: secrets
+    NICO_VAULT_PKI_MOUNT: certs
+  databaseConfig:
+    DB_HOST: '@{release_prefix}-nico-postgres.@{namespace}.svc'
+    DB_PORT: '5432'
+    DB_NAME: nico
+  env:
+    VAULT_PKI_ROLE_NAME: nico-cluster
+  envFrom:
+    vaultApproleTokens:
+      secretName: '@{release_prefix}-nico-vault-approle-tokens'
+    vaultToken:
+      secretName: '@{release_prefix}-nico-vault-token'
+    vaultClusterInfo:
+      configMapName: '@{release_prefix}-vault-cluster-info'
+    databaseCredentials:
+      secretName: '@{release_prefix}-postgres-credentials'
+    databaseConfig:
+      configMapName: '@{release_prefix}-nico-database-config'
+    nicoWebHostname:
+      configMapName: '@{release_prefix}-nico-web-hostname'
+  dpf:
+    rbacCreate: false
+  nameOverride: '@{release_prefix}-nico-api'
+  bmcProxy:
+    address: '@{release_prefix}-nico-bmc-proxy.@{namespace}.svc.cluster.local:1079'
+  sshConsole:
+    serviceName: '@{release_prefix}-nico-ssh-console-rs'
+  migrationJob:
+    sslMode: require
+  legacyAlias:
+    enabled: false
+  auth:
+    additionalIssuerCns:
+    - '@{release_prefix}-nico-admin-issuer'
+    adminRootCafilePath: /var/run/secrets/nico-admin-root/ca.crt
+  certificate:
+    spiffeServiceName: nico-api
+  extraVolumes:
+  - name: admin-root
+    secret:
+      secretName: '@{release_prefix}-nico-admin-issuer'
+      items:
+      - key: tls.crt
+        path: ca.crt
+  extraVolumeMounts:
+  - name: admin-root
+    mountPath: /var/run/secrets/nico-admin-root
+    readOnly: true
+nico-bmc-proxy:
+  replicas: 1
+  image:
+    repository: docker.io/library/nico-bmc-proxy
+    tag: mmzhou-e703126e4
+  envFrom:
+    vaultApproleTokens:
+      secretName: '@{release_prefix}-nico-vault-approle-tokens'
+    vaultToken:
+      secretName: '@{release_prefix}-nico-vault-token'
+    vaultClusterInfo:
+      configMapName: '@{release_prefix}-vault-cluster-info'
+    databaseCredentials:
+      secretName: '@{release_prefix}-postgres-credentials'
+    databaseConfig:
+      configMapName: '@{release_prefix}-nico-database-config'
+  nameOverride: '@{release_prefix}-nico-bmc-proxy'
+  apiServiceName: '@{release_prefix}-nico-api'
+  certificate:
+    spiffeServiceName: nico-bmc-proxy
+nico-pxe:
+  image:
+    repository: docker.io/library/nico-pxe
+    tag: mmzhou-e703126e4
+  replicas: 1
+  bootArtifactContainers:
+  - name: boot-artifacts-x86-64
+    image: docker.io/library/boot-artifacts-x86_64:mmzhou-e703126e4
+    command:
+    - sh
+    - -c
+    - set -e; cp -r /x86_64 /forge-boot-artifacts/blobs/internal
+  nameOverride: '@{release_prefix}-nico-pxe'
+  apiServiceName: '@{release_prefix}-nico-api'
+  legacyAlias:
+    enabled: false
+  certificate:
+    spiffeServiceName: nico-pxe
+nico-ntp:
+  replicas: 1
+  image:
+    repository: m.daocloud.io/docker.io/dockurr/chrony
+    tag: latest
+  nameOverride: '@{release_prefix}-nico-ntp'
+nico-dsx-exchange-consumer:
+  enabled: false
+nico-machine-a-tron:
+  enabled: false
+nico-postgres-exporter:
+  enabled: false
+unbound:
+  enabled: false
+nico-dns:
+  replicas: 1
+  nameOverride: '@{release_prefix}-nico-dns'
+  apiServiceName: '@{release_prefix}-nico-api'
+  certificate:
+    spiffeServiceName: nico-dns
+nico-dhcp:
+  nameOverride: '@{release_prefix}-nico-dhcp'
+  apiServiceName: '@{release_prefix}-nico-api'
+  config:
+    kea:
+      hookLibraryPath: /usr/lib/kea/hooks/libdhcp.so
+      hookParameters:
+        nameservers: '@{dns_ip}'
+        ntpServer: '@{ntp_ip}'
+        provisioningServer: '@{pxe_ip}'
+  certificate:
+    spiffeServiceName: nico-dhcp
+nico-hardware-health:
+  nameOverride: '@{release_prefix}-nico-hardware-health'
+  env:
+    CARBIDE_HEALTH__ENDPOINT_SOURCES__NICO_API__API_URL: https://@{release_prefix}-nico-api.@{namespace}.svc.cluster.local:1079
+  certificate:
+    spiffeServiceName: nico-hardware-health
+nico-ssh-console-rs:
+  nameOverride: '@{release_prefix}-nico-ssh-console-rs'
+  apiServiceName: '@{release_prefix}-nico-api'
+  certificate:
+    spiffeServiceName: nico-ssh-console-rs

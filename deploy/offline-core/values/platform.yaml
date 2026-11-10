@@ -1,0 +1,7 @@
+mode: infrastructure
+prefix: "@{release_prefix}"
+storageClass: ""
+postgresStorage: 20Gi
+vaultStorage: 5Gi
+postgresImage: "m.daocloud.io/docker.io/library/postgres:16.6"
+vaultImage: "m.daocloud.io/docker.io/hashicorp/vault:1.20.2"

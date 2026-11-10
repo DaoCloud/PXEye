@@ -1,0 +1,4 @@
+mode: vault-bootstrap
+prefix: '@{release_prefix}'
+bootstrapImage: '@{bootstrap_image}'
+coreServiceAccount: '@{release_prefix}-nico-api'

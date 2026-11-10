@@ -1,0 +1,101 @@
+--- a/nico/charts/nico-api/templates/deployment.yaml
++++ b/nico/charts/nico-api/templates/deployment.yaml
+@@ -339,7 +339,10 @@
+         {{- end }}
+         - name: nico-roots
+           secret:
+-            secretName: nico-roots
++            secretName: {{ .Release.Name }}-nico-site-ca
++            items:
++              - key: ca.crt
++                path: ca.crt
+         - name: firmware
+           emptyDir: {}
+         {{- if .Values.bootArtifactContainers }}
+--- a/nico/charts/nico-dhcp/templates/_helpers.tpl
++++ b/nico/charts/nico-dhcp/templates/_helpers.tpl
+@@ -135,7 +135,7 @@
+ {{- $apiUrl = printf "https://%s.%s.svc.cluster.local:1079" $apiSvc $ns -}}
+ {{- end -}}
+ {{- $metricsEndpoint := default "[::]:1089" $hp.nicoMetricsEndpoint -}}
+-{{- $libPath := default "/usr/lib/x86_64-linux-gnu/kea/hooks/libdhcp.so" $k.hookLibraryPath -}}
++{{- $libPath := default "/usr/lib/kea/hooks/libdhcp.so" $k.hookLibraryPath -}}
+ {{- $extraHooks := default (list) $k.additionalHooksLibraries -}}
+ {{- $ic := default (dict) $k.interfacesConfig -}}
+ {{- $interfaces := default (list "eth0") $ic.interfaces -}}
+--- a/nico/charts/nico-hardware-health/templates/_helpers.tpl
++++ b/nico/charts/nico-hardware-health/templates/_helpers.tpl
+@@ -51,7 +51,6 @@
+ {{- define "nico-hardware-health.certificateSpec" -}}
+ duration: {{ .global.certificate.duration }}
+ renewBefore: {{ .global.certificate.renewBefore }}
+-commonName: {{ printf "%s.%s.svc.cluster.local" (.cert.serviceName | default .svcName) (.cert.identityNamespace | default .namespace) }}
+ dnsNames:
+ {{- if .cert.dnsNames }}
+ {{- range .cert.dnsNames }}
+--- a/nico/charts/nico-ssh-console-rs/templates/_helpers.tpl
++++ b/nico/charts/nico-ssh-console-rs/templates/_helpers.tpl
+@@ -51,7 +51,6 @@
+ {{- define "nico-ssh-console-rs.certificateSpec" -}}
+ duration: {{ .global.certificate.duration }}
+ renewBefore: {{ .global.certificate.renewBefore }}
+-commonName: {{ printf "%s.%s.svc.cluster.local" (.cert.serviceName | default .svcName) (.cert.identityNamespace | default .namespace) }}
+ dnsNames:
+ {{- if .cert.dnsNames }}
+ {{- range .cert.dnsNames }}
+--- a/nico/charts/nico-ssh-console-rs/templates/deployment.yaml
++++ b/nico/charts/nico-ssh-console-rs/templates/deployment.yaml
+@@ -115,11 +115,11 @@
+             secretName: {{ include "nico-ssh-console-rs.name" . }}-certificate
+         - name: ssh-host-key
+           secret:
+-            secretName: ssh-host-key
++            secretName: {{ .Release.Name }}-ssh-host-key
+             defaultMode: 0400
+         - name: ssh-host-key-pub
+           secret:
+-            secretName: ssh-host-key
++            secretName: {{ .Release.Name }}-ssh-host-key
+             defaultMode: 0444
+         - name: console-logs
+           emptyDir: {}
+--- a/nico/charts/nico-bmc-proxy/templates/deployment.yaml
++++ b/nico/charts/nico-bmc-proxy/templates/deployment.yaml
+@@ -172,4 +172,7 @@
+         {{- end }}
+         - name: nico-roots
+           secret:
+-            secretName: nico-roots
++            secretName: {{ .Release.Name }}-nico-site-ca
++            items:
++              - key: ca.crt
++                path: ca.crt
+--- a/nico/charts/nico-dhcp/values.yaml
++++ b/nico/charts/nico-dhcp/values.yaml
+@@ -239,7 +239,7 @@
+     ## Path to the kea libdhcp hook library inside the kea image. Default
+     ## is the x86_64 Debian-derived install location. Override for alt
+     ## arches (aarch64 → /usr/lib/aarch64-linux-gnu/...) or custom images.
+-    hookLibraryPath: "/usr/lib/x86_64-linux-gnu/kea/hooks/libdhcp.so"
++    hookLibraryPath: "/usr/lib/kea/hooks/libdhcp.so"
+ 
+     ## Additional hooks-libraries entries appended after the libdhcp entry
+     ## above. Each item is a full kea hooks-libraries object and is
+--- /dev/null
++++ b/nico/charts/nico-ntp/templates/service-client.yaml
+@@ -0,0 +1,15 @@
++apiVersion: v1
++kind: Service
++metadata:
++  name: {{ include "nico-ntp.name" . }}-client
++  namespace: {{ include "nico-ntp.namespace" . }}
++  labels:
++    {{- include "nico-ntp.labels" . | nindent 4 }}
++spec:
++  selector:
++    {{- include "nico-ntp.selectorLabels" . | nindent 4 }}
++  ports:
++    - name: ntp
++      protocol: UDP
++      port: 123
++      targetPort: 123
