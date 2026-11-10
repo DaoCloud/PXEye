@@ -123,12 +123,35 @@ def main():
             source_root = f"oci:{layout}"
         for position, (image, target) in enumerate(sources, 1):
             print(f"IMAGE {position}/{len(sources)} {image} -> {target}", flush=True)
+            source = f"{source_root}:{image}"
+            if not args.dry_run:
+                # OCI layouts in containerd archives can also contain Docker v2
+                # manifests, which older skopeo oci readers reject. A dir view
+                # accepts both formats without converting the locked manifest.
+                descriptor = descriptors[image]
+                digest = descriptor.get("digest", "")
+                if not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
+                    raise ValueError(f"归档 manifest digest 格式无效：{image}")
+                manifest = (layout / "blobs" / "sha256" / digest.split(":", 1)[1]).read_bytes()
+                view = Path(stack.enter_context(tempfile.TemporaryDirectory(prefix="pxeye-image-", dir=layout)))
+                (view / "manifest.json").write_bytes(manifest)
+                (view / "version").write_text("Directory Transport Version: 1.1\n")
+                data = json.loads(manifest)
+                for blob in [data["config"]] + data["layers"]:
+                    blob_digest = blob.get("digest", "")
+                    if not re.fullmatch(r"sha256:[0-9a-f]{64}", blob_digest):
+                        raise ValueError(f"归档 blob digest 格式无效：{image}")
+                    name = blob_digest.split(":", 1)[1]
+                    if not (view / name).exists():
+                        os.link(layout / "blobs" / "sha256" / name, view / name)
+                source = f"dir:{view}"
             run(
                 common
                 + [
                     "--retry-times",
                     "3",
-                    f"{source_root}:{image}",
+                    "--preserve-digests",
+                    source,
                     f"docker://{target}",
                 ],
                 dry_run=args.dry_run,
