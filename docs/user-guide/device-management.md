@@ -4,8 +4,8 @@ language: en
 title: Device management
 description: Device plans, discovery, enrollment, address updates and server system configuration.
 navigation_group: resources
-updated_at: "2026-11-09"
-product_version: "0.22.5"
+updated_at: "2026-11-10"
+product_version: "0.22.11"
 ---
 
 # Device management
@@ -30,9 +30,9 @@ Device plans is the last tab. Search by SN, IP, MAC or rack.
 
 ### Arrival plans
 
-Download the CSV template under **Device plans** with one host per row, or use **New plan (新增规划)** to enter a single host.
+Download the Excel template under **Device plans** with one host per row, or use **New plan (新增规划)** to enter a single host.
 
-| CSV field | UI field | Requirement |
+| Template field | UI field | Requirement |
 | --- | --- | --- |
 | `serial` | Device SN | Required and unique; must exactly match the managed device serial number. |
 | `management_ip` | Management IP | Planned host management IPv4; requires a management MAC. |
@@ -78,11 +78,11 @@ Under **Address management → Plan address (地址管理 → 规划地址)**, v
 
 ### Import and edit
 
-1. Under **Device plans**, select **Download template (下载模板)**, fill in the CSV and select **Import plans (导入规划)**.
+1. Under **Device plans**, select **Download template (下载模板)**, fill in the Excel template and select **Import plans (导入规划)**.
 2. Select **Validate and preview (校验并预览)** and review new, updated, unchanged and invalid rows. Correct errors and preview again.
 3. Select **Save imported plans (保存导入规划)**. Use **Edit plan** to change a row. Its SN can be changed only while it has no hardware-linked interface plan.
 
-**Import devices / Download template (导入设备 / 下载模板)** in the managed list asks for a device type. Servers use the same planning CSV. Switches and power shelves have separate templates with JSON for nested fields; preview them and click **Confirm saving local plans (确认保存本地规划)**. **New device (新增设备)** enters one device by type. For non-server local plans, separately click **Synchronize to NICo (同步至 NICo)**, review the declaration and impact, enter SN and confirm enrollment. Synchronization may start native device management and credential handling.
+**Import devices / Download template (导入设备 / 下载模板)** in the managed list asks for a device type. Servers use the same planning Excel template. Switches and power shelves have separate templates with JSON for nested fields; preview them and click **Confirm saving local plans (确认保存本地规划)**. **New device (新增设备)** enters one device by type. For non-server local plans, separately click **Synchronize to NICo (同步至 NICo)**, review the declaration and impact, enter SN and confirm enrollment. Synchronization may start native device management and credential handling.
 
 ### Discover and enroll
 
@@ -131,7 +131,7 @@ After enrolling the server with SN `SERIAL-1`, matching selects `02:00:00:00:00:
 - **Matching requirements**: Only unique server SN matching is supported. The management MAC must exist in collected hardware, and the subnet must match exactly and uniquely. Retrieve device details first if hardware information is missing.
 - **Credentials and effects**: Matching preserves BMC and OS credentials. It does not change Redfish addresses, allocate DHCP addresses, reboot devices or install an OS.
 - **Errors and concurrency**: A failed device is not saved; other valid devices can continue. Refresh and match again if a plan or device configuration changes. Finish outstanding address operations first.
-- **Format**: Server planning CSV files support up to 1 MiB and 5,000 rows; switch/power shelf templates support up to 2 MiB. Legacy Expected Machine CSV/Excel files use a different format; download the template for the selected entry point.
+- **Format**: Server planning Excel or CSV files support up to 1 MiB and 5,000 rows; switch/power shelf templates support up to 2 MiB. Legacy Expected Machine CSV/Excel files use a different format; download the template for the selected entry point.
 - **Other devices**: Switches and power shelves have their own system configuration and address management; they do not receive server OS installation tasks. Unknown DHCP endpoints can have address plans without being treated as authenticated, installable servers.
 
 ## 6. Export and import interface addresses

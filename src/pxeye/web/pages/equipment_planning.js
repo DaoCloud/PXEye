@@ -265,7 +265,7 @@ function equipmentPlanningImport() {
   modal(
     "导入设备规划",
     "支持设备规划表，以及导出的设备网卡列表",
-    '<div class="live-form"><a class="link-button" href="/api/equipment-planning/template">下载 CSV 模板</a><label class="live-upload">选择 Excel 或 CSV 文件<input id="planning-file" type="file" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"></label></div><div id="planning-preview"></div>' +
+    '<div class="live-form"><a class="link-button" href="/api/equipment-planning/template">下载 Excel 模板</a><label class="live-upload">选择 Excel 或 CSV 文件<input id="planning-file" type="file" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"></label></div><div id="planning-preview"></div>' +
       '<div class="live-note">网卡表每行一个 MAC，填写 IP、子网 CIDR、网关；不使用的网口留空。PCIe 地址为采集信息，导入不会覆盖。子网需已在网络管理中配置。主启动接口保持不变，默认路由只使用管理口；其他网关只保存，不自动生成额外路由。已纳管设备直接保存到系统配置，未纳管设备在确认纳管后带入；均在下次安装时生效。</div>' +
       eqError(),
     button("取消", "close") + button("校验并预览", "planning-preview", true),

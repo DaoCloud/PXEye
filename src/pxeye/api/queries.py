@@ -49,14 +49,15 @@ class QueryRoutes:
                     200, EquipmentPlanning(self.app.adapter, self.app.resources).list()
                 )
             if path == "/api/equipment-planning/template":
-                from pxeye.services.equipment_planning import EquipmentPlanning
-
-                data = ("\ufeff" + EquipmentPlanning.template()).encode("utf-8")
+                data = (self.app.static / "device-planning-template.xlsx").read_bytes()
                 self.send_response(200)
-                self.send_header("Content-Type", "text/csv; charset=utf-8")
+                self.send_header(
+                    "Content-Type",
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
                 self.send_header("Content-Length", str(len(data)))
                 self.send_header(
-                    "Content-Disposition", "attachment; filename=device-planning-template.csv"
+                    "Content-Disposition", "attachment; filename=device-planning-template.xlsx"
                 )
                 self.send_header("Cache-Control", "no-store")
                 self.end_headers()
