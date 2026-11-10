@@ -2,6 +2,8 @@
 
 import re
 
+from pxeye.domain.nic_inventory import INVENTORY_FIELDS, nic_mac
+
 
 def pci_address(value):
     value = str(value or "").strip().lower()
@@ -59,11 +61,22 @@ def redfish_pci_address(report, *, lenovo=False):
 
 
 def merge_host_nics(observations, bmc):
-    merged, addresses = {}, {}
+    merged, addresses, attributes = {}, {}, {}
+    latest = {}
+    for nics in observations:
+        for nic in nics:
+            if "Redfish" in str(nic.get("inventory_source") or ""):
+                hardware = nic_mac(nic.get("mac_address") or nic.get("mac"))
+                latest[hardware] = max(
+                    latest.get(hardware, ""), str(nic.get("inventory_read_at") or "")
+                )
     for nics in observations:
         for nic in nics:
             hardware = (
-                str(nic.get("mac_address") or nic.get("mac") or "").strip().lower().replace("-", ":")
+                str(nic.get("mac_address") or nic.get("mac") or "")
+                .strip()
+                .lower()
+                .replace("-", ":")
             )
             if (
                 not re.fullmatch(r"(?:[0-9a-f]{2}:){5}[0-9a-f]{2}", hardware)
@@ -74,13 +87,49 @@ def merge_host_nics(observations, bmc):
             if hardware == bmc:
                 continue
             item = merged.setdefault(hardware, {"mac_address": hardware, "name": ""})
+            stale = "Redfish" in str(nic.get("inventory_source") or "") and str(
+                nic.get("inventory_read_at") or ""
+            ) < latest.get(hardware, "")
             for key in ("name", "model", "vendor"):
-                if nic.get(key):
+                if nic.get(key) and not stale:
                     item[key] = nic[key]
             if nic.get("pci_conflict"):
                 item["pci_conflict"] = True
             addresses.setdefault(hardware, set()).add(pci_address(nic.get("pci_address")))
+            for key in INVENTORY_FIELDS[3:]:
+                if stale and key != "inventory_source":
+                    continue
+                value = nic.get(key)
+                if value is None or value == "":
+                    continue
+                if type(value) is float and value.is_integer():
+                    value = int(value)
+                # Prefer newer BMC observations over old cached discovery proofs.
+                stamp = "" if key == "inventory_source" else str(nic.get("inventory_read_at") or "")
+                previous = attributes.setdefault(hardware, {}).get(key)
+                if previous is None or stamp > previous[0]:
+                    attributes[hardware][key] = (stamp, {str(value): value})
+                elif stamp == previous[0]:
+                    previous[1][str(value)] = value
     for hardware, item in merged.items():
+        conflicts = []
+        for key, (_, values) in attributes.get(hardware, {}).items():
+            if len(values) == 1:
+                item[key] = next(iter(values.values()))
+            elif key in {"inventory_note", "inventory_source", "description"}:
+                item[key] = "; ".join(sorted(values))
+            else:
+                conflicts.append(key)
+        if conflicts:
+            item["inventory_note"] = "; ".join(
+                filter(
+                    None,
+                    [
+                        item.get("inventory_note"),
+                        "Conflicting observations: " + ", ".join(conflicts),
+                    ],
+                )
+            )
         known = addresses[hardware] - {""}
         item["pci_address"] = "" if item.get("pci_conflict") else unique_pci_address(known)
         if known and not item["pci_address"]:

@@ -17,20 +17,29 @@ def interface_workbook(headers, rows):
     """Produce a plain-text, styled XLSX that workbook_csv can read unchanged."""
     namespace = NS["s"]
 
+    def column_name(index):
+        result = ""
+        while index:
+            index, remainder = divmod(index - 1, 26)
+            result = chr(65 + remainder) + result
+        return result
+
     def node(parent, name, **attrs):
         return ET.SubElement(
             parent, "{" + namespace + "}" + name, {key: str(value) for key, value in attrs.items()}
         )
 
     sheet = ET.Element("{" + namespace + "}worksheet")
-    last = f"{chr(64 + len(headers))}{len(rows) + 1}"
+    last = f"{column_name(len(headers))}{len(rows) + 1}"
     node(sheet, "dimension", ref="A1:" + last)
     view = node(node(sheet, "sheetViews"), "sheetView", workbookViewId=0, showGridLines=1)
-    node(view, "pane", ySplit=1, topLeftCell="A2", activePane="bottomLeft", state="frozen")
-    node(view, "selection", pane="bottomLeft", activeCell="A2", sqref="A2")
-    node(sheet, "sheetFormatPr", defaultRowHeight=24)
+    node(
+        view, "pane", xSplit=2, ySplit=1, topLeftCell="C2", activePane="bottomRight", state="frozen"
+    )
+    node(view, "selection", pane="bottomRight", activeCell="C2", sqref="C2")
+    node(sheet, "sheetFormatPr", defaultRowHeight=32)
     widths = [
-        min(64, max(24, max(len(str(row[i])) for row in [headers, *rows]) + 3))
+        min(64, max(32, max(len(str(row[i])) for row in [headers, *rows]) + 3))
         for i in range(len(headers))
     ]
     columns = node(sheet, "cols")
@@ -39,30 +48,30 @@ def interface_workbook(headers, rows):
     data = node(sheet, "sheetData")
     for index, values in enumerate([headers, *rows], 1):
         height = (
-            28
+            40
             if index == 1
             else max(
-                24,
+                32,
                 max((len(str(value)) + width - 1) // width for value, width in zip(values, widths))
-                * 16
+                * 18
                 + 8,
             )
         )
         row = node(data, "row", r=index, ht=height, customHeight=1)
         for column, value in enumerate(values, 1):
             cell = node(
-                row, "c", r=f"{chr(64 + column)}{index}", t="inlineStr", s=1 if index == 1 else 0
+                row, "c", r=f"{column_name(column)}{index}", t="inlineStr", s=1 if index == 1 else 0
             )
             text = node(node(cell, "is"), "t")
             text.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
             text.text = str(value)
     node(sheet, "autoFilter", ref="A1:" + last)
     styles = f'''<styleSheet xmlns="{namespace}">
-      <fonts count="2"><font><sz val="11"/><name val="Calibri"/></font>
-      <font><b/><sz val="11"/><name val="Calibri"/></font></fonts>
+      <fonts count="2"><font><sz val="13"/><name val="Calibri"/></font>
+      <font><b/><sz val="14"/><name val="Calibri"/></font></fonts>
       <fills count="3"><fill><patternFill patternType="none"/></fill>
       <fill><patternFill patternType="gray125"/></fill>
-      <fill><patternFill patternType="solid"><fgColor rgb="FFE8EEF0"/>
+      <fill><patternFill patternType="solid"><fgColor rgb="FFE2F0D9"/>
       <bgColor indexed="64"/></patternFill></fill></fills>
       <borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border>
       <border><left style="thin"><color rgb="FFB8C2CC"/></left>

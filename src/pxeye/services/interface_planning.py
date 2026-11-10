@@ -11,16 +11,32 @@ import uuid
 from urllib.parse import urlsplit
 
 from pxeye.common import digest
+from pxeye.domain.nic_inventory import INVENTORY_FIELDS
 from pxeye.domain.pci import merge_host_nics
 from pxeye.domain.workbook import interface_workbook
 from pxeye.services.equipment import Equipment, mac
 
 FIELDS = ("serial", "mac", "ip", "subnet", "gateway")
-EXPORT_FIELDS = ("serial", "mac", "pci_address", "ip", "subnet", "gateway")
+LEADING_FIELDS = (
+    "serial",
+    "mac",
+    "location",
+    "slot",
+    "physical_port",
+    "speed_mbps",
+    "link_status",
+    "pci_address",
+    "vendor",
+    "model",
+    "ip",
+    "subnet",
+    "gateway",
+)
+EXPORT_FIELDS = (*LEADING_FIELDS, *(k for k in INVENTORY_FIELDS if k not in LEADING_FIELDS))
 
 
 def interface_header(header):
-    return len(header) == len(set(header)) and set(header) in (set(FIELDS), set(EXPORT_FIELDS))
+    return len(header) == len(set(header)) and set(FIELDS) <= set(header) <= set(EXPORT_FIELDS)
 
 
 class InterfacePlanning:
@@ -149,9 +165,11 @@ class InterfacePlanning:
                 values = self.saved_address(record, hardware, snapshot["networks"])
                 if not record:
                     values = {k: pending.get(hardware, {}).get(k, "") for k in FIELDS[2:]}
-                rows.append(
-                    [serial, hardware, nic["pci_address"], *(values[k] for k in FIELDS[2:])]
+                exported = {**nic, **values, "serial": serial, "mac": hardware}
+                exported["inventory_note"] = "; ".join(
+                    filter(None, [nic.get("inventory_note"), nic.get("pci_note")])
                 )
+                rows.append([exported.get(k, "") for k in EXPORT_FIELDS])
         writer.writerows(rows)
         return {
             "csv": stream.getvalue(),
@@ -199,14 +217,14 @@ class InterfacePlanning:
             and n["prefixes"][0]["prefix"] == row["subnet"]
         ]
         if not matches:
-            exists = any(
-                p["prefix"] == row["subnet"] for n in networks for p in n["prefixes"]
-            )
+            exists = any(p["prefix"] == row["subnet"] for n in networks for p in n["prefixes"])
             raise ValueError(
-                "子网 " + row["subnet"]
+                "子网 "
+                + row["subnet"]
                 + (
                     " 已存在，但不是单 IPv4 前缀的 HostInband 网络，请在网络管理中核对。"
-                    if exists else " 尚未创建，请先在网络管理中创建 HostInband 子网。"
+                    if exists
+                    else " 尚未创建，请先在网络管理中创建 HostInband 子网。"
                 )
             )
         if len(matches) > 1:
@@ -217,8 +235,13 @@ class InterfacePlanning:
         prefix = network["prefixes"][0]
         if (prefix.get("gateway") or "") != row["gateway"]:
             raise ValueError(
-                "子网 " + row["subnet"] + " 的网关不一致：表格为 "
-                + (row["gateway"] or "空") + "，系统为 " + (prefix.get("gateway") or "空") + "。"
+                "子网 "
+                + row["subnet"]
+                + " 的网关不一致：表格为 "
+                + (row["gateway"] or "空")
+                + "，系统为 "
+                + (prefix.get("gateway") or "空")
+                + "。"
             )
         address = ipaddress.IPv4Address(row["ip"])
         subnet = ipaddress.IPv4Network(row["subnet"])
@@ -293,7 +316,7 @@ class InterfacePlanning:
     def preview(self, text, owner):
         reader = csv.DictReader(io.StringIO(text.lstrip("\ufeff")), strict=True)
         if not interface_header(reader.fieldnames or []):
-            raise ValueError("设备网卡列表请保留 serial,mac,ip,subnet,gateway；可带 pci_address 信息列。")
+            raise ValueError("设备网卡列表请保留 serial,mac,ip,subnet,gateway 及下载表中的信息列。")
         snapshot = self.snapshot()
         catalog = self.catalog(snapshot, owner)
         incoming, seen, addresses, errors, skipped = {}, set(), set(), [], 0
@@ -303,11 +326,13 @@ class InterfacePlanning:
                     raise ValueError("一次最多导入5000个网口。")
                 try:
                     if None in raw or any(
-                        v is None or len(v) > 128 or any(ord(c) < 32 for c in v)
-                        for v in raw.values()
+                        v is None
+                        or len(v) > (128 if k in FIELDS else 4096)
+                        or (k in FIELDS and any(ord(c) < 32 for c in v))
+                        for k, v in raw.items()
                     ):
                         raise ValueError("列数、文本长度或控制字符无效。")
-                    # PCIe is an observed information column, never imported hardware truth.
+                    # Inventory columns are read-only; only address fields become planning input.
                     row = {k: raw[k].strip() for k in FIELDS}
                     row["mac"] = mac(row["mac"])
                     serial, hardware = row["serial"], row["mac"]
@@ -437,8 +462,11 @@ class InterfacePlanning:
             except (ValueError, RuntimeError) as error:
                 display.append(
                     {
-                        "line": "—", "serial": serial, "operation": "invalid",
-                        "interfaces": rows, "detail": str(error),
+                        "line": "—",
+                        "serial": serial,
+                        "operation": "invalid",
+                        "interfaces": rows,
+                        "detail": str(error),
                     }
                 )
         try:

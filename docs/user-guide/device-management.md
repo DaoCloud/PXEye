@@ -5,7 +5,7 @@ title: Device management
 description: Device plans, discovery, enrollment, address updates and server system configuration.
 navigation_group: resources
 updated_at: "2026-11-10"
-product_version: "0.22.11"
+product_version: "0.22.12"
 ---
 
 # Device management
@@ -137,8 +137,8 @@ After enrolling the server with SN `SERIAL-1`, matching selects `02:00:00:00:00:
 ## 6. Export and import interface addresses
 
 1. Retrieve server information in **Discovered devices**, select servers and click **Export device interface list (导出设备网卡列表)**. Managed servers can also be selected for export; select 1–50 per export.
-2. The file is named `device-interfaces.xlsx` with the header `serial,mac,pci_address,ip,subnet,gateway` and one row per collected host port. Columns and rows are enlarged and sized for their contents, with wrapping and grid borders on every cell, including blank address cells. The header is frozen and supports filtering. Identity-verified Scout inventory, BMC refresh and enrollment discovery are combined and deduplicated by MAC. Saved IPs, subnet CIDRs and gateways are included; unconfigured values stay blank. Keep SN/MAC and fill the blanks. Completely blank address rows preserve existing settings. Temporary DHCP leases are not exported as planned addresses.
-3. Use the existing **Import devices → Server** or **Import plans** action, upload the completed Excel file, review and save. Existing five-column CSV files remain supported. No subnet IDs, netmasks or NICo JSON are required.
+2. The file is named `device-interfaces.xlsx`, with one row per collected host port (MAC); multi-port adapters have separate rows per port. Leading columns show location, physical port, speed, link status, PCI address, vendor and model. Additional inventory fields are listed below. The header and SN/MAC columns are frozen, with green headers, wide columns, larger text and cell borders.
+3. Keep `serial,mac,ip,subnet,gateway`. Fill in `ip,subnet,gateway`, then use **Import devices → Server** or **Import plans** to upload, preview and save. Other columns are informational: editing them cannot change hardware facts. Existing five-column CSV and six-column files with `pci_address` remain supported.
 4. Managed servers receive updates in the existing device interface structure and **System configuration**. Reopening the same device shows each MAC's IP, subnet and gateway; subsequent exports include the saved values. Unenrolled servers retain a source plan which is applied after explicit enrollment. If application fails, correct the issue and use existing **Match plans** to retry.
 5. Confirm the existing boot interface, installation profile and other requirements, then install normally. Ubuntu matches interfaces by MAC. First-boot and reboot acceptance check their addresses, prefix lengths and MTUs.
 
@@ -168,6 +168,20 @@ If the BMC omits ports, use the existing hardware information workflow to obtain
 
 Related: [Network management](network-management.md) · [Installation profiles](installation-profiles.md) · [Installation tasks](installation-tasks.md) · [Pre-installation checks](../pre-installation-checklist.md) · [NVIDIA host ingestion](https://docs.nvidia.com/infra-controller/documentation/provisioning-day-0/ingesting-hosts)
 
+
+### NIC inventory columns
+
+| Information | Exported fields |
+| --- | --- |
+| Identity and location | `name`, `vendor`, `model`, `adapter_id`, `adapter_name`, `interface_id`, `adapter_serial`, `part_number`, `firmware_version`, `location`, `slot`, `physical_port`, `interface_kind` |
+| MAC and PCI | `mac`, `permanent_mac`, `pci_address`, `numa_node`, `pci_path` |
+| Link and capabilities | `speed_mbps`, `max_speed_mbps`, `link_status`, `interface_enabled`, `health`, `state`, `auto_neg`, `full_duplex`, `mtu`, `port_maximum_mtu`, `link_technology` |
+| Neighbors and reported addresses | `lldp_chassis_id`, `lldp_port_id`, `lldp_system_name`, `observed_ipv4`, `observed_ipv6` |
+| Source and review | `description`, `redfish_adapter_path`, `redfish_port_path`, `inventory_source`, `inventory_read_at`, `inventory_note`, `reported_capable_speeds_mbps`, `reported_max_speed_bps` |
+
+Use **Refresh device details (刷新设备详情)** to collect BMC NIC information, or retrieve device information again during discovery, then export. Export combines identity-verified Redfish and NICo/Scout observations, deduplicated by MAC. It does not contact the BMC, start Scout or reboot. Unsupported fields stay blank; conflicting facts are noted. Read time is not the hardware collection time or a guarantee of live link state.
+
+`location` is the onboard/slot label; `slot` is the reported location ordinal and is not necessarily a PCIe slot number for onboard devices. Physical port association must be explicit, never inferred from list order. `host_to_bmc` identifies an internal host-to-BMC interface, rather than an external LOM port. Speeds are in Mbps. Suspicious maximum-speed values are left unnormalized, retained in `reported_*` columns and noted. `observed_*` contains reported addresses; `ip/subnet/gateway` contains saved planning values, never temporary addresses. Edit only the three address columns; equal speeds or Link Up alone do not identify a management port.
 
 ### Edit interface addresses in equipment planning
 

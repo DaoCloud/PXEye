@@ -25,7 +25,7 @@ PXEye 公开项目文档均提供内容对应的中英文版本。首次使用�
 | --- | --- | --- |
 | 总览 → 机柜拓扑 | [Read](user-guide/rack-topology.md) | [阅读](user-guide/rack-topology.zh-CN.md) |
 | 装机 → 安装任务 | [Read](user-guide/installation-tasks.md) | [阅读](user-guide/installation-tasks.zh-CN.md) |
-| 资源 → 设备管理 | [Read](user-guide/device-management.md) | [阅读](user-guide/device-management.zh-CN.md) |
+| 资源 → 设备管理 / 网卡信息 | [Read](user-guide/device-management.md) | [阅读](user-guide/device-management.zh-CN.md) |
 | 资源 → 实例管理 | [Read](user-guide/instance-management.md) | [阅读](user-guide/instance-management.zh-CN.md) |
 | 资源 → 操作系统 | [Read](user-guide/operating-systems.md) | [阅读](user-guide/operating-systems.zh-CN.md) |
 | 资源 → 网络管理 | [Read](user-guide/network-management.md) | [阅读](user-guide/network-management.zh-CN.md) |

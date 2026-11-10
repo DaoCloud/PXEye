@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.22.12 — Detailed NIC inventory export
+
+- Export one row per host port with physical location, port number, adapter identity, speed, link state and available neighbor information.
+- Collect optional Redfish port metadata and preserve read-only information alongside editable address columns; retain legacy CSV import compatibility.
+- Improve Excel readability with frozen identity columns and support for columns beyond Z.
+
 ## 0.22.10 — Manual acceptance skips
 
 - Add a Manual pass action to each installation acceptance item; persist task-scoped operator decisions and display Skipped.

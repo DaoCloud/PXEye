@@ -44,6 +44,10 @@ def facts(machine):
                 "vendor": n.get("pci_properties", {}).get("vendor"),
                 "model": n.get("pci_properties", {}).get("device"),
                 "pci_address": scout_pci_address(n.get("pci_properties") or {}),
+                "numa_node": (n.get("pci_properties") or {}).get("numa_node"),
+                "pci_path": (n.get("pci_properties") or {}).get("path"),
+                "description": (n.get("pci_properties") or {}).get("description"),
+                "inventory_source": "NICo / Scout",
             }
             for n in info.get("network_interfaces", [])
         ],

@@ -5,7 +5,7 @@ title: 设备管理
 description: 设备规划、发现纳管、地址更新及服务器系统配置。
 navigation_group: resources
 updated_at: "2026-11-10"
-product_version: "0.22.11"
+product_version: "0.22.12"
 ---
 
 # 设备管理
@@ -137,12 +137,12 @@ SERIAL-1,192.0.2.10,02:00:00:00:00:21,192.0.2.0/24,198.51.100.10,02:00:00:00:00:
 ## 6. 导出并导入网卡地址规划
 
 1. 在**发现设备**获取服务器信息后，选中服务器并点击**导出设备网卡列表**；也可在**纳管设备**中选中服务器导出，每次1–50台。
-2. 文件名为 `device-interfaces.xlsx`，表头为 `serial,mac,pci_address,ip,subnet,gateway`，每行一个已采集主机网口。Excel 默认加宽列、增大行高，按内容调整宽度和换行，并给包括空白地址在内的所有单元格添加网格边框；表头冻结并支持筛选。合并同一设备经身份核验的 Scout、BMC 刷新与纳管发现信息，并按 MAC 去重；已保存的 IP、子网 CIDR、网关会回填，未配置则留空。保留 SN/MAC，在对应空白处填写地址；全空地址行不删除已有配置。临时 DHCP 租约不会作为规划导出。
-3. 使用原**导入设备 → 服务器**或**导入规划**，上传填写后的 Excel、核对预览并保存；旧五列 CSV 继续支持。无需填写子网 ID、掩码或 NICo JSON。
+2. 文件名为 `device-interfaces.xlsx`，每个已采集主机网口（MAC）一行，多口网卡逐口展开。表格优先展示位置、物理端口、速率、链路、PCI 地址、厂商及型号，并附带下表中的详细信息。SN、MAC 两列和表头冻结；绿色表头、加宽列、增大字号及网格边框便于横向核对。
+3. 原 `serial,mac,ip,subnet,gateway` 字段保留；填写 `ip,subnet,gateway` 后，通过原**导入设备 → 服务器**或**导入规划**上传、预览并保存。其余列仅供核对，修改它们不会改变硬件信息。旧五列 CSV 和带 `pci_address` 的六列表继续支持。
 4. 已纳管服务器直接保存到原设备接口结构和**系统配置**；再次打开同一设备的详情或系统配置，可看到 MAC 对应的 IP、子网和网关，再导出时也会带回这些值。未纳管服务器先保存源规划，确认纳管时按 SN/MAC 自动带入。带入失败会提示，可核对后使用原**一键匹配**重做。
 5. 确认原主启动接口、安装方案等配置，按原流程安装。Ubuntu 安装器按 MAC 配置多个静态接口，首启和重启验收检查其地址、前缀和 MTU。
 
-纳管设备表头的全选框只选择或取消当前筛选列表；已全选时会保持勾选，再次点击即可取消。**清空选择**可取消包含筛选隐藏项在内的全部选择。混选设备时，网卡表仅导出其中的服务器，操作栏下方会显示服务器数和排除数；交换机、供电框与纯地址记录不在主机 OS 网卡表内。一键匹配仍需仅选择服务器。
+纳管设备表头的全选框只选择或取消当前筛选列表；已全选时会保持勾选，再次点击即可取消。**清空选择**可取消包含筛选隐藏项在内的全部选择。混选设备时，网卡表仅导出其中的服务器，交换机、供电框与纯地址记录不在主机 OS 网卡表内。一键匹配仍需仅选择服务器。
 
 子网尚未创建时，预览按失败设备列出 SN、MAC、IP、CIDR 和具体原因，例如“子网 198.51.100.0/24 尚未创建”。网关不一致、归属不符、地址冲突同样显示原因。有任何错误时本批不会保存，其他预览行不代表已导入；请先创建对应 HostInband 子网或修正表格，再重新预览并确认保存。系统不会根据表格自动创建子网。
 
@@ -152,7 +152,7 @@ SERVER001,02:00:00:00:01:01,0000:3b:00.0,192.0.2.11,192.0.2.0/24,192.0.2.1
 SERVER001,02:00:00:00:01:02,0000:3b:00.1,198.51.100.11,198.51.100.0/24,
 ```
 
-上例以文本展示 Excel 六列内容。`pci_address` 是只读采集信息：刷新设备详情和发现获取信息使用同一解析逻辑，设备详情也显示该列；BMC 不回报、关联不明确或多个来源冲突时留空，不猜测 PCI 域号。用户只填写地址三列，导入忽略 PCIe 列，不改变硬件身份。旧五列 `serial,mac,ip,subnet,gateway` CSV 仍可从原入口导入。
+上例展示兼容的六列网卡表；扩展表包含更多只读信息列。`pci_address` 是只读采集信息：刷新设备详情和发现获取信息使用同一解析逻辑，设备详情也显示该列；BMC 不回报、关联不明确或多个来源冲突时留空，不猜测 PCI 域号。用户只填写地址三列，导入忽略 PCIe 列，不改变硬件身份。旧五列 `serial,mac,ip,subnet,gateway` CSV 仍可从原入口导入。
 
 示例为文档地址。每行一个网口，SN可重复，MAC/IP不可重复。单次最多5000行、1 MiB。
 子网须精确对应网络管理中已有的单IPv4前缀HostInband，网关与子网定义一致；没有网关的子网可留空。
@@ -168,6 +168,20 @@ BMC未回报全部网口时，先用现有硬件读取入口补齐Scout信息；
 
 相关：[网络管理](network-management.zh-CN.md) · [安装方案](installation-profiles.zh-CN.md) · [安装任务](installation-tasks.zh-CN.md) · [装机前检查](../pre-installation-checklist.zh-CN.md) · [NVIDIA 主机接入](https://docs.nvidia.com/infra-controller/documentation/provisioning-day-0/ingesting-hosts)
 
+
+### 网卡信息列
+
+| 信息 | 导出字段 |
+| --- | --- |
+| 身份及位置 | `name`、`vendor`、`model`、`adapter_id`、`adapter_name`、`interface_id`、`adapter_serial`、`part_number`、`firmware_version`、`location`、`slot`、`physical_port`、`interface_kind` |
+| MAC 及 PCI | `mac`、`permanent_mac`、`pci_address`、`numa_node`、`pci_path` |
+| 链路及能力 | `speed_mbps`、`max_speed_mbps`、`link_status`、`interface_enabled`、`health`、`state`、`auto_neg`、`full_duplex`、`mtu`、`port_maximum_mtu`、`link_technology` |
+| 邻居及回报地址 | `lldp_chassis_id`、`lldp_port_id`、`lldp_system_name`、`observed_ipv4`、`observed_ipv6` |
+| 来源及核对 | `description`、`redfish_adapter_path`、`redfish_port_path`、`inventory_source`、`inventory_read_at`、`inventory_note`、`reported_capable_speeds_mbps`、`reported_max_speed_bps` |
+
+先使用**刷新设备详情**补齐 BMC 网卡信息，或在发现时重新**获取设备信息**，再导出。导出合并已核验归属的 Redfish 与 NICo/Scout 数据，按 MAC 去重，不自动访问 BMC、启动 Scout 或重启。设备或固件未回报的字段留空；来源冲突在备注中提示。读取时间不是硬件实际采集时间或实时链路保证。
+
+`location` 为板载/插槽标签，`slot` 为固件回报的位置编号，不能单独将板载编号视为 PCIe 插槽。物理端口必须由固件明确关联，不按列表顺序推算；`host_to_bmc` 表示内部主机至 BMC 接口，不是外部 LOM。速率单位为 Mbps；可疑的最大速率不参与归一化，原值保留在 `reported_*` 列并标注。`observed_*` 为设备回报地址，`ip/subnet/gateway` 为已保存的规划；临时地址不会成为规划。仅填写地址三列，不根据同速率或 Link Up 自动选择管理口。
 
 ### 在设备规划中编辑网口
 
