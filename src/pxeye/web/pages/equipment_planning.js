@@ -237,7 +237,7 @@ function equipmentPlanningEdit(id) {
       .filter(([key]) => key !== "kind")
       .map(
         ([key, label]) =>
-          `<div data-planning-group="${key.startsWith("management_") ? "server" : key.startsWith("bmc_") ? "bmc" : key.startsWith("pmc_") ? "pmc" : "common"}">${inputField("planning-" + key, label, key.endsWith("_password") ? "" : row?.values[key] || "", `maxlength="128" ${key.endsWith("_password") ? `type="password" autocomplete="new-password" placeholder="${row?.credential_present?.[key] ? "已保存，留空保留" : "未提供"}"` : ""}`)}</div>`,
+          `<div data-planning-group="${key.startsWith("management_") ? "server" : key.startsWith("bmc_") ? "bmc" : key.startsWith("pmc_") ? "pmc" : "common"}">${inputField("planning-" + key, label, key.endsWith("_password") ? "" : row?.values[key] || "", `maxlength="128" ${key.endsWith("_password") ? `type="password" autocomplete="new-password" placeholder="${row?.credential_present?.[key.replace("_password", "")] ? "已保存，留空保留" : "未提供"}"` : ""}`)}</div>`,
       )
       .join(
         "",

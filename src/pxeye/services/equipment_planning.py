@@ -131,7 +131,9 @@ class EquipmentPlanning:
     def public(record):
         return {k: record[k] for k in ("id", "saved_at", "source")} | {
             "values": public_values(record["values"]),
-            "credential_present": {key: bool(record["values"].get(key)) for key in PASSWORDS},
+            "credential_present": {
+                key.removesuffix("_password"): bool(record["values"].get(key)) for key in PASSWORDS
+            },
             "revision": digest(record),
             "interface_rows": record.get("interface_rows", []),
         }
