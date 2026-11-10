@@ -5,7 +5,7 @@ title: Device management
 description: Device plans, discovery, enrollment, address updates and server system configuration.
 navigation_group: resources
 updated_at: "2026-11-10"
-product_version: "0.22.12"
+product_version: "0.22.14"
 ---
 
 # Device management
@@ -14,7 +14,7 @@ product_version: "0.22.12"
 
 ## 1. Purpose and entry point
 
-Open **Resources → Device management (资源 → 设备管理)** to import arrival plans, discover and enroll devices, then apply plans to the corresponding server configuration.
+Open **Resources → Device management (资源 → 设备管理)** to import arrival plans, discover and enroll devices, then apply plans to the corresponding device configuration.
 
 | Tab | Purpose |
 | --- | --- |
@@ -22,7 +22,7 @@ Open **Resources → Device management (资源 → 设备管理)** to import arr
 | Managed devices (纳管设备) | View existing devices and use matching, system configuration and address management. This tab opens by default. |
 | Device plans (设备规划) | Import or edit serial numbers, addresses, MACs, management subnets and racks; compare them with enrolled device configuration. |
 
-Seven-column arrival plans are stored separately. Continue the existing discovery, authentication and enrollment steps after import; imported plans do not automatically become managed devices. See section 6 for five-column interface plans.
+Device arrival plans are stored separately. Continue the existing discovery, authentication and enrollment steps after import; imported plans do not automatically become managed devices. See section 6 for five-column interface plans.
 
 Device plans is the last tab. Search by SN, IP, MAC or rack.
 
@@ -30,19 +30,26 @@ Device plans is the last tab. Search by SN, IP, MAC or rack.
 
 ### Arrival plans
 
-Download the Excel template under **Device plans** with one host per row, or use **New plan (新增规划)** to enter a single host.
+Download the Excel template under **Device plans** with one device per row, or use **New plan (新增规划)** to enter a single device.
 
 | Template field | UI field | Requirement |
 | --- | --- | --- |
+| `kind` | Device type | Required: `server`, `switch` (NVLink switch), or `power_shelf`. |
 | `serial` | Device SN | Required and unique; must exactly match the managed device serial number. |
 | `management_ip` | Management IP | Planned host management IPv4; requires a management MAC. |
 | `management_mac` | Management MAC | MAC of the actual host management/boot interface. Matching selects this port even when the management IP and subnet are blank. |
 | `management_subnet` | Management subnet | CIDR such as `192.0.2.0/24`; requires a management MAC. |
 | `bmc_ip` | BMC IP | Planned BMC IPv4, rather than the temporary discovery address. |
 | `bmc_mac` | BMC MAC | When supplied, must match the enrolled device BMC MAC. |
+| `bmc_username` | BMC username | Server/switch controller account; leave blank for power shelves. |
+| `bmc_password` | BMC password | Controller password; never returned in previews or lists. Blank preserves a saved password. |
+| `pmc_ip` | PMC IP | Planned power-shelf controller IPv4. |
+| `pmc_mac` | PMC MAC | Must match the enrolled power-shelf controller MAC. |
+| `pmc_username` | PMC username | Power-shelf controller account. |
+| `pmc_password` | PMC password | Controller password; never returned in previews or lists. Blank preserves a saved password. |
 | `rack` | Rack | Used for display and comparison. Matching does not change rack membership. |
 
-CSV headers must contain all seven columns. Fields other than SN may be empty. When updating an existing plan, blank CSV cells preserve saved values; use **Edit plan (编辑规划)** to clear them. Management subnets display their ranges without names.
+Excel or CSV headers must contain all 14 columns. `kind` and `serial` are required; other values may be collected later, with valid credentials required before authentication. Servers and switches use `bmc_*`; power shelves use `pmc_*`. Only servers use `management_*`. Leave inapplicable fields empty. Existing plans are read as server plans. When updating an existing plan, blank CSV cells preserve saved values; use **Edit plan (编辑规划)** to clear non-password fields. Management subnets display their ranges without names.
 
 ### Server system configuration
 
@@ -82,7 +89,7 @@ Under **Address management → Plan address (地址管理 → 规划地址)**, v
 2. Select **Validate and preview (校验并预览)** and review new, updated, unchanged and invalid rows. Correct errors and preview again.
 3. Select **Save imported plans (保存导入规划)**. Use **Edit plan** to change a row. Its SN can be changed only while it has no hardware-linked interface plan.
 
-**Import devices / Download template (导入设备 / 下载模板)** in the managed list asks for a device type. Servers use the same planning Excel template. Switches and power shelves have separate templates with JSON for nested fields; preview them and click **Confirm saving local plans (确认保存本地规划)**. **New device (新增设备)** enters one device by type. For non-server local plans, separately click **Synchronize to NICo (同步至 NICo)**, review the declaration and impact, enter SN and confirm enrollment. Synchronization may start native device management and credential handling.
+**Import devices / Download template (导入设备 / 下载模板)** uses the same 14-column template without a type-selection step. A file may mix all three types. Import only saves **Device plans**; it does not enroll devices, synchronize NICo declarations or apply addresses. **New device (新增设备)** still accepts one device by type.
 
 ### Discover and enroll
 
@@ -99,9 +106,9 @@ Discovery information retrieval and **Refresh device details (刷新设备详情
 ### Match plans
 
 1. In [Network management](network-management.md), create a HostInband subnet with the exact planned CIDR and configure its actual gateway.
-2. Under **Managed devices**, select servers and click **Match plans (一键匹配)**. Each operation supports up to 50 servers.
-3. Review per-device results. Matching associates plans by unique SN, verifies management MAC ownership against collected hardware, then saves the target BMC address, management interface and subnet configuration.
-4. Use **Update BMC address (更新 BMC 地址)** to apply the BMC address. Installation tasks apply host management configuration. Maintain installation profiles and OS accounts under **System configuration (系统配置)**.
+2. Under **Managed devices**, select servers, NVLink switches or power shelves and click **Match plans (一键匹配)**. Each operation supports up to 50 devices.
+3. Review per-device results. Matching associates plans by unique SN and device type, verifies controller MAC ownership, then saves the planned BMC/PMC address and credentials. Server plans also verify the management MAC against collected hardware and save its interface and subnet configuration.
+4. Apply BMC/PMC addresses under **Address management (地址管理)**. Installation tasks apply host management configuration. Maintain installation profiles and OS accounts under **System configuration (系统配置)**.
 
 The plan page's **Configuration matches (配置一致)** means the plan matches saved device configuration. Match again after editing the source plan.
 
@@ -120,29 +127,31 @@ Double-click a device row or click its name for details. Select devices and clic
 These are fictional values; replace them with the actual site plan:
 
 ```csv
-serial,management_ip,management_mac,management_subnet,bmc_ip,bmc_mac,rack
-SERIAL-1,192.0.2.10,02:00:00:00:00:21,192.0.2.0/24,198.51.100.10,02:00:00:00:00:20,RACK-01
+kind,serial,management_ip,management_mac,management_subnet,bmc_ip,bmc_mac,bmc_username,bmc_password,pmc_ip,pmc_mac,pmc_username,pmc_password,rack
+server,SERVER-1,192.0.2.10,02:00:00:00:00:21,192.0.2.0/24,198.51.100.10,02:00:00:00:00:20,,,,,,,RACK-01
+switch,SWITCH-1,,,,198.51.100.11,02:00:00:00:00:30,,,,,,,RACK-01
+power_shelf,POWER-1,,,,,,,,198.51.100.12,02:00:00:00:00:40,,,RACK-01
 ```
 
-After enrolling the server with SN `SERIAL-1`, matching selects `02:00:00:00:00:21` as its management/boot port and references the existing `192.0.2.0/24` subnet. The netmask and gateway come from that subnet.
+After enrolling the server with SN `SERVER-1`, matching selects `02:00:00:00:00:21` as its management/boot port and references the existing `192.0.2.0/24` subnet. The netmask and gateway come from that subnet.
 
 ## 5. Notes
 
-- **Matching requirements**: Only unique server SN matching is supported. The management MAC must exist in collected hardware, and the subnet must match exactly and uniquely. Retrieve device details first if hardware information is missing.
-- **Credentials and effects**: Matching preserves BMC and OS credentials. It does not change Redfish addresses, allocate DHCP addresses, reboot devices or install an OS.
+- **Matching requirements**: Match a unique SN and device type. A server management MAC must exist in collected hardware, and the subnet must match exactly and uniquely. Retrieve device details first if hardware information is missing.
+- **Credentials and effects**: Matching applies nonempty BMC / PMC credentials and preserves existing values for blank cells. OS credentials are preserved. It does not change Redfish addresses, allocate DHCP addresses, reboot devices or install an OS.
 - **Errors and concurrency**: A failed device is not saved; other valid devices can continue. Refresh and match again if a plan or device configuration changes. Finish outstanding address operations first.
-- **Format**: Server planning Excel or CSV files support up to 1 MiB and 5,000 rows; switch/power shelf templates support up to 2 MiB. Legacy Expected Machine CSV/Excel files use a different format; download the template for the selected entry point.
+- **Format**: Unified planning Excel or CSV files support up to 1 MiB and 5,000 rows. Legacy Expected Machine CSV/Excel files use a different format; download the template for the selected entry point.
 - **Other devices**: Switches and power shelves have their own system configuration and address management; they do not receive server OS installation tasks. Unknown DHCP endpoints can have address plans without being treated as authenticated, installable servers.
 
 ## 6. Export and import interface addresses
 
 1. Retrieve server information in **Discovered devices**, select servers and click **Export device interface list (导出设备网卡列表)**. Managed servers can also be selected for export; select 1–50 per export.
 2. The file is named `device-interfaces.xlsx`, with one row per collected host port (MAC); multi-port adapters have separate rows per port. Leading columns show location, physical port, speed, link status, PCI address, vendor and model. Additional inventory fields are listed below. The header and SN/MAC columns are frozen, with green headers, wide columns, larger text and cell borders.
-3. Keep `serial,mac,ip,subnet,gateway`. Fill in `ip,subnet,gateway`, then use **Import devices → Server** or **Import plans** to upload, preview and save. Other columns are informational: editing them cannot change hardware facts. Existing five-column CSV and six-column files with `pci_address` remain supported.
+3. Keep `serial,mac,ip,subnet,gateway`. Fill in `ip,subnet,gateway`, then use **Import devices** or **Import plans** to upload, preview and save. Other columns are informational: editing them cannot change hardware facts. Existing five-column CSV and six-column files with `pci_address` remain supported.
 4. Managed servers receive updates in the existing device interface structure and **System configuration**. Reopening the same device shows each MAC's IP, subnet and gateway; subsequent exports include the saved values. Unenrolled servers retain a source plan which is applied after explicit enrollment. If application fails, correct the issue and use existing **Match plans** to retry.
 5. Confirm the existing boot interface, installation profile and other requirements, then install normally. Ubuntu matches interfaces by MAC. First-boot and reboot acceptance check their addresses, prefix lengths and MTUs.
 
-The managed-device header checkbox selects or deselects only the current filtered list. It stays checked when all visible rows are selected; click again to deselect them. **Clear selection (清空选择)** also clears hidden selections. With mixed device types selected, interface export includes only servers; the note below the action bar shows included and excluded counts. Switches, power shelves and address-only records are excluded from the host OS interface sheet. **Match plans** still requires a server-only selection.
+The managed-device header checkbox selects or deselects only the current filtered list. It stays checked when all visible rows are selected; click again to deselect them. **Clear selection (清空选择)** also clears hidden selections. With mixed device types selected, interface export includes only servers; the note below the action bar shows included and excluded counts. Switches, power shelves and address-only records are excluded from the host OS interface sheet. **Match plans** supports all three device types and applies their respective planning fields.
 
 If a subnet has not been created, preview identifies the failed device by SN and shows MAC, IP, CIDR and the reason. Gateway mismatches, ownership errors and address conflicts also report their causes. Any validation error prevents the entire batch from being saved; other preview rows do not represent successful imports. Create the required HostInband subnet or correct the spreadsheet, then preview and confirm again. Import never creates subnets automatically.
 
@@ -156,7 +165,7 @@ The example shows the six Excel columns as text. `pci_address` is observed infor
 
 These are documentation addresses. One row represents one port; serials may repeat, MACs and IPs must not. The limit is 5,000 rows and 1 MiB.
 Each CIDR must exactly match a unique existing single-IPv4-prefix HostInband network. Gateways must agree with the network definition; leave blank only when the network has no gateway.
-Import preserves credentials and boot selection. A server without a boot interface still needs an explicit selection in System configuration; CSV order never selects it. The selected host interface has `primary: true`, with at most one per server. Change it in **System configuration → Host management and boot port → Boot NIC MAC (系统配置 → 主机管理与启动口 → 启动网卡 MAC)**. The seven-column arrival plan can also change it through `management_mac` followed by **Match plans**. This per-MAC interface sheet does not contain a primary flag.
+Import preserves credentials and boot selection. A server without a boot interface still needs an explicit selection in System configuration; CSV order never selects it. The selected host interface has `primary: true`, with at most one per server. Change it in **System configuration → Host management and boot port → Boot NIC MAC (系统配置 → 主机管理与启动口 → 启动网卡 MAC)**. The device arrival plan can also change it through `management_mac` followed by **Match plans**. This per-MAC interface sheet does not contain a primary flag.
 Previews expire after 15 minutes. Device, hardware, source-plan or network changes and address conflicts block saving the batch; no partial import occurs. Installation tasks, outstanding attention items and address-operation records do not block saving a future plan. Running tasks retain their frozen revisions; execution entry points still check task and address-operation state.
 
 **Multiple ports on one server:** Independent physical ports may use the same or overlapping subnets; bonds or VLANs are not required. Address format, hardware ownership, existing subnet/gateway definitions and IP conflicts are still validated.

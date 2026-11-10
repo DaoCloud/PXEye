@@ -15,14 +15,40 @@ from pxeye.services.device_plans import DevicePlans
 from pxeye.services.equipment import Equipment, mac, ipv4
 
 FIELDS = (
+    "kind",
     "serial",
     "management_ip",
     "management_mac",
     "management_subnet",
     "bmc_ip",
     "bmc_mac",
+    "bmc_username",
+    "bmc_password",
+    "pmc_ip",
+    "pmc_mac",
+    "pmc_username",
+    "pmc_password",
     "rack",
 )
+KINDS = ("server", "switch", "power_shelf")
+PASSWORDS = ("bmc_password", "pmc_password")
+LEGACY_FIELDS = set(FIELDS) - {
+    "kind",
+    "bmc_username",
+    "bmc_password",
+    "pmc_ip",
+    "pmc_mac",
+    "pmc_username",
+    "pmc_password",
+}
+
+
+def expanded(values):
+    return {key: values.get(key, "server" if key == "kind" else "") for key in FIELDS}
+
+
+def public_values(values):
+    return {key: "" if key in PASSWORDS else value for key, value in expanded(values).items()}
 
 
 def is_host(interface):
@@ -30,19 +56,31 @@ def is_host(interface):
 
 
 def normalize(values):
+    if isinstance(values, dict) and set(values) == LEGACY_FIELDS:
+        values = expanded(values)
     if not isinstance(values, dict) or set(values) != set(FIELDS):
-        raise ValueError("请使用设备规划模板的七个字段，官方设备声明请使用原生导入接口。")
+        raise ValueError("请使用设备规划模板的14个字段。")
     row = {}
     for key, value in values.items():
         if not isinstance(value, str) or len(value) > 128 or any(ord(c) < 32 for c in value):
             raise ValueError("规划字段需为不含控制字符的文本，最多128字符。")
-        row[key] = value.strip()
+        row[key] = value if key in PASSWORDS else value.strip()
+    if row["kind"] not in KINDS:
+        raise ValueError("kind 仅支持 server、switch、power_shelf。")
     if not row["serial"]:
         raise ValueError("设备 SN 不能为空。")
-    for key in ("management_mac", "bmc_mac"):
+    forbidden = (
+        [k for k in FIELDS if k.startswith("bmc_") or k.startswith("management_")]
+        if row["kind"] == "power_shelf"
+        else [k for k in FIELDS if k.startswith("pmc_")]
+        + ([k for k in FIELDS if k.startswith("management_")] if row["kind"] == "switch" else [])
+    )
+    if any(row[key] for key in forbidden):
+        raise ValueError("供电框仅填写 pmc_*；服务器/交换机填写 bmc_*，management_* 仅用于服务器。")
+    for key in ("management_mac", "bmc_mac", "pmc_mac"):
         if row[key]:
             row[key] = mac(row[key])
-    for key in ("management_ip", "bmc_ip"):
+    for key in ("management_ip", "bmc_ip", "pmc_ip"):
         row[key] = ipv4(row[key])
     if row["management_subnet"]:
         network = ipaddress.IPv4Network(row["management_subnet"], strict=True)
@@ -81,14 +119,19 @@ class EquipmentPlanning:
 
     @staticmethod
     def records(db):
-        return {
+        records = {
             r["id"]: json.loads(r["data"])
             for r in db.execute("SELECT id,data FROM equipment_planning ORDER BY serial")
         }
+        for record in records.values():
+            record["values"] = expanded(record["values"])
+        return records
 
     @staticmethod
     def public(record):
-        return {k: record[k] for k in ("id", "values", "saved_at", "source")} | {
+        return {k: record[k] for k in ("id", "saved_at", "source")} | {
+            "values": public_values(record["values"]),
+            "credential_present": {key: bool(record["values"].get(key)) for key in PASSWORDS},
             "revision": digest(record),
             "interface_rows": record.get("interface_rows", []),
         }
@@ -110,25 +153,36 @@ class EquipmentPlanning:
             }
         for row in rows:
             device = devices.get(row["values"]["serial"])
-            row["editable_nics"] = self.host_nics(device) if device else []
+            row["editable_nics"] = (
+                self.host_nics(device) if device and row["values"]["kind"] == "server" else []
+            )
         return {"rows": rows}
 
     @staticmethod
     def template():
         stream = io.StringIO(newline="")
-        writer = csv.writer(stream)
-        writer.writerow(FIELDS)
-        writer.writerow(
-            [
-                "SERIAL-1",
-                "192.0.2.10",
-                "02:00:00:00:00:21",
-                "192.0.2.0/24",
-                "198.51.100.10",
-                "02:00:00:00:00:20",
-                "RACK-01",
-            ]
-        )
+        writer = csv.DictWriter(stream, fieldnames=FIELDS)
+        writer.writeheader()
+        for kind, serial, address, hardware in (
+            ("server", "SERVER-1", "198.51.100.10", "02:00:00:00:00:20"),
+            ("switch", "SWITCH-1", "198.51.100.11", "02:00:00:00:00:30"),
+            ("power_shelf", "POWER-1", "198.51.100.12", "02:00:00:00:00:40"),
+        ):
+            prefix = "pmc" if kind == "power_shelf" else "bmc"
+            row = {
+                "kind": kind,
+                "serial": serial,
+                "rack": "RACK-01",
+                f"{prefix}_ip": address,
+                f"{prefix}_mac": hardware,
+            }
+            if kind == "server":
+                row.update(
+                    management_ip="192.0.2.10",
+                    management_mac="02:00:00:00:00:21",
+                    management_subnet="192.0.2.0/24",
+                )
+            writer.writerow(row)
         return stream.getvalue()
 
     def save(self, body, owner=""):
@@ -154,6 +208,11 @@ class EquipmentPlanning:
             or old["values"]["serial"] != values["serial"]
         ):
             raise ValueError("设备规划已变化，或硬件 SN 被修改，请刷新后编辑。")
+        if values["kind"] != "server" or old["values"]["kind"] != "server":
+            raise ValueError("主机网卡规划仅适用于服务器。")
+        for key in PASSWORDS:
+            if not values[key]:
+                values[key] = old["values"].get(key, "")
         stream = io.StringIO(newline="")
         writer = csv.DictWriter(stream, fieldnames=PORT_FIELDS)
         writer.writeheader()
@@ -206,6 +265,11 @@ class EquipmentPlanning:
             if body["id"] and not old or body["revision"] != (digest(old) if old else ""):
                 raise ValueError("设备规划已变化，请刷新后编辑。")
             check_interface_values(old, values)
+            if old and old["values"]["kind"] != values["kind"]:
+                raise ValueError("已有规划的设备类型不能修改，请核对 SN。")
+            for key in PASSWORDS:
+                if old and not values[key]:
+                    values[key] = old["values"].get(key, "")
             if any(
                 r["values"]["serial"] == values["serial"] and r != old for r in records.values()
             ):
@@ -239,7 +303,7 @@ class EquipmentPlanning:
             or len(reader.fieldnames) != len(FIELDS)
             or set(reader.fieldnames) != set(FIELDS)
         ):
-            raise ValueError("请下载新的设备规划 CSV 模板；不支持旧版官方声明表头或额外字段。")
+            raise ValueError("请下载包含 kind、BMC 和 PMC 字段的14列设备规划模板。")
         incoming = []
         try:
             for row in reader:
@@ -266,9 +330,12 @@ class EquipmentPlanning:
                 merged = dict(raw)
                 if old:
                     merged = {
-                        k: v if v.strip() else old["values"].get(k, "") for k, v in raw.items()
+                        k: v if (v if k in PASSWORDS else v.strip()) else old["values"].get(k, "")
+                        for k, v in raw.items()
                     }
                 values = normalize(merged)
+                if old and old["values"]["kind"] != values["kind"]:
+                    raise ValueError("已有规划的设备类型不同，请核对 SN。")
                 check_interface_values(old, values)
                 operation = (
                     "create" if not old else "unchanged" if old["values"] == values else "update"
@@ -288,11 +355,22 @@ class EquipmentPlanning:
                     }
                 )
                 rows.append(
-                    {"line": line, "serial": serial, "operation": operation, "values": values}
+                    {
+                        "line": line,
+                        "serial": serial,
+                        "operation": operation,
+                        "values": public_values(values),
+                    }
                 )
             except (ValueError, TypeError) as error:
                 rows.append(
-                    {"line": line, "serial": serial, "operation": "invalid", "detail": str(error)}
+                    {
+                        "line": line,
+                        "serial": serial,
+                        "operation": "invalid",
+                        "detail": str(error),
+                        "values": {"kind": str(raw.get("kind") or "")},
+                    }
                 )
         counts = {
             k: sum(r["operation"] == k for r in rows)
@@ -482,7 +560,12 @@ class EquipmentPlanning:
 
     def prepare_match(self, source, old, records, networks, network_revisions):
         values = source["values"]
+        if values.get("kind", "server") != "server":
+            raise ValueError("规划设备类型与纳管服务器不一致。")
         machine, intent = copy.deepcopy(old["machine"]), copy.deepcopy(old["intent"])
+        for key in ("bmc_username", "bmc_password"):
+            if values.get(key):
+                machine[key] = values[key]
         if not machine.get("bmc_username") or not machine.get("bmc_password"):
             raise ValueError("设备缺少已保存的 BMC 凭据，请先完成纳管。")
         if values["bmc_mac"] and values["bmc_mac"] != machine["bmc_mac_address"].lower():
@@ -604,7 +687,7 @@ class EquipmentPlanning:
             or not isinstance(body["selections"], list)
             or not 1 <= len(body["selections"]) <= 50
         ):
-            raise ValueError("一次请选择1–50台纳管服务器。")
+            raise ValueError("一次请选择1–50台纳管设备。")
         network_revisions = body["network_revisions"]
         if (
             not isinstance(network_revisions, dict)
@@ -626,6 +709,8 @@ class EquipmentPlanning:
             raise ValueError("设备选择或规划版本无效。")
         # The route holds the normal OS/configuration lock throughout this one-pass operation.
         snapshot = Equipment(self.adapter, self.resources).snapshot(servers=[])
+        if snapshot["errors"]:
+            raise ValueError("设备或网络信息读取不完整，请刷新后匹配。")
         networks = snapshot["networks"]
         results = []
         for selection in selections:
@@ -639,6 +724,14 @@ class EquipmentPlanning:
                         raise ValueError("没有相同 SN 的设备规划。")
                     if digest(source) != selection["plan_revision"]:
                         raise ValueError("源规划已变化，请刷新后重新匹配。")
+                    if source["values"]["kind"] != "server":
+                        result.update(
+                            self.match_controller(
+                                db, source, selection, snapshot, network_revisions
+                            )
+                        )
+                        results.append(result)
+                        continue
                     records = {
                         r["serial"]: json.loads(r["data"])
                         for r in db.execute("SELECT * FROM device_plans")
@@ -702,6 +795,11 @@ class EquipmentPlanning:
                         for k in before
                         if before[k] != after[k]
                     ]
+                    for key, label in (("bmc_username", "BMC 账号"), ("bmc_password", "BMC 密码")):
+                        if old["machine"].get(key) != prepared["machine"].get(key):
+                            result["changes"].append(
+                                {"field": label, "before": "", "after": "已更新"}
+                            )
                     for planned in source.get("interface_rows", []):
                         hardware = planned["mac"]
                         previous = next(
@@ -749,3 +847,97 @@ class EquipmentPlanning:
         if counts["saved"]:
             self.plans.export()
         return {"rows": results, "counts": counts}
+
+    def match_controller(self, db, source, selection, snapshot, network_revisions):
+        """Save only local controller intent; native DHCP/Redfish writes stay explicit."""
+        equipment = Equipment(self.adapter, self.resources)
+        values = source["values"]
+        matches = [item for item in snapshot["items"] if item["serial"] == selection["serial"]]
+        if len(matches) != 1 or any(
+            row["chassis_serial_number"] == selection["serial"]
+            for row in snapshot["server_declarations"]
+        ):
+            raise ValueError("纳管清单中的 SN 不唯一或设备不存在。")
+        item = matches[0]
+        if item["id"] != selection["device_id"] or item["kind"] != values["kind"]:
+            raise ValueError("规划设备类型或纳管身份不一致。")
+        if item.get("revision", "") != selection["device_revision"]:
+            raise ValueError("设备配置已变化，请刷新后重新匹配。")
+        prefix = "pmc" if values["kind"] == "power_shelf" else "bmc"
+        declaration = copy.deepcopy(item["declaration"])
+        hardware = declaration.get("bmc_mac_address", "").lower()
+        if values[prefix + "_mac"] and values[prefix + "_mac"] != hardware:
+            raise ValueError("规划控制器 MAC 与纳管设备不一致。")
+        changes = []
+        for suffix, key in (
+            ("ip", "bmc_ip_address"),
+            ("username", "bmc_username"),
+            ("password", "bmc_password"),
+        ):
+            value = values[prefix + "_" + suffix]
+            if value and declaration.get(key, "") != value:
+                changes.append(
+                    {
+                        "field": prefix.upper()
+                        + " "
+                        + {"ip": "IP", "username": "账号", "password": "密码"}[suffix],
+                        "before": declaration.get(key, "") if suffix == "ip" else "",
+                        "after": value if suffix == "ip" else "已更新",
+                    }
+                )
+                declaration[key] = value
+        if not changes:
+            return {"status": "unchanged", "detail": "配置无变化。", "changes": []}
+        previous = equipment.record("plans", item["id"])
+        bindings = copy.deepcopy(previous.get("bindings", {}))
+        if values[prefix + "_ip"]:
+            address = ipaddress.ip_address(values[prefix + "_ip"])
+            networks = [
+                n
+                for n in snapshot["networks"]
+                if n["segment_type"] == "UNDERLAY"
+                and n["name"] != "static-assignments"
+                and any(address in ipaddress.ip_network(p["prefix"]) for p in n["prefixes"])
+            ]
+            if len(networks) != 1:
+                raise ValueError("控制器目标 IP 必须唯一对应已有 Underlay 子网。")
+            network = networks[0]
+            if network_revisions.get(network["id"]) != network["revision"]:
+                raise ValueError("关联子网配置已变化，请刷新后重新匹配。")
+            bindings[hardware] = network["id"]
+        plan = equipment.prepare(
+            {
+                "id": item["id"],
+                "kind": item["kind"],
+                "revision": item.get("revision", ""),
+                "native_revision": item.get("native_revision", ""),
+                "declaration": declaration,
+                "bindings": bindings,
+            },
+            snapshot,
+        )
+        records = {
+            row["serial"]: json.loads(row["data"])
+            for row in db.execute("SELECT * FROM device_plans")
+        }
+        equipment.validate_server_plans(
+            records,
+            snapshot={
+                **snapshot,
+                "items": [plan if row["id"] == plan["id"] else row for row in snapshot["items"]],
+            },
+        )
+        for bucket, key in (
+            ("plans", plan["id"]),
+            ("versions", plan["id"] + "-" + digest(plan)[:16]),
+        ):
+            db.execute(
+                "INSERT INTO equipment_records VALUES (?,?,?) ON CONFLICT(bucket,id) DO UPDATE SET data=excluded.data",
+                (bucket, key, json.dumps(plan)),
+            )
+        item.update(declaration=plan["declaration"], ports=plan["ports"], revision=digest(plan))
+        return {
+            "status": "saved",
+            "detail": "控制器地址规划已保存，请在地址管理应用。",
+            "changes": changes,
+        }

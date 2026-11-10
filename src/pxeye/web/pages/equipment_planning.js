@@ -7,12 +7,19 @@ sectionReads.equipmentPlanning = async () => {
   state.equipmentPlanning = await api("/api/equipment-planning");
 };
 const equipmentPlanningFields = [
+  ["kind", "设备类型"],
   ["serial", "设备 SN"],
   ["management_ip", "管理 IP"],
   ["management_mac", "管理 MAC"],
   ["management_subnet", "管理子网"],
   ["bmc_ip", "BMC IP"],
   ["bmc_mac", "BMC MAC"],
+  ["bmc_username", "BMC 用户名"],
+  ["bmc_password", "BMC 密码"],
+  ["pmc_ip", "PMC IP"],
+  ["pmc_mac", "PMC MAC"],
+  ["pmc_username", "PMC 用户名"],
+  ["pmc_password", "PMC 密码"],
   ["rack", "机柜"],
 ];
 const equipmentPlanningStates = {
@@ -24,6 +31,17 @@ const equipmentPlanningStates = {
   failed: "未匹配",
 };
 function equipmentPlanningConfiguration(device) {
+  if (device.kind !== "server") {
+    const prefix = device.kind === "power_shelf" ? "pmc" : "bmc";
+    return {
+      kind: device.kind,
+      serial: device.serial,
+      [prefix + "_ip"]: device.declaration?.bmc_ip_address || "",
+      [prefix + "_mac"]: device.declaration?.bmc_mac_address || "",
+      [prefix + "_username"]: device.declaration?.bmc_username || "",
+      rack: device.rack_id || "",
+    };
+  }
   const native = state.resources?.devices.find(
     (d) => d.serial === device.serial,
   );
@@ -36,12 +54,14 @@ function equipmentPlanningConfiguration(device) {
     native.intent?.network_bindings?.[host?.mac_address?.toLowerCase()];
   const network = state.networks?.networks.find((n) => n.id === networkId);
   return {
+    kind: "server",
     serial: native.serial,
     management_ip: host?.fixed_ip || "",
     management_mac: host?.mac_address?.toLowerCase() || "",
     management_subnet: network?.prefixes.map((p) => p.prefix).join(", ") || "",
     bmc_ip: native.bmc_ip_address || "",
     bmc_mac: native.bmc_mac_address?.toLowerCase() || "",
+    bmc_username: native.bmc_username || "",
     rack: native.rack_id || "",
   };
 }
@@ -60,13 +80,21 @@ function equipmentPlanningComparison(row) {
   );
   if (devices.length > 1) return { label: "SN 不唯一", tone: "red" };
   if (!devices.length) return { label: "未纳管", tone: "gray" };
-  if (devices[0].kind !== "server")
+  if (devices[0].kind !== (row.values.kind || "server"))
     return { label: "设备类型不匹配", tone: "red" };
   const current = equipmentPlanningConfiguration(devices[0]);
   if (!current) return { label: "配置暂不可读", tone: "gray" };
   const fields = equipmentPlanningFields.filter(
     ([key]) =>
-      key !== "serial" && row.values[key] && row.values[key] !== current[key],
+      ![
+        "serial",
+        "bmc_username",
+        "bmc_password",
+        "pmc_username",
+        "pmc_password",
+      ].includes(key) &&
+      row.values[key] &&
+      row.values[key] !== current[key],
   );
   if (
     (row.interface_rows || []).some((p) => {
@@ -112,6 +140,7 @@ function equipmentPlanningMtu(subnet) {
     : "未配置 / 无法匹配";
 }
 function equipmentPlanningPorts(row) {
+  if ((row.values.kind || "server") !== "server") return [];
   const native = state.resources?.devices.find(
     (d) => d.serial === row.values.serial,
   );
@@ -155,9 +184,11 @@ function equipmentPlanningTable() {
     table(
       [
         "设备 SN",
+        "类型",
         "管理地址 / MAC",
         "管理子网",
         "BMC 地址 / MAC",
+        "PMC 地址 / MAC",
         "机柜",
         "网卡地址规划",
         "配置对比",
@@ -171,7 +202,7 @@ function equipmentPlanningTable() {
         const interfaces = ports.length
           ? `<details><summary>${ports.length} 个网口</summary>${ports.map((p) => `<div class="live-small">${esc(p.mac)} · ${esc(p.ip || "未配置")} · ${esc(p.subnet || "未配置")} · 网关 ${esc(p.gateway || "无")} · MTU ${esc(equipmentPlanningMtu(p.subnet))}</div>`).join("")}</details>`
           : "—";
-        return `<tr><td>${esc(v.serial)}</td><td>${equipmentPlanningCell(v.management_ip, c?.management_ip)}<span class="live-small live-code">${equipmentPlanningCell(v.management_mac, c?.management_mac)}</span></td><td>${equipmentPlanningCell(v.management_subnet, c?.management_subnet)}${v.management_subnet ? `<span class="live-small">MTU ${esc(equipmentPlanningMtu(v.management_subnet))}</span>` : ""}</td><td>${equipmentPlanningCell(v.bmc_ip, c?.bmc_ip)}<span class="live-small live-code">${equipmentPlanningCell(v.bmc_mac, c?.bmc_mac)}</span></td><td>${equipmentPlanningCell(v.rack, c?.rack)}</td><td>${interfaces}</td><td>${badge(comparison.label, comparison.tone)}</td><td>${button("编辑规划", "planning-edit", false, `data-id="${esc(row.id)}"`)}</td></tr>`;
+        return `<tr><td>${esc(v.serial)}</td><td>${esc(equipmentKinds[v.kind || "server"])}</td><td>${equipmentPlanningCell(v.management_ip, c?.management_ip)}<span class="live-small live-code">${equipmentPlanningCell(v.management_mac, c?.management_mac)}</span></td><td>${equipmentPlanningCell(v.management_subnet, c?.management_subnet)}${v.management_subnet ? `<span class="live-small">MTU ${esc(equipmentPlanningMtu(v.management_subnet))}</span>` : ""}</td><td>${equipmentPlanningCell(v.bmc_ip, c?.bmc_ip)}<span class="live-small live-code">${equipmentPlanningCell(v.bmc_mac, c?.bmc_mac)}</span></td><td>${equipmentPlanningCell(v.pmc_ip, c?.pmc_ip)}<span class="live-small live-code">${equipmentPlanningCell(v.pmc_mac, c?.pmc_mac)}</span></td><td>${equipmentPlanningCell(v.rack, c?.rack)}</td><td>${interfaces}</td><td>${badge(comparison.label, comparison.tone)}</td><td>${button("编辑规划", "planning-edit", false, `data-id="${esc(row.id)}"`)}</td></tr>`;
       }),
     ) +
     '<div class="live-note">按序列号与纳管设备对比。规划可随时编辑，在纳管设备中点击“一键匹配”后写入设备配置；机柜用于对比。</div>'
@@ -194,7 +225,23 @@ function equipmentPlanningEdit(id) {
   modal(
     row ? "编辑设备规划" : "新增设备规划",
     "按序列号关联，按 MAC 指定管理接口",
-    `<div class="live-editor-grid">${equipmentPlanningFields.map(([key, label]) => inputField("planning-" + key, label, row?.values[key] || "", 'maxlength="128"')).join("")}</div><div class="live-note">管理子网填写 CIDR，例如 192.0.2.0/24。填写管理 IP 或子网时必须提供管理 MAC；该 MAC 出现在下方网卡列表时，请在对应网口编辑地址，上方自动同步。</div>` +
+    `<div class="live-editor-grid">${selectField(
+      "planning-kind",
+      "设备类型",
+      ["server", "switch", "power_shelf"].map((kind) => [
+        kind,
+        equipmentKinds[kind],
+      ]),
+      row?.values.kind || "server",
+    )}${equipmentPlanningFields
+      .filter(([key]) => key !== "kind")
+      .map(
+        ([key, label]) =>
+          `<div data-planning-group="${key.startsWith("management_") ? "server" : key.startsWith("bmc_") ? "bmc" : key.startsWith("pmc_") ? "pmc" : "common"}">${inputField("planning-" + key, label, key.endsWith("_password") ? "" : row?.values[key] || "", `maxlength="128" ${key.endsWith("_password") ? `type="password" autocomplete="new-password" placeholder="${row?.credential_present?.[key] ? "已保存，留空保留" : "未提供"}"` : ""}`)}</div>`,
+      )
+      .join(
+        "",
+      )}</div><div class="live-note">服务器和交换机填写 BMC，供电框填写 PMC。密码留空保留已有值。管理子网填写 CIDR；填写管理 IP 或子网时须提供管理 MAC。</div>` +
       (ports.length
         ? `<h3>主机网卡地址</h3>${table(
             ["MAC / PCIe", "IP", "子网 CIDR", "网关", "MTU"],
@@ -203,11 +250,25 @@ function equipmentPlanningEdit(id) {
                 `<tr><td class="live-code">${esc(p.mac)}<span class="live-small">${esc(p.pci_address || "PCIe 未采集")}</span></td>${["ip", "subnet", "gateway"].map((k) => `<td>${inputField(`planning-port-${i}-${k}`, { ip: "IP", subnet: "子网 CIDR", gateway: "网关" }[k], p[k], 'maxlength="128"')}</td>`).join("")}<td id="planning-port-${i}-mtu">${esc(equipmentPlanningMtu(p.subnet))}</td></tr>`,
             ),
           )}<div class="live-note">留空网口不修改已有配置。MTU 读取网络管理中的子网配置。网口地址保存到系统配置，下次安装生效；主启动接口保持不变。设备级字段仍通过“一键匹配”应用。</div>`
-        : '<div class="live-note">尚无已采集网卡，请先获取设备信息或刷新硬件。</div>') +
+        : "") +
       eqError(),
     button("取消", "close") + button("保存规划", "planning-save", true),
   );
+  $("#planning-kind").disabled = !!row;
+  equipmentPlanningTypeFields();
   equipmentPlanningSyncManagement();
+}
+function equipmentPlanningTypeFields() {
+  const kind = $("#planning-kind").value;
+  document.querySelectorAll("[data-planning-group]").forEach((el) => {
+    const group = el.dataset.planningGroup;
+    el.hidden = !(
+      group === "common" ||
+      (group === "server" && kind === "server") ||
+      (group === "bmc" && kind !== "power_shelf") ||
+      (group === "pmc" && kind === "power_shelf")
+    );
+  });
 }
 function equipmentPlanningSyncManagement() {
   const ports = state.wizard?.ports || [];
@@ -238,9 +299,19 @@ async function equipmentPlanningSave() {
   const values = Object.fromEntries(
     equipmentPlanningFields.map(([key]) => [
       key,
-      $("#planning-" + key).value.trim(),
+      key.endsWith("_password")
+        ? $("#planning-" + key).value
+        : $("#planning-" + key).value.trim(),
     ]),
   );
+  for (const [key] of equipmentPlanningFields) {
+    if (
+      (key.startsWith("pmc_") && values.kind !== "power_shelf") ||
+      (key.startsWith("bmc_") && values.kind === "power_shelf") ||
+      (key.startsWith("management_") && values.kind !== "server")
+    )
+      values[key] = "";
+  }
   const management = interfaces.find(
     (p) => p.mac === values.management_mac.toLowerCase() && p.ip,
   );
@@ -264,9 +335,9 @@ function equipmentPlanningImport() {
   state.wizard = { resource: "equipment-planning-import" };
   modal(
     "导入设备规划",
-    "支持设备规划表，以及导出的设备网卡列表",
+    "14 列统一模板，一行一台设备；也支持导出的设备网卡列表",
     '<div class="live-form"><a class="link-button" href="/api/equipment-planning/template">下载 Excel 模板</a><label class="live-upload">选择 Excel 或 CSV 文件<input id="planning-file" type="file" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"></label></div><div id="planning-preview"></div>' +
-      '<div class="live-note">网卡表每行一个 MAC，填写 IP、子网 CIDR、网关；不使用的网口留空。PCIe 地址为采集信息，导入不会覆盖。子网需已在网络管理中配置。主启动接口保持不变，默认路由只使用管理口；其他网关只保存，不自动生成额外路由。已纳管设备直接保存到系统配置，未纳管设备在确认纳管后带入；均在下次安装时生效。</div>' +
+      '<div class="live-note">kind 填写 server、switch 或 power_shelf。服务器和交换机填写 bmc_*，供电框填写 pmc_*；management_* 仅用于服务器。不适用字段留空。导入只保存规划，不自动纳管或下发地址。</div>' +
       eqError(),
     button("取消", "close") + button("校验并预览", "planning-preview", true),
   );
@@ -294,10 +365,10 @@ async function equipmentPlanningPreview() {
       : '<div class="live-note">校验通过；点击“保存导入规划”后才会写入。</div>') +
     `<div class="live-note">待新增 ${r.counts.create} · 待更新 ${r.counts.update} · 无变化 ${r.counts.unchanged} · 校验失败 ${r.counts.invalid}${r.format === "interfaces" ? ` · 跳过空白网口 ${r.skipped}` : ""}</div>` +
     table(
-      ["行号", "SN", "操作", "说明"],
+      ["行号", "SN", "类型", "操作", "说明"],
       r.rows.map(
         (row) =>
-          `<tr><td>${esc(row.line)}</td><td>${esc(row.serial)}</td><td>${esc(row.operation === "invalid" && r.format === "interfaces" ? "导入校验失败" : equipmentPlanningStates[row.operation])}</td><td>${esc(row.detail || [row.values?.management_ip, row.values?.management_subnet, row.values?.bmc_ip].filter(Boolean).join(" / "))}${(row.interfaces || []).map((p) => `<span class="live-small">MAC ${esc(p.mac)} → IP ${esc(p.ip || "空")} · 子网 ${esc(p.subnet || "空")} · 网关 ${esc(p.gateway || "空")}</span>`).join("")}</td></tr>`,
+          `<tr><td>${esc(row.line)}</td><td>${esc(row.serial)}</td><td>${esc(equipmentKinds[row.values?.kind] || row.values?.kind || (r.format === "interfaces" ? "服务器" : "—"))}</td><td>${esc(row.operation === "invalid" && r.format === "interfaces" ? "导入校验失败" : equipmentPlanningStates[row.operation])}</td><td>${esc(row.detail || [row.values?.management_ip, row.values?.management_subnet, row.values?.bmc_ip, row.values?.pmc_ip].filter(Boolean).join(" / "))}${(row.interfaces || []).map((p) => `<span class="live-small">MAC ${esc(p.mac)} → IP ${esc(p.ip || "空")} · 子网 ${esc(p.subnet || "空")} · 网关 ${esc(p.gateway || "空")}</span>`).join("")}</td></tr>`,
       ),
     );
   $(".modal-footer").innerHTML =
@@ -358,10 +429,10 @@ async function equipmentPlanningMatch() {
   if (selected.length !== state.equipmentDeviceSelection.length)
     throw Error("所选设备已变化，请刷新后重新选择。");
   if (!selected.length || selected.length > 50)
-    throw Error("一次请选择1–50台纳管服务器。");
+    throw Error("一次请选择1–50台纳管设备。");
   const selections = selected.map((d) => {
-    if (d.kind !== "server" || d.address_only)
-      throw Error("一键匹配仅支持纳管服务器。");
+    if (!["server", "switch", "power_shelf"].includes(d.kind) || d.address_only)
+      throw Error("请选择纳管服务器、NVLink 交换机或供电框。");
     const plan = state.equipmentPlanning?.rows.find(
       (r) => r.values.serial === d.serial,
     );
@@ -369,7 +440,8 @@ async function equipmentPlanningMatch() {
     return {
       serial: d.serial,
       device_id: d.id,
-      device_revision: device?.plan_revision || "",
+      device_revision:
+        d.kind === "server" ? device?.plan_revision || "" : d.revision || "",
       plan_id: plan?.id || "",
       plan_revision: plan?.revision || "",
     };
@@ -409,12 +481,13 @@ async function equipmentPlanningMatch() {
           `<tr><td>${esc(row.serial)}</td><td>${badge(equipmentPlanningStates[row.status], row.status === "failed" ? "red" : "green")}</td><td>${row.changes.length ? row.changes.map((c) => `<div>${esc(c.field)}：${esc(c.before || "未配置")} → ${esc(c.after || "未配置")}</div>`).join("") : esc(row.detail)}</td></tr>`,
       ),
     ) +
-      '<div class="live-note">BMC 地址通过“更新 BMC 地址”生效；主机管理配置由安装任务应用。</div>' +
+      '<div class="live-note">BMC / PMC 地址在地址管理中应用；主机管理配置由安装任务应用。</div>' +
       eqError(),
     button("关闭", "close"),
   );
 }
 observeUI("input", "equipment_planning.js", (event) => {
+  if (event.target.id === "planning-kind") equipmentPlanningTypeFields();
   if (
     state.wizard?.resource === "equipment-planning-edit" &&
     (event.target.id.startsWith("planning-port-") ||

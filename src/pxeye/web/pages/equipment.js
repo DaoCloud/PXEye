@@ -182,7 +182,11 @@ function devicePage() {
     !state.equipmentPlanningMatching &&
     data.devices
       .filter((d) => state.equipmentDeviceSelection.includes(d.id))
-      .every((d) => d.kind === "server" && !d.address_only);
+      .every(
+        (d) =>
+          ["server", "switch", "power_shelf"].includes(d.kind) &&
+          !d.address_only,
+      );
   body += `<div class="equipment-batch-bar"><span>已选 ${selected} 台</span><div class="live-tools">${button("清空选择", "eq-clear-selection", false, disabled)}${button("导出设备网卡列表", "eq-export-interfaces", false, exportable ? "" : "disabled")}${button("一键匹配", "planning-match", false, matchable ? "" : "disabled")}${button("更新 BMC 地址", "eq-batch-bmc", true, disabled)}${button("更新管理地址", "eq-batch-management", false, disabled)}${button("刷新设备详情", "eq-batch-refresh", false, disabled)}</div></div>`;
   const rows = visible.map((d) => {
     const server = d.kind === "server" && !d.address_only,
@@ -561,6 +565,11 @@ function equipmentEndpointTable(rows) {
   );
 }
 function equipmentChoose(mode) {
+  if (mode === "import") return equipmentPlanningImport();
+  if (mode === "template") {
+    window.location.href = "/api/equipment-planning/template";
+    return;
+  }
   state.wizard = { resource: "eq-choose", mode };
   modal(
     mode === "new" ? "新增设备" : mode === "import" ? "导入设备" : "下载模板",

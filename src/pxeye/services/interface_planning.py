@@ -399,7 +399,7 @@ class InterfacePlanning:
                 if old:
                     prepared = self.merge(old, rows, records, snapshot["networks"], item["macs"])
                     records[serial] = prepared
-                # Preserve other MACs and the seven-column arrival plan.
+                # Preserve other MACs and the device-level arrival plan, including credentials.
                 merged = {r["mac"]: r for r in (old_source or {}).get("interface_rows", [])}
                 merged.update({r["mac"]: r for r in rows})
                 all_rows = sorted(merged.values(), key=lambda r: r["mac"])
