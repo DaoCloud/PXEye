@@ -697,8 +697,8 @@ function detail(id) {
               running: "进行中",
               success: "已通过",
               failed: "需处理",
-            }[gpu?.status] || "待验证";
-        return `<div class="${!enabled ? "live-small" : gpu?.status === "success" ? "good" : ""}">${gpu?.status === "success" ? "✓" : !enabled ? "—" : "○"} ${v} · ${label}${enabled && gpu?.current_stage ? ` · ${esc(gpu.current_stage)}` : ""}</div>`;
+            }[gpu?.status] || "";
+        return `<div class="${!enabled ? "live-small" : gpu?.status === "success" ? "good" : ""}">${gpu?.status === "success" ? "✓" : !enabled ? "—" : "○"} ${v}${label ? ` · ${label}` : ""}${enabled && gpu?.current_stage ? ` · ${esc(gpu.current_stage)}` : ""}</div>`;
       }
       const errors = acceptance?.check_errors?.[k] || [];
       const failed = errors.length > 0 || checks[k] === false;
@@ -713,8 +713,8 @@ function detail(id) {
               ? "等待基础检查通过"
               : t.status === "running" && t.stage === "firstboot" && !acceptance
                 ? "检查中"
-                : "待验证";
-      return `<div class="${checks[k] ? "good" : failed ? "live-error" : ""}">${checks[k] ? "✓" : failed ? "×" : "○"} ${v} · ${label}${errors.length ? `<span class="live-small">：${errors.map(esc).join("；")}</span>` : ""}</div>`;
+                : "";
+      return `<div class="${checks[k] ? "good" : failed ? "live-error" : ""}">${checks[k] ? "✓" : failed ? "×" : "○"} ${v}${label ? ` · ${label}` : ""}${errors.length ? `<span class="live-small">：${errors.map(esc).join("；")}</span>` : ""}</div>`;
     })
     .join("")}</div></section>`;
   if (t.gpu_environment_check && t.gpu_check) {
