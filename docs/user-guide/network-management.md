@@ -4,8 +4,8 @@ language: en
 title: Network management
 description: Create installation subnets and review DHCP relay, reservations and device subnet bindings.
 navigation_group: resources
-updated_at: "2026-11-09"
-product_version: "0.22.5"
+updated_at: "2026-11-10"
+product_version: "0.22.14"
 ---
 
 # Network management
@@ -36,6 +36,7 @@ Click **Add subnet (新增子网)** and enter the site plan:
 | MTU | Defaults to `1500`; integer `576–9216`, matching the site link. | `1500` |
 | Initial reservation count (起始保留地址数) | Defaults to `0`; counts from the network address. Non-negative and smaller than the subnet's total address count. | `11` reserves `.0–.10` in this example. |
 | DNS subdomain UUID (DNS 子域 UUID) | Required for HostInband; an existing NICo DNS subdomain UUID, not a DNS server IP. Check that the prefilled value applies; prepare a subdomain in NICo first if none exists. | Copy from **View (查看)** on an applicable existing segment. |
+| DHCP start / end (DHCP 起始 / 结束地址) | Optional; fill both or leave both blank. Inclusive IPv4 bounds in this subnet, excluding the gateway. Explicit bounds replace the initial reservation count. | `192.0.2.100` / `192.0.2.200` |
 | Policy (地址策略) | Creation currently supports **Dynamic allocation (动态分配)** only. | `动态分配` |
 
 | Type | Usage |
@@ -48,7 +49,7 @@ Click **Add subnet (新增子网)** and enter the site plan:
 
 ### View
 
-Click **Refresh data (刷新数据)**, locate the segment and click **View (查看)** to check type, prefix, gateway, MTU and associated interfaces. Existing segment names and network settings cannot currently be edited. Set MTU under **Add subnet** or in a draft before creation; it defaults to 1500. Existing segment details show MTU without an edit control. Device planning sheets do not define MTU; additional static interfaces inherit their subnet MTU during installation.
+Click **Refresh data (刷新数据)**, locate the segment and click **View (查看)** to check type, prefix, gateway, MTU and associated interfaces. Existing segments support separate DHCP pool configuration; name, CIDR, gateway and MTU remain read-only. Set MTU under **Add subnet** or in a draft before creation; it defaults to 1500. Existing segment details show MTU without an edit control. Device planning sheets do not define MTU; additional static interfaces inherit their subnet MTU during installation.
 
 ### Create
 
@@ -56,6 +57,14 @@ Click **Refresh data (刷新数据)**, locate the segment and click **View (查�
 2. Click **Create in NICo (创建到 NICo)**. The system validates format and prefix overlap, creates the segment and reads back its configuration.
 3. Find the new record in the list and click **View (查看)** to confirm it matches the plan.
 4. For server management, choose this HostInband range under **Device management → System configuration (设备管理 → 系统配置)**. The planning CSV's `management_subnet` must exactly match an existing subnet CIDR.
+
+### Configure a DHCP pool
+
+1. Click **DHCP pool (DHCP 地址池)** for the subnet and enter the first and last IP, for example `192.0.2.100` through `192.0.2.200`.
+2. Click **Apply (应用)**. The list shows the range read back from NICo. The subnet remains `192.0.2.0/24`; fixed addresses are managed separately.
+3. Leave both endpoints blank and apply to restore subnet allocation with the initial reservation count.
+
+If existing dynamic allocations fall outside the requested range, the change fails with their addresses and preserves the current configuration. Leases are never reclaimed. Occupied and fixed addresses inside the pool are not allocated again. This supports site segments with exactly one IPv4 prefix; it does not change IPv6 or tenant networks. Unsupported Core versions show an upgrade message and cannot apply a ranged draft. See [deployment requirements](../deployment.md#dhcp-address-pool-support).
 
 ### Delete
 

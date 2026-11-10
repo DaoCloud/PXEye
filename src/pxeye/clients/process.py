@@ -3,7 +3,7 @@
 import re
 import subprocess
 from pathlib import Path
-from pxeye.clients.errors import RPCRequestError
+from pxeye.clients.errors import RPCRequestError, RPCMethodUnavailableError
 
 
 def run(argv, *, text=None, timeout=40, env=None):
@@ -28,6 +28,32 @@ def run(argv, *, text=None, timeout=40, env=None):
             raise RPCRequestError(
                 f"NICo {method} 请求数据解析失败，请求未发送；请检查接口字段编码。"
             )
+        if Path(argv[0]).name == "grpcurl" and argv[-1].rsplit("/", 1)[-1] in (
+            "FindNetworkSegmentDhcpRanges",
+            "SetNetworkSegmentDhcpRange",
+            "CreateNetworkSegmentWithDhcpRange",
+        ):
+            if re.search(r"does not include a method named|Code: Unimplemented\b", result.stderr):
+                raise RPCMethodUnavailableError(
+                    "当前 NICo Core 不支持 DHCP 地址池范围，请先升级 Core。"
+                )
+            # Only these bounded, server-owned diagnostics are safe to expose.
+            outside = re.search(
+                r"DHCP pool: existing dynamic addresses outside range: ([0-9., ]+)",
+                result.stderr,
+            )
+            if outside:
+                raise RuntimeError(
+                    "新范围外仍有动态分配（最多列出20个）："
+                    + outside[1][:320].strip()
+                    + "。未修改地址池，请先处理这些分配。"
+                )
+            if "object of type DHCP pool" in result.stderr:
+                raise RuntimeError("DHCP 地址池已变化，请刷新后重新配置。")
+            if "DHCP pool: invalid IPv4 range or includes gateway/SVI" in result.stderr:
+                raise RuntimeError("DHCP 范围无效，不能包含网关或交换机虚拟接口地址。")
+            if "DHCP pool: only active site segments are supported" in result.stderr:
+                raise RuntimeError("仅活动的站点子网可以配置 DHCP 地址池。")
         if Path(argv[0]).name in ("ssh", "sshpass"):
             if "REMOTE HOST IDENTIFICATION HAS CHANGED" in result.stderr:
                 raise RuntimeError(

@@ -19,3 +19,9 @@ class CoreConnectionError(RuntimeError):
     def __init__(self, message, code):
         super().__init__(message)
         self.code = code
+
+
+class RPCMethodUnavailableError(RuntimeError):
+    """The server does not expose a requested optional RPC contract."""
+
+    request_not_sent = True

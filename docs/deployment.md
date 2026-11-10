@@ -103,3 +103,12 @@ The service reads `CONSOLE_CONFIG` (default `/config/site.json`), `CONSOLE_SECRE
 Stop accepting writes and wait for active or unresolved operations before replacement. Preserve both data and artifact PVCs. Back up SQLite consistently using its backup API or while the process is stopped; copying only the database file during WAL writes is insufficient. Include the associated configuration, task and identity files in a recovery backup. Replacing the image does not delete PVC history; deleting the PVC does.
 
 The manifest uses a non-root UID, read-only root filesystem and restricted capabilities. See [Security](../SECURITY.md) for the current authentication envelope.
+
+
+## DHCP address pool support
+
+PXEye 0.22.14 can configure inclusive IPv4 DHCP ranges with a compatible NICo Core image. The Core image must implement `FindNetworkSegmentDhcpRanges`, `SetNetworkSegmentDhcpRange` and `CreateNetworkSegmentWithDhcpRange`, including their database migration and allocator changes. Upgrading PXEye alone does not add this capability to an older Core image.
+
+Back up the NICo database before upgrading Core. Upgrade every Core replica before enabling a range: an older allocator ignores the new policy, so mixed versions must not serve DHCP allocation requests while ranges are enabled. The additive migration preserves existing subnets and allocations; it does not set a default range. Before rolling Core back, clear explicit ranges and verify that the original subnet allocation policy is acceptable.
+
+PXEye detects the RPC capability and reads the applied policy back from Core. If unsupported, existing subnet operations remain available, ranged drafts can be saved, and applying a range is blocked. No external DHCP server is required. See [Network management](user-guide/network-management.md#configure-a-dhcp-pool).

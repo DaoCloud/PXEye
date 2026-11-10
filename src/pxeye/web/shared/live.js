@@ -960,6 +960,8 @@ registerActions(
     "nic-add",
     "network-new",
     "network-edit",
+    "network-dhcp-range",
+    "network-dhcp-range-save",
     "network-save",
     "network-save-apply",
     "network-apply",
@@ -1043,6 +1045,10 @@ registerActions(
           return networkDialog();
         case "network-edit":
           return networkDialog(el.dataset.id);
+        case "network-dhcp-range":
+          return networkDhcpRangeDialog(el.dataset.id);
+        case "network-dhcp-range-save":
+          return await saveNetworkDhcpRange();
         case "network-save":
           return await saveNetwork(false);
         case "network-save-apply":
@@ -1486,14 +1492,14 @@ function networkPage() {
       [
         "子网名称 / 类型",
         "前缀 / 网关",
-        "地址策略",
+        "地址策略 / DHCP 范围",
         "MTU / 保留地址",
         "NICo 状态 / 配置同步",
         "操作",
       ],
       data.networks.map(
         (n) =>
-          `<tr><td>${esc(n.name)}<span class="live-small">${esc(n.segment_type)} · ${n.interface_count} 个接口</span></td><td>${n.prefixes.map((p) => `${esc(p.prefix)}<span class="live-small">网关 ${esc(p.gateway || "—")}</span>`).join("")}<span class="live-small">OS DNS：${esc((n.services?.dns_servers || []).join(", ") || "待配置")} · ${esc(n.services?.source)}</span></td><td title="${esc(networkPolicyDisplay(n).note)}">${esc(networkPolicyDisplay(n).label)}</td><td>${esc(n.mtu)} / ${n.prefixes.map((p) => esc(p.reserveFirst ?? 0)).join(", ")}</td><td>${badge(n.state, n.state === "READY" ? "green" : "gray")}<span class="live-small">${n.deletion ? esc(networkDeletionLabel(n.deletion.status)) : "NICo 当前配置"}</span></td><td>${n.name === "static-assignments" ? "系统地址段" : button("查看", "network-edit", false, `data-id="${esc(n.id)}"`) + " " + button("删除", "network-delete", false, `data-id="${esc(n.id)}" ${n.delete_allowed ? "" : "disabled"} title="${esc(n.delete_reason || "删除前重新检查占用和设备规划")}"`) + (!n.delete_allowed ? `<span class="live-small">${esc(n.delete_reason)}</span>` : "")}</td></tr>`,
+          `<tr><td>${esc(n.name)}<span class="live-small">${esc(n.segment_type)} · ${n.interface_count} 个接口</span></td><td>${n.prefixes.map((p) => `${esc(p.prefix)}<span class="live-small">网关 ${esc(p.gateway || "—")}</span>`).join("")}<span class="live-small">OS DNS：${esc((n.services?.dns_servers || []).join(", ") || "待配置")} · ${esc(n.services?.source)}</span></td><td title="${esc(networkPolicyDisplay(n).note)}">${esc(networkPolicyDisplay(n).label)}<span class="live-small">${networkDhcpRangeLabel(n, data.dhcp_ranges_supported)}</span></td><td>${esc(n.mtu)} / ${n.prefixes.map((p) => esc(p.reserveFirst ?? 0)).join(", ")}</td><td>${badge(n.state, n.state === "READY" ? "green" : "gray")}<span class="live-small">${n.deletion ? esc(networkDeletionLabel(n.deletion.status)) : "NICo 当前配置"}</span></td><td>${n.name === "static-assignments" ? "系统地址段" : button("查看", "network-edit", false, `data-id="${esc(n.id)}"`) + (n.dhcp_range_editable ? " " + button("DHCP 地址池", "network-dhcp-range", false, `data-id="${esc(n.id)}"`) : "") + " " + button("删除", "network-delete", false, `data-id="${esc(n.id)}" ${n.delete_allowed ? "" : "disabled"} title="${esc(n.delete_reason || "删除前重新检查占用和设备规划")}"`) + (!n.delete_allowed ? `<span class="live-small">${esc(n.delete_reason)}</span>` : "")}</td></tr>`,
       ),
     );
   if (data.drafts.length)
@@ -1514,8 +1520,51 @@ function networkPage() {
     )}</section>`;
   return (
     body +
-    `<div class="live-note">已有子网仅支持查看和删除；名称及网络配置暂不可修改。</div></div>`
+    `<div class="live-note">DHCP 地址池可单独配置；子网名称、CIDR、网关及 MTU 暂不可修改。</div></div>`
   );
+}
+function networkDhcpRangeLabel(network, supported) {
+  if (!supported) return "地址池范围不可配置 · 需升级 Core";
+  const range = network.dhcp_range;
+  return range
+    ? `${esc(range.start)} – ${esc(range.end)}`
+    : "按子网及保留地址数分配";
+}
+function networkDhcpRangeDialog(id) {
+  const row = state.networks?.networks.find((n) => n.id === id);
+  if (!row?.dhcp_range_editable)
+    throw Error("当前子网不支持配置 DHCP 地址池，请刷新核对。");
+  const prefix = row.prefixes.find((p) => !p.prefix.includes(":"));
+  state.wizard = {
+    resource: "network-dhcp-range",
+    id,
+    revision: row.dhcp_range_revision,
+  };
+  modal(
+    "DHCP 地址池",
+    row.name,
+    defs([
+      ["子网", esc(prefix.prefix)],
+      ["网关", esc(prefix.gateway || "—")],
+    ]) +
+      `<div class="live-editor-grid">${inputField("pool-start", "DHCP 起始地址", row.dhcp_range?.start || "", 'placeholder="192.0.2.100"')}${inputField("pool-end", "DHCP 结束地址", row.dhcp_range?.end || "", 'placeholder="192.0.2.200"')}</div><div class="live-note">范围包含起止地址，仅限制新的动态分配，不改变子网掩码或设备固定地址。起止地址同时留空时，恢复按子网及保留地址数分配。</div><div class="live-note">应用不会回收现有租约；若范围外仍有动态分配，会提示冲突并保留原配置。</div><div id="resource-error" class="live-error" role="alert"></div>`,
+    button("取消", "close") + button("应用", "network-dhcp-range-save", true),
+  );
+}
+async function saveNetworkDhcpRange() {
+  return busy(async () => {
+    const w = state.wizard;
+    await api("/api/networks/dhcp-range", {
+      id: w.id,
+      revision: w.revision,
+      start: $("#pool-start").value.trim(),
+      end: $("#pool-end").value.trim(),
+    });
+    close();
+    await loadNetworks();
+    render();
+    toast("DHCP 地址池已应用。");
+  });
 }
 function deleteNetworkDialog(id) {
   const row = state.networks.networks.find((n) => n.id === id),
@@ -1571,14 +1620,26 @@ function networkDialog(id) {
           ["网关", esc(p.gateway || "—")],
           ["起始保留地址数", esc(p.reserveFirst ?? 0)],
         ]),
+        [
+          "DHCP 地址池",
+          networkDhcpRangeLabel(live, state.networks.dhcp_ranges_supported),
+        ],
         ["MTU", esc(live.mtu)],
         ["DNS 子域 UUID", esc(live.subdomain_id || "—")],
         ["地址策略", esc(networkPolicyDisplay(live).label)],
         ["策略说明", esc(networkPolicyDisplay(live).note)],
         ["关联接口数", esc(live.interface_count)],
       ]) +
-        `<div class="live-note">当前子网不支持修改。</div>${pending ? '<div class="live-note">存在未应用的历史规划；本页显示 NICo 生效配置。</div>' : ""}`,
-      button("关闭", "close"),
+        `<div class="live-note">子网基础配置不支持修改；DHCP 地址池可单独配置。</div>${pending ? '<div class="live-note">存在未应用的历史规划；本页显示 NICo 生效配置。</div>' : ""}`,
+      button("关闭", "close") +
+        (live.dhcp_range_editable
+          ? button(
+              "配置 DHCP 地址池",
+              "network-dhcp-range",
+              true,
+              `data-id="${esc(live.id)}"`,
+            )
+          : ""),
     );
   }
   const draft = state.networks?.drafts.find((x) => x.id === id);
@@ -1607,7 +1668,7 @@ function networkDialog(id) {
         ["UNDERLAY", "Underlay"],
       ],
       c.segment_type,
-    )}${inputField("net-prefix", "子网 CIDR", c.prefix, 'placeholder="192.0.2.0/24"')}${inputField("net-gateway", "网关", c.gateway)}${inputField("net-mtu", "MTU", c.mtu, 'type="number" min="576" max="9216"')}${inputField("net-reserve", "起始保留地址数", c.reserve_first, 'type="number" min="0"')}${inputField("net-domain", "DNS 子域 UUID", c.subdomain_id)}${selectField("net-strategy", "地址策略", [["DYNAMIC", "动态分配"]], "DYNAMIC")}</div><div class="live-note">保存草稿后可继续编辑；创建到 NICo 后生效。当前仅支持动态地址策略。</div><div id="resource-error" class="live-error" role="alert"></div>`,
+    )}${inputField("net-prefix", "子网 CIDR", c.prefix, 'placeholder="192.0.2.0/24"')}${inputField("net-gateway", "网关", c.gateway)}${inputField("net-mtu", "MTU", c.mtu, 'type="number" min="576" max="9216"')}${inputField("net-reserve", "起始保留地址数", c.reserve_first, 'type="number" min="0"')}${inputField("net-dhcp-start", "DHCP 起始地址", c.dhcp_start || "", 'placeholder="192.0.2.100"')}${inputField("net-dhcp-end", "DHCP 结束地址", c.dhcp_end || "", 'placeholder="192.0.2.200"')}${inputField("net-domain", "DNS 子域 UUID", c.subdomain_id)}${selectField("net-strategy", "地址策略", [["DYNAMIC", "动态分配"]], "DYNAMIC")}</div><div class="live-note">起止地址包含两端；同时留空时按子网及保留地址数分配。填写范围后，以该范围替代起始保留地址数；网关不能位于范围内。保存草稿不生效，创建到 NICo 后生效。${state.networks?.dhcp_ranges_supported ? "" : " 当前 Core 不支持地址池范围，可保存草稿，应用前需升级 Core。"}</div><div id="resource-error" class="live-error" role="alert"></div>`,
     button("取消", "close") +
       button("保存草稿", "network-save") +
       button("创建到 NICo", "network-save-apply", true),
@@ -1628,6 +1689,8 @@ async function saveNetwork(apply) {
       gateway: $("#net-gateway").value.trim(),
       mtu: Number($("#net-mtu").value),
       reserve_first: Number($("#net-reserve").value),
+      dhcp_start: $("#net-dhcp-start").value.trim(),
+      dhcp_end: $("#net-dhcp-end").value.trim(),
       subdomain_id: $("#net-domain").value.trim(),
       allocation_strategy: $("#net-strategy").value,
     };

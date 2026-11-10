@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.22.14 — DHCP address pool ranges
+
+- Configure inclusive DHCP start/end IPv4 addresses for new and existing site subnets.
+- Read policies back from NICo; preserve leases and reject changes that exclude existing dynamic allocations.
+- Use atomic subnet-and-pool creation and revision-checked pool updates with the accompanying Core extension.
+- Detect unsupported Core versions without reporting unapplied ranges as active.
+
 ## 0.22.13 — Installation profile custom files
 
 - Add editable text-file cards with ownership, permissions and overwrite/append options to installation profiles.

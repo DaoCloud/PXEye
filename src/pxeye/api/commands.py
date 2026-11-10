@@ -286,6 +286,12 @@ class CommandRoutes:
             )
         if path == "/api/site":
             return self.respond(200, self.app.save_site(body))
+        if path == "/api/networks/dhcp-range":
+            from pxeye.services.network_dhcp_ranges import save_range
+
+            return self.respond(
+                200, self.app.configure(lambda: save_range(self.app.resources, body))
+            )
         if path == "/api/networks/save":
             return self.respond(
                 200, self.app.configure(lambda: self.app.resources.save_network(body))

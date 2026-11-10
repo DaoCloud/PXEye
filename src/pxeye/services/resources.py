@@ -19,6 +19,12 @@ from pxeye.domain.machines import (
     machine_from_rpc,
 )
 from pxeye.domain.csv import convert
+from pxeye.services.network_dhcp_ranges import (
+    read_ranges,
+    require_support,
+    validate_range,
+    verify_range,
+)
 
 
 class ImportReadbackError(RuntimeError):
@@ -610,6 +616,8 @@ class Resources:
             "reserve_first",
             "subdomain_id",
             "allocation_strategy",
+            "dhcp_start",
+            "dhcp_end",
         }
         if set(config) - allowed or not all(
             k in config for k in ["name", "segment_type", "prefix", "mtu", "reserve_first"]
@@ -642,6 +650,14 @@ class Resources:
             or not 0 <= config["reserve_first"] < net.num_addresses
         ):
             raise ValueError("MTU 或保留地址数超出范围。")
+        dhcp_range = validate_range(
+            config["prefix"],
+            config.get("gateway"),
+            config.get("dhcp_start", ""),
+            config.get("dhcp_end", ""),
+        )
+        config["dhcp_start"] = dhcp_range["start"] if dhcp_range else ""
+        config["dhcp_end"] = dhcp_range["end"] if dhcp_range else ""
         if config["segment_type"] == "HOST_INBAND":
             try:
                 uuid.UUID(config.get("subdomain_id", ""))
@@ -725,6 +741,8 @@ class Resources:
                 "当前 Core API 不支持写入仅预留策略；配置已保存，需通过站点配置或迁移应用。"
             )
         c = record["config"]
+        if c.get("dhcp_start"):
+            require_support(self.adapter)
         for other in live:
             if other["id"] == sid:
                 continue
@@ -765,7 +783,20 @@ class Resources:
         }
         if c.get("subdomain_id"):
             req["subdomain_id"] = {"value": c["subdomain_id"]}
-        n = self.adapter.rpc("CreateNetworkSegment", req)
+        dhcp_range = validate_range(
+            c["prefix"],
+            c.get("gateway"),
+            c.get("dhcp_start", ""),
+            c.get("dhcp_end", ""),
+        )
+        if dhcp_range:
+            # Atomic Core operation: no unrestricted allocation window after creation.
+            n = self.adapter.rpc(
+                "CreateNetworkSegmentWithDhcpRange",
+                {"segment": req, "range": dhcp_range},
+            )
+        else:
+            n = self.adapter.rpc("CreateNetworkSegment", req)
         readback = self.adapter.rpc(
             "FindNetworkSegmentsByIds", {"network_segments_ids": [n["id"]]}
         )["networkSegments"][0]
@@ -783,6 +814,8 @@ class Resources:
             and value_id(cfg.get("subdomainId")) != c["subdomain_id"]
         ):
             raise RuntimeError("子网配置读回不匹配。")
+        if dhcp_range:
+            verify_range(self.adapter, value_id(n["id"]), dhcp_range, revision=1)
         record["id"] = value_id(n["id"])
         record["status"] = "applied"
         record["applied_at"] = time.time()
@@ -825,6 +858,21 @@ class Resources:
 
     def network_list(self):
         live = self.networks()
+        range_support, ranges = read_ranges(
+            self.adapter,
+            [{"value": row["id"]} for row in live],
+        )
+        for row in live:
+            policy = ranges.get(row["id"], {})
+            row["dhcp_range"] = policy.get("range")
+            row["dhcp_range_revision"] = str(policy.get("revision", "0"))
+            row["dhcp_range_editable"] = bool(
+                range_support
+                and row["name"] != "static-assignments"
+                and row["segment_type"] in ("HOST_INBAND", "ADMIN", "UNDERLAY")
+                and sum(ipaddress.ip_network(p["prefix"]).version == 4 for p in row["prefixes"])
+                == 1
+            )
         ids = {x["id"] for x in live}
         drafts = [json.loads(p.read_text()) for p in (self.directory / "networks").glob("*.json")]
         deletions = [
@@ -838,6 +886,7 @@ class Resources:
             row["delete_allowed"], row["delete_reason"] = self.network_delete_boundary(row)
         return {
             "networks": live,
+            "dhcp_ranges_supported": range_support,
             "drafts": sorted(
                 [
                     x | {"delete_revision": digest(x)}

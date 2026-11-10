@@ -103,3 +103,12 @@ kubectl -n pxeye port-forward service/pxeye 8080:80
 替换前停止接收写操作，并等待运行中或结果待核对的操作结束。保留数据和材料 PVC。使用 SQLite backup API 或停服务方式获取一致备份；WAL 写入期间只复制数据库主文件不完整。恢复备份还应包含相关配置、任务和身份文件。更新镜像不会删除 PVC 中的历史，删除 PVC 会。
 
 清单采用非 root UID、只读根文件系统和受限 capabilities。当前认证边界见[安全说明](../SECURITY.zh-CN.md)。
+
+
+## DHCP 地址池支持
+
+PXEye 0.22.14 配置 IPv4 DHCP 起止范围时，需要配套的 NICo Core 镜像。Core 必须包含 `FindNetworkSegmentDhcpRanges`、`SetNetworkSegmentDhcpRange`、`CreateNetworkSegmentWithDhcpRange` 三个接口，以及对应数据库迁移和分配器修改。仅升级 PXEye，不能让旧 Core 获得这项能力。
+
+升级 Core 前备份 NICo 数据库。所有 Core 副本升级完成后才能启用范围；旧分配器不读取新策略，启用范围时不能混用新旧 Core 处理 DHCP 分配。新增迁移保留既有子网和地址分配，不自动设置范围。回退旧 Core 前，先清空起止范围，并确认原有子网分配策略可接受。
+
+PXEye 检查接口能力并读回实际配置。Core 不支持时，原有子网操作继续可用，可以保存含范围的草稿，但不能应用范围。无需另建 DHCP 服务。操作见[网络管理](user-guide/network-management.zh-CN.md#配置-dhcp-地址池)。
