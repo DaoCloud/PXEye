@@ -545,9 +545,6 @@ class Executor:
                     candidate = self.accept(device, task, trusted_key, known)
                 except Exception:
                     candidate = {"passed": False, "error": "等待可信 SSH 首启可达"}
-                if candidate.get("report") and candidate.get("category") == "service_connectivity":
-                    task["installation_checks"] = candidate["report"]
-                    self.store.save(task)
                 if candidate["passed"]:
                     initial = candidate["report"]
                     self.record_disk_evidence(task, initial, text, trusted_key)
@@ -922,9 +919,7 @@ class Executor:
             )
             task["observation_deadline"] = recovery["deadline"]
             task["error"] = None
-            self.recovery_step(
-                recovery, "nico", "running", "等待 NICo 重新检查 BIOS 与启动顺序。"
-            )
+            self.recovery_step(recovery, "nico", "running", "等待 NICo 重新检查 BIOS 与启动顺序。")
             self.event(
                 task,
                 "boot",
@@ -957,9 +952,7 @@ class Executor:
         if not self.installation_not_started(task):
             recovery["state"] = "unknown"
             recovery["error"] = "服务更新后发现安装器或写盘证据；停止启动配置恢复。"
-            self.recovery_step(
-                recovery, "configuration", "failed", recovery["error"]
-            )
+            self.recovery_step(recovery, "configuration", "failed", recovery["error"])
             self.store.save(task)
             return False
 
@@ -989,17 +982,13 @@ class Executor:
             recovery["error"] = (
                 "服务在启动顺序写入期间更新，且当前值未与持久请求一致；不会自动重放。"
             )
-            self.recovery_step(
-                recovery, "configuration", "failed", recovery["error"]
-            )
+            self.recovery_step(recovery, "configuration", "failed", recovery["error"])
             self.store.save(task)
             return False
 
         recovery["state"] = "observing"
         recovery["error"] = None
-        recovery["deadline"] = time.time() + self.adapter.config.get(
-            "task_timeout_seconds", 2400
-        )
+        recovery["deadline"] = time.time() + self.adapter.config.get("task_timeout_seconds", 2400)
         task["observation_deadline"] = recovery["deadline"]
         task["error"] = None
         self.recovery_step(
@@ -1008,9 +997,7 @@ class Executor:
             "completed",
             "服务恢复后已读回启动顺序，确认写入完成。",
         )
-        self.recovery_step(
-            recovery, "nico", "running", "等待 NICo 重新检查 BIOS 与启动顺序。"
-        )
+        self.recovery_step(recovery, "nico", "running", "等待 NICo 重新检查 BIOS 与启动顺序。")
         self.event(
             task,
             "boot",
@@ -1062,9 +1049,7 @@ class Executor:
 
         request.update(state="accepted", accepted_at=time.time())
         recovery["state"] = "observing"
-        recovery["deadline"] = time.time() + self.adapter.config.get(
-            "task_timeout_seconds", 2400
-        )
+        recovery["deadline"] = time.time() + self.adapter.config.get("task_timeout_seconds", 2400)
         task["observation_deadline"] = recovery["deadline"]
         self.recovery_step(
             recovery,
@@ -1255,9 +1240,7 @@ class Executor:
 
         retry.update(state="reset_accepted", reboot_accepted=True, accepted_at=time.time())
         recovery["state"] = "waiting_standard_pxe_retry"
-        recovery["deadline"] = time.time() + self.adapter.config.get(
-            "task_timeout_seconds", 2400
-        )
+        recovery["deadline"] = time.time() + self.adapter.config.get("task_timeout_seconds", 2400)
         task["observation_deadline"] = recovery["deadline"]
         self.recovery_step(
             recovery,
@@ -1859,8 +1842,13 @@ class Executor:
             self.check_bound(device, task)
             task["status"] = "running"
             task["resume_available"] = False
+            task.pop("installation_checks", None)
+            task.pop("last_acceptance_error", None)
+            task.pop("error", None)
             self.event(
-                task, "firstboot", "UI 已确认仅继续本轮首启与普通重启验收；不重复安装或发送 PXE。"
+                task,
+                "firstboot",
+                "已开始本轮安装验收；逐项检查主机、磁盘、网络与服务，不重复安装。",
             )
             console = Console(self.adapter, device, folder)
             console.attach()
@@ -1899,7 +1887,9 @@ class Executor:
                             # and cloud-init convergence window.
                             deadline = max(deadline, time.monotonic() + 600)
             if initial is None:
-                raise TimeoutError("继续首启验收超时；保留任务与现场。")
+                raise TimeoutError(
+                    "安装验收未通过：" + (task.get("last_acceptance_error") or "等待超时")
+                )
             (folder / "initial.json").write_text(json.dumps(initial, indent=2))
             task["initial"] = initial
             self.event(task, "firstboot", "基础安装验收通过，进入最终检查及重启验收。")
@@ -1955,8 +1945,13 @@ print('NORMAL_REBOOT_REQUESTED')
             if result["passed"]:
                 after = result["report"]
                 break
+            if task.get("last_acceptance_error") != result["error"]:
+                task["last_acceptance_error"] = result["error"]
+                self.event(task, "reboot", "重启验收等待：" + result["error"])
         if after is None:
-            raise TimeoutError("普通重启复验未通过；不标记完成。")
+            raise TimeoutError(
+                "重启验收未通过：" + (task.get("last_acceptance_error") or "等待超时")
+            )
         after["checks"]["gpu_environment"] = initial["checks"]["gpu_environment"]
         after["gpu_environment"] = task["gpu_check"]
         self.check_bound(device, task)
@@ -2094,22 +2089,24 @@ print('NORMAL_REBOOT_REQUESTED')
         )
         result = json.loads(self.adapter.ssh(device, script, known=known, timeout=100))
         result = validate_config(result, device, task)
-        if (
-            result.get("passed")
-            and not result["report"]["checks"]["services"]
-            and self.adapter.config.get("service_connectivity_required", False)
-        ):
-            failures = [
-                check["name"] + "未通过"
-                for check in result["report"]["service_checks"]
-                if not check["passed"]
-            ]
-            return {
-                "passed": False,
-                "error": "环境服务检查未通过：" + "；".join(failures),
-                "report": result["report"],
-                "category": "service_connectivity",
-            }
+        report = result.get("report")
+        if report:
+            if not report["checks"].get("services", False) and self.adapter.config.get(
+                "service_connectivity_required", False
+            ):
+                failures = [
+                    check["name"] + "未通过"
+                    for check in report.get("service_checks", [])
+                    if not check["passed"]
+                ] or ["环境服务检查未完成"]
+                result["passed"] = False
+                report.setdefault("check_errors", {}).setdefault("services", []).extend(failures)
+                result["error"] = "；".join(
+                    message for messages in report["check_errors"].values() for message in messages
+                )
+                result["category"] = "service_connectivity"
+            task["installation_checks"] = report
+            self.store.save(task)
         return result
 
     @staticmethod

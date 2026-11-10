@@ -606,8 +606,12 @@ function detail(id) {
   state.detail = id;
   const after = t.after_reboot,
     status = taskStatus(t),
-    checks =
-      after?.checks || t.initial?.checks || t.installation_checks?.checks || {};
+    acceptance =
+      t.status === "completed"
+        ? after || t.initial || t.installation_checks
+        : t.installation_checks ||
+          (t.status === "running" && t.stage === "firstboot" ? null : after || t.initial),
+    checks = acceptance?.checks || {};
   let body = `<div class="live-task-title"><div>${badge(status.label, status.tone)} <strong>${esc(stages[t.stage])}</strong></div><span class="live-small">${when(t.created_at)} · ${esc(t.actor)}</span></div>${defs(
     [
       ["设备 / 主机名", esc(t.device) + " / " + esc(t.hostname)],
@@ -696,7 +700,21 @@ function detail(id) {
             }[gpu?.status] || "待验证";
         return `<div class="${!enabled ? "live-small" : gpu?.status === "success" ? "good" : ""}">${gpu?.status === "success" ? "✓" : !enabled ? "—" : "○"} ${v} · ${label}${enabled && gpu?.current_stage ? ` · ${esc(gpu.current_stage)}` : ""}</div>`;
       }
-      return `<div class="${checks[k] ? "good" : ""}">${checks[k] ? "✓" : "○"} ${v} · ${checks[k] ? "已通过" : k === "services" && (after || t.initial || t.installation_checks) ? "有环境服务告警" : "待验证"}</div>`;
+      const errors = acceptance?.check_errors?.[k] || [];
+      const failed = errors.length > 0 || checks[k] === false;
+      const label = checks[k]
+        ? "已通过"
+        : k === "services" && checks[k] === false && !errors.length
+          ? "有环境服务告警"
+          : failed
+            ? "未通过"
+            : k === "normal_reboot" &&
+                (t.stage === "firstboot" || Object.keys(acceptance?.check_errors || {}).length)
+              ? "等待基础检查通过"
+              : t.status === "running" && t.stage === "firstboot" && !acceptance
+                ? "检查中"
+                : "待验证";
+      return `<div class="${checks[k] ? "good" : failed ? "live-error" : ""}">${checks[k] ? "✓" : failed ? "×" : "○"} ${v} · ${label}${errors.length ? `<span class="live-small">：${errors.map(esc).join("；")}</span>` : ""}</div>`;
     })
     .join("")}</div></section>`;
   if (t.gpu_environment_check && t.gpu_check) {
