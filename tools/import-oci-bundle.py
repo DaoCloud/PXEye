@@ -80,7 +80,8 @@ def main():
             sources.append((image, destination(registry, args.repository_prefix, image)))
     except (OSError, ValueError, TypeError) as error:
         raise SystemExit(str(error)) from None
-    common = [args.skopeo]
+    # These are copy-subcommand options, not skopeo global options.
+    common = [args.skopeo, "copy"]
     if args.authfile:
         common += ["--authfile", str(args.authfile)]
     if args.insecure:
@@ -89,7 +90,6 @@ def main():
         run(
             common
             + [
-                "copy",
                 "--retry-times",
                 "3",
                 f"oci-archive:{args.archive}:{image}",
