@@ -15,7 +15,8 @@ iso-sources
 node_modules
 .venv
 tests
-tools
+tools/*
+!tools/import-oci-bundle.py
 deploy/local
 build
 dist
