@@ -346,6 +346,10 @@ class CommandRoutes:
                     parts[3], body, session["token"], "operator@" + self.client_address[0]
                 ),
             )
+        if len(parts) == 5 and parts[2] == "tasks" and parts[4] == "skip-acceptance":
+            return self.respond(
+                200, self.app.skip_acceptance(parts[3], body, "operator@" + self.client_address[0])
+            )
         if len(parts) == 5 and parts[2] == "tasks" and parts[4] == "resume":
             return self.respond(
                 202, self.app.resume(parts[3], body, "operator@" + self.client_address[0])

@@ -509,6 +509,9 @@ class Application:
     def retry_install(self, task_id, body, owner, actor):
         return self.coordinator.retry_install(task_id, body, owner, actor)
 
+    def skip_acceptance(self, task_id, body, actor):
+        return self.coordinator.skip_acceptance(task_id, body, actor)
+
     def resume(self, task_id, body, actor):
         return self.coordinator.resume(task_id, body, actor)
 

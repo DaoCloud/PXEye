@@ -89,6 +89,9 @@ def validate_config(result, device, task):
         ("network", lambda: validate_network(documents, result, device, task)),
         ("installer", lambda: validate_installer(documents, task)),
     ):
+        if name in report.get("acceptance_skips", {}):
+            checks[name] = None
+            continue
         try:
             if not isinstance(documents, dict):
                 raise ValueError("CONFIG_EVIDENCE_MISSING")

@@ -984,6 +984,48 @@ class TaskCoordinator:
         self.start_queue()
         return result
 
+    def skip_acceptance(self, task_id, body, actor):
+        from pxeye.installation.acceptance_skips import CHECKS
+
+        if (
+            set(body) != {"check"}
+            or not isinstance(body["check"], str)
+            or body["check"] not in CHECKS
+        ):
+            raise ValueError("请选择有效的验收项目。")
+        name = body["check"]
+        with self.store.db() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute("SELECT data FROM tasks WHERE id=?", (task_id,)).fetchone()
+            if row is None:
+                raise ValueError("任务不存在。")
+            task = json.loads(row["data"])
+            if task["status"] not in ("running", "needs_attention") or task.get("stage") not in (
+                "firstboot",
+                "gpu_check",
+                "reboot",
+            ):
+                raise ValueError("仅安装验收阶段的未结束任务可以手动跳过。")
+            report = (
+                task.get("installation_checks")
+                or task.get("after_reboot")
+                or task.get("initial")
+                or {}
+            )
+            skips = task.setdefault("acceptance_skips", {})
+            skips.setdefault(
+                name,
+                {
+                    "actor": actor,
+                    "at": time.time(),
+                    "label": CHECKS[name],
+                    "observed_check": report.get("checks", {}).get(name),
+                    "observed_errors": report.get("check_errors", {}).get(name, []),
+                },
+            )
+            db.execute("UPDATE tasks SET data=? WHERE id=?", (json.dumps(task), task_id))
+        return self.task_view(task)
+
     def resume(self, task_id, body, actor):
         task = self.store.get(task_id)
         if task is None or task["status"] != "needs_attention":

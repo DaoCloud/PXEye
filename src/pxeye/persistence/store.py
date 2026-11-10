@@ -120,6 +120,15 @@ class Store:
 
     def save(self, data):
         with self.db() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute("SELECT data FROM tasks WHERE id=?", (data["id"],)).fetchone()
+            if row:
+                # Operator skips are monotonic and may arrive while a worker holds an older task.
+                skips = json.loads(row["data"]).get("acceptance_skips", {})
+                if skips:
+                    data["acceptance_skips"] = skips
+                    if data.get("receipt"):
+                        data["receipt"]["acceptance_skips"] = skips
             db.execute(
                 "UPDATE tasks SET status=?,data=? WHERE id=?",
                 (data["status"], json.dumps(data), data["id"]),

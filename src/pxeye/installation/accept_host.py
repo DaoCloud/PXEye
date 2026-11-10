@@ -306,8 +306,13 @@ def collect(context):
         "warnings": [],
     }
     documents = {}
+    skips = context["task"].get("acceptance_skips", {})
+    report["acceptance_skips"] = skips
 
     def run(name, action):
+        if name in skips:
+            report["checks"][name] = None
+            return
         try:
             evidence = action()
             report["warnings"].extend(evidence.pop("warnings", []))
@@ -337,18 +342,32 @@ def collect(context):
     run("network", lambda: read_yaml("netplan"))
     run("installer", lambda: read_yaml("installer", "/var/log/installer/autoinstall-user-data"))
 
-    def check_reboot():
-        first = context.get("initial")
+    # Boot identity is collection context for GPU/reboot checks, even when host configuration is skipped.
+    try:
         report["boot_id"] = Path("/proc/sys/kernel/random/boot_id").read_text().strip()
-        if first:
-            assert report["boot_id"] != first["boot_id"], "NORMAL_REBOOT_NOT_OBSERVED"
-            assert all(
-                report.get(k) is not None and report[k] == first[k]
-                for k in ["root_uuid", "esp_partuuid", "host_key", "hostname"]
-            ), "IDENTITY_CHANGED_ON_REBOOT"
+    except OSError:
+        report["boot_id"] = None
+
+    def check_reboot():
+        first = context["initial"]
+        assert report["boot_id"] and report["boot_id"] != first.get("boot_id"), (
+            "NORMAL_REBOOT_NOT_OBSERVED"
+        )
+        fields = {
+            "disk": ["root_uuid", "esp_partuuid"],
+            "ssh": ["host_key"],
+            "identity": ["hostname"],
+        }
+        assert all(
+            report.get(k) is not None and report[k] == first.get(k)
+            for name, keys in fields.items()
+            if name not in skips
+            for k in keys
+        ), "IDENTITY_CHANGED_ON_REBOOT"
         return {}
 
-    run("normal_reboot" if context.get("initial") else "identity", check_reboot)
+    if context.get("initial"):
+        run("normal_reboot", check_reboot)
     # YAML validation runs in the backend; the raw documents must never be persisted.
     return report, documents
 

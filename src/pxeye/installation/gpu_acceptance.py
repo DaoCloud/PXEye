@@ -5,6 +5,8 @@ import hashlib
 import json
 import time
 
+from pxeye.installation.acceptance_skips import refresh_skips
+
 TIMEOUT_SECONDS = 3600
 POLL_SECONDS = 10
 READ_SCRIPT = """import json
@@ -114,11 +116,26 @@ def validate_state(payload, task, initial):
 def wait_for_gpu_environment(executor, task, device, known, initial, console):
     enabled = task.get("gpu_environment_check", False)
     initial.setdefault("checks", {})
+
+    def manually_skipped():
+        skips = refresh_skips(executor, task)
+        if "gpu_environment" not in skips:
+            return False
+        task["gpu_check"] = {"status": "skipped", "detail": "操作员手动跳过。"}
+        initial["checks"]["gpu_environment"] = None
+        initial["acceptance_skips"] = skips
+        executor.store.save(task)
+        return True
+
+    if manually_skipped():
+        return
     if not enabled:
         task["gpu_check"] = {"status": "skipped", "detail": "安装方案未启用 GPU 环境检查。"}
         initial["checks"]["gpu_environment"] = None
         executor.store.save(task)
         return
+    if not initial.get("boot_id"):
+        raise ValueError("无法读取首启 boot_id，不能核对 GPU 状态。")
     existing = task.get("gpu_check", {})
     if existing.get("status") == "success" and existing.get("boot_id") == initial["boot_id"]:
         initial["checks"]["gpu_environment"] = True
@@ -131,6 +148,8 @@ def wait_for_gpu_environment(executor, task, device, known, initial, console):
     last = None
     try:
         while time.monotonic() < deadline:
+            if manually_skipped():
+                return
             executor.check_bound(device, task)
             console.poll()
             try:
@@ -143,6 +162,8 @@ def wait_for_gpu_environment(executor, task, device, known, initial, console):
                 payload = {"waiting": True}
             except (TimeoutError, OSError):
                 payload = {"waiting": True}
+            if manually_skipped():
+                return
             if not isinstance(payload, dict) or payload.get("invalid"):
                 raise ValueError("GPU 状态文件格式、大小或读取权限无效。")
             if payload.get("waiting"):

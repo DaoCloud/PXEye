@@ -62,11 +62,19 @@ Save hostname `gpu-01`, management address `192.0.2.10`, a published Ubuntu prof
 - A failed device pauses while the others continue. Do not create duplicate tasks to bypass a pending issue.
 - Created tasks use snapshots; later device or profile edits do not automatically change the current installation. Removing an interface address does not remove its requirement from this attempt; acceptance reports the missing address.
 - System disk and EFI partition verification reads the root disk, EFI partition and partition layout over SSH. It does not change firmware boot order.
-- Start acceptance records base checks separately. An interface mismatch does not stop the remaining read-only checks. After each collection round, the acceptance panel shows passing checks and failure details. Required failures block GPU checking and reboot acceptance.
+- Start acceptance records base checks separately. An interface mismatch does not stop the remaining read-only checks. After each collection round, the acceptance panel shows passing checks and failure details. Required failures block GPU checking and reboot acceptance unless explicitly skipped.
 - Queued/running tasks or an allocated Instance do not indicate a completed OS installation; review installation and boot acceptance results.
 
 Related: [Device management](device-management.md) · [Operating systems](operating-systems.md) · [Installation profiles](installation-profiles.md) · [Install your first server](../getting-started.md)
 
+
+### Manually skip an acceptance check
+
+During installation acceptance, each item has a **Manual pass (手动通过)** button. Clicking it marks the item **Skipped (已跳过)** for this task and persists across refreshes. It does not record an automatic verification success. Finished tasks cannot be changed.
+
+Running acceptance applies skips on its next check; paused tasks still require **Start acceptance**. Other items follow the frozen plan. Skipping reboot acceptance prevents a reboot that has not been dispatched; it cannot cancel an already dispatched reboot.
+
+The acceptance report records each skipped item, operator, time and preceding check result. Skipping does not change the installation plan or disable task binding or trusted SSH transport; target reads still require a valid connection.
 
 ### Optional GPU environment check
 

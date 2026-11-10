@@ -17,6 +17,7 @@ from pathlib import Path
 
 from pxeye.common import sha
 from pxeye.installation.accept_config import validate_config
+from pxeye.installation.acceptance_skips import apply_skips, refresh_skips
 from pxeye.installation.install_events import observations
 from pxeye.installation.boot_control import (
     in_uefi,
@@ -550,7 +551,7 @@ class Executor:
                     self.record_disk_evidence(task, initial, text, trusted_key)
                     (folder / "initial.json").write_text(json.dumps(initial, indent=2))
                     task["initial"] = initial
-                    self.event(task, "firstboot", "基础安装验收通过，进入最终检查及重启验收。")
+                    self.event(task, "firstboot", "基础验收已结束，继续后续检查。")
                     break
                 if task.get("last_acceptance_error") != candidate["error"]:
                     task["last_acceptance_error"] = candidate["error"]
@@ -1892,7 +1893,7 @@ class Executor:
                 )
             (folder / "initial.json").write_text(json.dumps(initial, indent=2))
             task["initial"] = initial
-            self.event(task, "firstboot", "基础安装验收通过，进入最终检查及重启验收。")
+            self.event(task, "firstboot", "基础验收已结束，继续后续检查。")
             self.finish(
                 task,
                 device,
@@ -1925,35 +1926,45 @@ print('NORMAL_REBOOT_REQUESTED')
 
         wait_for_gpu_environment(self, task, device, known, initial, console)
         (folder / "initial.json").write_text(json.dumps(initial, indent=2))
-        if not task.get("normal_reboot_requested"):
-            self.event(task, "reboot", "最终检查通过，执行不带 PXE 的普通重启验收。")
-            task["normal_reboot_requested"] = True
-            task["normal_reboot_state"] = "requesting"
-            self.store.save(task)
-            self.adapter.ssh(device, reboot_script, known=known)
-            task["normal_reboot_state"] = "accepted"
-            self.store.save(task)
-        after = None
-        reboot_deadline = time.monotonic() + 480
-        while time.monotonic() < reboot_deadline:
-            for _ in range(6):
-                console.poll()
-            try:
-                result = self.accept(device, task, trusted_key, known, initial=initial)
-            except Exception:
-                continue
-            if result["passed"]:
-                after = result["report"]
-                break
-            if task.get("last_acceptance_error") != result["error"]:
-                task["last_acceptance_error"] = result["error"]
-                self.event(task, "reboot", "重启验收等待：" + result["error"])
-        if after is None:
-            raise TimeoutError(
-                "重启验收未通过：" + (task.get("last_acceptance_error") or "等待超时")
-            )
+        refresh_skips(self, task)
+        if "normal_reboot" in task["acceptance_skips"]:
+            after = json.loads(json.dumps(initial))
+        else:
+            if not task.get("normal_reboot_requested"):
+                self.event(task, "reboot", "开始不带 PXE 的普通重启验收。")
+                task["normal_reboot_requested"] = True
+                task["normal_reboot_state"] = "requesting"
+                self.store.save(task)
+                self.adapter.ssh(device, reboot_script, known=known)
+                task["normal_reboot_state"] = "accepted"
+                self.store.save(task)
+            after = None
+            reboot_deadline = time.monotonic() + 480
+            while time.monotonic() < reboot_deadline:
+                refresh_skips(self, task)
+                if "normal_reboot" in task["acceptance_skips"]:
+                    after = json.loads(json.dumps(initial))
+                    break
+                for _ in range(6):
+                    console.poll()
+                try:
+                    result = self.accept(device, task, trusted_key, known, initial=initial)
+                except Exception:
+                    continue
+                if result["passed"]:
+                    after = result["report"]
+                    break
+                if task.get("last_acceptance_error") != result["error"]:
+                    task["last_acceptance_error"] = result["error"]
+                    self.event(task, "reboot", "重启验收等待：" + result["error"])
+            if after is None:
+                raise TimeoutError(
+                    "重启验收未通过：" + (task.get("last_acceptance_error") or "等待超时")
+                )
         after["checks"]["gpu_environment"] = initial["checks"]["gpu_environment"]
         after["gpu_environment"] = task["gpu_check"]
+        refresh_skips(self, task)
+        apply_skips({"report": after}, task)
         self.check_bound(device, task)
         system = self.adapter.redfish(device)
         if system.get("Boot", {}).get("BootSourceOverrideEnabled") != "Disabled":
@@ -1980,7 +1991,8 @@ print('NORMAL_REBOOT_REQUESTED')
             "initial": initial,
             "after_reboot": after,
             "recovery_count": task["recovery_count"],
-            "normal_reboot": True,
+            "normal_reboot": after["checks"].get("normal_reboot") is True,
+            "acceptance_skips": task.get("acceptance_skips", {}),
             "gpu_environment_check": task.get("gpu_environment_check", False),
             "gpu_environment": task.get("gpu_check"),
             "everyboot": False,
@@ -1998,11 +2010,17 @@ print('NORMAL_REBOOT_REQUESTED')
         self.event(
             task,
             "completed",
-            "安装、目标系统盘启动及普通重启验收通过。"
+            (
+                "安装验收已结束，包含手动跳过项目。"
+                if task.get("acceptance_skips")
+                else "安装、目标系统盘启动及普通重启验收通过。"
+            )
             + ("环境服务有告警，请查看验收详情。" if task.get("warnings") else ""),
         )
 
     def record_disk_evidence(self, task, report, text, trusted_key):
+        if {"installer", "identity", "disk", "ssh"} & task.get("acceptance_skips", {}).keys():
+            return  # Manual waivers cannot become automatic installation proof.
         if verified_installation_identity(text, task, trusted_key):
             return
         if not self.identity_candidate(task, text, trusted_key):
@@ -2076,7 +2094,8 @@ print('NORMAL_REBOOT_REQUESTED')
         self.event(task, "materials", "ISO、kernel 和 initrd 完整摘要均匹配。")
 
     def accept(self, device, task, trusted_key, known, initial=None):
-        if device.get("login_mode") == "password":
+        refresh_skips(self, task)
+        if device.get("login_mode") == "password" and "ssh" not in task["acceptance_skips"]:
             self.adapter.verify_password_login(device, known)
         context = {"device": device, "task": task, "trusted_key": trusted_key, "initial": initial}
         # repr produces a Python string literal; this is transmitted as stdin, never through a shell interpolation.
@@ -2089,10 +2108,15 @@ print('NORMAL_REBOOT_REQUESTED')
         )
         result = json.loads(self.adapter.ssh(device, script, known=known, timeout=100))
         result = validate_config(result, device, task)
+        # A click made during collection applies before gating the next action.
+        refresh_skips(self, task)
+        result = apply_skips(result, task)
         report = result.get("report")
         if report:
-            if not report["checks"].get("services", False) and self.adapter.config.get(
-                "service_connectivity_required", False
+            if (
+                "services" not in task["acceptance_skips"]
+                and not report["checks"].get("services", False)
+                and self.adapter.config.get("service_connectivity_required", False)
             ):
                 failures = [
                     check["name"] + "未通过"

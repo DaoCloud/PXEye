@@ -650,7 +650,7 @@ function detail(id) {
   )
     body += `<div class="live-note live-warning">等待 Scout 完成磁盘清理，尚未开始 OS 安装。长时间无进展时，请检查 Scout 服务、API 连接和清理日志。</div>`;
   if (t.warnings?.length)
-    body += `<div class="live-note live-warning">系统安装及启动验收已通过；${t.warnings.map(esc).join("；")}。这些为环境服务告警。</div>`;
+    body += `<div class="live-note live-warning">${t.acceptance_skips && Object.keys(t.acceptance_skips).length ? "验收包含手动跳过项；" : "系统安装及启动验收已通过；"}${t.warnings.map(esc).join("；")}。这些为环境服务告警。</div>`;
   if (t.installer_progress)
     body += defs([
       [
@@ -686,6 +686,14 @@ function detail(id) {
     },
   )
     .map(([k, v]) => {
+      const skip = t.acceptance_skips?.[k];
+      const canSkip = !skip && ["running", "needs_attention"].includes(t.status) &&
+        ["firstboot", "gpu_check", "reboot"].includes(t.stage);
+      const skipButton = button("手动通过", "acceptance-skip", false,
+        `data-id="${esc(t.id)}" data-check="${k}" ${canSkip ? "" : "disabled"}`);
+      const row = (content, tone = "") =>
+        `<div class="acceptance-check-row ${tone}"><div class="acceptance-check-content">${content}</div>${skipButton}</div>`;
+      if (skip) return row(`— ${v} · 已跳过`, "live-small");
       if (k === "gpu_environment") {
         const gpu = t.gpu_check;
         const enabled = t.gpu_environment_check === true;
@@ -698,7 +706,7 @@ function detail(id) {
               success: "已通过",
               failed: "需处理",
             }[gpu?.status] || "";
-        return `<div class="${!enabled ? "live-small" : gpu?.status === "success" ? "good" : ""}">${gpu?.status === "success" ? "✓" : !enabled ? "—" : "○"} ${v}${label ? ` · ${label}` : ""}${enabled && gpu?.current_stage ? ` · ${esc(gpu.current_stage)}` : ""}</div>`;
+        return row(`${gpu?.status === "success" ? "✓" : !enabled ? "—" : "○"} ${v}${label ? ` · ${label}` : ""}${enabled && gpu?.current_stage ? ` · ${esc(gpu.current_stage)}` : ""}`, !enabled ? "live-small" : gpu?.status === "success" ? "good" : "");
       }
       const errors = acceptance?.check_errors?.[k] || [];
       const failed = errors.length > 0 || checks[k] === false;
@@ -714,7 +722,7 @@ function detail(id) {
               : t.status === "running" && t.stage === "firstboot" && !acceptance
                 ? "检查中"
                 : "";
-      return `<div class="${checks[k] ? "good" : failed ? "live-error" : ""}">${checks[k] ? "✓" : failed ? "×" : "○"} ${v}${label ? ` · ${label}` : ""}${errors.length ? `<span class="live-small">：${errors.map(esc).join("；")}</span>` : ""}</div>`;
+      return row(`${checks[k] ? "✓" : failed ? "×" : "○"} ${v}${label ? ` · ${label}` : ""}${errors.length ? `<span class="live-small">：${errors.map(esc).join("；")}</span>` : ""}`, checks[k] ? "good" : failed ? "live-error" : "");
     })
     .join("")}</div></section>`;
   if (t.gpu_environment_check && t.gpu_check) {
@@ -740,12 +748,12 @@ function detail(id) {
         "SSH 指纹",
         `<span class="live-code">${esc(after.hostkey_fingerprint)}</span>`,
       ],
-      ["普通重启 boot ID", esc(after.boot_id)],
+      [t.acceptance_skips?.normal_reboot ? "系统 boot ID" : "普通重启 boot ID", esc(after.boot_id)],
       [
         "UI 安装来源",
-        esc(after.task_receipt.source) +
+        esc(after.task_receipt?.source || "—") +
           " / " +
-          esc(after.task_receipt.task_id),
+          esc(after.task_receipt?.task_id || "—"),
       ],
     ])}</section>`;
   modal(
@@ -969,6 +977,7 @@ registerActions(
     "prepare-continue",
     "resume",
     "resume-confirm",
+    "acceptance-skip",
   ],
   async (e) => {
     const el = e.target.closest("[data-live]");
@@ -1073,6 +1082,16 @@ registerActions(
           return await continuePreparation();
         case "resume":
           return resumeDialog(el.dataset.resumeId);
+        case "acceptance-skip":
+          el.disabled = true;
+          try {
+            await api("/api/tasks/" + el.dataset.id + "/skip-acceptance", { check: el.dataset.check });
+            await refreshTasks();
+            return detail(el.dataset.id);
+          } catch (error) {
+            el.disabled = false;
+            throw error;
+          }
         case "resume-confirm":
           el.disabled = true;
           try {

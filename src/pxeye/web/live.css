@@ -2111,3 +2111,25 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+.live-checks > .acceptance-check-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.acceptance-check-content {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.acceptance-check-row > .button {
+  flex-shrink: 0;
+  padding: 5px 10px;
+  font-size: 11px;
+}
+@media (max-width: 600px) {
+  .live-checks > .acceptance-check-row {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+}
