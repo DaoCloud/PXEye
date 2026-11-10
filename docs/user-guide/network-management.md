@@ -62,7 +62,7 @@ A DNS domain groups device hostnames and address records; it is separate from th
 
 ### Configure a DHCP pool
 
-1. Click **DHCP pool (DHCP 地址池)** for the subnet and enter the first and last IP, for example `192.0.2.100` through `192.0.2.200`.
+1. Click **View → Configure DHCP pool (查看 → 配置 DHCP 地址池)** for the subnet and enter the first and last IP, for example `192.0.2.100` through `192.0.2.200`.
 2. Click **Apply (应用)**. The list shows the range read back from NICo. The subnet remains `192.0.2.0/24`; fixed addresses are managed separately.
 3. Leave both endpoints blank and apply to restore subnet allocation with the initial reservation count.
 
