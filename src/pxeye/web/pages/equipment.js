@@ -25,7 +25,7 @@ state.equipmentDiscoverySelection = [];
 state.equipmentDiscoveryResults = {};
 state.equipmentDiscoveryBatch = null;
 state.equipmentDiscoveryReading = false;
-state.equipmentFilters = { kind: "", rack: "", status: "", search: "" };
+state.equipmentFilters = { kind: "", rack: "", search: "" };
 sectionReads.equipment = async () => {
   state.equipment = await api("/api/equipment");
 };
@@ -100,7 +100,6 @@ function equipmentMatches(row) {
       row.kind === f.kind ||
       (f.kind === "dpu" && row.ports.some((p) => p.role.startsWith("dpu_")))) &&
     (!f.rack || row.rack_id === f.rack) &&
-    (!f.status || row.status === f.status) &&
     (!f.search ||
       [
         row.serial,
@@ -172,7 +171,7 @@ function devicePage() {
       visible.length > 0 &&
       visible.every((d) => state.equipmentDeviceSelection.includes(d.id));
   const f = state.equipmentFilters;
-  body += `<div class="live-editor-grid">${selectField("eq-filter-kind", "设备类型", [["", "全部类型"], ...Object.entries(equipmentKinds).filter(([k]) => k !== "unknown")], f.kind)}${selectField("eq-filter-rack", "机柜", [["", "全部机柜"], ...[...new Set(data.devices.map((d) => d.rack_id).filter(Boolean))].map((id) => [id, id])], f.rack)}${selectField("eq-filter-status", "纳管状态", [["", "全部状态"], ...["draft", "local_managed", "declared", "managed", "server"].map((k) => [k, equipmentStates[k]])], f.status)}${eqText("filter-search", "搜索 SN、名称、MAC 或 IP", f.search)}</div>`;
+  body += `<div class="equipment-device-filters">${selectField("eq-filter-rack", "机柜", [["", "全部机柜"], ...[...new Set(data.devices.map((d) => d.rack_id).filter(Boolean))].map((id) => [id, id])], f.rack)}${selectField("eq-filter-kind", "设备类型", [["", "全部类型"], ...Object.entries(equipmentKinds).filter(([k]) => k !== "unknown")], f.kind)}${eqText("filter-search", "搜索 SN、名称、MAC 或 IP", f.search)}</div>`;
   const selected = state.equipmentDeviceSelection.length,
     disabled = selected ? "" : "disabled",
     servers = equipmentSelectedServers(),

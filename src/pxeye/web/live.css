@@ -2089,3 +2089,18 @@
     width: 100%;
   }
 }
+
+.equipment-device-filters {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 2fr);
+  gap: 16px;
+  align-items: end;
+}
+.equipment-device-filters > label {
+  min-width: 0;
+}
+@media (max-width: 600px) {
+  .equipment-device-filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
