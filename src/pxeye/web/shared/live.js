@@ -1600,11 +1600,6 @@ async function deleteNetwork() {
 async function networkDialog(id) {
   const live = state.networks?.networks.find((x) => x.id === id);
   if (live) {
-    const pending =
-      live.saved &&
-      ["saved", "migration_required", "needs_attention"].includes(
-        live.saved.status,
-      );
     return modal(
       "子网详情",
       live.name,
@@ -1627,7 +1622,7 @@ async function networkDialog(id) {
         ["策略说明", esc(networkPolicyDisplay(live).note)],
         ["关联接口数", esc(live.interface_count)],
       ]) +
-        `<div class="live-note">子网基础配置不支持修改；DHCP 地址池可单独配置。</div>${pending ? '<div class="live-note">存在未应用的历史规划；本页显示 NICo 生效配置。</div>' : ""}`,
+        `<div class="live-note">子网基础配置不支持修改；DHCP 地址池可单独配置。</div>`,
       button("关闭", "close") +
         (live.dhcp_range_editable
           ? button(
