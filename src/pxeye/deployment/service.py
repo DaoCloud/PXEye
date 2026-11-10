@@ -275,6 +275,12 @@ class NicoDeployment:
                 else False
             )
         components = project(objects, bindings)
+        # A partial Helm recipe gates its declared services, not absent optional stacks.
+        # Core and PXE remain mandatory for the site handoff, even in a partial recipe.
+        if current and current.get("profile") == "helm":
+            required = {"core", "pxe"} | {b["id"] for b in bindings if b["id"] in REQUIRED}
+            for component in components:
+                component["required"] = component["id"] in required
         if (
             current
             and current.get("connection")
@@ -302,7 +308,7 @@ class NicoDeployment:
             ),
             "boot_ready": boot_ready,
             "ready_count": sum(c["state"] == "ready" for c in components if c["required"]),
-            "required_count": len(REQUIRED),
+            "required_count": sum(c["required"] for c in components),
         }
         with self.lock:
             self.observed = result

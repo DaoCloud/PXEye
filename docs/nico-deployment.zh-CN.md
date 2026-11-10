@@ -223,3 +223,6 @@ kubectl --context "$SITE_CONTEXT" -n mmzhou rollout status deployment/mmzhou-pxe
 包内服务和初始化全部就绪后，再验证物理机到 DHCP/PXE 的路径。部署失败时保留 PVC 与 Secret，不删除数据库重试；Vault 的恢复 Secret 需要另行受限备份。
 
 参考：[NVIDIA Quick Start](https://docs.nvidia.com/infra-controller/documentation/getting-started/quick-start-guide) · [Reference Installation](https://docs.nvidia.com/infra-controller/documentation/getting-started/installation-options/reference-installation) · [Architecture](https://docs.nvidia.com/infra-controller/documentation/architecture/overview-and-components)
+
+
+Helm recipe仅以其声明的服务加Core/PXE作为必要服务；未包含的REST/Temporal/Keycloak不阻止Core方案应用到站点。初始化Job、证书/PVC依赖、Vault健康、Boot文件及Core客户端身份仍必须通过。完整部署包保留全量服务门槛。

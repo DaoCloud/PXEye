@@ -201,3 +201,6 @@ Follow the [page guide](user-guide/nico-cluster.md). **Deployment workflow → O
 After required services and initialization are ready, verify the physical machine's DHCP/PXE path. Preserve PVCs and Secrets on failure; do not delete the database to retry. Back up the Vault recovery Secret through a restricted channel.
 
 References: [NVIDIA Quick Start](https://docs.nvidia.com/infra-controller/documentation/getting-started/quick-start-guide) · [Reference Installation](https://docs.nvidia.com/infra-controller/documentation/getting-started/installation-options/reference-installation) · [Architecture](https://docs.nvidia.com/infra-controller/documentation/architecture/overview-and-components)
+
+
+A Helm recipe gates the services it declares plus Core/PXE; an absent REST/Temporal/Keycloak stack does not block a Core-only site handoff. Initialization Jobs, certificate/PVC dependencies, Vault health, Boot artifacts and the Core client identity must still pass. Complete deployment packages retain the full service gate.
