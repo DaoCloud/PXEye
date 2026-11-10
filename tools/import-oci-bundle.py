@@ -80,8 +80,12 @@ def main():
             sources.append((image, destination(registry, args.repository_prefix, image)))
     except (OSError, ValueError, TypeError) as error:
         raise SystemExit(str(error)) from None
+    common = [args.skopeo]
+    # Skopeo's archive transport otherwise uses /var/tmp even when TMPDIR is set.
+    if os.environ.get("TMPDIR"):
+        common += ["--tmpdir", os.environ["TMPDIR"]]
     # These are copy-subcommand options, not skopeo global options.
-    common = [args.skopeo, "copy"]
+    common += ["copy"]
     if args.authfile:
         common += ["--authfile", str(args.authfile)]
     if args.insecure:
