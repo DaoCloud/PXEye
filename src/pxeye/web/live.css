@@ -2096,6 +2096,9 @@
   gap: 16px;
   align-items: end;
 }
+.equipment-device-filters + .equipment-batch-bar {
+  margin-top: 16px;
+}
 .equipment-device-filters > label {
   display: grid;
   gap: 12px;
