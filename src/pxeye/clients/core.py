@@ -1,5 +1,6 @@
 """Transport client with explicit target and authentication inputs."""
 
+import copy
 import json
 import os
 import ssl
@@ -9,6 +10,58 @@ from pxeye.clients.errors import CoreConnectionError
 
 
 class CoreClient:
+    def update_instance_os(self, instance_id, os_config):
+        """Use stdin RPC, preserving the CLI's read/modify/version-match semantics."""
+        os_config = copy.deepcopy(os_config)
+        variant = os_config.pop("variant", None)
+        if variant:
+            if not isinstance(variant, dict) or len(variant) != 1:
+                raise ValueError("安装OS类型无效。")
+            name, value = next(iter(variant.items()))
+            if name in ("OperatingSystemId", "OsImageId"):
+                os_config[
+                    "operating_system_id" if name == "OperatingSystemId" else "os_image_id"
+                ] = {"value": value}
+            elif name == "Ipxe":
+                os_config["ipxe"] = value
+            else:
+                raise ValueError("不支持的安装OS类型。")
+        instances = self.rpc("FindInstancesByIds", {"instance_ids": [{"value": instance_id}]}).get(
+            "instances", []
+        )
+        if len(instances) != 1 or instances[0].get("id", {}).get("value") != instance_id:
+            raise RuntimeError("无法唯一读取目标Instance，未更新安装配置。")
+        instance = instances[0]
+        config, metadata = (
+            copy.deepcopy(instance.get("config")),
+            copy.deepcopy(instance.get("metadata")),
+        )
+        version = instance.get("configVersion")
+        if not isinstance(config, dict) or not isinstance(metadata, dict) or not version:
+            raise RuntimeError("Instance缺少配置、元数据或版本，未更新安装配置。")
+        config["os"] = os_config
+        metadata["labels"] = [
+            label
+            for label in metadata.get("labels", [])
+            if label.get("key") not in ("cloud-unsafe-op", "admin-cli-last-modified-by")
+        ] + [
+            {"key": "cloud-unsafe-op"},
+            {
+                "key": "admin-cli-last-modified-by",
+                "value": self.config.get("unsafe_operation_reason", "PXEye OS installation"),
+            },
+        ]
+        # A concurrent modification fails rather than replaying a potentially sent write.
+        return self.rpc(
+            "UpdateInstanceConfig",
+            {
+                "instance_id": {"value": instance_id},
+                "if_version_match": version,
+                "config": config,
+                "metadata": metadata,
+            },
+        )
+
     def check_core_certificate(self):
         path = self.core_secrets / "client.crt"
         try:

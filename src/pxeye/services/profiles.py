@@ -18,6 +18,14 @@ from pxeye.installation.storage_policy import (
     apply_partition_layout,
 )
 from pxeye.installation.profile_template import apply_software_install
+from pxeye.installation.custom_files import (
+    normalize_custom_files,
+    apply_custom_files,
+    MAX_FILES,
+    MAX_FILE_BYTES,
+    MAX_TOTAL_BYTES,
+    RESERVED,
+)
 
 OVERRIDABLE = ("os_id", "username", "login_mode", "authorized_keys", "credential")
 
@@ -97,6 +105,7 @@ class InstallProfiles:
         settings.pop("allow_overrides", None)
         settings["storage"] = normalize_storage(settings.get("storage"))
         settings.setdefault("gpu_environment_check", False)
+        settings.setdefault("custom_files", [])
         return {
             k: row[k]
             for k in (
@@ -113,6 +122,12 @@ class InstallProfiles:
             )
         } | {
             "settings": settings,
+            "custom_files_policy": {
+                "max_files": MAX_FILES,
+                "max_file_bytes": MAX_FILE_BYTES,
+                "max_total_bytes": MAX_TOTAL_BYTES,
+                "reserved_paths": RESERVED,
+            },
             "ssh_user": settings["username"],
             "revision": self.revision(row),
             "password_present": bool(row["settings"].get("login_ref")),
@@ -194,6 +209,7 @@ class InstallProfiles:
             "allow_overrides",
             "storage",
             "gpu_environment_check",
+            "custom_files",
         }
         if not isinstance(config, dict) or set(config) - fields:
             raise ValueError("方案含未知配置。")
@@ -216,6 +232,10 @@ class InstallProfiles:
         if type(s.get("gpu_environment_check", False)) is not bool:
             raise ValueError("GPU 环境检查开关必须为布尔值。")
         s.setdefault("gpu_environment_check", False)
+        s["custom_files"] = normalize_custom_files(s.get("custom_files", []))
+        # Reject template collisions at save time as well as publish/render time.
+        template_ai = yaml.safe_load(previous["template"]["user_data"])["autoinstall"]
+        apply_custom_files(template_ai, s["custom_files"])
         if s.get("os_id"):
             try:
                 s["os_id"] = str(uuid.UUID(s["os_id"]))
@@ -465,6 +485,7 @@ class InstallProfiles:
         ai.setdefault("user-data", {}).update(
             timezone=s["timezone"], ntp={"enabled": True, "servers": s["ntp"]}
         )
+        apply_custom_files(ai, s.get("custom_files", []))
         apply_software_install(ai, s["packages"], s["apt"])
         if "storage" in s:
             apply_partition_layout(ai, s["storage"])

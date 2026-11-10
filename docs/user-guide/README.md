@@ -12,7 +12,7 @@ Each main menu page has one guide explaining its purpose, field values and actio
 | Resources → Instances (资源 → 实例管理) | [Instances](instance-management.md) | Inspect instances and reclaim devices |
 | Resources → Operating systems (资源 → 操作系统) | [Operating systems](operating-systems.md) | Import ISOs, prepare and enable OS versions |
 | Resources → Networks (资源 → 网络管理) | [Networks](network-management.md) | Subnet creation, reservations and DHCP prerequisites |
-| Configuration → Installation profiles (配置 → 安装方案) | [Installation profiles](installation-profiles.md) | OS, disk, partition and login defaults |
+| Configuration → Installation profiles (配置 → 安装方案) | [Installation profiles](installation-profiles.md) | OS, disks, login defaults and first-boot text files |
 | Configuration → Site settings (配置 → 站点设置) | [Site settings](site-settings.md) | Connections, storage and installation concurrency |
 | Configuration → NICo cluster | [NICo cluster](nico-cluster.md) | Online/offline Helm deployment, service status and site connection |
 

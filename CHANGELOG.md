@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.22.13 — Installation profile custom files
+
+- Add editable text-file cards with ownership, permissions and overwrite/append options to installation profiles.
+- Preserve versioned file settings and merge deferred first-boot cloud-init writes into installation data without replacing existing configuration.
+- Validate file sizes, protected paths and template conflicts; keep historical profiles unchanged.
+- Send OS updates through stdin RPC with version matching to support larger installation data without command-argument limits.
+
+
 ## 0.22.12 — Detailed NIC inventory export
 
 - Export one row per host port with physical location, port number, adapter identity, speed, link state and available neighbor information.

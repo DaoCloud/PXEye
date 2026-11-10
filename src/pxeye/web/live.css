@@ -2136,3 +2136,56 @@
     flex-wrap: wrap;
   }
 }
+
+/* Profile text-file cards keep long paths and content within the editor. */
+.profile-files-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.profile-files-heading h3 {
+  margin: 0;
+}
+.profile-file {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin: 12px 0;
+  overflow: hidden;
+}
+.profile-file > summary {
+  cursor: pointer;
+  padding: 14px 16px;
+}
+.profile-file-path {
+  font-family: monospace;
+  overflow-wrap: anywhere;
+}
+.profile-file > summary .live-small {
+  margin-top: 4px;
+}
+.profile-file-editor {
+  display: grid;
+  gap: 16px;
+  padding: 4px 16px 16px;
+}
+.profile-file-editor > label {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.profile-file-content {
+  font-family: monospace;
+  line-height: 1.6;
+  min-height: 160px;
+  resize: vertical;
+  tab-size: 2;
+}
+.profile-file-attributes > summary {
+  cursor: pointer;
+  margin-bottom: 12px;
+}
+.profile-file-actions {
+  display: flex;
+  justify-content: flex-end;
+}

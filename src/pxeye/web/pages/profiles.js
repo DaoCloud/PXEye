@@ -50,6 +50,88 @@ function lines(id) {
     .map((s) => s.trim())
     .filter(Boolean);
 }
+function profileFileRow(file = {}, readonly = false) {
+  const path = file.path || "";
+  return `<details class="profile-file" ${path ? "" : "open"}>
+    <summary><span class="profile-file-path">${esc(path || "新文件")}</span><span class="live-small">${esc(file.permissions || "0644")} · ${file.append ? "追加" : "覆盖"}</span></summary>
+    <div class="profile-file-editor">
+      <label>文件路径<input class="input" data-file-field="path" value="${esc(path)}" placeholder="/etc/nico/site.yaml" spellcheck="false"></label>
+      <label>文件内容<textarea class="input profile-file-content" data-file-field="content" rows="8" spellcheck="false" placeholder="填写原文，保留换行和缩进">${esc(file.content || "")}</textarea></label>
+      <details class="profile-file-attributes"><summary>文件属性</summary><div class="live-editor-grid">
+        <label>所属用户与组<input class="input" data-file-field="owner" value="${esc(file.owner || "root:root")}" placeholder="root:root"></label>
+        <label>文件权限<input class="input" data-file-field="permissions" value="${esc(file.permissions || "0644")}" placeholder="0644" inputmode="numeric"></label>
+        <label>写入方式<select class="input" data-file-field="append"><option value="false" ${file.append ? "" : "selected"}>覆盖</option><option value="true" ${file.append ? "selected" : ""}>追加</option></select></label>
+      </div></details>
+      ${readonly ? "" : `<div class="profile-file-actions">${button("删除文件", "profile-file-remove")}</div>`}
+    </div></details>`;
+}
+function profileFilesSection(files, readonly) {
+  return `<section class="subsection profile-custom-files"><div class="profile-files-heading"><h3>自定义文件</h3>${readonly ? "" : button("添加文件", "profile-file-add")}</div>
+    <p class="live-small">在新系统首次启动时写入文本文件。最多 32 个，单个内容 64 KiB，合计 256 KiB；按原文写入，不替换变量或执行脚本。</p>
+    <p class="live-small" id="profile-files-empty" ${files.length ? "hidden" : ""}>未配置自定义文件。</p>
+    <div id="profile-files">${files.map((f) => profileFileRow(f, readonly)).join("")}</div>
+    <p class="live-small">默认 root:root、0644、覆盖写入。自定义用户或组须已存在；配置新版本仅在下次安装生效。</p></section>`;
+}
+function profileFilesValue() {
+  const files = [
+    ...document.querySelectorAll("#profile-files > .profile-file"),
+  ].map((row) => {
+    const value = (name) =>
+      row.querySelector(`[data-file-field="${name}"]`).value;
+    return {
+      path: value("path"),
+      content: value("content"),
+      owner: value("owner"),
+      permissions: value("permissions"),
+      append: value("append") === "true",
+    };
+  });
+  const policy = state.wizard.profile.custom_files_policy;
+  const overlap = (a, b) =>
+    a === b || a.startsWith(b + "/") || b.startsWith(a + "/");
+  let total = 0;
+  if (files.length > policy.max_files) throw Error("自定义文件最多32个。");
+  for (const [i, file] of files.entries()) {
+    const path = file.path;
+    if (
+      !path.startsWith("/") ||
+      path.length > 4096 ||
+      /[\x00-\x1f\x7f\\]/.test(path) ||
+      path
+        .slice(1)
+        .split("/")
+        .some((v) => ["", ".", ".."].includes(v))
+    )
+      throw Error("请填写有效的绝对文件路径，不含空路径段或 . / ..。");
+    if (
+      path.split("/").includes(".ssh") ||
+      policy.reserved_paths.some((p) => overlap(path, p))
+    )
+      throw Error("文件路径与系统管理配置冲突：" + path);
+    if (files.slice(0, i).some((f) => overlap(path, f.path)))
+      throw Error("文件路径重复或存在文件与目录冲突：" + path);
+    if (
+      !/^(?:[a-z_][a-z0-9_-]{0,31}|[0-9]+):(?:[a-z_][a-z0-9_-]{0,31}|[0-9]+)$/.test(
+        file.owner,
+      )
+    )
+      throw Error("所属用户与组格式应为 user:group：" + path);
+    if (!/^0[0-7]{3}$/.test(file.permissions))
+      throw Error("权限应为四位八进制值，例如0644：" + path);
+    const size = new TextEncoder().encode(file.content).length;
+    total += size;
+    if (
+      file.content.includes("\0") ||
+      size > policy.max_file_bytes ||
+      total > policy.max_total_bytes
+    )
+      throw Error(
+        "文件内容需为无NUL字符的文本，单个最多64 KiB，合计最多256 KiB。",
+      );
+  }
+  return files;
+}
+
 async function profileEditor(id, copy = false) {
   await loadProfiles();
   try {
@@ -123,7 +205,7 @@ async function profileEditor(id, copy = false) {
       ["clear", "清除密码"],
     ],
     "keep",
-  )}${multiline("profile-keys", "SSH 公钥（每行一个）", s.authorized_keys)}</div><p class="live-small">使用密码登录时，需在此处或设备规划中设置密码。</p></section><section class="subsection"><h3>安装验收</h3><label class="live-check"><input id="profile-gpu-check" type="checkbox" ${s.gpu_environment_check ? "checked" : ""}> GPU 环境检查</label><p class="live-small">仅在最终验收读取 /var/lib/metal-deployer/state.json；部署成功后才进入重启验收。最长等待 60 分钟，不执行 GPU 测试或部署脚本；未勾选时跳过。</p></section><details class="subsection"><summary>高级设置</summary><div class="live-editor-grid">${inputField("profile-timezone", "时区", s.timezone)}${multiline("profile-ntp", "NTP 服务器（每行一个）", s.ntp)}${multiline("profile-packages", "额外软件包（每行一个）", s.packages)}${inputField("profile-apt", "APT 软件源 URL", s.apt?.primary?.[0]?.uri || "")}${inputField("profile-security", "APT 安全更新源 URL", s.apt?.security?.[0]?.uri || "")}${multiline("profile-dns-checks", "DNS 验收域名（每行一个）", s.dns_checks)}${multiline("profile-http-checks", "HTTP 验收 URL（每行一个）", s.http_checks)}</div><p class="live-small">留空时仅使用 ISO 内材料；需要额外软件时填写可达的站点内 APT 源。当前不支持自定义脚本、多盘分区或 LVM。</p>${defs(
+  )}${multiline("profile-keys", "SSH 公钥（每行一个）", s.authorized_keys)}</div><p class="live-small">使用密码登录时，需在此处或设备规划中设置密码。</p></section>${profileFilesSection(s.custom_files || [], readonly)}<section class="subsection"><h3>安装验收</h3><label class="live-check"><input id="profile-gpu-check" type="checkbox" ${s.gpu_environment_check ? "checked" : ""}> GPU 环境检查</label><p class="live-small">仅在最终验收读取 /var/lib/metal-deployer/state.json；部署成功后才进入重启验收。最长等待 60 分钟，不执行 GPU 测试或部署脚本；未勾选时跳过。</p></section><details class="subsection"><summary>高级设置</summary><div class="live-editor-grid">${inputField("profile-timezone", "时区", s.timezone)}${multiline("profile-ntp", "NTP 服务器（每行一个）", s.ntp)}${multiline("profile-packages", "额外软件包（每行一个）", s.packages)}${inputField("profile-apt", "APT 软件源 URL", s.apt?.primary?.[0]?.uri || "")}${inputField("profile-security", "APT 安全更新源 URL", s.apt?.security?.[0]?.uri || "")}${multiline("profile-dns-checks", "DNS 验收域名（每行一个）", s.dns_checks)}${multiline("profile-http-checks", "HTTP 验收 URL（每行一个）", s.http_checks)}</div><p class="live-small">留空时仅使用 ISO 内材料；需要额外软件时填写可达的站点内 APT 源。当前不支持自定义脚本、多盘分区或 LVM。</p>${defs(
     [
       ["网络模式", esc(p.network_mode) + " · 继承站点已有租户/VPC"],
       ["验证范围", esc(p.evidence)],
@@ -173,6 +255,7 @@ async function profileSave() {
       dns_checks: lines("profile-dns-checks"),
       http_checks: lines("profile-http-checks"),
       gpu_environment_check: $("#profile-gpu-check").checked,
+      custom_files: profileFilesValue(),
       storage: {
         root_fstype: $("#profile-root-fstype").value,
         selection: $("#profile-disk-selection").value,
@@ -413,6 +496,8 @@ registerActions(
     "profile-version",
     "profile-active",
     "profile-delete",
+    "profile-file-add",
+    "profile-file-remove",
   ],
   async (e) => {
     const el = e.target.closest("[data-live]");
@@ -447,6 +532,23 @@ registerActions(
           render();
           return toast(r.detail);
         }
+        case "profile-file-add": {
+          const list = $("#profile-files");
+          if (
+            list.children.length >=
+            state.wizard.profile.custom_files_policy.max_files
+          )
+            throw Error("自定义文件最多32个。");
+          list.insertAdjacentHTML("beforeend", profileFileRow());
+          $("#profile-files-empty").hidden = true;
+          list.lastElementChild.querySelector("input").focus();
+          return;
+        }
+        case "profile-file-remove":
+          el.closest(".profile-file").remove();
+          $("#profile-files-empty").hidden =
+            $("#profile-files").children.length > 0;
+          return;
         case "profile-new":
           return await profileEditor(null, true);
         case "profile-refresh":
@@ -476,3 +578,15 @@ registerActions(
     }
   },
 );
+
+observeUI("input", "profile-file-summary", (event) => {
+  const input = event.target.closest("[data-file-field]");
+  const row = input?.closest(".profile-file");
+  if (!row) return;
+  const value = (name) =>
+    row.querySelector(`[data-file-field="${name}"]`).value;
+  row.querySelector(".profile-file-path").textContent =
+    value("path") || "新文件";
+  row.querySelector("summary .live-small").textContent =
+    `${value("permissions")} · ${value("append") === "true" ? "追加" : "覆盖"}`;
+});

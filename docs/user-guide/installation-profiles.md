@@ -4,8 +4,8 @@ language: en
 title: Installation profiles
 description: Configure reusable OS, disk rules, partitioning and default login settings.
 navigation_group: configuration
-updated_at: "2026-11-08"
-product_version: "0.21.26"
+updated_at: "2026-11-10"
+product_version: "0.22.13"
 ---
 
 # Installation profiles
@@ -34,6 +34,25 @@ Open **Configuration → Installation profiles (配置 → 安装方案)** to sh
 | Login mode / default password (登录方式 / 默认密码) | SSH password or key login. Supply a password in the profile or per device; empty preserves an existing password. **Default password handling (默认密码处理)** can explicitly clear it. |
 | SSH public keys (SSH 公钥) | One complete key per line. Key login requires valid keys in the final configuration. |
 
+### Custom files
+
+Below **Default login configuration**, select **Add file** and enter an absolute target-system path and its text content. Expand a file card to edit it. **File attributes** contains the owner, four-digit octal permissions and overwrite/append mode; defaults are `root:root`, `0644` and overwrite. Empty content creates an empty file. Append does not merge YAML/JSON or insert a separator newline.
+
+For example, set the path to `/etc/nico/site.yaml` and the content to:
+
+```yaml
+nico_endpoint: "http://192.0.2.100:8080"
+site: "site-a"
+```
+
+Replace the address, save the draft, check and publish a new version, then select that version for the device. Target-system cloud-init writes the files on first boot after package and user initialization, creating parent directories if needed. Ordinary reboots do not rewrite them, and profile edits do not update installed hosts. After installation, inspect the file with `sudo cat /etc/nico/site.yaml`.
+
+- Up to 32 files, 64 KiB of content per file and 256 KiB in total. UTF-8 content preserves indentation and newlines.
+- Duplicate or overlapping file/directory paths are rejected. Managed network, login, cloud-init, runtime and installation-receipt paths are protected; existing template files cannot be shadowed.
+- Variables such as `${NICO_VIP}` are literal text. This feature does not download remote content or execute scripts. A URL is only stored as content.
+- Custom owners must already exist or be created during installation. The image must support cloud-init deferred file writes. Write failures are visible through existing host-configuration acceptance checks; manually skipping that check does not verify the files.
+- Content is stored with the profile and delivered in installation data. Use it for ordinary text configuration, not passwords, private keys or tokens.
+
 ### Optional settings
 
 Expand **Advanced settings (高级设置)**:
@@ -45,6 +64,7 @@ Expand **Advanced settings (高级设置)**:
 | Extra packages (额外软件包) | One package name per line. Installation dependencies must exist on the ISO or configured repositories. |
 | APT primary / security URL (APT 软件源 / 安全更新源 URL) | Reachable repositories for the target architecture. Empty values use ISO materials for offline installation. |
 | DNS acceptance domains / HTTP acceptance URLs (DNS 验收域名 / HTTP 验收 URL) | One per line, checked during acceptance. DNS acceptance domains do not configure DNS servers. |
+
 
 ## 3. Actions
 

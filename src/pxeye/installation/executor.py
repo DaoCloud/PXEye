@@ -381,18 +381,7 @@ class Executor:
                     "已生成安装配置；hostname 和 UI 任务回执将写入新系统。",
                     sha256=digest,
                 )
-                self.adapter.core(
-                    [
-                        "--cloud-unsafe-op",
-                        self.adapter.config.get("unsafe_operation_reason", "PXEye OS installation"),
-                        "instance",
-                        "update-os",
-                        "--instance",
-                        device["instance_id"],
-                        "--os",
-                        json.dumps(config),
-                    ]
-                )
+                self.adapter.update_instance_os(device["instance_id"], config)
                 instance = self.adapter.instance(device)
                 if sha(instance["config"]["os"]["user_data"]) != digest:
                     raise RuntimeError("Core 配置读回摘要不匹配。")
@@ -1439,18 +1428,7 @@ class Executor:
                 "configure",
                 "更新原任务的自动安装配置；复用原 Instance、地址和系统盘，不重复接入清理。",
             )
-            self.adapter.core(
-                [
-                    "--cloud-unsafe-op",
-                    self.adapter.config.get("unsafe_operation_reason", "PXEye OS installation"),
-                    "instance",
-                    "update-os",
-                    "--instance",
-                    device["instance_id"],
-                    "--os",
-                    json.dumps(config),
-                ]
-            )
+            self.adapter.update_instance_os(device["instance_id"], config)
             instance = self.adapter.instance(device)
             if instance.get("machine_id") != device["machine_id"] or sha(
                 instance["config"]["os"]["user_data"]
