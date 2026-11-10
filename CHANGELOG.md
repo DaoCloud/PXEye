@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.22.9 — Per-check installation acceptance
+
+- Retain individual acceptance results and continue read-only base checks after network mismatches; show failures without bypassing required checks or reboot gates.
+- Remove pending-verification suffixes from the acceptance panel.
+- Add optional GPU deployment-state acceptance, offline NICo bundle handling and OCI import tooling.
+- Simplify managed-device filtering.
+
 ## 0.22.8 — Network acceptance diagnostics
 
 - Report the missing planned IPv4 address when an interface has no IPv4 data, instead of an index error.
