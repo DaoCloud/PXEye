@@ -511,6 +511,7 @@ class TaskCoordinator:
                     "installation_plan": plan,
                     "impact_authorization": impact | {"confirmed_at": time.time(), "actor": actor},
                     "execution_device": device,
+                    "gpu_environment_check": bool((device or {}).get("gpu_environment_check", False)),
                     "deferred_bootstrap": bool(c.get("deferred_first_install")),
                     "source": "nico-ui",
                     "executor": {
@@ -668,6 +669,7 @@ class TaskCoordinator:
                     "current_management_ip": plan["current_management_ip"],
                     "installation_plan": plan,
                     "execution_device": device,
+                    "gpu_environment_check": bool((device or {}).get("gpu_environment_check", False)),
                     "executor": {
                         "namespace": os.environ.get("POD_NAMESPACE")
                         or self.config.get("site", {}).get("namespace"),

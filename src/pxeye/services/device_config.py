@@ -365,6 +365,7 @@ class DeviceConfig:
                 timezone=values["timezone"],
                 dns_checks=values["dns_checks"],
                 http_checks=values["http_checks"],
+                gpu_environment_check=values.get("gpu_environment_check", False),
             )
         device.update(
             ssh_user=values["username"],

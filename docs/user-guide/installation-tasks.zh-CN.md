@@ -65,3 +65,16 @@ product_version: "0.22.8"
 - “排队”“运行中”或已创建 Instance 均不表示 OS 安装完成；以安装与启动验收结果为准。
 
 相关：[设备管理](device-management.zh-CN.md) · [操作系统](operating-systems.zh-CN.md) · [安装方案](installation-profiles.zh-CN.md) · [首台装机](../getting-started.zh-CN.md)
+
+
+### GPU 环境检查（可选）
+
+在安装方案的“安装验收”中勾选“GPU 环境检查”，保存并发布新版本。开关随本轮任务冻结；旧方案默认关闭，验收界面显示灰色“已跳过”。这项检查仅在基础安装验收通过后、普通重启验收之前读取状态，不执行 GPU 测试或部署脚本。
+
+部署脚本需原子写入 `/var/lib/metal-deployer/state.json`：先写同目录临时文件再 rename。文件最大 256 KiB，`schema` 为整数 `1`，`iso_version` 为非空版本文本；`boot_id` 取部署首启时的 `/proc/sys/kernel/random/boot_id`。建议附带从 `/etc/nico-installation.json` 读取的 `task_id`；提供后必须匹配当前任务。`started_at`、`updated_at` 使用带时区的 ISO 8601 时间，需属于本轮安装；节点时钟应同步。
+
+`overall` 和每个阶段 `status` 使用 `pending/running/success/failed`。`stages` 必须非空且名称唯一，`current_stage` 非空时必须存在于清单；结束阶段必须有整数 `rc`，成功阶段为 `0`。可提供 `start/end/log`，日志路径仅展示。只有 overall=success 且所有阶段 success/rc=0 才通过；失败、协议错误或身份不符进入“需处理”。缺文件或 SSH 暂不可达每约 10 秒重读一次，单次 SSH 最长 20 秒，每次验收最多等待 60 分钟。`updated_at` 不用于单独推断卡死。
+
+通过后保存状态摘要及首启 boot_id，再进入普通重启验收；重启后使用已验证回执，不要求历史状态文件改写为新 boot_id。失败后的“开始验收”只重新观察，不重装、不重跑脚本。若服务在重启前没有成功回执，不能通过最终验收。
+
+安装验收文案统一为：安装器成功 → 主机配置 → 系统盘与 EFI 分区验证→ 网络配置 → SSH 连通 → DNS / HTTP / NTP 连通 → GPU 环境检查（可跳过）→ 重启验收。“系统盘与 EFI 分区验证”核对 root 和 ESP 位于目标盘，不表示再次修改固件启动顺序。原有环境服务必选/告警策略不变。GPU 状态属于自定义部署协议，不等同于 cloud-init 标准状态。

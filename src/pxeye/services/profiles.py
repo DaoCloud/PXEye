@@ -96,6 +96,7 @@ class InstallProfiles:
         settings.pop("login_ref", None)
         settings.pop("allow_overrides", None)
         settings["storage"] = normalize_storage(settings.get("storage"))
+        settings.setdefault("gpu_environment_check", False)
         return {
             k: row[k]
             for k in (
@@ -119,7 +120,9 @@ class InstallProfiles:
             "layout": storage_label(settings["storage"]),
             "disk_selection": selection_label(settings["storage"]),
             "boot_mode": "UEFI",
-            "software_mode": "online" if settings.get("apt") or settings.get("packages") else "offline",
+            "software_mode": "online"
+            if settings.get("apt") or settings.get("packages")
+            else "offline",
             "validation": row.get("checked"),
             "evidence": "技术配置；实机适用范围以独立安装回执为准",
         }
@@ -190,6 +193,7 @@ class InstallProfiles:
             "http_checks",
             "allow_overrides",
             "storage",
+            "gpu_environment_check",
         }
         if not isinstance(config, dict) or set(config) - fields:
             raise ValueError("方案含未知配置。")
@@ -209,6 +213,9 @@ class InstallProfiles:
         for k in fields - {"name", "description", "password", "credential_action"}:
             if k in config:
                 s[k] = copy.deepcopy(config[k])
+        if type(s.get("gpu_environment_check", False)) is not bool:
+            raise ValueError("GPU 环境检查开关必须为布尔值。")
+        s.setdefault("gpu_environment_check", False)
         if s.get("os_id"):
             try:
                 s["os_id"] = str(uuid.UUID(s["os_id"]))
@@ -488,8 +495,13 @@ class InstallProfiles:
             values[target] = intent.get(target) if mode == "override" else s.get(target)
             sources[target] = "设备覆盖" if mode == "override" else "方案 v" + str(p["version"])
         values.update(
-            timezone=s["timezone"], dns_checks=s["dns_checks"], http_checks=s["http_checks"]
+            timezone=s["timezone"],
+            dns_checks=s["dns_checks"],
+            http_checks=s["http_checks"],
         )
+        # Do not change the frozen effective configuration of historical profiles.
+        if "gpu_environment_check" in s:
+            values["gpu_environment_check"] = s["gpu_environment_check"]
         if require:
             if problems:
                 raise ValueError("；".join(problems))

@@ -46,6 +46,7 @@ const stages = {
   install: "安装系统",
   handoff: "启动系统盘",
   firstboot: "安装验收",
+  gpu_check: "GPU 环境检查",
   reboot: "重启验收",
   completed: "完成",
   cancelled: "任务已终止",
@@ -676,14 +677,42 @@ function detail(id) {
       network: "网络配置",
       ssh: "SSH 连通",
       services: "DNS / HTTP / NTP 连通",
+      gpu_environment: "GPU 环境检查",
       normal_reboot: "重启验收",
     },
   )
-    .map(
-      ([k, v]) =>
-        `<div class="${checks[k] ? "good" : ""}">${checks[k] ? "✓" : "○"} ${v} · ${checks[k] ? "已通过" : k === "services" && (after || t.initial || t.installation_checks) ? "有环境服务告警" : "待验证"}</div>`,
-    )
+    .map(([k, v]) => {
+      if (k === "gpu_environment") {
+        const gpu = t.gpu_check;
+        const enabled = t.gpu_environment_check === true;
+        const label = !enabled
+          ? "已跳过"
+          : {
+              waiting: "等待状态文件",
+              pending: "待执行",
+              running: "进行中",
+              success: "已通过",
+              failed: "需处理",
+            }[gpu?.status] || "待验证";
+        return `<div class="${!enabled ? "live-small" : gpu?.status === "success" ? "good" : ""}">${gpu?.status === "success" ? "✓" : !enabled ? "—" : "○"} ${v} · ${label}${enabled && gpu?.current_stage ? ` · ${esc(gpu.current_stage)}` : ""}</div>`;
+      }
+      return `<div class="${checks[k] ? "good" : ""}">${checks[k] ? "✓" : "○"} ${v} · ${checks[k] ? "已通过" : k === "services" && (after || t.initial || t.installation_checks) ? "有环境服务告警" : "待验证"}</div>`;
+    })
     .join("")}</div></section>`;
+  if (t.gpu_environment_check && t.gpu_check) {
+    const gpu = t.gpu_check;
+    body += `<section class="subsection"><h3>GPU 环境检查</h3>${gpu.detail ? `<p>${esc(gpu.detail)}</p>` : ""}<p class="live-small">${gpu.updated_at ? `部署更新 ${esc(gpu.updated_at)} · ` : ""}最近读取 ${when(gpu.observed_at)}</p>${
+      (gpu.stages || []).length
+        ? table(
+            ["阶段", "状态", "退出码", "日志路径"],
+            gpu.stages.map(
+              (s) =>
+                `<tr><td>${esc(s.name)}</td><td>${esc({ pending: "待执行", running: "进行中", success: "成功", failed: "失败" }[s.status] || s.status)}</td><td>${esc(s.rc ?? "—")}</td><td class="live-code">${esc(s.log || "—")}</td></tr>`,
+            ),
+          )
+        : ""
+    }</section>`;
+  }
   if (after)
     body += `<section class="live-card">${defs([
       ["主机名", esc(after.hostname)],

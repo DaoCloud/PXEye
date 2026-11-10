@@ -75,3 +75,16 @@ Create this example from a base profile of the same architecture. If `OS-*` matc
 - Publishing does not install servers; created tasks retain snapshots. Password login requires a password in the profile or device configuration.
 
 Related: [Operating systems](operating-systems.md) · [Device management](device-management.md) · [Installation tasks](installation-tasks.md)
+
+
+### Optional GPU environment check
+
+Enable GPU environment check under Installation acceptance in an installation profile, then save and publish a new version. The flag is frozen with the task; historical profiles default to disabled and show Skipped. The check runs only after base installation acceptance and before normal reboot acceptance. It reads deployment results; it never launches GPU tests or provisioning scripts.
+
+The producer must atomically publish `/var/lib/metal-deployer/state.json` using a temporary file and rename. Maximum size is 256 KiB. Use integer schema=1, a nonempty iso_version and the first-boot `/proc/sys/kernel/random/boot_id`. An optional task_id from `/etc/nico-installation.json` must match when present. started_at and updated_at must be timezone-qualified ISO 8601 timestamps belonging to this installation; synchronize node clocks.
+
+Use pending/running/success/failed for overall and stage status. Supply a nonempty stages list with unique names; a nonempty current_stage must name a listed stage. Terminal stages require integer rc, and success requires rc=0. Optional start/end/log fields are supported; log paths are display-only. Acceptance requires overall=success and every stage success/rc=0. Failure, invalid protocol or identity mismatch requires attention. Missing files and transient SSH outages are polled approximately every 10 seconds, with a 20-second SSH limit and a 60-minute wait budget per acceptance attempt. updated_at alone is not a hang detector.
+
+Success evidence is saved before normal reboot. Reboot acceptance uses that evidence rather than requiring the historical state file to match the new boot ID. Continue acceptance only observes again; it does not reinstall or rerun scripts. Final acceptance cannot pass without the required pre-reboot success evidence.
+
+Acceptance labels follow: Installer success → Host configuration → System disk and EFI partition verification → Network configuration → SSH connectivity → DNS / HTTP / NTP connectivity → GPU environment check (optional) → Reboot acceptance. System disk and EFI partition verification checks root/ESP placement rather than reconfiguring firmware. Existing required/advisory service policies are unchanged. This state file is a custom deployment protocol, not the standard cloud-init status.

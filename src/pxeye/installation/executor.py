@@ -553,7 +553,7 @@ class Executor:
                     self.record_disk_evidence(task, initial, text, trusted_key)
                     (folder / "initial.json").write_text(json.dumps(initial, indent=2))
                     task["initial"] = initial
-                    self.event(task, "reboot", "新系统独立验收通过，执行不带 PXE 的普通重启复验。")
+                    self.event(task, "firstboot", "基础安装验收通过，进入最终检查及重启验收。")
                     break
                 if task.get("last_acceptance_error") != candidate["error"]:
                     task["last_acceptance_error"] = candidate["error"]
@@ -1902,7 +1902,7 @@ class Executor:
                 raise TimeoutError("继续首启验收超时；保留任务与现场。")
             (folder / "initial.json").write_text(json.dumps(initial, indent=2))
             task["initial"] = initial
-            self.event(task, "reboot", "新系统独立验收通过，执行普通重启复验。")
+            self.event(task, "firstboot", "基础安装验收通过，进入最终检查及重启验收。")
             self.finish(
                 task,
                 device,
@@ -1931,7 +1931,12 @@ print('NORMAL_REBOOT_REQUESTED')
         self.check_bound(device, task)
         task["last_acceptance_error"] = None
         task["initial"] = initial
+        from pxeye.installation.gpu_acceptance import wait_for_gpu_environment
+
+        wait_for_gpu_environment(self, task, device, known, initial, console)
+        (folder / "initial.json").write_text(json.dumps(initial, indent=2))
         if not task.get("normal_reboot_requested"):
+            self.event(task, "reboot", "最终检查通过，执行不带 PXE 的普通重启验收。")
             task["normal_reboot_requested"] = True
             task["normal_reboot_state"] = "requesting"
             self.store.save(task)
@@ -1952,6 +1957,8 @@ print('NORMAL_REBOOT_REQUESTED')
                 break
         if after is None:
             raise TimeoutError("普通重启复验未通过；不标记完成。")
+        after["checks"]["gpu_environment"] = initial["checks"]["gpu_environment"]
+        after["gpu_environment"] = task["gpu_check"]
         self.check_bound(device, task)
         system = self.adapter.redfish(device)
         if system.get("Boot", {}).get("BootSourceOverrideEnabled") != "Disabled":
@@ -1979,6 +1986,8 @@ print('NORMAL_REBOOT_REQUESTED')
             "after_reboot": after,
             "recovery_count": task["recovery_count"],
             "normal_reboot": True,
+            "gpu_environment_check": task.get("gpu_environment_check", False),
+            "gpu_environment": task.get("gpu_check"),
             "everyboot": False,
             "installation_attempts": 1 + task.get("native_retry_requests", 0),
             "installation_retries": task.get("installation_retries", []),
