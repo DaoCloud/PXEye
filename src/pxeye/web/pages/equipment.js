@@ -565,14 +565,14 @@ function equipmentChoose(mode) {
   modal(
     mode === "new" ? "新增设备" : mode === "import" ? "导入设备" : "下载模板",
     "选择设备类型",
-    selectField(
+    `<div class="equipment-kind-choice">${selectField(
       "eq-kind",
       "设备类型",
       Object.entries(equipmentKinds).filter(([k]) =>
         ["server", "switch", "power_shelf"].includes(k),
       ),
       "server",
-    ) + eqError(),
+    )}</div>` + eqError(),
     button("取消", "close") + button("继续", "eq-choose-confirm", true),
   );
 }

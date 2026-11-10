@@ -2090,6 +2090,20 @@
   }
 }
 
+.equipment-kind-choice {
+  max-width: 400px;
+}
+.equipment-kind-choice > label {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: center;
+  gap: 24px;
+}
+.equipment-kind-choice .input {
+  width: 100%;
+  min-width: 0;
+}
+
 .equipment-device-filters {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
