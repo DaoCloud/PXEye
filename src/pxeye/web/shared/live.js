@@ -962,7 +962,6 @@ registerActions(
     "network-edit",
     "network-dhcp-range",
     "network-dhcp-range-save",
-    "network-save",
     "network-save-apply",
     "network-apply",
     "network-delete",
@@ -1042,17 +1041,15 @@ registerActions(
         case "nic-add":
           return addNic();
         case "network-new":
-          return networkDialog();
+          return await networkDialog();
         case "network-edit":
-          return networkDialog(el.dataset.id);
+          return await networkDialog(el.dataset.id);
         case "network-dhcp-range":
           return networkDhcpRangeDialog(el.dataset.id);
         case "network-dhcp-range-save":
           return await saveNetworkDhcpRange();
-        case "network-save":
-          return await saveNetwork(false);
         case "network-save-apply":
-          return await saveNetwork(true);
+          return await saveNetwork();
         case "network-apply":
           return await applyNetwork(el.dataset.id);
         case "network-delete":
@@ -1600,7 +1597,7 @@ async function deleteNetwork() {
     toast(result.detail);
   });
 }
-function networkDialog(id) {
+async function networkDialog(id) {
   const live = state.networks?.networks.find((x) => x.id === id);
   if (live) {
     const pending =
@@ -1644,6 +1641,7 @@ function networkDialog(id) {
   }
   const draft = state.networks?.drafts.find((x) => x.id === id);
   if (id && !draft) throw Error("子网已变化，请刷新。");
+  const dns = await api("/api/networks/domains");
   const c = draft?.config || {
     name: "",
     segment_type: "HOST_INBAND",
@@ -1652,10 +1650,24 @@ function networkDialog(id) {
     mtu: 1500,
     reserve_first: 0,
     allocation_strategy: "DYNAMIC",
-    subdomain_id:
-      state.networks?.networks.find((x) => x.subdomain_id)?.subdomain_id || "",
+    subdomain_id: "",
   };
-  state.wizard = { resource: "network", id: id || null, revision: null };
+  const domainId = c.subdomain_id || dns.default_id || "";
+  const domainField =
+    dns.domains.length > 1 && (!dns.default_id || c.subdomain_id)
+      ? selectField(
+          "net-domain",
+          "DNS 域",
+          [["", "请选择 DNS 域"], ...dns.domains.map((d) => [d.id, d.name])],
+          domainId,
+        )
+      : "";
+  state.wizard = {
+    resource: "network",
+    id: id || null,
+    revision: null,
+    domainId,
+  };
   modal(
     id ? "编辑新子网草稿" : "新增子网",
     "尚未创建到 NICo",
@@ -1668,10 +1680,8 @@ function networkDialog(id) {
         ["UNDERLAY", "Underlay"],
       ],
       c.segment_type,
-    )}${inputField("net-prefix", "子网 CIDR", c.prefix, 'placeholder="192.0.2.0/24"')}${inputField("net-gateway", "网关", c.gateway)}${inputField("net-mtu", "MTU", c.mtu, 'type="number" min="576" max="9216"')}${inputField("net-reserve", "起始保留地址数", c.reserve_first, 'type="number" min="0"')}${inputField("net-dhcp-start", "DHCP 起始地址", c.dhcp_start || "", 'placeholder="192.0.2.100"')}${inputField("net-dhcp-end", "DHCP 结束地址", c.dhcp_end || "", 'placeholder="192.0.2.200"')}${inputField("net-domain", "DNS 子域 UUID", c.subdomain_id)}${selectField("net-strategy", "地址策略", [["DYNAMIC", "动态分配"]], "DYNAMIC")}</div><div class="live-note">起止地址包含两端；同时留空时按子网及保留地址数分配。填写范围后，以该范围替代起始保留地址数；网关不能位于范围内。保存草稿不生效，创建到 NICo 后生效。${state.networks?.dhcp_ranges_supported ? "" : " 当前 Core 不支持地址池范围，可保存草稿，应用前需升级 Core。"}</div><div id="resource-error" class="live-error" role="alert"></div>`,
-    button("取消", "close") +
-      button("保存草稿", "network-save") +
-      button("创建到 NICo", "network-save-apply", true),
+    )}${inputField("net-prefix", "子网 CIDR", c.prefix, 'placeholder="192.0.2.0/24"')}${inputField("net-gateway", "网关", c.gateway)}${inputField("net-mtu", "MTU", c.mtu, 'type="number" min="576" max="9216"')}${inputField("net-reserve", "起始保留地址数", c.reserve_first, 'type="number" min="0"')}${inputField("net-dhcp-start", "DHCP 起始地址", c.dhcp_start || "", 'placeholder="192.0.2.100"')}${inputField("net-dhcp-end", "DHCP 结束地址", c.dhcp_end || "", 'placeholder="192.0.2.200"')}${domainField}${selectField("net-strategy", "地址策略", [["DYNAMIC", "动态分配"]], "DYNAMIC")}</div><div class="live-note">起止地址包含两端；同时留空时按子网及保留地址数分配。填写范围后，以该范围替代起始保留地址数；网关不能位于范围内。点击创建后直接写入 NICo，并读回确认。DNS 域自动关联站点已有域，无需填写 UUID。${state.networks?.dhcp_ranges_supported ? "" : " 当前 Core 不支持地址池范围，填写范围前需升级 Core。"}</div><div id="resource-error" class="live-error" role="alert"></div>`,
+    button("取消", "close") + button("创建到 NICo", "network-save-apply", true),
   );
   if (state.networks?.networks.some((n) => n.id === id))
     $(".modal-footer").insertAdjacentHTML(
@@ -1679,7 +1689,7 @@ function networkDialog(id) {
       button("查看地址分配", "eq-network-allocations", false, eqAttr(id)),
     );
 }
-async function saveNetwork(apply) {
+async function saveNetwork() {
   return busy(async () => {
     const w = state.wizard;
     const config = {
@@ -1691,7 +1701,7 @@ async function saveNetwork(apply) {
       reserve_first: Number($("#net-reserve").value),
       dhcp_start: $("#net-dhcp-start").value.trim(),
       dhcp_end: $("#net-dhcp-end").value.trim(),
-      subdomain_id: $("#net-domain").value.trim(),
+      subdomain_id: $("#net-domain")?.value || w.domainId,
       allocation_strategy: $("#net-strategy").value,
     };
     const r = await api("/api/networks/save", {
@@ -1700,14 +1710,12 @@ async function saveNetwork(apply) {
       config,
     });
     let applied = null;
-    if (apply) {
-      try {
-        applied = await api("/api/networks/apply", { id: r.id });
-      } catch (e) {
-        await loadNetworks();
-        render();
-        throw e;
-      }
+    try {
+      applied = await api("/api/networks/apply", { id: r.id });
+    } catch (e) {
+      await loadNetworks();
+      render();
+      throw e;
     }
     close();
     await loadNetworks();
@@ -1717,9 +1725,7 @@ async function saveNetwork(apply) {
         ? "规划已保存；需要站点配置或网络迁移，当前 NICo 网络保留。"
         : applied?.status === "waiting_deletion"
           ? "正在等待 NICo 回收旧子网，完成后自动应用；可在列表查看状态。"
-          : apply
-            ? "子网已应用到 NICo，并完成读回。"
-            : "子网配置文件已保存，等待应用。",
+          : "子网已应用到 NICo，并完成读回。",
     );
   });
 }

@@ -116,6 +116,8 @@ class QueryRoutes:
                 )
             if path == "/api/networks":
                 return self.respond(200, self.app.resources.network_list())
+            if path == "/api/networks/domains":
+                return self.respond(200, self.app.resources.network_domains())
             if path == "/api/operating-systems":
                 return self.respond(200, self.app.os_library.list())
             if path == "/api/operating-systems/sources":

@@ -603,6 +603,33 @@ class Resources:
             records.append(row)
         return sorted(records, key=lambda row: (row["name"].casefold(), row["id"]))
 
+    def network_domains(self):
+        domains = []
+        for row in self.adapter.rpc("FindDomain", {}).get("domains", []):
+            name = row.get("name", "").strip().rstrip(".").lower()
+            if (
+                not name
+                or row.get("deleted")
+                or value_id(row.get("vpcId"))
+                or name in ("in-addr.arpa", "ip6.arpa")
+                or name.endswith((".in-addr.arpa", ".ip6.arpa"))
+            ):
+                continue
+            domains.append({"id": value_id(row["id"]), "name": name})
+        domains.sort(key=lambda row: (row["name"], row["id"]))
+        default = domains[0]["id"] if len(domains) == 1 else ""
+        if len(domains) > 1:
+            available = {row["id"] for row in domains}
+            used = {
+                row["subdomain_id"]
+                for row in self.networks()
+                if row["segment_type"] == "HOST_INBAND"
+                and row["subdomain_id"] in available
+            }
+            if len(used) == 1:
+                default = next(iter(used))
+        return {"domains": domains, "default_id": default}
+
     def save_network(self, body):
         if set(body) != {"id", "revision", "config"}:
             raise ValueError("子网编辑字段不完整。")
@@ -658,11 +685,6 @@ class Resources:
         )
         config["dhcp_start"] = dhcp_range["start"] if dhcp_range else ""
         config["dhcp_end"] = dhcp_range["end"] if dhcp_range else ""
-        if config["segment_type"] == "HOST_INBAND":
-            try:
-                uuid.UUID(config.get("subdomain_id", ""))
-            except (ValueError, TypeError):
-                raise ValueError("HostInband 需要 DNS 子域 UUID。") from None
         old = None
         if body["id"]:
             old = next((x for x in self.networks() if x["id"] == body["id"]), None)
@@ -693,6 +715,15 @@ class Resources:
                 raise ValueError("双栈或多个前缀须使用独立迁移，不能被单前缀表单覆盖。")
         if config.get("allocation_strategy", "DYNAMIC") != "DYNAMIC":
             raise ValueError("当前 NICo 创建接口不支持指定仅预留策略；请使用站点配置流程。")
+        dns = self.network_domains()
+        domain_id = config.get("subdomain_id") or dns["default_id"]
+        if domain_id and domain_id not in {row["id"] for row in dns["domains"]}:
+            raise ValueError("所选 DNS 域不可用，请刷新后重新创建。")
+        if config["segment_type"] == "HOST_INBAND" and not domain_id:
+            if not dns["domains"]:
+                raise ValueError("站点没有可用的 DNS 域，请先完成 NICo 站点 DNS 初始化。")
+            raise ValueError("站点存在多个 DNS 域，请按域名选择此子网使用的 DNS 域。")
+        config["subdomain_id"] = domain_id
         sid = body["id"] or str(uuid.uuid4())
         record = {
             "id": sid,
