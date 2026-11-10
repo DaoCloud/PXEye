@@ -7,12 +7,15 @@ PXEye Pod when the field bundle and a registry auth file are mounted.
 """
 
 import argparse
+from contextlib import ExitStack
 import hashlib
 import json
 import os
 import re
 import subprocess
 import sys
+import tarfile
+import tempfile
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -90,17 +93,46 @@ def main():
         common += ["--authfile", str(args.authfile)]
     if args.insecure:
         common += ["--dest-tls-verify=false"]
-    for image, target in sources:
-        run(
-            common
-            + [
-                "--retry-times",
-                "3",
-                f"oci-archive:{args.archive}:{image}",
-                f"docker://{target}",
-            ],
-            dry_run=args.dry_run,
-        )
+    with ExitStack() as stack:
+        source_root = f"oci-archive:{args.archive}"
+        if not args.dry_run:
+            if not hasattr(tarfile, "data_filter"):
+                raise RuntimeError("安全解包需要支持 tarfile.data_filter 的 Python 版本。")
+            layout = Path(stack.enter_context(tempfile.TemporaryDirectory(prefix="pxeye-oci-")))
+            print("EXTRACT", args.archive, "->", layout, flush=True)
+            # Extract once as the current user. Skopeo's oci-archive extractor
+            # preserves root ownership and fails in a non-root PXEye container.
+            with tarfile.open(args.archive) as archive:
+                archive.extractall(layout, filter="data")
+            index = json.loads((layout / "index.json").read_text())
+            descriptors = {
+                item.get("annotations", {}).get("org.opencontainers.image.ref.name"): item
+                for item in index.get("manifests", [])
+            }
+            for record in records:
+                descriptor = descriptors.get(record["image"])
+                if descriptor is None:
+                    raise ValueError(f"归档缺少锁定镜像：{record['image']}")
+                expected = record.get("amd64_manifest")
+                if expected:
+                    if not re.fullmatch(r"sha256:[0-9a-f]{64}", expected):
+                        raise ValueError("锁定 manifest digest 格式无效。")
+                    manifest = layout / "blobs" / "sha256" / expected.split(":", 1)[1]
+                    if descriptor.get("digest") != expected or hashlib.sha256(manifest.read_bytes()).hexdigest() != expected.split(":", 1)[1]:
+                        raise ValueError(f"归档 manifest 与锁定文件不一致：{record['image']}")
+            source_root = f"oci:{layout}"
+        for position, (image, target) in enumerate(sources, 1):
+            print(f"IMAGE {position}/{len(sources)} {image} -> {target}", flush=True)
+            run(
+                common
+                + [
+                    "--retry-times",
+                    "3",
+                    f"{source_root}:{image}",
+                    f"docker://{target}",
+                ],
+                dry_run=args.dry_run,
+            )
     if args.dry_run:
         print(f"DRY_RUN {len(sources)} images")
     else:
@@ -110,7 +142,7 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except (RuntimeError, ValueError) as error:
+    except (RuntimeError, ValueError, OSError, tarfile.TarError) as error:
         print(str(error), file=sys.stderr)
         raise SystemExit(1)
 
