@@ -2092,11 +2092,18 @@
 
 .equipment-device-filters {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 2fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
   align-items: end;
 }
 .equipment-device-filters > label {
+  display: grid;
+  gap: 12px;
+  font-size: 12px;
+  min-width: 0;
+}
+.equipment-device-filters .input {
+  width: 100%;
   min-width: 0;
 }
 @media (max-width: 600px) {
