@@ -84,7 +84,11 @@ class NicoDeployment:
         self.directory.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.cluster = CurrentCluster(self.settings, self.directory)
         self.packages = Packages(self.settings.get("packages_directory", "/nico-packages"))
-        self.sources = Sources(self.directory, self.packages)
+        self.sources = Sources(
+            self.directory,
+            self.packages,
+            self.settings.get("bundles_directory", "/nico-bundles"),
+        )
         self.lock = threading.RLock()
         self.busy = False
         self.observing = False
@@ -165,6 +169,15 @@ class NicoDeployment:
                 "cluster_available": self.cluster.available,
                 "enabled": bool(self.settings.get("enabled", False)),
                 "packages": self.sources.list(),
+                "bundles": [
+                    {
+                        key: value
+                        for key, value in bundle.items()
+                        if key not in ("path", "recipe_directory")
+                    }
+                    for bundle in self.sources.bundles.discover()
+                ],
+                "bundle_mount_configured": self.sources.bundles.root.is_dir(),
                 "source_defaults": {
                     "source_type": "url",
                     "chart_source": self.settings.get("online_chart_url", DEFAULT_CHART_URL),

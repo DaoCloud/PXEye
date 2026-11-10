@@ -159,13 +159,17 @@ function nicoClusterPage() {
 function nicoConfigPanel(data) {
   const values = state.nicoForm || {},
     packages = data.packages,
+    bundles = data.bundles || [],
     active =
       data.busy ||
       (!!data.operation?.started_at &&
         !["installed", "connected"].includes(data.operation.status)),
     offline = values.mode === "offline";
+  const bundlePanel = bundles.length
+    ? `<section class="nico-bundle-panel"><div><span class="site-eyebrow">现场离线包</span><h3>已挂载的 NICo 材料</h3><p class="live-small">PXEye 只读取清单和 Helm recipe；17GiB OCI 归档不会复制到 /data。</p></div><div class="nico-bundle-list">${bundles.map((bundle) => `<div class="nico-bundle-row"><div><strong>${esc(bundle.name)} · ${esc(bundle.version)}</strong><small>${esc(bundle.architecture)}${bundle.target_host_architecture ? ` · 目标 ${esc(bundle.target_host_architecture)}` : ""} · ${bundle.image_count || 0} 个镜像</small></div><div>${nicoBadge(bundle.recipe_ready ? "ready" : bundle.valid ? "prepared" : "needs_attention")}<small>${bundle.recipe_ready ? "可在页面选择 recipe" : esc((bundle.errors || ["材料待补齐"])[0])}</small></div></div>`).join("")}</div></section>`
+    : '<div class="nico-notice"><span>未发现挂载的现场离线包；可继续使用在线 Chart 或上传小型 recipe。</span></div>';
   const sourceFields = offline
-    ? `<div class="nico-upload"><div><strong>离线部署材料</strong><p>选择 Chart（.tgz）或完整部署包（.tar.gz / .zip），最大 128 MiB。</p></div><label class="nico-file-button">选择文件<input type="file" id="nico-material-file" accept=".tgz,.tar.gz,.zip" ${state.nicoUploading ? "disabled" : ""}></label></div>${state.nicoUploading ? '<p class="nico-upload-status" role="status">正在上传部署材料…</p>' : ""}${selectField("nico-package", "已上传的材料", [["", "请选择或上传材料"], ...packages.filter((p) => p.valid).map((p) => [p.id, `${p.name} · ${p.version}`])], values.package_id)}`
+    ? `${bundlePanel}<div class="nico-upload"><div><strong>离线部署材料</strong><p>选择 Chart（.tgz）或完整部署包（.tar.gz / .zip），最大 128 MiB。现场 bundle 的 recipe 会自动出现在下方。</p></div><label class="nico-file-button">选择文件<input type="file" id="nico-material-file" accept=".tgz,.tar.gz,.zip" ${state.nicoUploading ? "disabled" : ""}></label></div>${state.nicoUploading ? '<p class="nico-upload-status" role="status">正在上传部署材料…</p>' : ""}${selectField("nico-package", "已发现的部署 recipe", [["", "请选择或上传材料"], ...packages.filter((p) => p.valid).map((p) => [p.id, `${p.source === "field-bundle" ? "现场包 · " : ""}${p.name} · ${p.version}`])], values.package_id)}`
     : `<div class="nico-field-grid">${selectField(
         "nico-source-type",
         "Chart 来源",
@@ -178,7 +182,7 @@ function nicoConfigPanel(data) {
       )}${values.source_type === "repository" ? inputField("nico-repository-url", "仓库地址", values.repository_url, 'type="url" placeholder="https://charts.example.com"') : values.source_type === "oci" ? inputField("nico-chart-version", "Chart 版本（可选）", values.chart_version, 'placeholder="使用来源中的版本"') : ""}</div>${inputField("nico-chart-source", values.source_type === "repository" ? "Chart 名称" : values.source_type === "oci" ? "OCI Chart 地址" : "Chart / 源码下载地址", values.chart_source, `placeholder="${values.source_type === "repository" ? "nico" : values.source_type === "oci" ? "oci://registry.example.com/charts/nico" : "https://example.com/nico.tgz"}"`)}${values.source_type === "repository" ? inputField("nico-chart-version", "Chart 版本（可选）", values.chart_version) : ""}<p class="live-small">由 PXEye 下载和准备 Chart，无需登录服务器。默认下载地址使用固定版本的 NICo 源码。</p>`;
   return `<div class="nico-config-layout"><section class="site-panel"><header class="site-panel-header"><div><span class="site-eyebrow">部署目标</span><h2>当前集群配置</h2></div>${badge("Helm 3", "gray")}</header><div class="nico-form live-form"><div class="nico-mode-switch" role="group" aria-label="部署方式">${[
     ["online", "在线部署", "从仓库或地址下载 Chart"],
-    ["offline", "离线部署", "从本机上传部署材料"],
+    ["offline", "离线部署", "从挂载 bundle 或本机上传 recipe"],
   ]
     .map(
       ([id, title, detail]) =>

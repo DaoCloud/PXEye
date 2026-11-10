@@ -15,6 +15,7 @@ from urllib.parse import urlsplit
 import yaml
 
 from pxeye.common import atomic_json, atomic_text
+from pxeye.deployment.bundles import FieldBundles
 from pxeye.deployment.packages import Packages
 
 ARCHIVE_LIMIT = 128 * 1024**2
@@ -125,16 +126,40 @@ def extract_input(archive, destination):
 
 
 class Sources:
-    def __init__(self, directory, mounted):
+    def __init__(self, directory, mounted, bundles_directory="/nico-bundles"):
         self.root = directory / "packages"
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.uploads = directory / "uploads"
         self.uploads.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.local = Packages(self.root)
         self.mounted = mounted
+        self.bundles = FieldBundles(bundles_directory)
+        self.bundle_packages = {}
+        self._sync_bundles()
+
+    def _sync_bundles(self):
+        self.bundle_packages = self.bundles.materialize_recipes(self.root)
 
     def list(self):
+        self._sync_bundles()
         result = self.mounted.list()
+        local = self.local.list()
+        for row in local:
+            source = self.root / row["id"] / ".bundle-source.json"
+            if source.is_file():
+                try:
+                    marker = json.loads(source.read_text())
+                except (OSError, ValueError):
+                    continue
+                bundle = self.bundle_packages.get(marker.get("bundle_id"), {})
+                row.update(
+                    source="field-bundle",
+                    bundle_id=marker.get("bundle_id", ""),
+                    bundle_version=marker.get("version", ""),
+                    image_count=bundle.get("image_count", 0),
+                    image_bytes=bundle.get("image_bytes", 0),
+                )
+            result.append(row)
         for path in sorted(self.uploads.glob("*/input.json")):
             record = json.loads(path.read_text())
             result.append(record | {"id": "upload-" + path.parent.name, "valid": True})
@@ -182,6 +207,7 @@ class Sources:
             raise
 
     def load(self, settings):
+        self._sync_bundles()
         if (self.root / settings["package_id"] / "deployment.json").is_file():
             return self.local.load(settings)
         return self.mounted.load(settings)

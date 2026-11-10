@@ -10,6 +10,7 @@ PXEye 可独立启动在已有 Kubernetes/Kind 中。登录后使用 [NICo 集�
 - `/data` 持久保存任务、配置、部署记录与受限客户端身份；`/materials` 保存上传的 OS 材料。
 - `/secrets/auth.json` 提供登录口令的 SHA256。初次启动不需要 Core 证书或 SSH 私钥，PXEye 在后端数据目录生成 SSH 身份。
 - 页面上传及在线准备的 Chart 保存在 `/data/nico-deployment/`，由 PXEye 自动维护；上传不需要额外 PVC。既有 `/nico-packages` 挂载可继续作为可选材料来源。
+- 现场离线包通过只读 `/nico-bundles` 挂载提供。PXEye 只读取清单和小型 `deployment/` recipe，不会把 17GiB OCI 归档复制到 `/data`。
 - PXEye 与 PXE 使用同一份材料存储。单节点/RWO 存储须通过节点选择器将 PXE 调度到 PXEye 节点；多节点可使用 RWX 存储。
 
 启动配置使用 [bootstrap-site.example.json](../examples/bootstrap-site.example.json)。保持 `core_url` 为空，启用 `nico_deployment.enabled`，命名空间与 Pod 所在命名空间一致。
@@ -24,6 +25,31 @@ PXEye 可独立启动在已有 Kubernetes/Kind 中。登录后使用 [NICo 集�
 | 离线 | 从页面上传带子 Chart 依赖的 `.tgz`，填写或读取 values。也可上传完整部署包 `.tar.gz` / `.zip`。 |
 
 在线来源由 PXEye 下载，镜像由节点拉取；私有仓库需要已有的相应认证。普通 Chart 不要求 `deployment.json`、组件映射或文件摘要表。完整部署包使用下节格式，保留多阶段初始化和站点连接信息。
+
+### 2.1 现场 bundle（推荐）
+
+现场 bundle 是交付包的只读挂载，不是浏览器上传文件。目录至少包含：
+
+```text
+nico-x86-field-<version>/
+├── bundle.json                         # 小型版本描述，可由工具生成
+├── manifests/file-inventory.json
+├── manifests/images-lock.json
+├── images/nico-amd64.oci.tar            # 可为 17GiB，不复制到 /data
+└── deployment/                          # 可选；包含 deployment.json、charts/、values/
+```
+
+`deployment/` 缺失时，页面仍会显示材料包、架构、镜像数量和缺口，但会明确禁止 Helm；这正是当前 `.50` 的 17GiB 包状态。部署 recipe 准备完成后，执行 `tools/package-nico-field-bundle.py` 生成 `bundle.json`，刷新 PXEye 即可自动发现，recipe 会按需复制到 `/data/nico-deployment/packages/bundle-<id>`。
+
+PXEye Deployment 只需额外挂载一个只读目录，并在 `site.json` 中设置：
+
+```json
+{"nico_deployment":{"bundles_directory":"/nico-bundles"}}
+```
+
+不要把该目录挂到 `/data`，也不要通过浏览器上传 OCI 归档。示例挂载清单见 [`deploy/nico-bundle-mount.example.yaml`](../deploy/nico-bundle-mount.example.yaml)。
+
+如果现场明确要求单一 PXEye 镜像携带全部材料，可把 bundle 作为独立的大镜像层构建：先构建常规 PXEye，再在包含 bundle 目录的构建上下文执行 `docker build -f Dockerfile.bundle --build-arg PXEYE_BASE_IMAGE=<pxeye-image> --build-arg BUNDLE_DIRECTORY=<bundle-dir> -t <pxeye-with-bundle> .`。这会产生约 17GiB 的额外层，升级、缓存和回滚成本高，默认不采用。
 
 检查通过后在确认窗口查看将执行的命令：
 
@@ -90,7 +116,23 @@ python3 tools/package-nico-deployment.py \
 tar -C /srv/nico-packages -czf /srv/site-v1.tar.gz site-v1
 ```
 
-也可继续使用已有 `/nico-packages` 只读挂载。镜像需提前导入节点或放入可访问仓库；页面不会执行宿主机镜像导入；离线材料必须已包含子 Chart 依赖。
+也可继续使用已有 `/nico-packages` 只读挂载。离线材料必须已包含子 Chart 依赖。
+
+### 2.2 Harbor 镜像导入
+
+Helm 不会读取 OCI tar；Kubernetes 节点需要从 Harbor（或其它 OCI registry）拉取镜像。PXEye 镜像包含 `skopeo` 和 `/usr/local/bin/pxeye-import-oci-bundle`，可在 PXEye Pod 内执行一次性导入，不挂载宿主机 Docker/containerd socket：
+
+```bash
+kubectl -n mmzhou exec deploy/mmzhou-os-install-console -- \
+  pxeye-import-oci-bundle \
+  --archive /nico-bundles/nico-x86-field-<version>/images/nico-amd64.oci.tar \
+  --lock /nico-bundles/nico-x86-field-<version>/manifests/images-lock.json \
+  --registry https://harbor.example.com \
+  --repository-prefix nico-offline \
+  --authfile /secrets/harbor-auth.json
+```
+
+认证文件由平台以只读 Secret 挂载，权限必须为 `0600`；命令不会把认证信息写入部署事件。导入结果的目标引用应写入部署 recipe 的 values（或在 recipe 构建时使用同一映射），再执行页面的预检和 Helm。一个节点完成“推送”即可，但所有 Kubernetes 节点仍必须能访问 Harbor；只 `docker load` 到火种机不能替代 registry。
 
 ## 4. 配方字段与材料共享
 

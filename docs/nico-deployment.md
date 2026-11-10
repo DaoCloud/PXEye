@@ -10,6 +10,7 @@ PXEye can start independently in an existing Kubernetes/Kind cluster. Use the [N
 - `/data` persists tasks, configuration, deployment records and restricted client identity files. `/materials` stores uploaded OS artifacts.
 - `/secrets/auth.json` holds the operator password SHA256. Initial startup does not require Core certificates or an SSH private key; PXEye creates its SSH identity in the backend data directory.
 - PXEye manages online and uploaded materials privately under `/data/nico-deployment/`; uploads need no extra PVC. Existing `/nico-packages` mounts remain an optional source.
+- A field bundle can be mounted read-only at `/nico-bundles`. PXEye reads its manifests and small `deployment/` recipe without copying the 17GiB OCI archive into `/data`.
 - PXEye and PXE share the material storage. Single-node/RWO storage requires a node selector to schedule PXE on the PXEye node; multi-node deployments can use RWX storage.
 
 Use [bootstrap-site.example.json](../examples/bootstrap-site.example.json). Leave `core_url` empty, enable `nico_deployment.enabled` and set the namespace consistently with the Pod.
@@ -24,6 +25,21 @@ Use [bootstrap-site.example.json](../examples/bootstrap-site.example.json). Leav
 | Offline | Upload a `.tgz` with dependencies and paste or read values; complete `.tar.gz` / `.zip` recipes are also accepted. |
 
 PXEye downloads sources; nodes pull images. Private registries need appropriate existing authentication. Ordinary Charts need no deployment.json, component mapping or checksum table. Full ordered recipes retain their phase and connection metadata.
+
+### 2.1 Mounted field bundles
+
+```text
+nico-x86-field-<version>/
+├── bundle.json
+├── manifests/file-inventory.json
+├── manifests/images-lock.json
+├── images/nico-amd64.oci.tar
+└── deployment/              # optional deployment.json, charts/ and values/
+```
+
+When `deployment/` is absent, the page reports the bundle inventory but refuses to start Helm. This is the current state of the `.50` 17GiB package. Run `tools/package-nico-field-bundle.py` after adding a recipe; PXEye discovers it on refresh and copies only the recipe into its writable package directory. Configure `nico_deployment.bundles_directory` and mount the directory using [the example patch](../deploy/nico-bundle-mount.example.yaml).
+
+If a site explicitly requires one heavyweight PXEye image, build `Dockerfile.bundle` on top of the normal PXEye image with the bundle as a separate approximately 17GiB layer. This is supported as an exception, but the read-only mount remains the default because upgrades and rollbacks otherwise move the entire archive.
 
 After checks, inspect the command in the confirmation dialog:
 
@@ -90,7 +106,9 @@ The helper copies declared Charts/values, generates file SHA256 values and refus
 tar -C /srv/nico-packages -czf /srv/site-v1.tar.gz site-v1
 ```
 
-Existing read-only `/nico-packages` mounts remain supported. Import images into the nodes or supply an accessible registry first; the page does not import host images. Offline material must already contain Chart dependencies.
+Existing read-only `/nico-packages` mounts remain supported. Offline material must already contain Chart dependencies.
+
+Helm does not consume an OCI tar directly. The PXEye image includes `skopeo` and `/usr/local/bin/pxeye-import-oci-bundle`, which can push the archive from the PXEye Pod using a read-only auth Secret; no host Docker/containerd socket is required. All Kubernetes nodes must still reach the Harbor registry.
 
 ## 4. Recipe fields and shared materials
 

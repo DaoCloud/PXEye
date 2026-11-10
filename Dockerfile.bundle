@@ -1,0 +1,7 @@
+# Optional heavyweight delivery image. Prefer a read-only PVC/hostPath mount;
+# this file exists only when a site explicitly requires one PXEye image carrying
+# the complete field bundle.
+ARG PXEYE_BASE_IMAGE=pxeye:dev
+FROM ${PXEYE_BASE_IMAGE}
+ARG BUNDLE_DIRECTORY=field-bundle
+COPY ${BUNDLE_DIRECTORY}/ /nico-bundles/

@@ -5,7 +5,8 @@
     "enabled": true,
     "namespace": "mmzhou",
     "allow_cluster_resources": false,
-    "observe_namespaces": []
+    "observe_namespaces": [],
+    "bundles_directory": "/nico-bundles"
   },
   "os_library": {
     "directory": "/materials",

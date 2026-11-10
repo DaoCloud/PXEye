@@ -1,0 +1,21 @@
+# Strategic-merge patch example.  Replace the hostPath with the field bundle
+# directory (or replace this volume with a read-only PVC in a multi-node site).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pxeye
+  namespace: mmzhou
+spec:
+  template:
+    spec:
+      containers:
+        - name: pxeye
+          volumeMounts:
+            - name: nico-bundles
+              mountPath: /nico-bundles
+              readOnly: true
+      volumes:
+        - name: nico-bundles
+          hostPath:
+            path: /srv/nico-bundles
+            type: Directory
