@@ -120,7 +120,8 @@ class TaskCoordinator:
             self.start_queue()
 
     def task_view(self, task):
-        """Refresh recovery actions from current evidence without rewriting task history."""
+        """Reconcile operator waivers and refresh available recovery actions."""
+        task = self.reconcile_acceptance_skips(task)
         if task.get("status") != "needs_attention" or not task.get("execution_device"):
             return task
         result = dict(task)
@@ -145,6 +146,94 @@ class TaskCoordinator:
         ):
             result["recovery_observing"] = True
         return result
+
+    def reconcile_acceptance_skips(self, task):
+        """Settle paused acceptance from persisted results; never issue device operations."""
+        from pxeye.installation.acceptance_skips import acceptance_summary, apply_skips
+
+        if (
+            task.get("status") != "needs_attention"
+            or task.get("stage") not in ("firstboot", "gpu_check", "reboot")
+            or not task.get("acceptance_skips")
+            or not self.worker_lock.acquire(blocking=False)
+        ):
+            return task
+        try:
+            with self.store.db() as db:
+                db.execute("BEGIN IMMEDIATE")
+                row = db.execute("SELECT data FROM tasks WHERE id=?", (task["id"],)).fetchone()
+                if row is None:
+                    return task
+                current = json.loads(row["data"])
+                if (
+                    current.get("status") != "needs_attention"
+                    or current.get("stage") not in ("firstboot", "gpu_check", "reboot")
+                    or not current.get("acceptance_skips")
+                ):
+                    return current
+                summary = acceptance_summary(
+                    current,
+                    services_required=self.adapter.config.get(
+                        "service_connectivity_required", False
+                    ),
+                )
+                if current.get("acceptance_summary") == summary:
+                    return current
+                current["acceptance_summary"] = summary
+                if summary["state"] == "completed":
+                    now = time.time()
+                    current.update(
+                        status="completed",
+                        stage="completed",
+                        completed_at=now,
+                        error=None,
+                        last_acceptance_error=None,
+                        resume_available=False,
+                        retry_available=False,
+                        prepare_available=False,
+                        restart_available=False,
+                        recovery_observing=False,
+                        observation_deadline=0,
+                        acceptance_completion="manual",
+                    )
+                    recovery = current.get("automatic_recovery")
+                    if recovery:
+                        recovery.update(state="completed", completed_at=now)
+                    report = copy.deepcopy(
+                        current.get("after_reboot")
+                        or current.get("installation_checks")
+                        or current.get("initial")
+                        or {}
+                    )
+                    apply_skips({"report": report}, current)
+                    current["receipt"] = {
+                        "schema_version": 1,
+                        "source": "nico-ui",
+                        "task_id": current["id"],
+                        "serial": current["device"],
+                        "hostname": current.get("hostname"),
+                        "acceptance_completion": "manual",
+                        "completed_at": now,
+                        "installation_checks": report,
+                        "acceptance_summary": summary,
+                        "acceptance_skips": copy.deepcopy(current["acceptance_skips"]),
+                        "normal_reboot": report.get("checks", {}).get("normal_reboot") is True,
+                        "unattended_standard_boot_certified": False,
+                    }
+                    current.setdefault("events", []).append(
+                        {
+                            "at": now,
+                            "stage": "completed",
+                            "message": "安装验收已结束，包含手动跳过项目。",
+                        }
+                    )
+                db.execute(
+                    "UPDATE tasks SET status=?,data=? WHERE id=?",
+                    (current["status"], json.dumps(current), current["id"]),
+                )
+                return current
+        finally:
+            self.worker_lock.release()
 
     def close_task(self, task_id, body, actor):
         """Close a stopped incident without issuing any device or NICo operation."""

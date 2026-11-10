@@ -276,7 +276,9 @@ const bmcLink = (ip) =>
     ? `<a class="link-button" href="https://${esc(ip)}" target="_blank" rel="noopener noreferrer">${esc(ip)} ↗</a>`
     : "—";
 const taskStatus = (t) =>
-  t.automatic_recovery &&
+  t.status === "needs_attention" && t.acceptance_summary?.state === "pending"
+    ? { label: "待继续验收", tone: "amber" }
+    : t.automatic_recovery &&
   !["completed", "blocked", "unknown"].includes(t.automatic_recovery.state)
     ? { label: "自动修复中", tone: "amber" }
     : t.recovery_observing
@@ -608,7 +610,7 @@ function detail(id) {
     status = taskStatus(t),
     acceptance =
       t.status === "completed"
-        ? after || t.initial || t.installation_checks
+        ? (t.acceptance_completion === "manual" ? t.receipt?.installation_checks : null) || after || t.initial || t.installation_checks
         : t.installation_checks ||
           (t.status === "running" && t.stage === "firstboot" ? null : after || t.initial),
     checks = acceptance?.checks || {};

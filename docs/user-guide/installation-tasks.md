@@ -4,7 +4,7 @@ language: en
 title: Installation tasks
 description: Select devices, review configuration, install and inspect logs and acceptance results.
 navigation_group: installation
-updated_at: "2026-11-09"
+updated_at: "2026-11-10"
 product_version: "0.22.8"
 ---
 
@@ -72,9 +72,9 @@ Related: [Device management](device-management.md) · [Operating systems](operat
 
 During installation acceptance, each item has a **Manual pass (手动通过)** button. Clicking it marks the item **Skipped (已跳过)** for this task and persists across refreshes. It does not record an automatic verification success. Finished tasks cannot be changed.
 
-Running acceptance applies skips on its next check; paused tasks still require **Start acceptance**. Other items follow the frozen plan. Skipping reboot acceptance prevents a reboot that has not been dispatched; it cannot cancel an already dispatched reboot.
+Running acceptance applies skips on its next check. A paused task completes automatically when every item has passed or been skipped, without additional device operations. Remaining failures keep **Needs attention**; remaining unexecuted checks show **Awaiting acceptance**, requiring **Start acceptance**. Refreshing also reconciles existing skips. Skipping reboot acceptance prevents a reboot that has not been dispatched; it cannot cancel an already dispatched reboot.
 
-The acceptance report records each skipped item, operator, time and preceding check result. Skipping does not change the installation plan or disable task binding or trusted SSH transport; target reads still require a valid connection.
+The acceptance report records each skipped item, operator, time and preceding check result. Manual completion performs no additional hardware verification and supplies no missing disk, reboot or BMC evidence. Skipping does not change the installation plan; continued acceptance still requires task binding and trusted SSH transport.
 
 ### Optional GPU environment check
 

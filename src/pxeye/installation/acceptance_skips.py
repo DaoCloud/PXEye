@@ -36,3 +36,37 @@ def apply_skips(result, task):
     result["passed"] = not errors
     result["error"] = "；".join(message for messages in errors.values() for message in messages)
     return result
+
+
+def acceptance_summary(task, *, services_required=False):
+    """Aggregate stored evidence without collecting or inventing new verification."""
+    report = (
+        task.get("after_reboot") or task.get("installation_checks") or task.get("initial") or {}
+    )
+    checks, errors = report.get("checks", {}), report.get("check_errors", {})
+    skips = task.get("acceptance_skips", {})
+    items = {}
+    for name in CHECKS:
+        if name in skips or (name == "gpu_environment" and not task.get("gpu_environment_check")):
+            items[name] = "skipped"
+        elif errors.get(name):
+            items[name] = "failed"
+        elif name == "gpu_environment":
+            status = (task.get("gpu_check") or {}).get("status")
+            items[name] = {"success": "passed", "failed": "failed"}.get(status, "pending")
+        elif checks.get(name) is True:
+            items[name] = "passed"
+        elif name == "services" and checks.get(name) is False and not services_required:
+            items[name] = "warning"
+        else:
+            items[name] = "failed" if checks.get(name) is False else "pending"
+    # Unknown errors must not disappear merely because the displayed items were waived.
+    extra_errors = [key for key, messages in errors.items() if messages and key not in CHECKS]
+    state = (
+        "failed"
+        if extra_errors or "failed" in items.values()
+        else "pending"
+        if "pending" in items.values()
+        else "completed"
+    )
+    return {"state": state, "items": items, "extra_errors": extra_errors}
