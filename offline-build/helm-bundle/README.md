@@ -136,6 +136,7 @@ Output layout:
     tools/helm
     tools/relok8s
     tools/verify.py
+    tools/onsite/               # onsite import, OCI publication, frozen recipe and Helm phases
     docs/README.md
     docs/README.zh-CN.md
     docs/relok8s-LICENSE
@@ -170,3 +171,7 @@ PY
 The onsite relocation→Helm OCI publication→PXEye multi-phase OCI adapter is a separate, unfinished integration. The new bundle explicitly declares `requires_site_configuration=true` and `multi_phase_oci_ui_ready=false`. Do not feed it to the old FieldBundles scanner or old OCI import commands: a relok8s intermediate is not `nico-amd64.oci.tar`. Generated Charts have render evidence only, not cold-install/upgrade/network validation. Validation addresses are not site configuration. Existing pinned e703 compatibility changes remain. No cluster/hardware/DHCP/certificate/database changes or regression/GPU workloads are performed.
 
 References: [relok8s v0.5.4 source](https://github.com/vmware-tanzu/asset-relocation-tool-for-kubernetes/tree/v0.5.4), [Helm OCI](https://helm.sh/docs/v3/topics/registries/), [NVIDIA reference installation](https://docs.nvidia.com/infra-controller/documentation/getting-started/installation-options/reference-installation).
+
+## Onsite helper
+
+[Step-three scripts](../onsite/README.md) now provide relocation, Helm OCI publication, a frozen full-recipe upload compatible with existing PXEye, and ordered Helm CLI phases. Existing archives can use the small exported helper kit; new builds include tools/onsite. Automatic multi-phase OCI catalog ingestion in UI remains unimplemented. These scripts have not yet passed end-to-end fireseed deployment acceptance.

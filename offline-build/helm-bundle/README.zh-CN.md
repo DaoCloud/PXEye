@@ -147,6 +147,7 @@ cat "$UNPACK/$BUNDLE_ID/bundle.json"
     tools/helm
     tools/relok8s
     tools/verify.py
+    tools/onsite/               # 现场导入/Chart发布/冻结配方/Helm分阶段脚本
     docs/README.md
     docs/README.zh-CN.md
     docs/relok8s-LICENSE
@@ -178,7 +179,7 @@ print('RELOK8S_DELIVERY_READY; ONSITE/UI_ADAPTER_PENDING')
 PY
 ```
 
-这个脚本实现构建交付，尚未实现上一轮方案中的“现场迁移→Helm OCI发布→PXEye多阶段OCI目录接入”。因此新包明确标记`requires_site_configuration=true`、`multi_phase_oci_ui_ready=false`；不能把它直接交给旧版FieldBundles扫描器或按旧OCI导入命令运行。现场迁移使用relok8s中间包格式，不能把它当作`nico-amd64.oci.tar`。
+构建器完成交付；[第三步现场工具](../onsite/README.zh-CN.md)已提供迁移、Chart OCI发布、冻结兼容配方和分阶段Helm命令，尚未完成真实火种端到端验收。PXEye自动读取多阶段OCI目录仍未实现，因此新包明确标记`requires_site_configuration=true`、`multi_phase_oci_ui_ready=false`；不能把它直接交给旧版FieldBundles扫描器或按旧OCI导入命令运行。现场迁移使用relok8s中间包格式，不能把它当作`nico-amd64.oci.tar`。
 
 构建使用临时验证参数，不是目标现场参数。新PXEye和材料发布Chart只有构建渲染证据，尚无冷启动安装/升级/实际网络验证；原有固定e703兼容补丁继续保留。脚本不改变生产/学习集群、物理机器、DHCP、证书或数据库，也不执行回归/GPU工作负载。
 

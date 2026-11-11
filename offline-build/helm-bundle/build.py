@@ -400,7 +400,7 @@ def build(config, args):
         print('HELM_INPUTS_READY; relok8s and pinned registry image will be prepared during build', flush=True)
         return
     revision = command(['git', '-C', REPO, 'rev-parse', 'HEAD']).stdout.strip()
-    tracked = ['offline-build/helm-bundle', 'offline-build/build.py', 'deploy/bootstrap-kubernetes.yaml',
+    tracked = ['offline-build/onsite', 'offline-build/helm-bundle', 'offline-build/build.py', 'deploy/bootstrap-kubernetes.yaml',
                'deploy/nico-platform', 'deploy/offline-core', 'deploy/nico-cluster-permissions.yaml']
     dirty = command(['git', '-C', REPO, 'status', '--porcelain', '--untracked-files=all', '--'] + tracked).stdout
     b.require(not dirty, 'Commit build sources before constructing images; unrelated changes are preserved')
@@ -497,6 +497,8 @@ def build(config, args):
             for tool in ('relok8s', 'helm'):
                 (bundle / 'tools' / tool).chmod(0o755)
             shutil.copyfile(HOME / 'verify.py', bundle / 'tools/verify.py')
+            shutil.copytree(REPO / 'offline-build/onsite', bundle / 'tools/onsite',
+                            ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
             for name in ('README.md', 'README.zh-CN.md'):
                 shutil.copyfile(HOME / name, bundle / 'docs' / name)
             shutil.copyfile(HOME / 'toolchain-lock.json', bundle / 'manifests/toolchain-lock.json')
