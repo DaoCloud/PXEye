@@ -22,6 +22,26 @@ GATE = {
 }
 
 
+NVLINK_GPU_COUNT = 4
+
+
+def nvlink_gpu_configs(profile):
+    """Return gpu_configs attaching every GPU to the profile's default logical partition."""
+    cfg = profile.get("nvlink")
+    # Missing block or missing/false `enabled` key means NVLink is not managed at all.
+    if not isinstance(cfg, dict) or cfg.get("enabled") is not True:
+        return None
+    partition = str(cfg.get("default_logical_partition_id") or "").strip()
+    try:
+        uuid.UUID(partition)
+    except ValueError:
+        raise ValueError("已启用 NVLink，但默认逻辑分区 ID 无效。") from None
+    return [
+        {"device_instance": i, "logical_partition_id": {"value": partition}}
+        for i in range(NVLINK_GPU_COUNT)
+    ]
+
+
 def discovery_info(machine):
     return (
         (machine.get("status") or {}).get("discovery_info") or machine.get("discovery_info") or {}
@@ -768,6 +788,19 @@ class Onboarding:
                     )
         else:
             raise ValueError("安装方案网络类型无效。")
+        gpu_configs = nvlink_gpu_configs(profile)
+        if gpu_configs:
+            partition_id = gpu_configs[0]["logical_partition_id"]["value"]
+            response = self.adapter.rpc(
+                "FindNVLinkLogicalPartitionsByIds", {"partition_ids": [{"value": partition_id}]}
+            )
+            partitions = [
+                p for p in response.get("partitions", []) if value_id(p["id"]) == partition_id
+            ]
+            if len(partitions) != 1 or partitions[0]["config"].get(
+                "tenantOrganizationId"
+            ) != allocation.get("tenant", {}).get("tenant_organization_id"):
+                raise ValueError("NVLink 默认逻辑分区不存在或租户不匹配。")
         host = next(
             (
                 n

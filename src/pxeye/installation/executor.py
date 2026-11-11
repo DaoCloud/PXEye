@@ -1723,7 +1723,7 @@ class Executor:
             return False
 
     def start_first(self, task, device, folder):
-        from pxeye.services.onboarding import Onboarding
+        from pxeye.services.onboarding import Onboarding, nvlink_gpu_configs
 
         onboarding = Onboarding(self.adapter, self.store)
         self.event(task, "preflight", "首次安装重新核对 Ready、无 Instance、BMC、Scout 与系统盘。")
@@ -1772,6 +1772,9 @@ class Executor:
                     raise RuntimeError("首次安装方案需要 NICo OS 库引用。")
                 os_config["operating_system_id"] = {"value": variant["OperatingSystemId"]}
             allocation["os"] = os_config
+            gpu_configs = nvlink_gpu_configs(profile)
+            if gpu_configs:
+                allocation["nvlink"] = {"gpu_configs": gpu_configs}
             request = {
                 "machine_id": {"id": device["machine_id"]},
                 "instance_id": {"value": device["instance_id"]},
