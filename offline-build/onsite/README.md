@@ -248,3 +248,5 @@ The standalone backup utility remains available on demand; recipe generation, UI
 ## relok8s 0.5.4 root image fields
 
 This version can fail with `need path or selectors or both` when rewriting root scalar image fields. Build and onsite import share relocation.py: intermediate metadata uses temporary nested aliases, then onsite restores the original values shape. Image bytes remain unchanged. Existing deliveries use a derived working copy without modifying the original archive or inventory; no large-bundle rebuild is required. Resume import with the same configuration to verify/reuse completed Charts.
+
+The image catalog distinguishes source_digest (input lock) from digest (the transferred manifest). relok8s may reserialize Docker manifests, so these can differ. The catalog derives unique digests from successful transfer evidence with destination-path checks; recipe image validation remains strict. An existing catalog is refreshed before freezing a new recipe without retransferring images.

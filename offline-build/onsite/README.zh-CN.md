@@ -255,3 +255,5 @@ python3 -m json.tool "$WORK/state.json"
 ## relok8s 0.5.4 顶层镜像字段兼容
 
 该版本改写顶层镜像字段时可能报`need path or selectors or both`。构建和现场导入共用relocation.py：仅在中间包中将顶层字段临时映射到嵌套字段，迁移完成后恢复原values结构；镜像内容不变。现场对已有包在工作目录生成派生副本，原归档和校验清单保持不变，无需重建大包。修复后使用原配置重新执行import，已完成的Chart回查后复用。
+
+迁移镜像目录区分source_digest（输入锁定摘要）与digest（relok8s迁移后的manifest摘要）。relok8s可能重新序列化Docker manifest，因此两者可以不同；目录从成功迁移记录提取唯一摘要并校验目标路径，配方仍严格核对已入库镜像，不放宽未知镜像限制。已有目录在生成新配方前自动更新此摘要映射，不重新传输镜像。

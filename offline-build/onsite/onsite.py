@@ -213,7 +213,7 @@ class Onsite:
         # Exact predecessor identities may retain completed imports. All site,
         # archive and bridge inputs must still match; no arbitrary state reset.
         if self.state['config_sha256'] != fingerprint and self.state['bundle_inventory_sha256'] == identity:
-            for previous_source, with_relocation in (('5dacea47145f7fca625ff001d1ff4496e9d6b32ca4ed2b9d8c58537c22e538b7', True), ('1c4a17c382cf1743a62b6ff260aca98f581bff7252bb5dc9e86b3286dc793701', False), ('d0cdd13aab92e73b9eed0437b5f632fcdc2efcb90385d9c325a21e70c5c6c421', False)):
+            for previous_source, with_relocation in (('19e0d0fc117c305257967152f3c330813883ddc202c567ce1dbc6037f8df235d', True), ('5dacea47145f7fca625ff001d1ff4496e9d6b32ca4ed2b9d8c58537c22e538b7', True), ('1c4a17c382cf1743a62b6ff260aca98f581bff7252bb5dc9e86b3286dc793701', False), ('d0cdd13aab92e73b9eed0437b5f632fcdc2efcb90385d9c325a21e70c5c6c421', False)):
                 predecessor = copy.deepcopy(identity_config)
                 if not with_relocation:
                     predecessor['implementation_sha256'].pop('relocation.py')
@@ -350,13 +350,43 @@ class Onsite:
                    'bundle_id': self.descriptor['id'], 'bundle_version': self.descriptor['version'],
                    'bundle_inventory_sha256': self.state['bundle_inventory_sha256'],
                    'registry': self.registry, 'charts': entries}
-        catalog['images'] = []
-        for row in json.loads((self.bundle / 'manifests/images-lock.json').read_text()):
-            source = row['build_reference']
-            catalog['images'].append({'source': row.get('source', source), 'image': self.registry + '/' + self.scope + '/images/' + source.rsplit('/', 1)[-1],
-                                      'digest': row['digest'], 'kind': row['kind'], 'verification': 'relok8s-preserve-content-transfer'})
-        write_json(catalog_path, catalog)
+        catalog = self.refresh_catalog_images(catalog)
         print('IMPORT_COMPLETE', catalog_path)
+
+    def refresh_catalog_images(self, catalog):
+        """Use relok8s' canonical manifest digests, retaining source-lock provenance."""
+        rows = json.loads((self.bundle / 'manifests/images-lock.json').read_text())
+        logs = []
+        for chart in catalog['charts']:
+            require(self.state['steps'].get('import-' + chart['id']), 'Missing completed Chart transfer')
+            logs.extend((self.work / 'logs' / (chart['id'] + '-relocate.log')).read_text().splitlines())
+        images = []
+        for row in rows:
+            source = row['build_reference']
+            marker = ':' + source + ') => '
+            digests = set()
+            name = source.rsplit('/', 1)[-1]
+            repository = name.rsplit(':', 1)[0]
+            for line in logs:
+                if marker not in line:
+                    continue
+                match = re.match(r'(\S+) \((sha256:[0-9a-f]{64})\)', line.split(marker, 1)[1])
+                require(match, 'Unrecognized relok8s transfer evidence for ' + source)
+                reference, digest = match.groups()
+                path = reference.partition('/')[2]
+                require(path in (self.scope + '/images/' + name, self.scope + '/images/' + repository + '@' + digest),
+                        'Unexpected relocated image path for ' + source)
+                digests.add(digest)
+            require(len(digests) == 1, 'Missing or conflicting relok8s transfer digests for ' + source)
+            images.append({'source': row.get('source', source),
+                           'image': self.registry + '/' + self.scope + '/images/' + name,
+                           'source_digest': row['digest'], 'digest': next(iter(digests)),
+                           'kind': row['kind'], 'verification': 'relok8s-canonicalized-transfer'})
+        if catalog.get('images') != images:
+            print('REFRESH_IMAGE_DIGESTS', len(images), '; original source digests retained', flush=True)
+        catalog['images'] = images
+        write_json(self.work / 'catalog.json', catalog)
+        return catalog
 
     def pull_chart(self, record, directory):
         directory.mkdir(parents=True, exist_ok=True)
@@ -447,6 +477,7 @@ class Onsite:
         require(catalog.get('ready') and catalog['bundle_inventory_sha256'] == self.state['bundle_inventory_sha256'], 'Import this bundle first')
         existing = self.work / 'recipe'
         require(not existing.exists(), 'Recipe already exists; use its frozen files or remove only this generated recipe after review')
+        catalog = self.refresh_catalog_images(catalog)
         stage = Path(tempfile.mkdtemp(prefix='.recipe-', dir=self.work)); recipe = stage / 'nico-recipe'; recipe.mkdir()
         (recipe / 'charts').mkdir(); (recipe / 'values').mkdir()
         charts = {item['id']: item for item in catalog['charts']}
