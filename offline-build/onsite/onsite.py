@@ -806,16 +806,21 @@ def main():
     sub = parser.add_subparsers(dest='action', required=True)
     unpack_parser = sub.add_parser('unpack', help='Verify and safely unpack a delivered archive')
     for name in ('archive', 'checksums', 'output'): unpack_parser.add_argument('--' + name, type=Path, required=True)
-    config = sub.add_parser('write-config', help='Create a site config, never overwrite')
-    config.add_argument('--output', type=Path, required=True)
-    config.add_argument('--context', required=True); config.add_argument('--bundle', type=Path, required=True)
-    config.add_argument('--work-directory', type=Path, required=True)
-    config.add_argument('--namespace', default='nico-system'); config.add_argument('--release-prefix', default='nico')
-    config.add_argument('--restore', action='store_true')
-    config.add_argument('--registry-url', help='Explicit Registry endpoint; omit to discover from the selected cluster')
-    config.add_argument('--ca-file', type=Path)
-    config.add_argument('--skip-tls-verify', action='store_true')
-    config.add_argument('--docker-config-directory', type=Path)
+    for action in ('write-config', 'prepare-site'):
+        automatic = action == 'prepare-site'
+        config = sub.add_parser(action, help='Create restore configuration and preflight' if automatic else 'Create a site config, never overwrite')
+        for option, variable, kind in [('output', 'CONFIG', Path), ('context', 'CONTEXT', str),
+                                       ('bundle', 'BUNDLE', Path), ('work-directory', 'WORK', Path)]:
+            config.add_argument('--' + option, type=kind, required=not automatic,
+                                default=os.environ.get(variable) if automatic else None)
+        config.add_argument('--namespace', default=os.environ.get('NICO_NAMESPACE', 'nico-system') if automatic else 'nico-system')
+        config.add_argument('--release-prefix', default=None if automatic else 'nico')
+        if not automatic:
+            config.add_argument('--restore', action='store_true')
+        config.add_argument('--registry-url', help='Explicit Registry endpoint; omit to discover from the selected cluster')
+        config.add_argument('--ca-file', type=Path)
+        config.add_argument('--skip-tls-verify', action='store_true')
+        config.add_argument('--docker-config-directory', type=Path)
     backup = sub.add_parser('backup', help='Cold-copy stopped Postgres/Vault PVCs from a confirmed Kind node')
     backup.add_argument('--config', type=Path, required=True)
     backup.add_argument('--engine', choices=('podman', 'docker'), required=True)
@@ -827,7 +832,39 @@ def main():
             command.add_argument('--resume-failed', action='store_true')
     args = parser.parse_args()
     if args.action == 'unpack': return unpack(args)
-    if args.action == 'write-config':
+    if args.action in ('write-config', 'prepare-site'):
+        automatic = args.action == 'prepare-site'
+        if automatic:
+            for field, variable in [('output', 'CONFIG'), ('context', 'CONTEXT'),
+                                    ('bundle', 'BUNDLE'), ('work_directory', 'WORK')]:
+                require(getattr(args, field), 'Missing ' + variable + '; activate environment.sh and select CONTEXT first')
+            args.restore = True
+            if not args.release_prefix:
+                result = subprocess.run([str(args.bundle / 'tools/helm'), '--kube-context', args.context,
+                                         '-n', args.namespace, 'list', '--all', '-o', 'json'],
+                                        capture_output=True, text=True, timeout=60)
+                require(result.returncode == 0, 'Cannot read existing Helm releases in selected context/namespace')
+                releases = [row['name'] for row in json.loads(result.stdout) if row['chart'].startswith('nico-')]
+                require(len(releases) == 1, 'Expected one existing NICo Core release; use --release-prefix to select explicitly')
+                args.release_prefix = releases[0]
+            if args.output.exists():
+                existing = json.loads(args.output.read_text())
+                expected = {'context': args.context, 'namespace': args.namespace, 'release_prefix': args.release_prefix,
+                            'bundle': str(args.bundle.resolve()), 'work_directory': str(args.work_directory.resolve()),
+                            'mode': 'restore'}
+                require(all(existing.get(key) == value for key, value in expected.items()),
+                        'Existing config targets different inputs; inspect it or choose a new CONFIG/WORK')
+                registry = existing.get('registry', {})
+                require(registry.get('skip_tls_verify', False) == args.skip_tls_verify,
+                        'Existing Registry TLS policy differs; use matching options or a new CONFIG/WORK')
+                for key, supplied in [('url', args.registry_url), ('ca_file', args.ca_file),
+                                      ('docker_config_directory', args.docker_config_directory)]:
+                    if supplied is not None:
+                        value = str(supplied.resolve()) if isinstance(supplied, Path) else supplied
+                        require(registry.get(key) == value, 'Existing Registry option differs: ' + key)
+                print('REUSE_SITE_CONFIG', args.output, flush=True)
+                Onsite(args.output).preflight()
+                return
         require(not args.output.exists(), 'Configuration exists; not overwriting')
         document = json.loads((HOME / 'site-config.example.json').read_text())
         document.update(context=args.context, namespace=args.namespace, release_prefix=args.release_prefix,
@@ -839,7 +876,11 @@ def main():
                                     docker_config_directory=str(args.docker_config_directory.resolve()) if args.docker_config_directory else None)
         if discovery:
             document['registry']['discovery'] = discovery
-        write_json(args.output, document); print('SITE_CONFIG_CREATED', args.output); return
+        write_json(args.output, document)
+        print('SITE_CONFIG_CREATED', args.output, flush=True)
+        if automatic:
+            Onsite(args.output).preflight()
+        return
     onsite = Onsite(args.config)
     if args.action == 'backup': onsite.cold_backup(args.engine, args.node)
     elif args.action == 'preflight': onsite.preflight()

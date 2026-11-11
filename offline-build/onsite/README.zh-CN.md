@@ -27,6 +27,7 @@ ls -lh /tmp/nico-onsite-tools.tar.gz /tmp/nico-onsite-tools.tar.gz.sha256
 ```bash
 bash
 set -euo pipefail
+export CONTEXT=kind-fireseed
 cd /srv/nico
 sha256sum -c nico-onsite-tools.tar.gz.sha256
 test ! -e /srv/nico/nico-onsite-tools
@@ -66,19 +67,12 @@ test -f "$BUNDLE/profiles/install-plan.json"
 
 ## 3. 创建现场配置
 
-主要目标：把目标集群、Registry和现场信息集中到一个JSON文件；不依赖默认context。`write-config`只读查询集群以探测Registry，并创建配置文件，不修改集群。
+主要目标：把目标集群、Registry和现场信息集中到一个JSON文件；不依赖默认context。`prepare-site.sh`读取已设置的CONTEXT及KIT/BUNDLE/CONFIG/WORK（namespace默认nico-system），自动识别原Core发布名、探测Registry、创建恢复配置并执行preflight，不修改集群。已有匹配配置时保留后复用并预检；输入或TLS策略不一致则停止，不覆盖。
 
 执行命令（火种机；本轮保留旧release/PVC的Kind恢复场景）：
 
 ```bash
-python3 "$KIT/onsite.py" write-config \
-  --output "$CONFIG" \
-  --bundle "$BUNDLE" \
-  --work-directory "$WORK" \
-  --context kind-fireseed \
-  --namespace nico-system \
-  --release-prefix previous-nico-release \
-  --restore
+bash "$KIT/prepare-site.sh"
 ```
 
 确认命令：
@@ -87,13 +81,15 @@ python3 "$KIT/onsite.py" write-config \
 python3 -m json.tool "$CONFIG"
 ```
 
+需要指定参数时，直接传给prepare-site.sh；例如`--skip-tls-verify`明确跳过Registry证书校验，或`--ca-file`指定私有CA。
+
 省略`--registry-url`时，脚本从目标namespace的PXEye镜像地址、私有IP/回环镜像地址，以及Kind的`kube-public/local-registry-hosting`声明收集候选，验证`/v2/`后将唯一可用端点写入配置的`registry.url`，来源和探测结果写入`registry.discovery`。不扫描网段。Registry V2返回200或401且有标准API响应头才识别；401只证明端点存在，不证明认证或推送权限。HTTPS优先，证书失败不自动降级HTTP；使用私有CA可加`--ca-file /绝对路径/ca.crt`，明确允许跳过校验时加`--skip-tls-verify`。没有候选、不可达或多个可用端点时停止，可用`--registry-url https://实际入口`明确指定。全新集群没有发现线索时同样需要该覆盖参数。
 
 需要认证时加`--docker-config-directory /绝对路径/docker-auth`，目录须包含有效`config.json`；不在命令行传密码。工具不代替Harbor项目创建或账号授权。自动探测不修改containerd；主机可达不代表Kind节点可拉取。
 
 restore模式自动读取原release的有效values和旧DNS/PXE/NTP Service地址；保留原HostInband和凭据引用。Core镜像采用本次离线包版本，不自动采用来源环境当前运行镜像。配置及values有变化时用新的work_directory；唯有补充data_backup_directory不使已入库内容失效。
 
-全新现场省略`--restore`，前缀自行选择；必须在配置中填写`service_ips`和`host_network`，并按现场选择storage_class。例如host_network对象字段为name、prefix、gateway、mtu。生成配置后的更新命令如下，值从交接表设置到同一Bash环境后再执行：
+prepare-site.sh用于保留数据恢复；全新现场使用onsite.py write-config，省略`--restore`，显式设置context、包路径和工作目录，前缀自行选择；必须在配置中填写`service_ips`和`host_network`，并按现场选择storage_class。例如host_network对象字段为name、prefix、gateway、mtu。生成配置后的更新命令如下，值从交接表设置到同一Bash环境后再执行：
 
 ```bash
 # 仅全新现场：先按交接表设置DNS_IP、PXE_IP、NTP_IP、HOST_PREFIX、HOST_GATEWAY。
