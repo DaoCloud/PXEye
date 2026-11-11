@@ -64,12 +64,12 @@ The helper checks Python3.11+/PyYAML, verifies/unpacks the archive and writes KI
 
 ## 3. Create one site config
 
-Goal: explicitly select the Kubernetes context, Registry and release identity. The helper reads CONTEXT and KIT/BUNDLE/CONFIG/WORK from the current shell (namespace defaults to nico-system), discovers the existing Core release and Registry, creates a restore config and runs preflight. It performs only read-only cluster queries. Matching existing configuration is preserved and reused; mismatched inputs/TLS policy stop the helper without overwriting it.
+Goal: explicitly select the Kubernetes context, Registry and release identity. The helper reads KIT/BUNDLE/CONFIG/WORK (namespace defaults to nico-system). CONTEXT uses an explicit argument/environment first, then an existing config, otherwise the unique kind- context from local kubeconfig; multiple candidates require --context, and the default context is never selected implicitly. Sourcing retains the selected CONTEXT/NICO_NAMESPACE in the caller. It discovers the existing Core release and Registry, creates a restore config and runs preflight. It performs only read-only cluster queries. Matching existing configuration is preserved and reused; mismatched inputs/TLS policy stop the helper without overwriting it.
 
 Commands:
 
 ```bash
-bash "$KIT/prepare-site.sh"
+source "$KIT/prepare-site.sh"
 ```
 
 Confirm:

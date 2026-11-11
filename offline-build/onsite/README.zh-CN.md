@@ -67,12 +67,12 @@ test -f "$BUNDLE/profiles/install-plan.json"
 
 ## 3. 创建现场配置
 
-主要目标：把目标集群、Registry和现场信息集中到一个JSON文件；不依赖默认context。`prepare-site.sh`读取已设置的CONTEXT及KIT/BUNDLE/CONFIG/WORK（namespace默认nico-system），自动识别原Core发布名、探测Registry、创建恢复配置并执行preflight，不修改集群。已有匹配配置时保留后复用并预检；输入或TLS策略不一致则停止，不覆盖。
+主要目标：把目标集群、Registry和现场信息集中到一个JSON文件；不依赖默认context。`prepare-site.sh`读取KIT/BUNDLE/CONFIG/WORK（namespace默认nico-system）；CONTEXT优先使用显式参数/环境变量，未设置时复用已有配置中的context，否则从本机kubeconfig中选择唯一kind-上下文，不使用默认context。多个候选时要求--context指定。source执行会将选中的CONTEXT/NICO_NAMESPACE保留在当前终端。脚本，自动识别原Core发布名、探测Registry、创建恢复配置并执行preflight，不修改集群。已有匹配配置时保留后复用并预检；输入或TLS策略不一致则停止，不覆盖。
 
 执行命令（火种机；本轮保留旧release/PVC的Kind恢复场景）：
 
 ```bash
-bash "$KIT/prepare-site.sh"
+source "$KIT/prepare-site.sh"
 ```
 
 确认命令：

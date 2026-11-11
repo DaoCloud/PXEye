@@ -800,6 +800,26 @@ def detect_registry(args):
     return selected, {'sources': {key: sorted(value) for key, value in candidates.items()}, 'probes': probes}
 
 
+def select_restore_context(config_path):
+    if config_path.exists():
+        context = json.loads(config_path.read_text()).get('context')
+        require(context, 'Existing config has no context; inspect it before continuing')
+        return context
+    result = subprocess.run(['kubectl', 'config', 'get-contexts', '-o', 'name'],
+                            capture_output=True, text=True, timeout=15)
+    require(result.returncode == 0, 'Cannot read local kubeconfig contexts')
+    contexts = [name for name in result.stdout.splitlines() if name.startswith('kind-')]
+    require(len(contexts) == 1, 'Expected one Kind context; select explicitly with --context')
+    return contexts[0]
+
+
+def finish_site_preflight(args):
+    Onsite(args.output).preflight()
+    if args.activation_file:
+        args.activation_file.write_text('export CONTEXT=' + shlex.quote(args.context) + '\n' +
+                                        'export NICO_NAMESPACE=' + shlex.quote(args.namespace) + '\n')
+
+
 def main():
     os.umask(0o077)
     parser = argparse.ArgumentParser(description=__doc__)
@@ -815,7 +835,9 @@ def main():
                                 default=os.environ.get(variable) if automatic else None)
         config.add_argument('--namespace', default=os.environ.get('NICO_NAMESPACE', 'nico-system') if automatic else 'nico-system')
         config.add_argument('--release-prefix', default=None if automatic else 'nico')
-        if not automatic:
+        if automatic:
+            config.add_argument('--activation-file', type=Path, help=argparse.SUPPRESS)
+        else:
             config.add_argument('--restore', action='store_true')
         config.add_argument('--registry-url', help='Explicit Registry endpoint; omit to discover from the selected cluster')
         config.add_argument('--ca-file', type=Path)
@@ -835,9 +857,11 @@ def main():
     if args.action in ('write-config', 'prepare-site'):
         automatic = args.action == 'prepare-site'
         if automatic:
-            for field, variable in [('output', 'CONFIG'), ('context', 'CONTEXT'),
-                                    ('bundle', 'BUNDLE'), ('work_directory', 'WORK')]:
-                require(getattr(args, field), 'Missing ' + variable + '; activate environment.sh and select CONTEXT first')
+            for field, variable in [('output', 'CONFIG'), ('bundle', 'BUNDLE'), ('work_directory', 'WORK')]:
+                require(getattr(args, field), 'Missing ' + variable + '; activate environment.sh first')
+            if not args.context:
+                args.context = select_restore_context(args.output)
+                print('CONTEXT_SELECTED', args.context, flush=True)
             args.restore = True
             if not args.release_prefix:
                 result = subprocess.run([str(args.bundle / 'tools/helm'), '--kube-context', args.context,
@@ -863,7 +887,7 @@ def main():
                         value = str(supplied.resolve()) if isinstance(supplied, Path) else supplied
                         require(registry.get(key) == value, 'Existing Registry option differs: ' + key)
                 print('REUSE_SITE_CONFIG', args.output, flush=True)
-                Onsite(args.output).preflight()
+                finish_site_preflight(args)
                 return
         require(not args.output.exists(), 'Configuration exists; not overwriting')
         document = json.loads((HOME / 'site-config.example.json').read_text())
@@ -879,7 +903,7 @@ def main():
         write_json(args.output, document)
         print('SITE_CONFIG_CREATED', args.output, flush=True)
         if automatic:
-            Onsite(args.output).preflight()
+            finish_site_preflight(args)
         return
     onsite = Onsite(args.config)
     if args.action == 'backup': onsite.cold_backup(args.engine, args.node)
