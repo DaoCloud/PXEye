@@ -100,30 +100,6 @@ PY
 
 Do not run this network update for restore unless intentionally replacing that plan. `publish_materials` defaults false; x86 boot artifacts retain the existing loading path. Enabling the materials HTTP service does not automatically configure Core/Scout ARM64/BFB consumer URLs or physical reachability.
 
-### Cold backup for stopped backends
-
-Goal: when old NICo workloads have already been removed, copy stopped Postgres/Vault volumes before restarting them. Only confirmed Kind hostPath/local PVs are supported; no workloads are stopped automatically.
-
-Commands (replace the node with the confirmed Kind container/node):
-
-```bash
-python3 "$KIT/onsite.py" backup --config "$CONFIG" \
-  --engine podman --node fireseed-control-plane
-```
-
-Confirm:
-
-```bash
-python3 - "$CONFIG" <<'PY'
-import json,sys
-from pathlib import Path
-c=json.load(open(sys.argv[1])); p=Path(c['data_backup_directory'])
-print(p); print((p/'backup.json').read_text())
-PY
-```
-
-Expect COLD_BACKUP_COMPLETE. The helper validates PVC/PV/node association, requires no backend Pod/controller references before/after copying, streams tar archives from the node, records hashes and updates data_backup_directory. It does not change volume contents or test restoration. If unavailable, use a real storage/database backup procedure instead. A completed cold backup removes the need to fill an external backup path in section6.
-
 ## 4. Import images and publish Charts
 
 Goal: validate bundle/context (reuse full verification while input file metadata is unchanged within the run), relocate the intermediate bundles, publish content-addressed OCI Charts and pull them back for verification. No NICo workloads are started.
@@ -188,17 +164,9 @@ kubectl --context kind-fireseed -n nico-system get pods,pvc
 "$BUNDLE/tools/helm" --kube-context kind-fireseed -n nico-system list
 ```
 
-If the previous cold backup completed, directly run install --phase all; no external backup-path update is needed. Otherwise prepare actual recoverable Postgres/Vault backups before Core migrations. Set DATA_BACKUP_DIR to that directory, then run:
+Continue the remaining phases:
 
 ```bash
-python3 - "$CONFIG" <<'PY'
-import json,os,sys
-from pathlib import Path
-p=sys.argv[1]; c=json.load(open(p)); backup=Path(os.environ['DATA_BACKUP_DIR']).resolve()
-assert backup.is_dir() and any(backup.iterdir()), 'Missing/empty actual recovery backup'
-c['data_backup_directory']=str(backup)
-with open(p,'w') as f: json.dump(c,f,indent=2)
-PY
 python3 "$KIT/onsite.py" install --config "$CONFIG" --phase all
 ```
 
@@ -209,7 +177,7 @@ kubectl --context kind-fireseed -n nico-system get deploy,sts,pods,jobs,pvc
 cat "$WORK/timings.jsonl"
 ```
 
-Completed phases are rechecked/skipped. Backup gating only checks the operator-provided directory exists/nonempty; it does not prove recoverability. Metadata snapshots are not data backups. Before Helm, existing ownership is checked; after Helm, previous PVC UIDs/PV bindings must remain intact. No automatic deletion or atomic rollback hides schema changes.
+Completed phases are rechecked/skipped. Before Helm, existing ownership is checked; after Helm, previous PVC UIDs/PV bindings must remain intact. No automatic deletion or atomic rollback hides schema changes.
 
 After inspecting Helm/Jobs/logs and fixing a failure, explicitly resume one phase:
 
@@ -221,7 +189,7 @@ Replace core with the actual failed phase. Pending Helm operations are not forci
 
 ### Upload to existing PXEye
 
-Goal: reuse the existing full-recipe upload without requiring a UI upgrade. After actual backup configuration:
+Goal: reuse the existing full-recipe upload without requiring a UI upgrade. After generating the recipe:
 
 ```bash
 python3 "$KIT/onsite.py" ui-package --config "$CONFIG"
@@ -236,7 +204,7 @@ python3 -m json.tool "$WORK/recipe-result.json"
 
 Securely transfer the small package to the browser machine and upload it using the existing NICo offline full-recipe entry. Retain the frozen site/namespace/release defaults. The package can contain private effective Helm values, is mode600 and must not be committed/shared publicly.
 
-This is a compatibility handoff: the CLI pulls/freezes OCI Charts; legacy UI consumes the full recipe. Automatic multi-phase catalog ingestion by UI is still unimplemented. Restore can generate CLI files before backups, but withholds UI packages until backup evidence is configured.
+This is a compatibility handoff: the CLI pulls/freezes OCI Charts; legacy UI consumes the full recipe. Automatic multi-phase catalog ingestion by UI is still unimplemented. A generated recipe can be packaged for UI immediately; backups are not a prerequisite.
 
 ### Bootstrap PXEye on a new site only
 
@@ -274,3 +242,5 @@ python3 -m json.tool "$WORK/state.json"
 ```
 
 logs holds import command results; private holds effective old values, rendered objects, metadata snapshots and Helm installation output. timings.jsonl records command durations/exit codes. Existing archives/images/PVCs are not removed. `HELM_PHASES_COMPLETE` is not a claim of strict mTLS, physical boot or OS installation success.
+
+The standalone backup utility remains available on demand; recipe generation, UI packaging and Core installation do not require it.

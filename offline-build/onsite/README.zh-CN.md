@@ -104,30 +104,6 @@ PY
 
 本轮restore不执行上面的全新网络配置命令。`publish_materials`默认false，保留现有x86 boot-artifacts路径。选true只部署材料HTTP，不自动把ARM64/BFB URL注入Core；相应消费者URL/现场可达入口仍需单独配置，不能据此声称支持ARM实机装机。
 
-### 保留数据恢复：先冷备份已停止的后端
-
-主要目标：原NICo工作负载已删除且Postgres/Vault卷没有Pod或控制器使用时，在启动前备份。仅支持已确认Kind节点上的hostPath/local PV；不自动停止任何工作负载。不满足条件时停止，由操作者使用实际存储/数据库备份方式。
-
-执行命令（仅后端已停止的Kind场景；节点名替换为已确认的Kind容器/节点名）：
-
-```bash
-python3 "$KIT/onsite.py" backup --config "$CONFIG" \
-  --engine podman --node fireseed-control-plane
-```
-
-确认命令：
-
-```bash
-python3 - "$CONFIG" <<'PY'
-import json,sys
-from pathlib import Path
-c=json.load(open(sys.argv[1])); p=Path(c['data_backup_directory'])
-print(p); print((p/'backup.json').read_text())
-PY
-```
-
-应看到COLD_BACKUP_COMPLETE。工具读取PVC/PV和节点归属，检查备份前后无后端Pod/控制器引用卷，通过容器内tar流式复制两个卷，记录摘要并自动写回data_backup_directory；不修改卷内容。冷备份未做恢复演练。若此步完成，第6节无需再填写外部备份路径。
-
 ## 4. 预检并入库
 
 主要目标：校验包和目标集群（同一运行中输入文件元数据未变化时复用已完成的全量校验），然后将镜像与Chart推到现场Registry。不启动NICo工作负载。
@@ -177,7 +153,7 @@ recipe已经存在时不会重生成；它是冻结输入。变更需新工作�
 
 ### 6.1 本轮推荐：CLI分阶段恢复
 
-主要目标：沿用旧release与数据，先恢复平台依赖，再准备恢复点，最后进入Core。每个install命令都包含明确context，保留真实退出码和日志。
+主要目标：沿用旧release与数据，先恢复平台依赖，再进入Core。每个install命令都包含明确context，保留真实退出码和日志。
 
 执行命令（火种机）：
 
@@ -194,17 +170,9 @@ kubectl --context kind-fireseed -n nico-system get pods,pvc
 "$BUNDLE/tools/helm" --kube-context kind-fireseed -n nico-system list
 ```
 
-如果前面已完成冷备份，直接执行本节最后的install --phase all，无需重复填写路径。否则，在Core数据库迁移前，由操作者为现有Postgres/Vault准备实际可恢复备份。资源YAML快照不等于数据备份；脚本不会替你伪造恢复点。准备完成后，设置DATA_BACKUP_DIR为真实备份目录再执行：
+继续其余阶段：
 
 ```bash
-python3 - "$CONFIG" <<'PY'
-import json,os,sys
-from pathlib import Path
-p=sys.argv[1]; c=json.load(open(p)); backup=Path(os.environ['DATA_BACKUP_DIR']).resolve()
-assert backup.is_dir() and any(backup.iterdir()), '实际备份目录不存在或为空'
-c['data_backup_directory']=str(backup)
-with open(p,'w') as f: json.dump(c,f,indent=2)
-PY
 python3 "$KIT/onsite.py" install --config "$CONFIG" --phase all
 ```
 
@@ -215,7 +183,7 @@ kubectl --context kind-fireseed -n nico-system get deploy,sts,pods,jobs,pvc
 cat "$WORK/timings.jsonl"
 ```
 
-all会核对并跳过已完成阶段，继续材料（启用时）和Core；不自动删除资源、不使用atomic回滚掩盖数据库变化。备份检查只确认操作者提供的目录存在/非空，备份是否可恢复由操作者确认。安装前检查Helm资源归属并保存私密快照，安装后核对原PVC UID/PV未变。
+all会核对并跳过已完成阶段，继续材料（启用时）和Core；不自动删除资源、不使用atomic回滚掩盖数据库变化。安装前检查Helm资源归属并保存私密快照，安装后核对原PVC UID/PV未变。
 
 首次失败不自动重放。查看Helm、Job与日志、解决原因后，只对明确核对的阶段执行：
 
@@ -228,7 +196,7 @@ python3 "$KIT/onsite.py" install --config "$CONFIG" --phase core --resume-failed
 
 ### 6.2 已有PXEye：上传小型兼容配方
 
-主要目标：复用现有UI的完整配方上传能力，不升级UI、不改旧对象归属。完成实际备份并填写配置后执行：
+主要目标：复用现有UI的完整配方上传能力，不升级UI、不改旧对象归属。生成配方后执行：
 
 ```bash
 python3 "$KIT/onsite.py" ui-package --config "$CONFIG"
@@ -243,7 +211,7 @@ python3 -m json.tool "$WORK/recipe-result.json"
 
 将这个小包安全复制到浏览器所在机器，在NICo安装页通过已有离线部署配方上传入口选择它，沿用包内站点/namespace/release默认值。包包含冻结后的Chart和现场values，可能含旧Helm敏感配置，权限600，不提交仓库、不公开分享。
 
-这是兼容路径，不是“旧UI已自动支持catalog.json”。未来UI直接读取OCI目录尚未实现；本次CLI负责OCI拉取与冻结，现有UI只消费完整配方。restore没有备份时仍可生成CLI配方恢复基础设施，但不会生成可上传小包。
+这是兼容路径，不是“旧UI已自动支持catalog.json”。未来UI直接读取OCI目录尚未实现；本次CLI负责OCI拉取与冻结，现有UI只消费完整配方。配方生成后可直接导出UI小包；备份不作为流程前置条件。
 
 ### 6.3 全新现场：启动PXEye
 
@@ -281,3 +249,5 @@ python3 -m json.tool "$WORK/state.json"
 ```
 
 `logs/`保存入库命令与退出结果，`private/`保存旧Helm values、渲染资源、资源快照和安装输出，`timings.jsonl`逐命令记录耗时。script不会删除原包、旧镜像或持久卷。超时/失败保留现场；不把Helm deployed当作严格mTLS、物理DHCP/Relay、Scout启动或OS装机验收。
+
+备份工具仍可按需单独调用，不是生成配方、导出UI包或安装Core的前置条件。

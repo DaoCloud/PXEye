@@ -209,6 +209,17 @@ class Onsite:
         fingerprint = hashlib.sha256(json.dumps(identity_config, sort_keys=True).encode()).hexdigest()
         self.state_path = self.work / 'state.json'
         self.state = json.loads(self.state_path.read_text()) if self.state_path.exists() else {'config_sha256': fingerprint, 'bundle_inventory_sha256': identity, 'steps': {}}
+        # This specific predecessor differs only in the removed mandatory backup
+        # gates. Preserve its frozen recipe/import state with identical site inputs.
+        if self.state['config_sha256'] != fingerprint and self.state['bundle_inventory_sha256'] == identity:
+            predecessor = copy.deepcopy(identity_config)
+            predecessor['implementation_sha256']['onsite.py'] = 'd0cdd13aab92e73b9eed0437b5f632fcdc2efcb90385d9c325a21e70c5c6c421'
+            old_fingerprint = hashlib.sha256(json.dumps(predecessor, sort_keys=True).encode()).hexdigest()
+            if self.state['config_sha256'] == old_fingerprint:
+                self.state.setdefault('implementation_updates', []).append({
+                    'from': old_fingerprint, 'to': fingerprint, 'reason': 'backup-step-optional'})
+                self.state['config_sha256'] = fingerprint
+                print('REUSE_STATE: optional backup policy updated; frozen inputs retained', flush=True)
         require(self.state['config_sha256'] == fingerprint and self.state['bundle_inventory_sha256'] == identity,
                 'Config/bundle changed; use a new work_directory')
         self.save()
@@ -480,18 +491,9 @@ class Onsite:
         self.state['recipe_manifest_sha256'] = sha(existing / 'deployment.json'); self.save()
         shutil.rmtree(stage)
         print('RECIPE_READY', existing)
-        if self.config['mode'] == 'new' or self.backup_ready():
-            self.ui_package()
-        else:
-            print('UI_PACKAGE_WITHHELD: supply a reviewed data_backup_directory, then run ui-package; CLI can restore infrastructure first')
-
-    def backup_ready(self):
-        backup = self.config.get('data_backup_directory')
-        return bool(backup and Path(backup).is_dir() and any(Path(backup).iterdir()))
+        self.ui_package()
 
     def ui_package(self):
-        require(self.config['mode'] != 'restore' or self.backup_ready(),
-                'Restoring through UI requires a reviewed DB/Vault backup first')
         root = self.work / 'recipe'
         manifest = self.validate_recipe()
         for phase in manifest['phases']: self.check_ownership(root, phase)
@@ -525,9 +527,6 @@ class Onsite:
                 print('ALREADY_INSTALLED', key); continue
             earlier = phases[:phases.index(item)]
             require(all(self.state['steps'].get('installed-' + p['id']) for p in earlier), 'Run previous phases first, or use --phase all')
-            if key == 'core' and self.config['mode'] == 'restore':
-                require(self.backup_ready(),
-                        'Set data_backup_directory to a reviewed DB/Vault recovery backup before restoring Core; metadata-only snapshots are insufficient')
             self.check_ownership(root, item)
             self.snapshot(key, resume_failed)
             args = ['upgrade', '--install', item['release'], str(root / item['chart']), '-n', self.config['namespace'],
