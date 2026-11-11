@@ -213,7 +213,7 @@ class Onsite:
         # Exact predecessor identities may retain completed imports. All site,
         # archive and bridge inputs must still match; no arbitrary state reset.
         if self.state['config_sha256'] != fingerprint and self.state['bundle_inventory_sha256'] == identity:
-            for previous_source, with_relocation in (('19e0d0fc117c305257967152f3c330813883ddc202c567ce1dbc6037f8df235d', True), ('5dacea47145f7fca625ff001d1ff4496e9d6b32ca4ed2b9d8c58537c22e538b7', True), ('1c4a17c382cf1743a62b6ff260aca98f581bff7252bb5dc9e86b3286dc793701', False), ('d0cdd13aab92e73b9eed0437b5f632fcdc2efcb90385d9c325a21e70c5c6c421', False)):
+            for previous_source, with_relocation in (('4315ad8762820d95b3054ae5e241ef7e4b366d0f556029d274bfb19c31bce0e4', True), ('19e0d0fc117c305257967152f3c330813883ddc202c567ce1dbc6037f8df235d', True), ('5dacea47145f7fca625ff001d1ff4496e9d6b32ca4ed2b9d8c58537c22e538b7', True), ('1c4a17c382cf1743a62b6ff260aca98f581bff7252bb5dc9e86b3286dc793701', False), ('d0cdd13aab92e73b9eed0437b5f632fcdc2efcb90385d9c325a21e70c5c6c421', False)):
                 predecessor = copy.deepcopy(identity_config)
                 if not with_relocation:
                     predecessor['implementation_sha256'].pop('relocation.py')
@@ -582,7 +582,12 @@ class Onsite:
 
     def check_images(self, rendered, catalog):
         allowed = {row['image'] for row in catalog['images']}
-        allowed |= {row['image'].split('@')[0] + '@' + row['digest'] for row in catalog['images']}
+        for row in catalog['images']:
+            tagged = row['image'].split('@')[0]
+            # A digest reference drops the tag, but retains a registry's port.
+            repository = tagged.rsplit(':', 1)[0] if ':' in tagged.rsplit('/', 1)[-1] else tagged
+            allowed.add(repository + '@' + row['digest'])
+            allowed.add(tagged + '@' + row['digest'])
 
         def walk(value):
             if isinstance(value, dict):
