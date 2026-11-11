@@ -6,7 +6,7 @@ Public PXEye documentation is maintained in English and Simplified Chinese. Star
 
 | Document | English | 简体中文 | Purpose |
 | --- | --- | --- | --- |
-| Complete offline bundle builder | [Read](offline-bundle.md) | [阅读](offline-bundle.zh-CN.md) | Reusable locked-input packaging, integrated Core compatibility fixes and field delivery gates. |
+| Complete offline bundle builder | [Read](../offline-build/README.md) | [阅读](../offline-build/README.zh-CN.md) | Reusable locked-input packaging, integrated Core compatibility fixes and field delivery gates. |
 | Pre-installation checklist | [Read](pre-installation-checklist.md) | [阅读](pre-installation-checklist.zh-CN.md) | One-sentence checks for discovery, host OS writing and managed DPUs. |
 | Deployment | [Read](deployment.md) | [阅读](deployment.zh-CN.md) | Binaries, site config, credentials, mounts and persistence. |
 | NICo cluster deployment | [Read](nico-deployment.md) | [阅读](nico-deployment.zh-CN.md) | Independent startup, online/offline Helm deployment, permissions and site connection. |
