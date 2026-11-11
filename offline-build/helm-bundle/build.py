@@ -30,6 +30,8 @@ REPO = HOME.parents[1]
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(HOME))
 import charts
+sys.path.insert(0, str(HOME.parent / 'onsite'))
+from relocation import prepare_intermediate
 from verify import verify
 
 spec = importlib.util.spec_from_file_location('materials_builder', HOME.parent / 'build.py')
@@ -486,6 +488,9 @@ def build(config, args):
                     # Derive exact references by rendering only the simple hints,
                     # not by inventing image entries from arbitrary text.
                     expected = hinted_images(root)
+                    compatible = prepare_intermediate(relocation, relocation.with_suffix('.compatible.tar'))
+                    if compatible != relocation:
+                        compatible.replace(relocation)
                     count = check_intermediate(relocation, expected)
                     packages.append({'id': key, 'name': metadata['name'], 'version': metadata['version'],
                         'chart': chart_path.relative_to(bundle).as_posix(), 'relocation': relocation.relative_to(bundle).as_posix(),

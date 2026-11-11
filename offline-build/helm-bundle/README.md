@@ -175,3 +175,7 @@ References: [relok8s v0.5.4 source](https://github.com/vmware-tanzu/asset-reloca
 ## Onsite helper
 
 [Step-three scripts](../onsite/README.md) now provide relocation, Helm OCI publication, a frozen full-recipe upload compatible with existing PXEye, and ordered Helm CLI phases. Existing archives can use the small exported helper kit; new builds include tools/onsite. Automatic multi-phase OCI catalog ingestion in UI remains unimplemented. These scripts have not yet passed end-to-end fireseed deployment acceptance.
+
+## relok8s 0.5.4 root image fields
+
+This version can fail with `need path or selectors or both` when rewriting root scalar image fields. Build and onsite import share relocation.py: intermediate metadata uses temporary nested aliases, then onsite restores the original values shape. Image bytes remain unchanged. Existing deliveries use a derived working copy without modifying the original archive or inventory; no large-bundle rebuild is required. Resume import with the same configuration to verify/reuse completed Charts.

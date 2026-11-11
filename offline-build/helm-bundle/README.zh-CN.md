@@ -184,3 +184,7 @@ PY
 构建使用临时验证参数，不是目标现场参数。新PXEye和材料发布Chart只有构建渲染证据，尚无冷启动安装/升级/实际网络验证；原有固定e703兼容补丁继续保留。脚本不改变生产/学习集群、物理机器、DHCP、证书或数据库，也不执行回归/GPU工作负载。
 
 依据：[relok8s源代码v0.5.4](https://github.com/vmware-tanzu/asset-relocation-tool-for-kubernetes/tree/v0.5.4)、[Helm OCI](https://helm.sh/docs/v3/topics/registries/)、[NVIDIA参考安装](https://docs.nvidia.com/infra-controller/documentation/getting-started/installation-options/reference-installation)。
+
+## relok8s 0.5.4 顶层镜像字段兼容
+
+该版本改写顶层镜像字段时可能报`need path or selectors or both`。构建和现场导入共用relocation.py：仅在中间包中将顶层字段临时映射到嵌套字段，迁移完成后恢复原values结构；镜像内容不变。现场对已有包在工作目录生成派生副本，原归档和校验清单保持不变，无需重建大包。修复后使用原配置重新执行import，已完成的Chart回查后复用。

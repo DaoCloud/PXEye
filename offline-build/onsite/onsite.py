@@ -26,6 +26,7 @@ from urllib.parse import urlsplit
 sys.dont_write_bytecode = True
 import yaml
 from registry_bridge import RegistryBridge
+from relocation import prepare_intermediate, restore_root_fields
 
 HOME = Path(__file__).resolve().parent
 VERIFY_PATH = HOME.parent / 'helm-bundle/verify.py'
@@ -204,22 +205,25 @@ class Onsite:
             self.env['SSL_CERT_FILE'] = registry['ca_file']
         identity_config = copy.deepcopy(c)
         identity_config.pop('data_backup_directory', None)  # recovery evidence may be supplied after import
-        identity_config['implementation_sha256'] = {name: sha(HOME / name) for name in ('onsite.py', 'registry_bridge.py')}
+        identity_config['implementation_sha256'] = {name: sha(HOME / name) for name in ('onsite.py', 'registry_bridge.py', 'relocation.py')}
         identity_config['phase_value_hashes'] = {key: sha(value) for key, value in c.get('phase_values', {}).items()}
         fingerprint = hashlib.sha256(json.dumps(identity_config, sort_keys=True).encode()).hexdigest()
         self.state_path = self.work / 'state.json'
         self.state = json.loads(self.state_path.read_text()) if self.state_path.exists() else {'config_sha256': fingerprint, 'bundle_inventory_sha256': identity, 'steps': {}}
-        # This specific predecessor differs only in the removed mandatory backup
-        # gates. Preserve its frozen recipe/import state with identical site inputs.
+        # Exact predecessor identities may retain completed imports. All site,
+        # archive and bridge inputs must still match; no arbitrary state reset.
         if self.state['config_sha256'] != fingerprint and self.state['bundle_inventory_sha256'] == identity:
-            predecessor = copy.deepcopy(identity_config)
-            predecessor['implementation_sha256']['onsite.py'] = 'd0cdd13aab92e73b9eed0437b5f632fcdc2efcb90385d9c325a21e70c5c6c421'
-            old_fingerprint = hashlib.sha256(json.dumps(predecessor, sort_keys=True).encode()).hexdigest()
-            if self.state['config_sha256'] == old_fingerprint:
-                self.state.setdefault('implementation_updates', []).append({
-                    'from': old_fingerprint, 'to': fingerprint, 'reason': 'backup-step-optional'})
-                self.state['config_sha256'] = fingerprint
-                print('REUSE_STATE: optional backup policy updated; frozen inputs retained', flush=True)
+            for previous_source in ('1c4a17c382cf1743a62b6ff260aca98f581bff7252bb5dc9e86b3286dc793701', 'd0cdd13aab92e73b9eed0437b5f632fcdc2efcb90385d9c325a21e70c5c6c421'):
+                predecessor = copy.deepcopy(identity_config)
+                predecessor['implementation_sha256'].pop('relocation.py')
+                predecessor['implementation_sha256']['onsite.py'] = previous_source
+                old_fingerprint = hashlib.sha256(json.dumps(predecessor, sort_keys=True).encode()).hexdigest()
+                if self.state['config_sha256'] == old_fingerprint:
+                    self.state.setdefault('implementation_updates', []).append({
+                        'from': old_fingerprint, 'to': fingerprint, 'reason': 'relok8s-root-image-fields'})
+                    self.state['config_sha256'] = fingerprint
+                    print('REUSE_STATE: root image compatibility updated; completed imports retained', flush=True)
+                    break
         require(self.state['config_sha256'] == fingerprint and self.state['bundle_inventory_sha256'] == identity,
                 'Config/bundle changed; use a new work_directory')
         self.save()
@@ -307,6 +311,7 @@ class Onsite:
                 relocation = self.bundle / item['relocation']
                 require(relocation.resolve().is_relative_to(self.bundle), 'Unsafe relocation path')
                 attempt = Path(tempfile.mkdtemp(prefix='attempt-', dir=target))
+                relocation = prepare_intermediate(relocation, attempt / 'compatible.tar')
                 self.run([self.relok, 'chart', 'move', relocation, '--registry', bridge.address,
                           '--repo-prefix', self.scope + '/images', '--out', str(attempt / '*.tgz'), '--yes'],
                          key + '-relocate', env=env, timeout=14400)
@@ -314,6 +319,7 @@ class Onsite:
                 tree = attempt / 'tree'; safe_extract(files[0], tree, limit=256 * 1024**2)
                 roots = list(tree.glob('*/Chart.yaml')); require(len(roots) == 1, 'Relocated Chart root is ambiguous')
                 root = roots[0].parent
+                restore_root_fields(root)
                 expand_dependencies(root)
                 original_tree = attempt / 'original'
                 safe_extract(self.bundle / item['chart'], original_tree, limit=256 * 1024**2)

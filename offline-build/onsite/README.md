@@ -244,3 +244,7 @@ python3 -m json.tool "$WORK/state.json"
 logs holds import command results; private holds effective old values, rendered objects, metadata snapshots and Helm installation output. timings.jsonl records command durations/exit codes. Existing archives/images/PVCs are not removed. `HELM_PHASES_COMPLETE` is not a claim of strict mTLS, physical boot or OS installation success.
 
 The standalone backup utility remains available on demand; recipe generation, UI packaging and Core installation do not require it.
+
+## relok8s 0.5.4 root image fields
+
+This version can fail with `need path or selectors or both` when rewriting root scalar image fields. Build and onsite import share relocation.py: intermediate metadata uses temporary nested aliases, then onsite restores the original values shape. Image bytes remain unchanged. Existing deliveries use a derived working copy without modifying the original archive or inventory; no large-bundle rebuild is required. Resume import with the same configuration to verify/reuse completed Charts.

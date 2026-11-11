@@ -251,3 +251,7 @@ python3 -m json.tool "$WORK/state.json"
 `logs/`保存入库命令与退出结果，`private/`保存旧Helm values、渲染资源、资源快照和安装输出，`timings.jsonl`逐命令记录耗时。script不会删除原包、旧镜像或持久卷。超时/失败保留现场；不把Helm deployed当作严格mTLS、物理DHCP/Relay、Scout启动或OS装机验收。
 
 备份工具仍可按需单独调用，不是生成配方、导出UI包或安装Core的前置条件。
+
+## relok8s 0.5.4 顶层镜像字段兼容
+
+该版本改写顶层镜像字段时可能报`need path or selectors or both`。构建和现场导入共用relocation.py：仅在中间包中将顶层字段临时映射到嵌套字段，迁移完成后恢复原values结构；镜像内容不变。现场对已有包在工作目录生成派生副本，原归档和校验清单保持不变，无需重建大包。修复后使用原配置重新执行import，已完成的Chart回查后复用。
