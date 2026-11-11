@@ -1,164 +1,234 @@
-# Part 1: build reusable NICo offline materials
+# Part 1: how I build NICo offline materials
 
 **English** · [简体中文](README.zh-CN.md)
 
-Builds lock materials and versions without knowing the target Registry, IPs, gateway, Kubernetes context or node names. See [Part 2](CONFIGURE.md) for onsite initialization and deployment. The default namespace is `nico-system`, applied consistently during initialization.
+I perform these steps on a Linux build machine. Building locks materials and versions without knowing the target Registry, IPs, gateway or Kubernetes details. Onsite initialization and deployment are covered in [Part 2](CONFIGURE.md). The pinned profile contains NICo e703126e4, official Charts and compatibility patches for one Podman Kind node and single-replica Core, without REST/Temporal/Keycloak. It assembles existing images; it does not compile NICo or build PXEye images.
 
-The pinned profile contains NICo e703126e4, official nico-0.1.1/cert-manager-v1.17.1 Charts and reviewed compatibility patches: one Podman Kind node, single-replica Core, without REST/Temporal/Keycloak. This tool assembles existing images; it does not compile NICo or build PXEye images.
+## Step 1: I check the build machine
 
-## 1. Prepare the toolkit and dependencies
-
-Goal: use the Git repository's standalone directory or copy the entire toolkit to `/srv/nico-build-kit`. All build commands below run in Bash on the build machine, from that toolkit directory. A Git checkout's `deliverables/nico-offline-build` also works; `/srv` is optional.
+Goal: confirm the host, dependencies and available storage before building. All commands run as root in the same Bash terminal on the build machine, initially from any directory. The three input paths must contain prepared materials. Set the same environment variables before this section to override the default paths.
 
 Run:
 
 ```bash
 bash
 set -euo pipefail
-cd /srv/nico-build-kit
+export BUILD_WORK="${BUILD_WORK:-/srv/nico-build}"
+export SOURCE_BUNDLE="${SOURCE_BUNDLE:-/srv/nico-input/base-bundle}"
+export UI_ARCHIVE="${UI_ARCHIVE:-/srv/nico-input/pxeye-ui.oci.tar}"
+export BOOTSTRAP_ARCHIVE="${BOOTSTRAP_ARCHIVE:-/srv/nico-input/pxeye-bootstrap.oci.tar}"
+hostname
+uname -m
 python3 -c 'import sys,yaml; assert sys.version_info >= (3,11); print(sys.version); print("PyYAML",yaml.__version__)'
-command -v helm
-command -v patch
-cp -n build-config.example.json build-config.json
-vi build-config.json
+git --version
+helm version --short
+patch --version | head -1
 ```
 
 Confirm:
 
 ```bash
-python3 -m json.tool build-config.json >/dev/null
-python3 -c 'import json; c=json.load(open("build-config.json")); assert c["schema_version"]==3 and "site" not in c; print(c["build"]); print(c["package"])'
+test -d "$SOURCE_BUNDLE"
+test -f "$UI_ARCHIVE"
+test -f "$BOOTSTRAP_ARCHIVE"
+mkdir -p "$BUILD_WORK"
+df -h "$BUILD_WORK"
+df -i "$BUILD_WORK"
 ```
 
-Dependencies: Linux, Python3.11+/PyYAML, Helm3 and GNU patch. No cluster, Registry, kubeconfig, Docker socket or login credentials are used. Free-space checks require twice the input size plus 2GiB. Configuration can live anywhere outside Git; a specially named site directory is not required.
+I need Linux, Python3.11+/PyYAML, Git, Helm3 and GNU patch. Default materials are about16GiB. The build requires twice the selected input size plus2GiB free; extraction in step6 needs another full material directory. No Kubernetes/Registry access, kubeconfig, Docker socket or credentials are required.
 
-## 2. Declare inputs and inspect the complete plan
+## Step 2: I obtain the toolkit and record its version
 
-Goal: configure only information available on the build machine, with no site or cluster network settings.
-
-| Field | Build input |
-| --- | --- |
-| `schema_version` | `3`: reusable materials |
-| `build.source_bundle` | Locked source materials with raw Charts, 23-image OCI archive, boot and DPU files |
-| `build.output_root` | Output parent; each version gets a new directory |
-| `package.bundle_id` | Materials identity, independent of a deployment site |
-| `package.ui`, `package.bootstrap` | Archive path, tag and manifest digest; source references are read from the archive by digest |
-| `files.inputs` | Explicit source, role, target, bytes and SHA256 for every file; no globs |
-| `files.base_image_manifests` | All 23 original image references and manifest digests |
-| `files.repository`, `files.toolkit` | Individually listed templates, tools and documentation |
-| `files.generated` | Every generated output path |
-
-`root=bundle` reads relative to `build.source_bundle`; `root=package` reads the UI/bootstrap archive paths. Archive paths may be absolute or relative to the configuration file. Update tags/digests together with the archive sizes/file SHA256 in `files.inputs`. An archive's historical Registry reference records provenance; it does not select the deployment Registry.
-
-The default plan contains122 inputs:3 OCI archives, the image lock,2 raw Charts, Helm/CLI,20 boot files,20 DPF/DOCA files,2 BFB files and72 historical materials. Eight macOS `._` sidecars, Ubuntu installation ISOs and extra GPU software are excluded. The NICo Chart is patched; other materials are copied against their locks. New files are never silently discovered and included.
+Goal: use the standalone Git directory and record its real source revision. BUILD_WORK/PXEye must be new; never overwrite another checkout. Run in the same shell.
 
 Run:
 
 ```bash
-python3 build.py --config build-config.json --plan > FILE-PLAN.current.txt
-cat FILE-PLAN.current.txt
+test ! -e "$BUILD_WORK/PXEye"
+git clone --branch main https://github.com/DaoCloud/PXEye.git "$BUILD_WORK/PXEye"
+export KIT="$BUILD_WORK/PXEye/deliverables/nico-offline-build"
+cd "$KIT"
 ```
 
 Confirm:
 
 ```bash
-tail -1 FILE-PLAN.current.txt
+git -C "$BUILD_WORK/PXEye" rev-parse HEAD
+cat "$KIT/source-revision.txt"
+test -r "$KIT/build.py"
+test -r "$KIT/materials-lock.json"
+python3 "$KIT/build.py" --help
 ```
 
-The last line reports actual input/generated/total counts and input bytes; the default is122 inputs,50 generated files and172 final files. `--plan` checks lists and toolkit dependencies without reading large inputs or building. `FILE-PLAN.txt` is reproducible reference output, not another required input.
+The toolkit can also be copied as a complete directory; set KIT to its absolute path in that case. source-revision.txt pins the scripts/templates export commit, which may differ from the Git delivery commit containing that export.
 
-## 3. Build and verify
+## Step 3: I create a small path-and-options configuration
 
-Goal: produce versioned materials independent of any deployment site. Validation addresses must never become an installable recipe.
+Goal: maintain16 configuration lines without copying per-file hashes or site settings. Keep it outside the toolkit and reuse it for subsequent builds. The command refuses to overwrite an existing configuration.
 
-Run in the same build-machine Bash and toolkit directory:
+Run:
 
 ```bash
-VERSION="$(date -u +%Y%m%dT%H%M%SZ)"
-OUTPUT_ROOT="$(python3 -c 'import json; print(json.load(open("build-config.json"))["build"]["output_root"])')"
-OUTPUT="$OUTPUT_ROOT/$VERSION"
-python3 build.py --config build-config.json --version "$VERSION"
+export CONFIG="$BUILD_WORK/build-config.json"
+python3 "$KIT/build.py" --write-config "$CONFIG" \
+  --source-bundle "$SOURCE_BUNDLE" \
+  --output-root "$BUILD_WORK/output" \
+  --ui-archive "$UI_ARCHIVE" \
+  --bootstrap-archive "$BOOTSTRAP_ARCHIVE"
 ```
 
 Confirm:
+
+```bash
+cat "$CONFIG"
+python3 - "$KIT" <<'PY'
+import json,sys
+from pathlib import Path
+lock=json.loads((Path(sys.argv[1])/'materials-lock.json').read_text())
+print('材料配方：',lock['profile'])
+print('固定镜像：',json.dumps(lock['images'],ensure_ascii=False))
+PY
+```
+
+I edit only build.source_bundle, build.output_root, package.bundle_id, package.ui_archive, package.bootstrap_archive and the include flags. include.dpu defaults to true for DPF/DOCA/BFB materials; this is independent of the fixed Core23-image archive. include.history defaults to false, excluding72 historical source backups. Enable it only for provenance.
+
+The separate machine-managed materials-lock.json holds file lists, sizes, SHA256, image tags/digests and template lists. Ordinary builds do not edit the lock. The next step lists all selected files. FILE-PLAN.txt is generated reference output; it does not need copying from elsewhere. Equal source/target paths preserve the relative layout and do not duplicate a file.
+
+## Step 4: I inspect the plan and inputs
+
+Goal: see exactly what will be delivered and detect missing inputs before a long build. Run in the same terminal.
+
+Run:
+
+```bash
+python3 "$KIT/build.py" --config "$CONFIG" --plan > "$BUILD_WORK/FILE-PLAN.txt"
+cat "$BUILD_WORK/FILE-PLAN.txt"
+python3 "$KIT/build.py" --config "$CONFIG" --check-inputs
+```
+
+Confirm:
+
+```bash
+tail -1 "$BUILD_WORK/FILE-PLAN.txt"
+```
+
+The default plan reports inputs=50 generated=52 bundle_files=102, with no source/ backups. Enabling history selects122 inputs and174 final files; disabling dpu removes22 material files. macOS ._ sidecars, Ubuntu ISOs and extra GPU software are excluded. INPUTS_READY covers selected input existence/sizes, mandatory hashes and toolkit lists. The build still validates every input SHA and OCI blob/closure. Original Registry references are read from extra archives by locked digest; I do not have to supply those historical addresses.
+
+## Step 5: I build a new version
+
+Goal: create new output without changing source materials, previous bundles or running services. Run in the same terminal.
+
+Run:
+
+```bash
+export VERSION="$(date -u +%Y%m%dT%H%M%SZ)"
+export OUTPUT="$BUILD_WORK/output/$VERSION"
+python3 "$KIT/build.py" --config "$CONFIG" --version "$VERSION" \
+  2>&1 | tee "$BUILD_WORK/build-$VERSION.log"
+```
+
+Confirm:
+
+```bash
+test -f "$OUTPUT/build-result.json"
+python3 -m json.tool "$OUTPUT/build-result.json"
+ls -lh "$OUTPUT/bundle.tar.gz"
+```
+
+I require BUILD_COMPLETE. Stages are input checks, OCI verification, material copying, four real Helm renders, complete directory verification, ARCHIVE, HASH_ARCHIVE and VERIFY_ARCHIVE_CONTENTS. Files may stop growing while hashing/readback runs; I do not restart an active build. Failures retain a .building-* directory; inspect the cause and use a new version after fixing it. Temporary validation inputs never become an installable recipe: materials have recipe_ready=false and no deployment/deployment.json. No cluster resources are modified.
+
+## Step 6: I independently verify and extract
+
+Goal: verify the compressed delivery, full inventory and extracted toolkit rather than trusting a completion message. Run in the same terminal.
+
+Run:
 
 ```bash
 cd "$OUTPUT"
 sha256sum -c SHA256SUMS
 python3 bundle/tools/verify-bundle.py bundle
-python3 -m json.tool build-result.json
-ls -lh bundle.tar.gz
-```
-
-Require `BUILD_COMPLETE`, `bundle.tar.gz: OK` and `BUNDLE_VERIFIED`. Checks cover input hashes, OCI blobs/closure, four real Helm renders,13 single-replica workloads, certificate/service consistency, exact output paths and a per-file archive readback. Transient documentation-only values validate template composition. The delivery contains no `deployment/deployment.json` and has `recipe_ready=false`; initialize it onsite before using the UI.
-
-The version directory must be new and outside source/toolkit directories. Failures retain `.building-*` for diagnosis; use a new version after resolving the cause. Hashing and archive readback may run without file growth.
-
-## 4. Output and extracted layout
-
-Goal: distinguish the toolkit, reusable materials and site-generated output.
-
-```text
-<build.output_root>/<VERSION>/
-├── bundle/
-├── bundle.tar.gz
-├── SHA256SUMS
-└── build-result.json
-
-<package.bundle_id>/
-├── bundle.json                   # kind=nico-materials; recipe_ready=false
-├── config/site-config.example.json
-├── deployment/
-│   ├── charts/                   # 3 prepared Charts
-│   └── patches/                  # 4 recorded patches
-├── deployment-kit/
-│   ├── configure.py
-│   ├── generic.py
-│   ├── build.py
-│   ├── site-config.example.json
-│   ├── deploy/
-│   └── tools/
-├── images/                       # original23-image OCI plus2 PXEye archives
-├── manifests/                    # locks, plan, report and full file inventory
-├── tools/                        # Helm, CLI and verifier
-├── docs/CONFIGURE.md
-├── docs/CONFIGURE.zh-CN.md
-├── boot/
-├── dpu/
-├── http/
-└── source/
-```
-
-Run in the same shell with `OUTPUT` retained; extraction needs additional space:
-
-```bash
-UNPACK="$OUTPUT-unpacked"
+export UNPACK="$OUTPUT-unpacked"
 test ! -e "$UNPACK"
 mkdir -p "$UNPACK"
 tar -xzf "$OUTPUT/bundle.tar.gz" -C "$UNPACK"
-find "$UNPACK" -mindepth 1 -maxdepth 1 -type d
+export BUNDLE_ID="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["package"]["bundle_id"])' "$CONFIG")"
+export MATERIALS="$UNPACK/$BUNDLE_ID"
 ```
 
 Confirm:
 
 ```bash
-MATERIALS="$(find "$UNPACK" -mindepth 1 -maxdepth 1 -type d)"
 python3 "$MATERIALS/tools/verify-bundle.py" "$MATERIALS"
 python3 "$MATERIALS/deployment-kit/configure.py" --help
+find "$MATERIALS" -maxdepth 2 -type d | sort
 ```
 
-`--plan` and the final `manifests/file-inventory.json` list every file. Passwords, kubeconfigs, runtime databases and Vault recovery materials are excluded.
+I require bundle.tar.gz: OK, two BUNDLE_VERIFIED messages and the onsite initializer help. The default has102 final files; inventory lists101 because it excludes itself. These checks verify delivery integrity, not a cold-cluster install or physical DHCP/Relay/HTTP Boot.
 
-## 5. Reuse an existing large bundle
+## Step 7: I record the delivery and handoff
 
-Goal: avoid rebuilding large archives when only site addresses change.
+Goal: retain the version, checksums and paths so the next user does not have to guess them. Run in the same terminal.
 
-The onsite tool accepts a complete Core bundle produced by the previous `1c732234` builder. Preserve its original `bundle.tar.gz` and checksums; use its extracted `bundle/` with the new `configure.py`. See [Part 2](CONFIGURE.md). Arbitrary raw/old directories without the supported build report and complete inventory are rejected.
+Run:
 
-Initialization verifies the materials, hard-links large files into a new directory on the same filesystem and regenerates only small configuration/tools/inventory. It does not compile, download, copy or recompress large images. Hard-link failure stops the operation instead of falling back to large copies. Edit configuration only; treat linked image/boot materials as immutable. Pods mount them read-only.
+```bash
+cat "$OUTPUT/SHA256SUMS"
+cat "$OUTPUT/build-result.json"
+du -sh "$OUTPUT/bundle" "$OUTPUT/bundle.tar.gz" "$MATERIALS"
+```
 
-A single new `bundle.tar.gz` that includes the new initialization tools must be reassembled with schema3; existing image bytes are still reused. Changed image versions/material digests also require a new build. Changed onsite Registry/IP/gateway settings need only a new site initialization, not another large archive.
+Confirm:
 
-This change updates the tools. The previous12.16GiB build is not evidence that schema3 has been fully rebuilt or cold-installed. Physical DHCP/Relay/HTTP Boot, ARM/DPU and production HA require separate validation.
+```bash
+test -r "$MATERIALS/docs/CONFIGURE.zh-CN.md"
+test -r "$MATERIALS/config/site-config.example.json"
+```
 
-Reference: [NVIDIA Machine-a-Tron deployment](https://docs.nvidia.com/infra-controller/documentation/reference/development/machine-a-tron-deployment). Capabilities follow the pinned e703 source and recipe.
+Passwords, kubeconfigs, runtime databases and Vault recovery materials are excluded. source/ appears only when include.history=true; archived UI sources are not executed. The running application comes from the locked PXEye image.
+
+```text
+<BUILD_WORK>/
+├── PXEye/deliverables/nico-offline-build/
+├── build-config.json
+├── FILE-PLAN.txt
+├── build-<VERSION>.log
+└── output/
+    ├── <VERSION>/
+    │   ├── bundle/
+    │   ├── bundle.tar.gz
+    │   ├── SHA256SUMS
+    │   └── build-result.json
+    └── <VERSION>-unpacked/<BUNDLE_ID>/
+        ├── bundle.json
+        ├── config/site-config.example.json
+        ├── deployment/charts/
+        ├── deployment/patches/
+        ├── deployment-kit/
+        ├── images/
+        ├── manifests/
+        ├── tools/
+        ├── docs/CONFIGURE.zh-CN.md
+        ├── docs/CONFIGURE.md
+        ├── boot/
+        ├── dpu/
+        └── http/
+```
+
+## Material updates and existing large bundles
+
+Ordinary builds skip this section. After changing selected materials, maintainers can generate a separate, reviewable lock update rather than hand-copying hashes or overwriting the shipped lock.
+
+Run:
+
+```bash
+python3 "$KIT/refresh-lock.py" --config "$CONFIG" \
+  --output "$BUILD_WORK/materials-lock.updated.json"
+diff -u "$KIT/materials-lock.json" "$BUILD_WORK/materials-lock.updated.json"
+```
+
+diff exits1 when differences exist; this is expected. Review/replace the lock in the maintained source, commit it, then export a new toolkit. Unselected optional records retain their existing locks; unknown files are never silently discovered. Changed fixed Core images or raw Charts require a new reviewed compatibility profile, not a hash-only override.
+
+A supported previous complete Core builder bundle can be reused with the new configure.py without rebuilding the original archive. On the same filesystem, initialization hard-links large materials and writes only new site files. Reassemble a compressed delivery only when it must include the new tools; do not recompile images. Registry/IP/gateway changes need a new site initialization directory; see [Part 2](CONFIGURE.md).
+
+Reference: [NVIDIA Machine-a-Tron deployment](https://docs.nvidia.com/infra-controller/documentation/reference/development/machine-a-tron-deployment). The delivery format is project-specific, not an official NVIDIA package format; capabilities follow the pinned e703 source and recipe.

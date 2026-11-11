@@ -30,8 +30,8 @@ rev = a.revision or git('rev-parse', 'HEAD').decode().strip()
 if not re.fullmatch('[0-9a-f]{40}', rev):
     raise SystemExit('A full committed source revision is required')
 config = json.loads(a.config.read_text() if a.config else git('show', rev + ':offline-build/build-config.example.json'))
-if a.site_config and config.get('schema_version') == 3:
-    raise SystemExit('Schema 3 has no site inputs; copy site-config.example.json and initialize at the deployment site')
+if a.site_config and config.get('schema_version') in (3, 4):
+    raise SystemExit('Reusable materials have no site inputs; initialize site-config.example.json at the deployment site')
 if a.site_config:
     site = json.loads(a.site_config.read_text())
     for purpose in ('ui', 'bootstrap'):
@@ -48,8 +48,9 @@ if output.exists() or output == REPO or output.is_relative_to(REPO):
 output.parent.mkdir(parents=True, exist_ok=True)
 stage = Path(tempfile.mkdtemp(prefix='.' + output.name + '.export-', dir=output.parent))
 try:
-    mappings = [(s, s) for s in config['files']['repository']]
-    mappings += [(r['source'], r['target']) for r in config['files']['toolkit']]
+    files = config['files'] if config.get('schema_version') != 4 else json.loads(git('show', rev + ':offline-build/materials-lock.json'))['files']
+    mappings = [(s, s) for s in files['repository']]
+    mappings += [(r['source'], r['target']) for r in files['toolkit']]
     targets = set()
     for source, target in mappings:
         safe(source);safe(target)
