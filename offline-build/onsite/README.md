@@ -252,3 +252,5 @@ This version can fail with `need path or selectors or both` when rewriting root 
 The image catalog distinguishes source_digest (input lock) from digest (the transferred manifest). relok8s may reserialize Docker manifests, so these can differ. The catalog derives unique digests from successful transfer evidence with destination-path checks; recipe image validation remains strict. An existing catalog is refreshed before freezing a new recipe without retransferring images.
 
 Restore also converts legacy boot-artifact arrays to the offline Chart’s index-keyed map before applying imported image defaults; per-entry site settings are retained.
+
+Recipe generation also resolves image fields missed by relok8s using exact build references from the input lock and the verified transfer catalog; unknown images still fail validation.

@@ -213,7 +213,7 @@ class Onsite:
         # Exact predecessor identities may retain completed imports. All site,
         # archive and bridge inputs must still match; no arbitrary state reset.
         if self.state['config_sha256'] != fingerprint and self.state['bundle_inventory_sha256'] == identity:
-            for previous_source, with_relocation in (('88b3747ca185f5fd10f7625f5800c29f717fb7876fe5b3274fedc45e2a740161', True), ('4315ad8762820d95b3054ae5e241ef7e4b366d0f556029d274bfb19c31bce0e4', True), ('19e0d0fc117c305257967152f3c330813883ddc202c567ce1dbc6037f8df235d', True), ('5dacea47145f7fca625ff001d1ff4496e9d6b32ca4ed2b9d8c58537c22e538b7', True), ('1c4a17c382cf1743a62b6ff260aca98f581bff7252bb5dc9e86b3286dc793701', False), ('d0cdd13aab92e73b9eed0437b5f632fcdc2efcb90385d9c325a21e70c5c6c421', False)):
+            for previous_source, with_relocation in (('1373ef5d197251e0cddce51bde01508af20e01e7333fd34f6ea1097caa6ef510', True), ('88b3747ca185f5fd10f7625f5800c29f717fb7876fe5b3274fedc45e2a740161', True), ('4315ad8762820d95b3054ae5e241ef7e4b366d0f556029d274bfb19c31bce0e4', True), ('19e0d0fc117c305257967152f3c330813883ddc202c567ce1dbc6037f8df235d', True), ('5dacea47145f7fca625ff001d1ff4496e9d6b32ca4ed2b9d8c58537c22e538b7', True), ('1c4a17c382cf1743a62b6ff260aca98f581bff7252bb5dc9e86b3286dc793701', False), ('d0cdd13aab92e73b9eed0437b5f632fcdc2efcb90385d9c325a21e70c5c6c421', False)):
                 predecessor = copy.deepcopy(identity_config)
                 if not with_relocation:
                     predecessor['implementation_sha256'].pop('relocation.py')
@@ -409,6 +409,35 @@ class Onsite:
                               phase + '-old-values', private=True)
         return json.loads(value.stdout) or {}
 
+    def imported_defaults(self, defaults, catalog):
+        """Resolve image fields relok8s missed through exact input-lock identities."""
+        rows = json.loads((self.bundle / 'manifests/images-lock.json').read_text())
+        transferred = {row['source']: row for row in catalog['images']}
+        locked = {}
+        for row in rows:
+            target = transferred[row.get('source', row['build_reference'])]
+            locked[row['build_reference']] = target
+
+        def walk(value):
+            if isinstance(value, dict):
+                value = {key: walk(item) for key, item in value.items()}
+                repository, tag = value.get('repository'), value.get('tag')
+                target = locked.get(repository + ':' + str(tag)) if isinstance(repository, str) else None
+                if target:
+                    tagged = target['image'].split('@')[0]
+                    value['repository'] = tagged.rsplit(':', 1)[0]
+                    value['tag'] = tagged.rsplit(':', 1)[1]
+                    value['digest'] = target['digest']
+                    if 'registry' in value: value['registry'] = ''
+                return value
+            if isinstance(value, list): return [walk(item) for item in value]
+            if isinstance(value, str) and value in locked:
+                target = locked[value]
+                repository = target['image'].rsplit(':', 1)[0]
+                return repository + '@' + target['digest']
+            return value
+        return walk(defaults)
+
     def image_defaults(self, defaults, values):
         """Retain site settings while replacing every locked image field from the migrated Chart."""
         # Legacy releases used arrays for boot artifacts; the offline Chart
@@ -505,6 +534,7 @@ class Onsite:
             destination = recipe / 'charts' / (key + '.tgz')
             if not destination.exists(): shutil.copyfile(chart, destination)
             defaults = yaml.safe_load(self.helm_run(['show', 'values', str(chart)], phase['id'] + '-defaults').stdout) or {}
+            defaults = self.imported_defaults(defaults, catalog)
             values = self.image_defaults(defaults, merge(defaults, self.old_values(phase['id'])))
             # Escape the site name as TOML, rather than doing raw substitution inside TOML text.
             if phase['id'] == 'core':
