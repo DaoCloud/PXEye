@@ -6,6 +6,7 @@ PXEye 公开项目文档均提供内容对应的中英文版本。首次使用�
 
 | 文档 | English | 简体中文 | 用途 |
 | --- | --- | --- | --- |
+| 离线交付三步流程 | [Read](../offline-build/README.md) | [阅读](../offline-build/README.zh-CN.md) | 材料准备、Helm打包、现场部署；单入口及失败续跑。 |
 | 独立离线构建工具目录 | [Read](../deliverables/nico-offline-build/README.md) | [阅读](../deliverables/nico-offline-build/README.zh-CN.md) | 可整体复制的通用工具目录，包含脚本、显式文件配置、模板和产物说明；现场配置在仓库外维护。 |
 | 完整离线包制作 | [Read](../offline-build/README.md) | [阅读](../offline-build/README.zh-CN.md) | 可重复的锁定输入打包、Core兼容修复与现场交付门禁。 |
 | 离线包现场初始化 | [Read](../offline-build/CONFIGURE.md) | [阅读](../offline-build/CONFIGURE.zh-CN.md) | 构建后填写现场参数，复用已有大文件并生成完整部署手册。 |

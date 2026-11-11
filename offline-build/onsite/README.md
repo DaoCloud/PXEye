@@ -1,110 +1,82 @@
-# Step 3: one-command NICo onsite deployment
+# Step 3: import and deploy onsite
 
-**English** · [简体中文](README.zh-CN.md)
+**English** · [简体中文](README.zh-CN.md) · [Overview](../README.md)
 
-One configuration and one command perform archive verification/extraction, site resolution, preflight, image and Helm OCI import, frozen recipe generation, optional PXEye bootstrap, cert-manager, platform, Vault, optional materials and Core installation. This tool neither builds images nor changes containerd, discovers devices, writes Redfish or installs host operating systems.
+**Goal: install the delivery into an explicit Kubernetes cluster. Run on the fireseed host.** One site configuration and one runner; no manual resource YAML, image builds or containerd changes.
 
-## Prepare one configuration
+## Stages
 
-Goal: on the Linux amd64 fireseed host, provide Python 3.11+/PyYAML, kubectl, `bundle.tar.gz`, `SHA256SUMS`, Registry permissions and node image-pull configuration. The bundle contains Helm/relok8s. Install the helper kit at `/srv/nico/nico-onsite-tools/tools/onsite`; existing archives may use a small kit produced by `export.py` without rebuilding large images.
+| Stage | Action | Key point |
+| --- | --- | --- |
+| Verify/unpack | Verify archives/inventory and unpack independently | Revalidate completed extraction before reuse |
+| Resolve/preflight | Confirm context, Registry, tools and settings | Never use the default cluster; namespace defaults to nico-system |
+| Import | Push images with relok8s; publish and read back Helm OCI Charts | Import success does not establish node image pulls |
+| Freeze recipe | Generate site values, order and hashes | Do not edit generated files |
+| Optional PXEye | Bootstrap the UI through its own Helm Chart | false preserves existing PXEye |
+| Install NICo | cert-manager → platform → Vault → optional materials → Core | Each phase must pass; preserve original PVC identities |
 
-Command, once after installing the kit:
+## Prepare once
+
+Goal: provide the complete tools and one configuration. Requirements: Python 3.11+/PyYAML, kubectl, an available cluster/Registry and configured node image pulls. Helm/relok8s come with the large bundle.
+
+Copy the three files printed by step 2's `DELIVERY_FILES` to `/srv/nico/`, then run once:
 
 ```bash
-cp /srv/nico/nico-onsite-tools/tools/onsite/run-config.example.json /srv/nico/onsite-run.json
+cd /srv/nico
+sha256sum -c SHA256SUMS &&
+test ! -e onsite-tools &&
+test ! -e onsite-run.json &&
+tar -xzf onsite-tools.tar.gz &&
+cp onsite-tools/tools/onsite/run-config.example.json onsite-run.json &&
+${EDITOR:-vi} onsite-run.json
 ```
 
-Confirmation:
+Maintain only `onsite-run.json`:
 
-```bash
-python3 -m json.tool /srv/nico/onsite-run.json
-```
-
-Edit only this file:
-
-| Setting | Meaning |
+| Setting | Key rule |
 | --- | --- |
-| archive / checksums | Absolute delivery paths |
-| extract_directory / work_directory | Separate per-installation extraction and progress directories |
-| bootstrap_pxeye | false preserves existing PXEye; true installs it with Helm |
-| site.context | Explicit context recommended; null selects only a unique Kind context, never the default context |
-| site.namespace | Defaults to nico-system |
-| site.mode / release_prefix | restore selects the unique original Core release when prefix is null; new defaults to nico |
-| site.registry | URL null discovers one Registry V2 from cluster evidence; explicit URL resolves ambiguity. TLS defaults strict; configure a CA or explicitly skip verification. Authentication uses a protected Docker config directory |
-| site.service_ips / host_network | Restore reuses existing client service addresses/network; new sites require DNS/PXE/NTP IPv4 and network name/prefix/gateway/mtu |
-| site.storage_class | Optional site StorageClass |
-| site.publish_materials | Optional material service; consumer URLs still require separate review |
-| site.phase_values | Optional per-phase YAML paths; hashes are included in run identity |
+| archive / checksums | Absolute large-archive and checksum paths |
+| extract_directory / work_directory | Independent per-installation directories, created automatically |
+| site.context / namespace | Explicit context recommended; null allows only one Kind context; namespace defaults to nico-system |
+| site.mode / release_prefix | restore reuses the unique original Core release when prefix is empty; new is for fresh sites |
+| site.registry | Empty URL discovers one valid endpoint; configure CA/TLS policy and external authentication references |
+| site.service_ips / host_network | New sites require DNS/PXE/NTP IPv4 and network name/prefix/gateway/mtu; restore may reuse existing settings |
+| bootstrap_pxeye / site.publish_materials | Optional UI bootstrap and material service; both default false |
+| site.storage_class / phase_values | Optional storage and per-phase overrides; credentials remain protected-file references |
 
-The supplied configuration defaults to restore mode and preserves PXEye. Missing site information stops the relevant stage; do not use another site's addresses as generic defaults.
+The template defaults to **restore mode and preserving existing PXEye**. Fresh sites must change the mode/options/network. Preparation runs once; do not overwrite tools or configuration when resuming.
 
-## Run or resume
+## Run one script
 
-Goal: complete stages in dependency order. Any working directory is supported.
-
-Command (identical after a failure):
+Command, from any working directory; identical after failure:
 
 ```bash
-python3 /srv/nico/nico-onsite-tools/tools/onsite/run.py --config /srv/nico/onsite-run.json
+python3 /srv/nico/onsite-tools/tools/onsite/run.py --config /srv/nico/onsite-run.json
 ```
 
-Confirmation, with the template work directory:
+Confirmation: current `STAGE`, `DONE` / `FAILED`, then `ONSITE_COMPLETE`. No separate import/recipe/install commands or shell activation are needed.
 
-```bash
-cat /srv/nico/onsite/field-install-01/progress.json
-```
+## Recovery and logs
 
-Output identifies stages, completion, failures and reused work; success prints `ONSITE_COMPLETE`. No manual preflight/import/recipe/install sequence or shell activation is needed.
-
-Completed extraction and Charts are verified before reuse. Frozen recipes are checked. Installed Helm phases are rechecked for deployed state, health and original PVC identity, then skipped. Failed phases retry only when Helm is definitively failed or absent. Pending operations stop for operator investigation; the tool never force-unlocks, rolls back or deletes resources. A successful Helm operation interrupted before journaling is recovered only after matching the saved intent, Chart version, actual values, health and PVCs, avoiding repeated initialization.
-
-Resume is per stage, not at a file byte offset. Fix the actual problem and rerun; there is no infinite in-process retry loop. Changed configuration, checksum list, phase values or implementation requires a new work directory. Do not edit frozen/generated records. Do not install through the UI and CLI concurrently; older UI versions do not share this lock.
-
-## Logs and output
-
-Goal: inspect the failed stage and retained history.
-
-Commands:
+Inspect the failure, fix its cause and rerun the original command. Using template paths:
 
 ```bash
 tail -n 60 /srv/nico/onsite/field-install-01/run.log
-```
-
-Confirmation:
-
-```bash
 cat /srv/nico/onsite/field-install-01/progress.json
-ls /srv/nico/onsite/field-install-01/deployment/logs
 ```
 
-```text
-work_directory/
-  progress.json                    # atomic status, attempts, duration, error
-  events.jsonl                     # append-only stage history
-  run.log                          # appended terminal output
-  site-config.json                 # generated, frozen; do not edit
-  environment.sh                   # optional diagnostic activation
-  deployment/
-    state.json                     # Chart/Helm checkpoints and intent
-    timings.jsonl                  # command durations and exit codes
-    catalog.json
-    recipe/
-    logs/                          # appended attempt output and exit codes
-    private/                       # protected snapshots, values and Helm output
-```
+| Record | Purpose |
+| --- | --- |
+| work_directory/progress.json | Stage, status, attempts, duration and error |
+| events.jsonl / run.log | Appended execution history, including failures |
+| deployment/state.json | Chart/Helm checkpoints and installation intent |
+| deployment/logs/ and timings.jsonl | Command output and duration |
+| deployment/private/ | Protected snapshots, values and installation output |
 
-Files are permission restricted; credentials remain external references. Do not commit onsite state. Existing archives/images/PVCs remain; backend volume backup is optional, not part of this flow. Helm readiness is distinct from strict Core mTLS, material HTTP, physical DHCP/Scout and OS acceptance.
+Completed stages are verified before skipping. Failed/absent Helm releases may retry; pending operations stop for operator investigation, without automatic unlock or rollback. A successful operation interrupted before journaling is recovered only after checking saved intent, version, values, health and PVCs.
 
-For an example site context, explicit acceptance commands are:
+Changed inputs/configuration/implementation require a new work directory. Do not edit checkpoints or run UI and CLI installers concurrently. Recovery is per stage, not by byte offset.
 
-```bash
-kubectl --context kind-fireseed -n nico-system get deploy,sts,pods,jobs,pvc
-```
+`ONSITE_COMPLETE` means import and Helm readiness passed. Strict mTLS, material HTTP, physical DHCP/Scout and OS acceptance remain separate. The runner does not wipe data, recreate Kind, discover devices, write Redfish or install hosts.
 
-Confirmation:
-
-```bash
-cat /srv/nico/onsite/field-install-01/deployment/state.json
-```
-
-Manual `onsite.py` subcommands remain available for diagnosis. References: [NICo reference installation](https://docs.nvidia.com/infra-controller/documentation/getting-started/installation-options/reference-installation), [Helm OCI](https://helm.sh/docs/v3/topics/registries/). Checkpoint recovery is implemented by this project, not by the upstream NICo installer.
+References: [NICo reference installation](https://docs.nvidia.com/infra-controller/documentation/getting-started/installation-options/reference-installation), [Helm OCI](https://helm.sh/docs/v3/topics/registries/).

@@ -2,6 +2,8 @@
 
 **English** · [简体中文](CONFIGURE.zh-CN.md)
 
+> Legacy delivery workflow. Use the current [three-step flow](README.md) and [onsite runner](onsite/README.md).
+
 Part1 builds reusable materials. The deployment site supplies Registry, cluster and network settings. Initialization generates consistent Helm values, certificate identity references, RBAC, PXEye bootstrap resources and an executable deployment guide. It does not access Kubernetes/Registry, install services or modify source materials.
 
 ## 1. Select the materials and toolkit

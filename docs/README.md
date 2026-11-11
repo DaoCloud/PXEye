@@ -6,6 +6,7 @@ Public PXEye documentation is maintained in English and Simplified Chinese. Star
 
 | Document | English | 简体中文 | Purpose |
 | --- | --- | --- | --- |
+| Three-step offline delivery | [Read](../offline-build/README.md) | [阅读](../offline-build/README.zh-CN.md) | Material preparation, Helm packaging and resumable onsite deployment. |
 | Standalone offline build kit | [Read](../deliverables/nico-offline-build/README.md) | [阅读](../deliverables/nico-offline-build/README.zh-CN.md) | Copyable generic toolkit with scripts, explicit file config, templates and output layout; keep site configuration outside the repository. |
 | Complete offline bundle builder | [Read](../offline-build/README.md) | [阅读](../offline-build/README.zh-CN.md) | Reusable locked-input packaging, integrated Core compatibility fixes and field delivery gates. |
 | Onsite offline initialization | [Read](../offline-build/CONFIGURE.md) | [阅读](../offline-build/CONFIGURE.zh-CN.md) | Supply site parameters after building, reuse existing large materials and generate the deployment guide. |

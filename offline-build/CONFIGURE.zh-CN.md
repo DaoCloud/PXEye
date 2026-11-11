@@ -2,6 +2,8 @@
 
 [English](CONFIGURE.md) · **简体中文**
 
+> 历史流程：本页用于旧交付件；当前推荐[三步流程](README.zh-CN.md)和[第三步单入口](onsite/README.zh-CN.md)。
+
 第一部分只构建通用材料包。现场才确定Registry、集群及网络参数；本工具一次性生成一致的Helm values、证书身份引用、RBAC、PXEye启动清单及可执行部署手册。初始化本身不访问Registry/Kubernetes，不安装服务、不修改原始材料。
 
 ## 1. 选择材料与工具

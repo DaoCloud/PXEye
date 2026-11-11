@@ -14,6 +14,7 @@ from pathlib import Path
 import platform
 import re
 import shutil
+import shlex
 import subprocess
 import sys
 import tarfile
@@ -280,6 +281,7 @@ def write_result(c, output, fingerprint, action):
     b.dump(output.parent / (output.name + '.result.json'), {'prepared': str(output), 'fingerprint': fingerprint, 'action': action, 'helm_config': str(path)})
     print('MATERIAL_PREPARE_COMPLETE', output, flush=True)
     print('HELM_BUILD_CONFIG', path, flush=True)
+    print('NEXT_COMMAND', shlex.join(['python3', str(HOME.parent / 'helm-bundle/build.py'), '--config', str(path)]), flush=True)
 
 
 def main():

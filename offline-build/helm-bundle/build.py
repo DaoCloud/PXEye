@@ -671,14 +671,25 @@ def build(config, args, progress=None):
             logs = stage / 'logs'; logs.mkdir(exist_ok=True)
             for path in (stage / '.work').glob('*.log'):
                 shutil.copyfile(path, logs / path.name)
+            with progress.stage('07-onsite-tools', 'Export the small onsite runner kit'):
+                kit = stage / 'onsite-tools'
+                # Only this staging directory's generated helper kit is refreshed.
+                if kit.exists(): shutil.rmtree(kit)
+                for path in (stage / 'onsite-tools.tar.gz', stage / 'onsite-tools.tar.gz.sha256'):
+                    path.unlink(missing_ok=True)
+                command([sys.executable, REPO / 'offline-build/onsite/export.py', '--output', kit], logs / 'onsite-tools.log')
+                kit_digest = b.sha(stage / 'onsite-tools.tar.gz')
+                b.write(stage / 'SHA256SUMS', digest + '  bundle.tar.gz\n' + kit_digest + '  onsite-tools.tar.gz\n')
             b.dump(stage / 'build-result.json', {'version': version, 'source_revision': revision,
                 'archive_bytes': (stage / 'bundle.tar.gz').stat().st_size, 'archive_sha256': digest,
-                'distinct_images': len(image_records), 'charts': len(packages), 'cold_install_tested': False})
+                'distinct_images': len(image_records), 'charts': len(packages), 'cold_install_tested': False,
+                'onsite_tools_archive_sha256': kit_digest})
             progress.complete()
             stage.rename(output)
             shutil.rmtree(output / '.work')
             shutil.rmtree(output / '.charts')
             print('HELM_BUILD_COMPLETE', output, flush=True)
+            print('DELIVERY_FILES', output / 'bundle.tar.gz', output / 'onsite-tools.tar.gz', output / 'SHA256SUMS', flush=True)
         except BaseException:
             print('HELM_BUILD_FAILED; staging retained at', stage, flush=True)
             raise
@@ -720,7 +731,9 @@ def run_build(config, args):
                 verify(final / 'bundle')
                 result = json.loads((final / 'build-result.json').read_text())
                 b.require(b.sha(final / 'bundle.tar.gz') == result['archive_sha256'], 'Completed archive changed')
+                b.require(b.sha(final / 'onsite-tools.tar.gz') == result['onsite_tools_archive_sha256'], 'Completed onsite kit changed')
                 print('HELM_BUILD_REUSED', final, flush=True)
+                print('DELIVERY_FILES', final / 'bundle.tar.gz', final / 'onsite-tools.tar.gz', final / 'SHA256SUMS', flush=True)
             return
         progress = Progress(directory, identity)
         if not args.check_inputs: atomic_json(pointer, {'version': args.version})
