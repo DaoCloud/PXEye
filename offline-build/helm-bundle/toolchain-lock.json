@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "platform": "linux/amd64",
+  "registry_image": "docker.io/library/registry:2.8.3@sha256:46faa9a1ae6813194b53921a370f2f4f8c5e1aae228a89bceafef5847a6a3278",
+  "relok8s": {
+    "version": "0.5.4",
+    "source_revision": "b7bce08aba4137ff8b1e95c15614c1b78ff3c224",
+    "release_url": "https://github.com/vmware-tanzu/asset-relocation-tool-for-kubernetes/releases/download/v0.5.4",
+    "asset": "relok8s_0.5.4_linux_x86_64.tar.gz",
+    "archive_sha256": "2015d211cb33cb0ba417aa6b651abf347507183c37dcd90ada3a5a64f33b50a9"
+  }
+}

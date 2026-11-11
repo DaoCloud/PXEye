@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "materials_bundle": "/srv/nico-input/materials-bundle",
+  "output_root": "/srv/nico-output/helm-bundles",
+  "bundle_id": "pxeye-nico-offline",
+  "include": {
+    "aarch64": true,
+    "bfb": true,
+    "apt": true
+  },
+  "tools": {
+    "docker": "docker",
+    "helm": "helm",
+    "relok8s": null
+  }
+}

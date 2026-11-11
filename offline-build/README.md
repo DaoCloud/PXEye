@@ -4,6 +4,8 @@
 
 I perform these steps on a Linux build machine. Building locks materials and versions without knowing the target Registry, IPs, gateway or Kubernetes details. Onsite initialization and deployment are covered in [Part 2](CONFIGURE.md). The pinned profile contains NICo e703126e4, official Charts and compatibility patches for one Podman Kind node and single-replica Core, without REST/Temporal/Keycloak. It assembles existing images; it does not compile NICo or build PXEye images.
 
+For the new Helm/relok8s delivery format, use [the one-command Helm builder](helm-bundle/README.md). It consumes this builder’s verified generic materials bundle; the old schema4 format remains supported.
+
 ## Step 1: I check the build machine
 
 Goal: confirm the host, dependencies and available storage before building. All commands run as root in the same Bash terminal on the build machine, initially from any directory. The three input paths must contain prepared materials. Set the same environment variables before this section to override the default paths.

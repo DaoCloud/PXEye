@@ -4,6 +4,8 @@
 
 我在一台Linux构建机上完成以下步骤。构建只确定材料和版本，不需要目标现场Registry、IP、网关或Kubernetes信息。现场初始化与部署另见[第二部分](CONFIGURE.zh-CN.md)。本配方固定NICo e703126e4、官方Chart及兼容补丁，为单节点Podman Kind/单副本Core准备材料，不包含REST/Temporal/Keycloak；不编译NICo或构建PXEye镜像。
 
+新的Helm/relok8s离线交付格式使用[一键Helm构建入口](helm-bundle/README.zh-CN.md)，输入为本构建器已验收的通用材料包；原schema4格式继续保留。
+
 ## 第一步：我检查构建机的条件
 
 主要目标：我确认机器、工具和空间，避免构建中途才发现依赖缺失。本文件所有命令均在构建机root的同一个Bash终端执行；此时工作目录任意。下列三个输入路径必须指向事先准备好的材料；已有环境可以在执行本节前设置同名环境变量覆盖默认路径。
