@@ -471,8 +471,40 @@ def load_plan(document, config):
         {'source': 'offline-build/build-config.example.json', 'target': 'build-config.example.json'}]
     if generic:
         toolkit += [{'source': 'offline-build/' + name, 'target': name} for name in ('generic.py', 'configure.py', 'site-config.example.json', 'CONFIGURE.md', 'CONFIGURE.zh-CN.md')]
+        for name in ('materials-lock.json', 'refresh-lock.py'):
+            row = {'source': 'offline-build/' + name, 'target': name}
+            if row in files['toolkit']:
+                toolkit.append(row)
     require(files['toolkit'] == toolkit, 'Unsupported toolkit files')
     return files
+
+
+def expand_configuration(document):
+    """Keep user paths/options separate from the versioned machine-managed lock."""
+    if document.get('schema_version') != 4:
+        return document
+    require(set(document) == {'schema_version', 'build', 'package', 'include'}, 'Schema 4 contains only build/package/include')
+    require(set(document['package']) == {'bundle_id', 'ui_archive', 'bootstrap_archive'}, 'Invalid package fields')
+    include = document['include']
+    require(set(include) == {'dpu', 'history'} and all(type(v) is bool for v in include.values()), 'include.dpu/history must be booleans')
+    lock = json.loads((BUILD_HOME / 'materials-lock.json').read_text())
+    require(set(lock) == {'schema_version', 'profile', 'images', 'files'} and lock['schema_version'] == 1, 'Invalid materials lock')
+    require(lock['profile'] == 'e703126e4-core-single-node' and set(lock['images']) == {'ui', 'bootstrap'}, 'Unsupported material profile')
+    files = lock['files']
+    def selected(row):
+        if row['role'] != 'material':
+            return True
+        if row['source'].startswith('source/'):
+            return include['history']
+        if row['source'].startswith(('dpu/', 'http/nico/dpu/')):
+            return include['dpu']
+        return True
+    files['inputs'] = [row for row in files['inputs'] if selected(row)]
+    package = {'bundle_id': document['package']['bundle_id']}
+    for purpose in ('ui', 'bootstrap'):
+        require(set(lock['images'][purpose]) == {'tag', 'digest'}, 'Invalid locked image metadata')
+        package[purpose] = {'archive': document['package'][purpose + '_archive'], **lock['images'][purpose]}
+    return {'schema_version': 3, 'build': document['build'], 'package': package, 'files': files}
 
 
 def print_plan(plan, config, source):
@@ -523,11 +555,29 @@ def main():
     p.add_argument('--helm', default=shutil.which('helm'))
     p.add_argument('--verify', type=Path)
     p.add_argument('--plan', action='store_true', help='List every input and output without reading large inputs or building')
+    p.add_argument('--check-inputs', action='store_true', help='Check selected input sizes, required hashes and dependencies without building')
+    p.add_argument('--write-config', type=Path, help='Create a new small configuration from path arguments')
+    p.add_argument('--output-root', type=Path)
+    p.add_argument('--ui-archive', type=Path)
+    p.add_argument('--bootstrap-archive', type=Path)
+    p.add_argument('--include-history', action='store_true')
+    p.add_argument('--without-dpu', action='store_true')
     a = p.parse_args()
+    if a.write_config:
+        require(not a.write_config.exists(), 'Configuration already exists; choose a new path')
+        require(all((a.source_bundle, a.output_root, a.ui_archive, a.bootstrap_archive)), 'Provide --source-bundle/--output-root/--ui-archive/--bootstrap-archive')
+        document = json.loads((BUILD_HOME / 'build-config.example.json').read_text())
+        require(document['schema_version'] == 4, 'Use the current small configuration template')
+        document['build'] = {'source_bundle': str(a.source_bundle.resolve()), 'output_root': str(a.output_root.resolve())}
+        document['package'].update(ui_archive=str(a.ui_archive.resolve()), bootstrap_archive=str(a.bootstrap_archive.resolve()))
+        document['include'] = {'dpu': not a.without_dpu, 'history': a.include_history}
+        dump(a.write_config, document)
+        print('BUILD_CONFIG_CREATED', a.write_config)
+        return
     if a.verify:
         verify(a.verify.resolve());return
     require(a.config, '--config is required')
-    document = json.loads(a.config.read_text())
+    document = expand_configuration(json.loads(a.config.read_text()))
     if document.get('schema_version') == 3:
         from generic import build_generic
         build_generic(a, document)

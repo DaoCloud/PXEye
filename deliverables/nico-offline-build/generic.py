@@ -119,6 +119,10 @@ def build_generic(args, document):
         print('MODE materials-only;现场参数不参与构建')
         b.print_plan(plan, config, source)
         return
+    if args.check_inputs:
+        b.verify_declared_inputs(plan, config, source)
+        print('INPUTS_READY', 'files=' + str(len(plan['inputs'])), 'full_content_hashes_are_verified_during_build', flush=True)
+        return
     b.require(args.helm, 'Helm 3 is required for build-time render validation')
     version = args.version or datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
     b.require(re.fullmatch(r'[A-Za-z0-9._-]{1,100}', version), 'Unsafe build version')
