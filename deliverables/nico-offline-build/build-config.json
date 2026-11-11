@@ -1,0 +1,1122 @@
+{
+  "schema_version": 2,
+  "build": {
+    "source_bundle": "/srv/nico-input/base-bundle",
+    "output_root": "/srv/nico-output"
+  },
+  "site": {
+    "bundle_id": "nico-core-field",
+    "site_name": "NICo lab",
+    "namespace": "nico-system",
+    "release_prefix": "nico",
+    "registry": "registry.example.invalid:5000",
+    "repository_prefix": "nico-offline",
+    "service_cidr": "10.96.0.0/12",
+    "service_ips": {
+      "dns": "10.96.40.10",
+      "pxe": "10.96.40.11",
+      "ntp": "10.96.40.12"
+    },
+    "host_network": {
+      "name": "host_boot",
+      "prefix": "192.0.2.0/24",
+      "gateway": "192.0.2.1",
+      "mtu": 1500
+    },
+    "bundle_host_path": "/home/kind/nico-bundles",
+    "node_port": 31808,
+    "ui": {
+      "archive": "/srv/nico-input/pxeye-ui.oci.tar",
+      "source_image": "registry.example.invalid:5000/nico/pxeye:0.22.16-73b8236",
+      "tag": "0.22.16-73b8236",
+      "digest": "sha256:229c5053944b074759d064a5cc70093815dc2c07bcc28855396d797ce3cc8e56"
+    },
+    "bootstrap": {
+      "archive": "/srv/nico-input/pxeye-bootstrap.oci.tar",
+      "source_image": "registry.example.invalid:5000/nico/pxeye:0.22.13-9dbcff8",
+      "tag": "0.22.13-9dbcff8",
+      "digest": "sha256:9699795bf6c427bae0828406493ba7cc6721664f308e1ce6cb3fafbe41c8c09b"
+    },
+    "context": "kind-lab",
+    "kind_node": "lab-control-plane"
+  },
+  "files": {
+    "inputs": [
+      {
+        "role": "base_images",
+        "root": "bundle",
+        "source": "images/nico-amd64.oci.tar",
+        "target": "images/nico-amd64.oci.tar",
+        "bytes": 8797296640,
+        "sha256": "67a36d111080860e3b4e98ecd48e5c83557d437f3472643cb344c12fab965a5e"
+      },
+      {
+        "role": "image_lock",
+        "root": "bundle",
+        "source": "manifests/images-lock.json",
+        "target": "manifests/images-lock.json",
+        "bytes": 8732,
+        "sha256": "d8bd3d0100c47e44ea86f8eb45c05a80dc11306d41f50463dbf4ae0ae06f5306"
+      },
+      {
+        "role": "nico_chart",
+        "root": "bundle",
+        "source": "charts/nico-0.1.1.tgz",
+        "target": "deployment/charts/nico-0.1.1.tgz",
+        "bytes": 201176,
+        "sha256": "9e38837fcd7305ffd5e060ba18e973794388d3b0f83363b7903a21d3ae94ad67"
+      },
+      {
+        "role": "cert_manager_chart",
+        "root": "bundle",
+        "source": "charts/cert-manager-v1.17.1.tgz",
+        "target": "deployment/charts/cert-manager-v1.17.1.tgz",
+        "bytes": 137814,
+        "sha256": "48707f6e8937290da96065dc7de8b4f5a95d9707798d4b5a0d560f78c12996f7"
+      },
+      {
+        "role": "ui",
+        "root": "site",
+        "source": "ui.archive",
+        "target": "images/pxeye-@{ui_tag}.oci.tar",
+        "bytes": 226609664,
+        "sha256": "a2362c8fe7ca5532a093bfb14d1fa83946df30c928ca2af977aa620209cdc12d"
+      },
+      {
+        "role": "bootstrap",
+        "root": "site",
+        "source": "bootstrap.archive",
+        "target": "images/pxeye-@{bootstrap_tag}.oci.tar",
+        "bytes": 223624704,
+        "sha256": "5bfcd9dcda9707f9cb00bcf8a7b01365b47fa54cc0af960c9f8a5239dd7370f6"
+      },
+      {
+        "role": "tool_helm",
+        "root": "bundle",
+        "source": "tools/helm",
+        "target": "tools/helm",
+        "bytes": 59715768,
+        "sha256": "84d06a0f5ba17fd9c4d9912613453cdaa95a4f59c8baf20c195b74310b009ea6"
+      },
+      {
+        "role": "tool_cli",
+        "root": "bundle",
+        "source": "tools/nico-admin-cli",
+        "target": "tools/nico-admin-cli",
+        "bytes": 208227960,
+        "sha256": "771a35dff882a03d0b50f83d2953737b78d340a6a7f4155ee1553894e4c2ee83"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "boot/SHA256SUMS",
+        "target": "boot/SHA256SUMS",
+        "bytes": 1843,
+        "sha256": "9cf32d74d5e550089466467c5b4e92322b2694e40c7154011b780c450b04005c"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "boot/aarch64/BUILD-INFO.json",
+        "target": "boot/aarch64/BUILD-INFO.json",
+        "bytes": 1191,
+        "sha256": "4582658be57c49fe3bc35d63cc04033a25939f7701af2be3e5e815b92ff56d5b"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "boot/aarch64/ROOTFS-PACKAGES.json",
+        "target": "boot/aarch64/ROOTFS-PACKAGES.json",
+        "bytes": 65836,
+        "sha256": "e8ecd06c1fe3f631936316f1f7a62815fbd09397c44f6a095ee0140a875226af"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "boot/aarch64/golan.efi",
+        "target": "boot/aarch64/golan.efi",
+        "bytes": 425472,
+        "sha256": "c666a5545878970da003623bb6d060873a43a408c6fe3f3691d8a760ef720355"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "boot/aarch64/ipxe.efi",
+        "target": "boot/aarch64/ipxe.efi",
+        "bytes": 380928,
+        "sha256": "94bfeebecd857c123ca050ac3ea9426dc5079fcaf47b4a5987d2e3888691f2c1"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "boot/aarch64/scout.efi",
+        "target": "boot/aarch64/scout.efi",
+        "bytes": 229019648,
+        "sha256": "28e2ab2b8a8814c6558ea3d3d671931a1bd6473370d6e061b44a7c9e0340a1ac"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "boot/aarch64/scout.squashfs",
+        "target": "boot/aarch64/scout.squashfs",
+        "bytes": 2636091392,
+        "sha256": "e5cbdf8bf6daa52b663cad0d6e86f0cf584c9ba06d5d442a6d8b111774b0447b"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "boot/apt/dists/focal/Release",
+        "target": "boot/apt/dists/focal/Release",
+        "bytes": 579,
+        "sha256": "d233194a34836530b3f4f167a02cba3112134097abcfb4f6a6813405518ced26"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "boot/apt/dists/focal/main/binary-amd64/Packages",
+        "target": "boot/apt/dists/focal/main/binary-amd64/Packages",
+        "bytes": 470,
+        "sha256": "2cfa4c3124141fb2f9f6fff53bff5d9f5a2d15e1aee6de11931d100f887c3607"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "boot/apt/dists/focal/main/binary-amd64/Release",
+        "target": "boot/apt/dists/focal/main/binary-amd64/Release",
+        "bytes": 95,
+        "sha256": "44fa689d816504f1c9ba27b08d46f25a4897a4f21ced7921f5a8530e32ce0b60"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "boot/apt/dists/focal/main/binary-arm64/Packages",
+        "target": "boot/apt/dists/focal/main/binary-arm64/Packages",
+        "bytes": 382,
+        "sha256": "47212e33c6a2eff9d8987cbf4f31872439bc9a767202c1f120ea17d7f242bf0f"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "boot/apt/dists/focal/main/binary-arm64/Release",
+        "target": "boot/apt/dists/focal/main/binary-arm64/Release",
+        "bytes": 65,
+        "sha256": "31c7758d18620f4e6d19ad231dc24b046c101ddebcbf16f4117785bed27f5e8a"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "boot/apt/pool/base/f/forge-scout/forge-scout_2.5.0-pr-260-ge703126e4_amd64.deb",
+        "target": "boot/apt/pool/base/f/forge-scout/forge-scout_2.5.0-pr-260-ge703126e4_amd64.deb",
+        "bytes": 12540476,
+        "sha256": "6ff41c4c82072cac6de5815baa7a5b6b1cc50f784c0c13167c8951c616244071"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "boot/apt/pool/base/f/forge-scout/forge-scout_2.5.0-pr-260-ge703126e4_arm64.deb",
+        "target": "boot/apt/pool/base/f/forge-scout/forge-scout_2.5.0-pr-260-ge703126e4_arm64.deb",
+        "bytes": 11181060,
+        "sha256": "2448c008c4f6721255d3d332d4ad291fde0f469d8fab78058a305f17b739f1ce"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "boot/mmzhou-build-info.json",
+        "target": "boot/mmzhou-build-info.json",
+        "bytes": 863,
+        "sha256": "a4e9c436c0290814372716d5df8fd863ec14a97e7e234e0d8d4270e0e2f74e9a"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "boot/x86_64/golan.efi",
+        "target": "boot/x86_64/golan.efi",
+        "bytes": 393216,
+        "sha256": "321eec7ae1e83510ad76fd06fc12ce83c6a8116194936064ea65d141af188685"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "boot/x86_64/ipxe.efi",
+        "target": "boot/x86_64/ipxe.efi",
+        "bytes": 352256,
+        "sha256": "70c046626a62273c52ddd30ec1bea3f535f6c1ff9d2df06b5dee3e00744894c4"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "boot/x86_64/qcow-imager.efi",
+        "target": "boot/x86_64/qcow-imager.efi",
+        "bytes": 155794432,
+        "sha256": "4dd45e7b81944ad2101fa6ff785d1610574442150154b1eb1f30b8dc30cb55a5"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "boot/x86_64/scout.efi",
+        "target": "boot/x86_64/scout.efi",
+        "bytes": 77382144,
+        "sha256": "4e3cc1f3c8e5ff361934f4032a7d15d4459c51724e4589cbdb7eba9366f64e5c"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "boot/x86_64/scout.squashfs",
+        "target": "boot/x86_64/scout.squashfs",
+        "bytes": 1918038016,
+        "sha256": "ddb6d17e16f008b69afcb2894a6707f55ecb08e54567196936445fea049f8f18"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "dpu/dpf-v26.4.0/README.md",
+        "target": "dpu/dpf-v26.4.0/README.md",
+        "bytes": 2197,
+        "sha256": "2ce37eb511563c89117ef54ad342a404fb7339e20b3e78ad8a9d2c24d9ac1be0"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "dpu/dpf-v26.4.0/SHA256SUMS",
+        "target": "dpu/dpf-v26.4.0/SHA256SUMS",
+        "bytes": 1332,
+        "sha256": "d401d3a23ac3d3dcde9ed679718c622aa701cb62ff9746105485f1575ab0b06e"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "dpu/dpf-v26.4.0/charts/argo-cd-9.4.1.tgz",
+        "target": "dpu/dpf-v26.4.0/charts/argo-cd-9.4.1.tgz",
+        "bytes": 218532,
+        "sha256": "b281c349053e1de4c773977e3644e5b71ba8fee5f14e260085e496e96217bf10"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "dpu/dpf-v26.4.0/charts/doca-hbn-3.4.0.tgz",
+        "target": "dpu/dpf-v26.4.0/charts/doca-hbn-3.4.0.tgz",
+        "bytes": 4708,
+        "sha256": "5f674fa8a713bf8b6915685a008bdbe36d35c19f5391ffad78ecfea948fe5308"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "dpu/dpf-v26.4.0/charts/doca-telemetry-1.25.5.tgz",
+        "target": "dpu/dpf-v26.4.0/charts/doca-telemetry-1.25.5.tgz",
+        "bytes": 5964,
+        "sha256": "fb3737727e48a3ccd9f1c57579a105608eba924a392ef044d9e120e2696e790d"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "dpu/dpf-v26.4.0/charts/dpf-operator-v26.4.0.tgz",
+        "target": "dpu/dpf-v26.4.0/charts/dpf-operator-v26.4.0.tgz",
+        "bytes": 102855,
+        "sha256": "0f9a18a0d64958e2f1769bdb468a46ad65e0ea485dadb86cad9e6457b3cec69a"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "dpu/dpf-v26.4.0/charts/kamaji-1.2.0.tgz",
+        "target": "dpu/dpf-v26.4.0/charts/kamaji-1.2.0.tgz",
+        "bytes": 80578,
+        "sha256": "43ab7711f8ea49dd3a9b3b587585dd1769b5cc5591232d91f940b4a02be3322a"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "dpu/dpf-v26.4.0/charts/maintenance-operator-chart-0.3.0.tgz",
+        "target": "dpu/dpf-v26.4.0/charts/maintenance-operator-chart-0.3.0.tgz",
+        "bytes": 8578,
+        "sha256": "2dabc4e1ddbb4119ea2235b79a43362511cf39ca2146458b8b66d4c2c008d8db"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "dpu/dpf-v26.4.0/charts/node-feature-discovery-chart-0.18.3.tgz",
+        "target": "dpu/dpf-v26.4.0/charts/node-feature-discovery-chart-0.18.3.tgz",
+        "bytes": 14939,
+        "sha256": "0cb59bd70444d3d426ffd53fd242ae433118d7ebb9d2ad32d3db99be8a523e16"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "dpu/dpf-v26.4.0/images/doca-hbn-3.4.0.oci.tar",
+        "target": "dpu/dpf-v26.4.0/images/doca-hbn-3.4.0.oci.tar",
+        "bytes": 286858752,
+        "sha256": "85089863e91136a8f29ce86949d8e5abb4f7821e1a40893b3489ba2548124848"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "dpu/dpf-v26.4.0/images/doca-telemetry-1.25.5.oci.tar",
+        "target": "dpu/dpf-v26.4.0/images/doca-telemetry-1.25.5.oci.tar",
+        "bytes": 272436736,
+        "sha256": "c38755f0e90c2b0b79ed43757279a00372dd937d25678ec21dda27620ae79f0a"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "dpu/dpf-v26.4.0/images/dpf-system-v26.4.0.oci.tar",
+        "target": "dpu/dpf-v26.4.0/images/dpf-system-v26.4.0.oci.tar",
+        "bytes": 432294912,
+        "sha256": "806d9328f84c46216d0ad5718791d105463de4a3029e56d6a6f4f7e7368bd735"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "dpu/dpf-v26.4.0/manifest.json",
+        "target": "dpu/dpf-v26.4.0/manifest.json",
+        "bytes": 9275,
+        "sha256": "3fc17346457efaf48551d74a0da080be1144b0b5818436d62e9425cd99d0e39e"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "dpu/dpf-v26.4.0/metadata/bf3-bfb-upstream.json",
+        "target": "dpu/dpf-v26.4.0/metadata/bf3-bfb-upstream.json",
+        "bytes": 685,
+        "sha256": "6e7b11b879f327346e22c52b807077536850fa4d6baedef67e4a623c1aa58c76"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "dpu/dpf-v26.4.0/metadata/dpf-system-fetch.log",
+        "target": "dpu/dpf-v26.4.0/metadata/dpf-system-fetch.log",
+        "bytes": 8600593,
+        "sha256": "58e21134c0cdde257ae99c9b8846d649442c3ce319d9c1b2961a4fe8dfd071e4"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "dpu/dpf-v26.4.0/metadata/image-platforms.json",
+        "target": "dpu/dpf-v26.4.0/metadata/image-platforms.json",
+        "bytes": 192,
+        "sha256": "27ffa16cf1607ff2caf4c707271801fd8cb8807422dd19602610b92a6594a85e"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "dpu/dpf-v26.4.0/metadata/images.json",
+        "target": "dpu/dpf-v26.4.0/metadata/images.json",
+        "bytes": 1669,
+        "sha256": "5499f583c540b1e93ead2aeeb0daf2f1318e0312d8f9e72b08fa50e6c90cb207"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "dpu/dpf-v26.4.0/source/doca-platform-8551df0d3ac4ed51a67d4a5148a7646493a30e10.tar.gz",
+        "target": "dpu/dpf-v26.4.0/source/doca-platform-8551df0d3ac4ed51a67d4a5148a7646493a30e10.tar.gz",
+        "bytes": 11170830,
+        "sha256": "c6bc23ac52985f92de7cb9723e6134528ab3a60d1c095b66e18dc2f9ed1e008f"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "dpu/dpf-v26.4.0/source/nico-dpu-service-charts-e703126e4.tar.gz",
+        "target": "dpu/dpf-v26.4.0/source/nico-dpu-service-charts-e703126e4.tar.gz",
+        "bytes": 44255,
+        "sha256": "db289981017f237c88aa7d7960bac338f607c7c906b5ffc26efe2c56c78485cd"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "dpu/dpf-v26.4.0/tools/dpfctl-linux-amd64",
+        "target": "dpu/dpf-v26.4.0/tools/dpfctl-linux-amd64",
+        "bytes": 55980216,
+        "sha256": "076461f113d2fe2dc40ff3726b6760f3a0796b32313a10ce9e14f694f852a6c6"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "http/nico/dpu/bf3-doca3.4.0-26.04/SHA256SUMS",
+        "target": "http/nico/dpu/bf3-doca3.4.0-26.04/SHA256SUMS",
+        "bytes": 117,
+        "sha256": "f54e9ab3372f38957cd83cc9f71ce5777a6152fd76491304bcb68f162efc55bd"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "http/nico/dpu/bf3-doca3.4.0-26.04/bf-bundle-3.4.0-92_26.04_ubuntu-24.04_64k_prod.bfb",
+        "target": "http/nico/dpu/bf3-doca3.4.0-26.04/bf-bundle-3.4.0-92_26.04_ubuntu-24.04_64k_prod.bfb",
+        "bytes": 1556838472,
+        "sha256": "691173d8fa6926f79549683ce885347fdf0eee686b3eb54bd176af7b078bf8d1"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/20261107170813_staged_interface_address.sql",
+        "target": "source/20261107170813_staged_interface_address.sql",
+        "bytes": 897,
+        "sha256": "7ab3a53bd80b4efb7e70fab489c1e7db313bd6c8e5efadb624dc265af31b16d6"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/bmc-redfish-20261107/Dockerfile",
+        "target": "source/bmc-redfish-20261107/Dockerfile",
+        "bytes": 2219,
+        "sha256": "12ae03653acf6e2a7d1526a655b2fe1c79b0b75924af808fe7826badf5dd5ac5"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/boot-build/Dockerfile.cross",
+        "target": "source/boot-build/Dockerfile.cross",
+        "bytes": 1002,
+        "sha256": "3485ebd1cde603531d54e71f1e830a28e2df75eb747d6d0a5a13270e63a6f3be"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/boot-build/Dockerfile.pxe-builder",
+        "target": "source/boot-build/Dockerfile.pxe-builder",
+        "bytes": 1856,
+        "sha256": "ad99d1e06cd51a54cb14c4809b6499c5f032df5ed89f9a918fbbbf27597de453"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/boot-build/build-adaptation.diff",
+        "target": "source/boot-build/build-adaptation.diff",
+        "bytes": 1433,
+        "sha256": "d067ffc320c500241206f45927ca2b71de0f8ec4db24dddacba7d0881f56d632"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/boot-build/build-arm-loader.sh",
+        "target": "source/boot-build/build-arm-loader.sh",
+        "bytes": 1022,
+        "sha256": "37d295684408f12367f0200e100e2a9b7a1b172367dab9ac04c4a56015189024"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/boot-build/build-arm-rootfs.sh",
+        "target": "source/boot-build/build-arm-rootfs.sh",
+        "bytes": 779,
+        "sha256": "7b84bbb38efdf6b02490d898a489715aa08f140118eb26a7227b4c6e7e90214f"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/boot-build/extend-build-wait.py",
+        "target": "source/boot-build/extend-build-wait.py",
+        "bytes": 2032,
+        "sha256": "7abf8dc069587f2d2de79d64cd2aac5971d620fe2cf6d1dc4d214b0c82f16ba0"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/boot-build/inspect-arm-rootfs.py",
+        "target": "source/boot-build/inspect-arm-rootfs.py",
+        "bytes": 4267,
+        "sha256": "19c98e2c4dfc31287aa03fb48e244e2c2076ae10ee7c4461b4fcfdc4389b43e0"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/boot-build/package-arm-scout.sh",
+        "target": "source/boot-build/package-arm-scout.sh",
+        "bytes": 682,
+        "sha256": "01aaaadfd7be06ceab4015eec8da58c4d3755cf2963a953235abe9225a86834d"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/boot-build/patch-nvidia-arm-profile.py",
+        "target": "source/boot-build/patch-nvidia-arm-profile.py",
+        "bytes": 2022,
+        "sha256": "51b29972df0ece7f49fdfa38bfce3694f7bb8e5c88142be26263771d316b81c4"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/boot-build/prepare-arm-source.py",
+        "target": "source/boot-build/prepare-arm-source.py",
+        "bytes": 1073,
+        "sha256": "821c8faf3fe9d3e67c495fb45062e726bd5e688ae3b64c40a5bc62166862b418"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/boot-build/update-scout-apt.py",
+        "target": "source/boot-build/update-scout-apt.py",
+        "bytes": 1384,
+        "sha256": "15c2028606f60afbec404b9cdd6faabbb8118d1d893143511147f68d9ce4ad87"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/core-build-source-r2.tar.gz",
+        "target": "source/core-build-source-r2.tar.gz",
+        "bytes": 15667242,
+        "sha256": "987b958c890a7e0d941c8828f126acf018a46c44a3e873a46d7c5027811ab9a7"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/core-runtime/carbide-api",
+        "target": "source/core-runtime/carbide-api",
+        "bytes": 571153200,
+        "sha256": "189ed19c01682f4055ca4525c5c7fd808b2c65a96e7ae3a152c71d20418574a2"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/grace-arm64-build-source.tar.gz",
+        "target": "source/grace-arm64-build-source.tar.gz",
+        "bytes": 37623381,
+        "sha256": "4883a735f3914a86bd38367c0587ce1c1d61e099a2effbed4e1484be92f993d6"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/libredfish-build-source.tar.gz",
+        "target": "source/libredfish-build-source.tar.gz",
+        "bytes": 334871,
+        "sha256": "62c9bf95d108c6a8f910a3f993fde7e70c6a1b86ff0624009f91ff3cd664c474"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/nico-customizations.patch",
+        "target": "source/nico-customizations.patch",
+        "bytes": 29057,
+        "sha256": "8dcc95f85485d827ae85145b44f1fcfe4ab1c921ff0ccfd624de7b1b872105be"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/nico-upstream-e703126e4.tar.gz",
+        "target": "source/nico-upstream-e703126e4.tar.gz",
+        "bytes": 49993174,
+        "sha256": "c1b2a7b02793b6702b83f9d39b78510acdd15139b4d1203ae83705c7cbfb3da5"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/accept_config.py",
+        "target": "source/ui-runtime/accept_config.py",
+        "bytes": 2772,
+        "sha256": "b5eb6060ee35863c9387957afaf5997d25ca6d5f2c4455eba12f4101caeb2673"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/accept_host.py",
+        "target": "source/ui-runtime/accept_host.py",
+        "bytes": 10604,
+        "sha256": "07bbb37fffb71d21744bbabb32c58441191509d1a3e18d5921d67abcde6782b8"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/adapter.py",
+        "target": "source/ui-runtime/adapter.py",
+        "bytes": 34661,
+        "sha256": "721b300310a79d5cc5ce65889e8be6350a6ac9ffb18374c9817fc748c749ea1b"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/apt_preflight.py",
+        "target": "source/ui-runtime/apt_preflight.py",
+        "bytes": 4219,
+        "sha256": "b79b93056d1165bf468ac0227141d26ba82a9c4199771b3a2cae42b4c7e565b9"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/bmc_addresses.py",
+        "target": "source/ui-runtime/bmc_addresses.py",
+        "bytes": 11361,
+        "sha256": "c43dc92488bea0e5113018947886d305731029e22e390162c1d178c91940e3f4"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/bmc_redfish.py",
+        "target": "source/ui-runtime/bmc_redfish.py",
+        "bytes": 19548,
+        "sha256": "1c5ed8c59136a2de8a6c15ddc4b9288ac0463d7375b9d342efaee35e42b3a839"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/boot_control.py",
+        "target": "source/ui-runtime/boot_control.py",
+        "bytes": 3398,
+        "sha256": "5a6ce30756b26d6e3c2c9b4a6320e2b55aaac8dd7ea0173e5463fc4c3f125fba"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/csv_to_expected_machines.py",
+        "target": "source/ui-runtime/csv_to_expected_machines.py",
+        "bytes": 7993,
+        "sha256": "bb882d6a25bd40a45c8d78dac4838011ac82a99ebca392ddf98d4c43c57c4f8d"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/current_systems.py",
+        "target": "source/ui-runtime/current_systems.py",
+        "bytes": 7372,
+        "sha256": "8300d826855923fac2027e9e15de21d4ecb37eb6bd57fee8b99cf01b0007519d"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/device_config.py",
+        "target": "source/ui-runtime/device_config.py",
+        "bytes": 15042,
+        "sha256": "f8eafb92b711f91cff77a28dd0b565884ba99abd001900840378815a6f8fb139"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/device_identity.py",
+        "target": "source/ui-runtime/device_identity.py",
+        "bytes": 2687,
+        "sha256": "d8da3a2f86d2ec301f0753871f719f40d4b493ee8e4ae74530af47d0cdeced95"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/device_plans.py",
+        "target": "source/ui-runtime/device_plans.py",
+        "bytes": 29009,
+        "sha256": "7912ad0656e59dccee177f716de4d6da2d283f31ad314c5e5c73b75966cde230"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/discovery.py",
+        "target": "source/ui-runtime/discovery.py",
+        "bytes": 14246,
+        "sha256": "4bc22ae69cc54479e518856428cc7a26e50491cfc468d7bf065fb7bd7e900967"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/disk_identity.py",
+        "target": "source/ui-runtime/disk_identity.py",
+        "bytes": 1258,
+        "sha256": "937133b8cbe0a7bf0fb6c6ad021d621a58c659d3a5991f331abea4aef6506d28"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/equipment.py",
+        "target": "source/ui-runtime/equipment.py",
+        "bytes": 60656,
+        "sha256": "a894c7b60b285196676fea7a5b545a4504f4ac314aaccea05fe4326c0b5820e5"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/executor.py",
+        "target": "source/ui-runtime/executor.py",
+        "bytes": 68055,
+        "sha256": "df964cf24c1289f558e0c391508cde018528733502659db135caa64f023b7c79"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/hardware.py",
+        "target": "source/ui-runtime/hardware.py",
+        "bytes": 9002,
+        "sha256": "2d883e74940499cc33728f9125004fd9749f8ba9b2405e589798da400cce17ba"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/install_events.py",
+        "target": "source/ui-runtime/install_events.py",
+        "bytes": 6597,
+        "sha256": "255d8cc0638ec6c484ab474f1a5f7f0fb99cef5200e49b787aa0f40a82842d70"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/install_profiles.py",
+        "target": "source/ui-runtime/install_profiles.py",
+        "bytes": 19901,
+        "sha256": "cb0b0935fd0e3ba502625bad57931036b0a8644407713f76db4fb978670d9500"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/installer_runtime.py",
+        "target": "source/ui-runtime/installer_runtime.py",
+        "bytes": 5614,
+        "sha256": "0c722ce2e4fb84de34b72d4a7dd589cebbb6e9298d79448410d0d7ec01e92d3c"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/instances.py",
+        "target": "source/ui-runtime/instances.py",
+        "bytes": 14133,
+        "sha256": "bde4615bfb7fb4e56507eaff8ef3a64093a707388add729d0c0070aaf994499a"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/inventory_workbook.py",
+        "target": "source/ui-runtime/inventory_workbook.py",
+        "bytes": 4937,
+        "sha256": "898719502d258283bba139307ffae203140de662c203d87d1d03b09e238eec19"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/management_addresses.py",
+        "target": "source/ui-runtime/management_addresses.py",
+        "bytes": 42359,
+        "sha256": "100445ae9f0b61726ec5db80013d071b5463f460b41f7b7733bd0d25a913019a"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/onboarding.py",
+        "target": "source/ui-runtime/onboarding.py",
+        "bytes": 38514,
+        "sha256": "b3ef28f76eab8b4759e46139ab885e1422e53310c78fe7e283bf3dcfb24d16b7"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/os_library.py",
+        "target": "source/ui-runtime/os_library.py",
+        "bytes": 26967,
+        "sha256": "f1612f90c2b9834b90c975b31ffae0eefac8cfb9b04c71175aa92cff9660fcaf"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/profile_template.py",
+        "target": "source/ui-runtime/profile_template.py",
+        "bytes": 2710,
+        "sha256": "f9bfa4d55a833ab07adcd8cc494a1e4c6c33fdb70eb7046a953995b21995ab4d"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/resources.py",
+        "target": "source/ui-runtime/resources.py",
+        "bytes": 61045,
+        "sha256": "8b46db00c6772d52bc161119887031dd778bc639a6e6369d0eb3cc131679c7a2"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/server.py",
+        "target": "source/ui-runtime/server.py",
+        "bytes": 72144,
+        "sha256": "e2e459a374c85617275b4c929c9ba9a8fcdae7c88cb426d494ce7898f085943f"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/static/app.js",
+        "target": "source/ui-runtime/static/app.js",
+        "bytes": 91950,
+        "sha256": "f68f99a1b7d797feb20e66829e507f5dbf7f76dee0e2ea35ddc2ff74ba1b7939"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/static/contracts.js",
+        "target": "source/ui-runtime/static/contracts.js",
+        "bytes": 2867,
+        "sha256": "936f5d1b56d167aba9e612b52ad9a9077463dca8bc3fff8c2cff7b4af489ecb6"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/static/equipment.js",
+        "target": "source/ui-runtime/static/equipment.js",
+        "bytes": 35963,
+        "sha256": "a50c998e6f4b40edcafadf939f7b2f1c0841162c4bd12036cda38b894494113e"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/static/hardware.js",
+        "target": "source/ui-runtime/static/hardware.js",
+        "bytes": 7800,
+        "sha256": "8287f8ec6325c4870935d49a32fd2df59bb70044f49166c793668265be262528"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/static/icons/NOTICE.txt",
+        "target": "source/ui-runtime/static/icons/NOTICE.txt",
+        "bytes": 117,
+        "sha256": "551b95405d949a470317c17fd2448116dbef367369a5a2da2532670bde973622"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/static/icons/bolt.svg",
+        "target": "source/ui-runtime/static/icons/bolt.svg",
+        "bytes": 377,
+        "sha256": "6a1d4f9acb691efd05aa721684adc014ca07cb124f51b0c7b8e0d058aeeb319f"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/static/icons/building-warehouse.svg",
+        "target": "source/ui-runtime/static/icons/building-warehouse.svg",
+        "bytes": 473,
+        "sha256": "b88f05ab4a1eab45dcd90df6f3146c89f87c9ede918041c755ff171be0bd68ee"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/static/icons/cpu.svg",
+        "target": "source/ui-runtime/static/icons/cpu.svg",
+        "bytes": 640,
+        "sha256": "fa95fd59a92e13bde9cc50d996bf3e1d7583439d5aee980b01be944b5ba3b5a0"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/static/icons/network.svg",
+        "target": "source/ui-runtime/static/icons/network.svg",
+        "bytes": 648,
+        "sha256": "761c8c6ccd5076baa737a8936c4e22fbceb4680ae8484064437deafc9c7efde5"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/static/icons/server-2.svg",
+        "target": "source/ui-runtime/static/icons/server-2.svg",
+        "bytes": 619,
+        "sha256": "72742eb580ef00afb10d1189f0a4a5441c44f783b9e908324b6a50a5d1f91dca"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/static/index.html",
+        "target": "source/ui-runtime/static/index.html",
+        "bytes": 1915,
+        "sha256": "840c01e2c7855684cdc83ab040a93616a49769f8605cd7d945da43cb6d19c7a7"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/static/instances.js",
+        "target": "source/ui-runtime/static/instances.js",
+        "bytes": 9317,
+        "sha256": "6fe2f2fe4c948fc0f1d3c7f0272571f4fd9e09bbbce49b6208a24e4a8b514ea7"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/static/live.css",
+        "target": "source/ui-runtime/static/live.css",
+        "bytes": 26099,
+        "sha256": "54d69d094d176b66ca8060849a0427854bd1cb035b65e80ab423b534c065c8eb"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/static/live.html",
+        "target": "source/ui-runtime/static/live.html",
+        "bytes": 1854,
+        "sha256": "9e2a04acd7aa5dfb57667d474c8718fb989f37623460443aca068daa42bea1e0"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/static/live.js",
+        "target": "source/ui-runtime/static/live.js",
+        "bytes": 54590,
+        "sha256": "7580f34dff75725f7cf6654e1b5a56b00b71f6972e8717193ac3d55e77788083"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/static/machines-template.xlsx",
+        "target": "source/ui-runtime/static/machines-template.xlsx",
+        "bytes": 4632,
+        "sha256": "43bd7339382454c4aaa877dc8e75c360a76701a457c48b53c265b891c1c9c00c"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/static/management.js",
+        "target": "source/ui-runtime/static/management.js",
+        "bytes": 32712,
+        "sha256": "3c9a5a787529a4a1ad9b64b0fbe5ee3a173adf0388e582c2bc5b4af4b39a4272"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/static/management_addresses.js",
+        "target": "source/ui-runtime/static/management_addresses.js",
+        "bytes": 5240,
+        "sha256": "95960dc06b4d15c721b512c074700b2ce19adaee41d6c4b0be3399d30328a36f"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/static/onboarding.js",
+        "target": "source/ui-runtime/static/onboarding.js",
+        "bytes": 27164,
+        "sha256": "b10124b17cfdd125bf6d8aba57d592c39bcea7a0d1a26df976dbd32ebc5a3b91"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/static/profiles.js",
+        "target": "source/ui-runtime/static/profiles.js",
+        "bytes": 17865,
+        "sha256": "c35261ea7afaf8a74e2d9f5f3cbf3784df46ec66bf19ed954cbf486fd5c4ca4f"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/static/styles.css",
+        "target": "source/ui-runtime/static/styles.css",
+        "bytes": 25657,
+        "sha256": "fe9cec90dcf929b2e26b2ebb1fa1f819f3cc40d04fb4e2641e5cb73ecad96d4b"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/static/topology.js",
+        "target": "source/ui-runtime/static/topology.js",
+        "bytes": 10284,
+        "sha256": "1fbd6f5fa8309a38c60cef531490376ba1c52fd2381c010289b70275630a152b"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/storage_policy.py",
+        "target": "source/ui-runtime/storage_policy.py",
+        "bytes": 7293,
+        "sha256": "35af0900a721b2cfd2d1d14d2a54e7d018c6a8f08c8e1de85ae8181a743f866e"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/store.py",
+        "target": "source/ui-runtime/store.py",
+        "bytes": 9257,
+        "sha256": "3474a7ce479b6eea053c5ddc302139a4b3121e0203fff17323fe078e78e2d19b"
+      },
+      {
+        "role": "material",
+        "root": "bundle",
+        "source": "source/ui-runtime/workflow.py",
+        "target": "source/ui-runtime/workflow.py",
+        "bytes": 1311,
+        "sha256": "b0a9218af14e0b0575c430fed780782bab595abd5536b45410851e79387c5000"
+      }
+    ],
+    "generated": [
+      "bundle.json",
+      "config/deployment-settings.json",
+      "config/runtime.json",
+      "deployment/charts/pxeye-nico-platform-0.1.0.tgz",
+      "deployment/deployment.json",
+      "deployment/nico-cluster-permissions.yaml",
+      "deployment/nico-target-namespace-rbac.yaml",
+      "deployment/patches/core-runtime-compatibility.patch",
+      "deployment/patches/migration-job-lifecycle.patch",
+      "deployment/patches/pin-service-ips.patch",
+      "deployment/patches/platform-tls-vault-roles.patch",
+      "deployment/pxeye-bootstrap.yaml",
+      "deployment/values/cert-manager.yaml",
+      "deployment/values/core.yaml",
+      "deployment/values/platform.yaml",
+      "deployment/values/vault.yaml",
+      "docs/INSTALL.md",
+      "manifests/build-file-plan.json",
+      "manifests/build-report.json",
+      "manifests/deployment-images-lock.json",
+      "manifests/file-inventory.json",
+      "manifests/materials-input-lock.json",
+      "tools/deployment-client.py",
+      "tools/import-oci-bundle.py",
+      "tools/import-pxeye-images.py",
+      "tools/prepare-auth.py",
+      "tools/verify-bundle.py",
+      "tools/verify-core.py"
+    ],
+    "repository": [
+      "deploy/bootstrap-kubernetes.yaml",
+      "deploy/nico-cluster-permissions.yaml",
+      "deploy/nico-platform/Chart.yaml",
+      "deploy/nico-platform/files/vault-roles.py",
+      "deploy/nico-platform/templates/bootstrap.yaml",
+      "deploy/nico-platform/templates/infrastructure.yaml",
+      "deploy/nico-platform/templates/postgres-tls.yaml",
+      "deploy/nico-platform/values.yaml",
+      "deploy/offline-core/build.example.json",
+      "deploy/offline-core/deployment.json",
+      "deploy/offline-core/patches/core-runtime-compatibility.patch",
+      "deploy/offline-core/patches/migration-job-lifecycle.patch",
+      "deploy/offline-core/patches/platform-tls-vault-roles.patch",
+      "deploy/offline-core/values/cert-manager.yaml",
+      "deploy/offline-core/values/core.yaml",
+      "deploy/offline-core/values/platform.yaml",
+      "deploy/offline-core/values/vault.yaml",
+      "tools/import-oci-bundle.py",
+      "tools/offline-field/INSTALL.md.in",
+      "tools/offline-field/deployment-client.py.in",
+      "tools/offline-field/import-pxeye-images.py",
+      "tools/offline-field/prepare-auth.py",
+      "tools/offline-field/verify-bundle.py",
+      "tools/offline-field/verify-core.py.in"
+    ],
+    "toolkit": [
+      {
+        "source": "offline-build/build.py",
+        "target": "build.py"
+      },
+      {
+        "source": "offline-build/README.md",
+        "target": "README.md"
+      },
+      {
+        "source": "offline-build/README.zh-CN.md",
+        "target": "README.zh-CN.md"
+      },
+      {
+        "source": "offline-build/build-config.example.json",
+        "target": "build-config.example.json"
+      }
+    ],
+    "base_image_manifests": {
+      "docker.io/library/boot-artifacts-x86_64:mmzhou-e703126e4": "sha256:c9045e25ce3d34751ce88e2a5b3f0ce63c28da877a90f39349ce3bafa6e97630",
+      "docker.io/library/mmzhou-os-install-console:0.20.3-20261107-r16": "sha256:1860fe8692f84d11a2784dda24db17d239cb6eb4a9b876b6acd1a60f2ae1f48c",
+      "docker.io/library/nico-api:mmzhou-bmc-redfish-20261107-r2": "sha256:0d99c3a056e148275c2957d31ef7ea45176742e0a39f33235290bf1f08c7d1b3",
+      "docker.io/library/nico-api:mmzhou-e703126e4": "sha256:a497d208f1fb4cbd85c4b9c9ec7e48fd004aad6dbc612703a9807c2e5f96074b",
+      "docker.io/library/nico-bmc-proxy:mmzhou-e703126e4": "sha256:8e88b6017e040939dfbc260afeebc1987e971b1df29bb2873187bce10e0be465",
+      "docker.io/library/nico-pxe:mmzhou-e703126e4": "sha256:034f27240d4fa79b560a6f663c9c4ec1a37108112a1486b4a942dfdeb5b29eca",
+      "docker.io/nico-local/nico-rest-api:e703126e4": "sha256:e1b71cef140a991a68ab93c52282e55df12cb3405fb519c372d3334cf055dc61",
+      "docker.io/nico-local/nico-rest-cert-manager:e703126e4": "sha256:01abed0fd83ba6347a97ece6d06fb01b8f3d9aeec08c7d2ba405edca69c22938",
+      "docker.io/nico-local/nico-rest-db:e703126e4": "sha256:5190f22b5aaab1a1a14a3590890cd3051e597752c42aefa66bf711639e2904b8",
+      "docker.io/nico-local/nico-rest-site-agent:e703126e4": "sha256:9c640f2d9c5e2f2e536cd7a805575fb8c06f27ec3d99366aae406e2139062156",
+      "docker.io/nico-local/nico-rest-site-manager:e703126e4": "sha256:755e3b777ee6bb290fc1710b3f16ba127f79b12dc277f9f2b105bf11b8fa05e6",
+      "docker.io/nico-local/nico-rest-workflow:e703126e4": "sha256:993eb4e3acd88d24161155ca3d92441119888875893d7f9fce594c37f31de2c4",
+      "k8s.m.daocloud.io/coredns:v1.12.0": "sha256:2324f485c8db937628a18c293d946327f3a7229b9f77213e8f2256f0b616a4ee",
+      "m.daocloud.io/docker.io/dockurr/chrony:latest": "sha256:ac7bbdbae1ddd5c9c4efb5a24dd3ad42d8ff0e9d04a0fe28fccdeaf152e7823f",
+      "m.daocloud.io/docker.io/hashicorp/vault:1.20.2": "sha256:55e6b1b25b1bcf05949d8818a326c6133bf9a5189568a002dc91159c68e00c96",
+      "m.daocloud.io/docker.io/library/postgres:16.6": "sha256:2c70671424b21cc706545c364bc96d12ea1526d6080e29abf7e25b50b28ba97b",
+      "m.daocloud.io/docker.io/temporalio/admin-tools:1.26.2": "sha256:e15f5a4d62d0b1926896dc2979c554c4cbbd3a411e63442d443dfbc608d47c45",
+      "m.daocloud.io/docker.io/temporalio/server:1.26.2": "sha256:d8b9f0c8c2680f7f26510f8e6954bb28835bb941b4a6e68db20ed746f91df55a",
+      "m.daocloud.io/quay.io/jetstack/cert-manager-cainjector:v1.17.1": "sha256:da14ecb33386bd53c86d22a7a996e9783da5a09aa4ce9c55e161128fc2632985",
+      "m.daocloud.io/quay.io/jetstack/cert-manager-controller:v1.17.1": "sha256:8615625f29f821542fca5351e3791a21121bf869aa63c72607e0a51e4c233a4a",
+      "m.daocloud.io/quay.io/jetstack/cert-manager-startupapicheck:v1.17.1": "sha256:48048d4b951e1a7378658cc4f93b6ff1f4e6a14fc7daaa069236634ac187bc9e",
+      "m.daocloud.io/quay.io/jetstack/cert-manager-webhook:v1.17.1": "sha256:f7ad7d3c6dbe73ead365c2324dbe6575b4fc618ed06f0863f250c5eafb35a246",
+      "m.daocloud.io/quay.io/keycloak/keycloak:24.0": "sha256:d6830ca31fec7d5272cf9b0f8d911335a92689aea205dc4a9772117e20a3c674"
+    }
+  }
+}

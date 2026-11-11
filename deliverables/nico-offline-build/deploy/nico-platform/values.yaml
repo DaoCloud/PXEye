@@ -1,0 +1,9 @@
+mode: infrastructure
+prefix: mmzhou
+storageClass: ""
+postgresStorage: 20Gi
+vaultStorage: 5Gi
+postgresImage: ""
+vaultImage: ""
+bootstrapImage: ""
+coreServiceAccount: ""

@@ -1,0 +1,265 @@
+{{- if eq .Values.mode "infrastructure" }}
+{{- $prefix := .Values.prefix }}
+{{- $ns := .Release.Namespace }}
+{{- $old := lookup "v1" "Secret" $ns (printf "%s-postgres-credentials" $prefix) }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $prefix }}-postgres-credentials
+  namespace: {{ $ns }}
+type: Opaque
+data:
+  username: {{ "nico" | b64enc | quote }}
+  password: {{ if $old }}{{ index $old.data "password" | quote }}{{ else }}{{ randAlphaNum 40 | b64enc | quote }}{{ end }}
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ $prefix }}-nico-selfsigned
+  namespace: {{ $ns }}
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $prefix }}-nico-site-ca
+  namespace: {{ $ns }}
+spec:
+  isCA: true
+  commonName: {{ $prefix }}-nico-site-root
+  secretName: {{ $prefix }}-nico-site-ca
+  duration: 87600h
+  renewBefore: 8760h
+  privateKey:
+    algorithm: ECDSA
+    size: 384
+  issuerRef:
+    name: {{ $prefix }}-nico-selfsigned
+    kind: Issuer
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ $prefix }}-nico-site-issuer
+  namespace: {{ $ns }}
+spec:
+  ca:
+    secretName: {{ $prefix }}-nico-site-ca
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $prefix }}-nico-admin-issuer
+  namespace: {{ $ns }}
+spec:
+  isCA: true
+  commonName: {{ $prefix }}-nico-admin-issuer
+  secretName: {{ $prefix }}-nico-admin-issuer
+  duration: 8760h
+  renewBefore: 720h
+  privateKey:
+    algorithm: ECDSA
+    size: 384
+  issuerRef:
+    name: {{ $prefix }}-nico-site-issuer
+    kind: Issuer
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ $prefix }}-nico-admin-issuer
+  namespace: {{ $ns }}
+spec:
+  ca:
+    secretName: {{ $prefix }}-nico-admin-issuer
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $prefix }}-nico-admin-client
+  namespace: {{ $ns }}
+spec:
+  secretName: {{ $prefix }}-nico-admin-client
+  commonName: pxeye-operator
+  subject:
+    organizationalUnits: [pxeye-operator]
+  duration: 720h
+  renewBefore: 360h
+  privateKey:
+    algorithm: ECDSA
+    size: 384
+  usages: [client auth, digital signature]
+  issuerRef:
+    name: {{ $prefix }}-nico-admin-issuer
+    kind: Issuer
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $prefix }}-nico-vault-tls
+  namespace: {{ $ns }}
+spec:
+  secretName: {{ $prefix }}-nico-vault-tls
+  dnsNames:
+    - {{ $prefix }}-nico-vault
+    - {{ $prefix }}-nico-vault.{{ $ns }}
+    - {{ $prefix }}-nico-vault.{{ $ns }}.svc
+    - {{ $prefix }}-nico-vault.{{ $ns }}.svc.cluster.local
+  duration: 720h
+  renewBefore: 360h
+  privateKey:
+    algorithm: ECDSA
+    size: 384
+  usages: [server auth, digital signature]
+  issuerRef:
+    name: {{ $prefix }}-nico-site-issuer
+    kind: Issuer
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $prefix }}-nico-vault-config
+  namespace: {{ $ns }}
+data:
+  vault.hcl: |
+    disable_mlock = true
+    ui = false
+    storage "file" { path = "/vault/data" }
+    listener "tcp" {
+      address = "0.0.0.0:8200"
+      tls_cert_file = "/vault/tls/tls.crt"
+      tls_key_file = "/vault/tls/tls.key"
+    }
+    api_addr = "https://{{ $prefix }}-nico-vault.{{ $ns }}.svc:8200"
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $prefix }}-nico-vault
+  namespace: {{ $ns }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $prefix }}-nico-vault-auth-{{ $ns }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+  - kind: ServiceAccount
+    name: {{ $prefix }}-nico-vault
+    namespace: {{ $ns }}
+{{- range $name, $size := dict "postgres" .Values.postgresStorage "vault" .Values.vaultStorage }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $prefix }}-nico-{{ $name }}
+  namespace: {{ $ns }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- with $.Values.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ $size }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $prefix }}-nico-{{ $name }}
+  namespace: {{ $ns }}
+spec:
+  selector:
+    app.kubernetes.io/instance: {{ $prefix }}-nico-{{ $name }}
+  ports:
+    - name: {{ if eq $name "postgres" }}postgres{{ else }}https{{ end }}
+      port: {{ if eq $name "postgres" }}5432{{ else }}8200{{ end }}
+      targetPort: {{ if eq $name "postgres" }}5432{{ else }}8200{{ end }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $prefix }}-nico-{{ $name }}
+  namespace: {{ $ns }}
+  labels:
+    app.kubernetes.io/instance: {{ $prefix }}-nico-{{ $name }}
+spec:
+  serviceName: {{ $prefix }}-nico-{{ $name }}
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ $prefix }}-nico-{{ $name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/instance: {{ $prefix }}-nico-{{ $name }}
+    spec:
+      {{- if eq $name "vault" }}
+      serviceAccountName: {{ $prefix }}-nico-vault
+      {{- end }}
+      securityContext:
+        fsGroup: {{ if eq $name "postgres" }}999{{ else }}1000{{ end }}
+      containers:
+        - name: {{ $name }}
+          image: {{ if eq $name "postgres" }}{{ required "Set postgresImage" $.Values.postgresImage | quote }}{{ else }}{{ required "Set vaultImage" $.Values.vaultImage | quote }}{{ end }}
+          imagePullPolicy: IfNotPresent
+          {{- if eq $name "vault" }}
+          command: [vault, server, -config=/vault/config/vault.hcl]
+          {{- else }}
+          args: [postgres, -c, ssl=on, -c, ssl_cert_file=/var/lib/postgresql/tls/tls.crt, -c, ssl_key_file=/var/lib/postgresql/tls/tls.key]
+          {{- end }}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: {{ if eq $name "postgres" }}999{{ else }}100{{ end }}
+            runAsGroup: {{ if eq $name "postgres" }}999{{ else }}1000{{ end }}
+            allowPrivilegeEscalation: false
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {cpu: "2", memory: 2Gi}
+          {{- if eq $name "postgres" }}
+          env:
+            - {name: POSTGRES_USER, value: nico}
+            - {name: POSTGRES_DB, value: nico}
+            - {name: PGDATA, value: /var/lib/postgresql/data/pgdata}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: "{{ $prefix }}-postgres-credentials", key: password}
+          readinessProbe:
+            exec: {command: [pg_isready, -U, nico, -d, nico]}
+            periodSeconds: 5
+          {{- else }}
+          # sys/init remains readable while sealed, so a later Helm hook can unseal it.
+          # Successful bootstrap Job completion gates operational readiness in PXEye.
+          readinessProbe:
+            httpGet: {path: /v1/sys/init, scheme: HTTPS, port: 8200}
+            periodSeconds: 5
+          {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: {{ if eq $name "postgres" }}/var/lib/postgresql/data{{ else }}/vault/data{{ end }}
+            {{- if eq $name "vault" }}
+            - {name: config, mountPath: /vault/config, readOnly: true}
+            - {name: tls, mountPath: /vault/tls, readOnly: true}
+            {{- else }}
+            - {name: postgres-tls, mountPath: /var/lib/postgresql/tls, readOnly: true}
+            {{- end }}
+      volumes:
+        - name: data
+          persistentVolumeClaim: {claimName: "{{ $prefix }}-nico-{{ $name }}"}
+        {{- if eq $name "vault" }}
+        - name: config
+          configMap: {name: "{{ $prefix }}-nico-vault-config"}
+        - name: tls
+          secret: {secretName: "{{ $prefix }}-nico-vault-tls", defaultMode: 0440}
+        {{- else }}
+        - name: postgres-tls
+          secret: {secretName: "{{ $prefix }}-nico-postgres-tls", defaultMode: 0640}
+        {{- end }}
+{{- end }}
+{{- end }}

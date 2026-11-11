@@ -6,6 +6,7 @@ Public PXEye documentation is maintained in English and Simplified Chinese. Star
 
 | Document | English | 简体中文 | Purpose |
 | --- | --- | --- | --- |
+| Standalone offline build kit | [Read](../deliverables/nico-offline-build/README.md) | [阅读](../deliverables/nico-offline-build/README.zh-CN.md) | Copyable generic toolkit with scripts, explicit file config, templates and output layout; keep site configuration outside the repository. |
 | Complete offline bundle builder | [Read](../offline-build/README.md) | [阅读](../offline-build/README.zh-CN.md) | Reusable locked-input packaging, integrated Core compatibility fixes and field delivery gates. |
 | Pre-installation checklist | [Read](pre-installation-checklist.md) | [阅读](pre-installation-checklist.zh-CN.md) | One-sentence checks for discovery, host OS writing and managed DPUs. |
 | Deployment | [Read](deployment.md) | [阅读](deployment.zh-CN.md) | Binaries, site config, credentials, mounts and persistence. |

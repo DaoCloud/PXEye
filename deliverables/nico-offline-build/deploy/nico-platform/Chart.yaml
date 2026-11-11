@@ -1,0 +1,6 @@
+apiVersion: v2
+name: pxeye-nico-platform
+description: Single-replica NICo prerequisites and bounded Vault bootstrap hooks
+type: application
+version: 0.1.0
+appVersion: "0.22.0"

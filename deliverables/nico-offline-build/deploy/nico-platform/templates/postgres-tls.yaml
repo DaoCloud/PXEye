@@ -1,0 +1,23 @@
+{{- if eq .Values.mode "infrastructure" }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ .Values.prefix }}-nico-postgres-tls
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    meta.helm.sh/release-name: {{ .Release.Name }}
+    meta.helm.sh/release-namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/managed-by: Helm
+spec:
+  secretName: {{ .Values.prefix }}-nico-postgres-tls
+  dnsNames:
+    - {{ .Values.prefix }}-nico-postgres
+    - {{ .Values.prefix }}-nico-postgres.{{ .Release.Namespace }}.svc
+    - {{ .Values.prefix }}-nico-postgres.{{ .Release.Namespace }}.svc.cluster.local
+  issuerRef: {name: "{{ .Values.prefix }}-nico-site-issuer", kind: Issuer}
+  privateKey: {algorithm: ECDSA, size: 384}
+  usages: [server auth, digital signature]
+  duration: 720h
+  renewBefore: 360h
+{{- end }}

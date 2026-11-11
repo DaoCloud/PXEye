@@ -1,0 +1,174 @@
+contained-image	docker.io/library/boot-artifacts-x86_64:mmzhou-e703126e4	sha256:c9045e25ce3d34751ce88e2a5b3f0ce63c28da877a90f39349ce3bafa6e97630
+contained-image	docker.io/library/mmzhou-os-install-console:0.20.3-20261107-r16	sha256:1860fe8692f84d11a2784dda24db17d239cb6eb4a9b876b6acd1a60f2ae1f48c
+contained-image	docker.io/library/nico-api:mmzhou-bmc-redfish-20261107-r2	sha256:0d99c3a056e148275c2957d31ef7ea45176742e0a39f33235290bf1f08c7d1b3
+contained-image	docker.io/library/nico-api:mmzhou-e703126e4	sha256:a497d208f1fb4cbd85c4b9c9ec7e48fd004aad6dbc612703a9807c2e5f96074b
+contained-image	docker.io/library/nico-bmc-proxy:mmzhou-e703126e4	sha256:8e88b6017e040939dfbc260afeebc1987e971b1df29bb2873187bce10e0be465
+contained-image	docker.io/library/nico-pxe:mmzhou-e703126e4	sha256:034f27240d4fa79b560a6f663c9c4ec1a37108112a1486b4a942dfdeb5b29eca
+contained-image	docker.io/nico-local/nico-rest-api:e703126e4	sha256:e1b71cef140a991a68ab93c52282e55df12cb3405fb519c372d3334cf055dc61
+contained-image	docker.io/nico-local/nico-rest-cert-manager:e703126e4	sha256:01abed0fd83ba6347a97ece6d06fb01b8f3d9aeec08c7d2ba405edca69c22938
+contained-image	docker.io/nico-local/nico-rest-db:e703126e4	sha256:5190f22b5aaab1a1a14a3590890cd3051e597752c42aefa66bf711639e2904b8
+contained-image	docker.io/nico-local/nico-rest-site-agent:e703126e4	sha256:9c640f2d9c5e2f2e536cd7a805575fb8c06f27ec3d99366aae406e2139062156
+contained-image	docker.io/nico-local/nico-rest-site-manager:e703126e4	sha256:755e3b777ee6bb290fc1710b3f16ba127f79b12dc277f9f2b105bf11b8fa05e6
+contained-image	docker.io/nico-local/nico-rest-workflow:e703126e4	sha256:993eb4e3acd88d24161155ca3d92441119888875893d7f9fce594c37f31de2c4
+contained-image	k8s.m.daocloud.io/coredns:v1.12.0	sha256:2324f485c8db937628a18c293d946327f3a7229b9f77213e8f2256f0b616a4ee
+contained-image	m.daocloud.io/docker.io/dockurr/chrony:latest	sha256:ac7bbdbae1ddd5c9c4efb5a24dd3ad42d8ff0e9d04a0fe28fccdeaf152e7823f
+contained-image	m.daocloud.io/docker.io/hashicorp/vault:1.20.2	sha256:55e6b1b25b1bcf05949d8818a326c6133bf9a5189568a002dc91159c68e00c96
+contained-image	m.daocloud.io/docker.io/library/postgres:16.6	sha256:2c70671424b21cc706545c364bc96d12ea1526d6080e29abf7e25b50b28ba97b
+contained-image	m.daocloud.io/docker.io/temporalio/admin-tools:1.26.2	sha256:e15f5a4d62d0b1926896dc2979c554c4cbbd3a411e63442d443dfbc608d47c45
+contained-image	m.daocloud.io/docker.io/temporalio/server:1.26.2	sha256:d8b9f0c8c2680f7f26510f8e6954bb28835bb941b4a6e68db20ed746f91df55a
+contained-image	m.daocloud.io/quay.io/jetstack/cert-manager-cainjector:v1.17.1	sha256:da14ecb33386bd53c86d22a7a996e9783da5a09aa4ce9c55e161128fc2632985
+contained-image	m.daocloud.io/quay.io/jetstack/cert-manager-controller:v1.17.1	sha256:8615625f29f821542fca5351e3791a21121bf869aa63c72607e0a51e4c233a4a
+contained-image	m.daocloud.io/quay.io/jetstack/cert-manager-startupapicheck:v1.17.1	sha256:48048d4b951e1a7378658cc4f93b6ff1f4e6a14fc7daaa069236634ac187bc9e
+contained-image	m.daocloud.io/quay.io/jetstack/cert-manager-webhook:v1.17.1	sha256:f7ad7d3c6dbe73ead365c2324dbe6575b4fc618ed06f0863f250c5eafb35a246
+contained-image	m.daocloud.io/quay.io/keycloak/keycloak:24.0	sha256:d6830ca31fec7d5272cf9b0f8d911335a92689aea205dc4a9772117e20a3c674
+copy	/srv/nico-input/base-bundle/images/nico-amd64.oci.tar	=> bundle/images/nico-amd64.oci.tar
+copy	/srv/nico-input/base-bundle/manifests/images-lock.json	=> bundle/manifests/images-lock.json
+patch+package	/srv/nico-input/base-bundle/charts/nico-0.1.1.tgz	=> bundle/deployment/charts/nico-0.1.1.tgz
+copy	/srv/nico-input/base-bundle/charts/cert-manager-v1.17.1.tgz	=> bundle/deployment/charts/cert-manager-v1.17.1.tgz
+copy	/srv/nico-input/pxeye-ui.oci.tar	=> bundle/images/pxeye-0.22.16-73b8236.oci.tar
+copy	/srv/nico-input/pxeye-bootstrap.oci.tar	=> bundle/images/pxeye-0.22.13-9dbcff8.oci.tar
+copy	/srv/nico-input/base-bundle/tools/helm	=> bundle/tools/helm
+copy	/srv/nico-input/base-bundle/tools/nico-admin-cli	=> bundle/tools/nico-admin-cli
+copy	/srv/nico-input/base-bundle/boot/SHA256SUMS	=> bundle/boot/SHA256SUMS
+copy	/srv/nico-input/base-bundle/boot/aarch64/BUILD-INFO.json	=> bundle/boot/aarch64/BUILD-INFO.json
+copy	/srv/nico-input/base-bundle/boot/aarch64/ROOTFS-PACKAGES.json	=> bundle/boot/aarch64/ROOTFS-PACKAGES.json
+copy	/srv/nico-input/base-bundle/boot/aarch64/golan.efi	=> bundle/boot/aarch64/golan.efi
+copy	/srv/nico-input/base-bundle/boot/aarch64/ipxe.efi	=> bundle/boot/aarch64/ipxe.efi
+copy	/srv/nico-input/base-bundle/boot/aarch64/scout.efi	=> bundle/boot/aarch64/scout.efi
+copy	/srv/nico-input/base-bundle/boot/aarch64/scout.squashfs	=> bundle/boot/aarch64/scout.squashfs
+copy	/srv/nico-input/base-bundle/boot/apt/dists/focal/Release	=> bundle/boot/apt/dists/focal/Release
+copy	/srv/nico-input/base-bundle/boot/apt/dists/focal/main/binary-amd64/Packages	=> bundle/boot/apt/dists/focal/main/binary-amd64/Packages
+copy	/srv/nico-input/base-bundle/boot/apt/dists/focal/main/binary-amd64/Release	=> bundle/boot/apt/dists/focal/main/binary-amd64/Release
+copy	/srv/nico-input/base-bundle/boot/apt/dists/focal/main/binary-arm64/Packages	=> bundle/boot/apt/dists/focal/main/binary-arm64/Packages
+copy	/srv/nico-input/base-bundle/boot/apt/dists/focal/main/binary-arm64/Release	=> bundle/boot/apt/dists/focal/main/binary-arm64/Release
+copy	/srv/nico-input/base-bundle/boot/apt/pool/base/f/forge-scout/forge-scout_2.5.0-pr-260-ge703126e4_amd64.deb	=> bundle/boot/apt/pool/base/f/forge-scout/forge-scout_2.5.0-pr-260-ge703126e4_amd64.deb
+copy	/srv/nico-input/base-bundle/boot/apt/pool/base/f/forge-scout/forge-scout_2.5.0-pr-260-ge703126e4_arm64.deb	=> bundle/boot/apt/pool/base/f/forge-scout/forge-scout_2.5.0-pr-260-ge703126e4_arm64.deb
+copy	/srv/nico-input/base-bundle/boot/mmzhou-build-info.json	=> bundle/boot/mmzhou-build-info.json
+copy	/srv/nico-input/base-bundle/boot/x86_64/golan.efi	=> bundle/boot/x86_64/golan.efi
+copy	/srv/nico-input/base-bundle/boot/x86_64/ipxe.efi	=> bundle/boot/x86_64/ipxe.efi
+copy	/srv/nico-input/base-bundle/boot/x86_64/qcow-imager.efi	=> bundle/boot/x86_64/qcow-imager.efi
+copy	/srv/nico-input/base-bundle/boot/x86_64/scout.efi	=> bundle/boot/x86_64/scout.efi
+copy	/srv/nico-input/base-bundle/boot/x86_64/scout.squashfs	=> bundle/boot/x86_64/scout.squashfs
+copy	/srv/nico-input/base-bundle/dpu/dpf-v26.4.0/README.md	=> bundle/dpu/dpf-v26.4.0/README.md
+copy	/srv/nico-input/base-bundle/dpu/dpf-v26.4.0/SHA256SUMS	=> bundle/dpu/dpf-v26.4.0/SHA256SUMS
+copy	/srv/nico-input/base-bundle/dpu/dpf-v26.4.0/charts/argo-cd-9.4.1.tgz	=> bundle/dpu/dpf-v26.4.0/charts/argo-cd-9.4.1.tgz
+copy	/srv/nico-input/base-bundle/dpu/dpf-v26.4.0/charts/doca-hbn-3.4.0.tgz	=> bundle/dpu/dpf-v26.4.0/charts/doca-hbn-3.4.0.tgz
+copy	/srv/nico-input/base-bundle/dpu/dpf-v26.4.0/charts/doca-telemetry-1.25.5.tgz	=> bundle/dpu/dpf-v26.4.0/charts/doca-telemetry-1.25.5.tgz
+copy	/srv/nico-input/base-bundle/dpu/dpf-v26.4.0/charts/dpf-operator-v26.4.0.tgz	=> bundle/dpu/dpf-v26.4.0/charts/dpf-operator-v26.4.0.tgz
+copy	/srv/nico-input/base-bundle/dpu/dpf-v26.4.0/charts/kamaji-1.2.0.tgz	=> bundle/dpu/dpf-v26.4.0/charts/kamaji-1.2.0.tgz
+copy	/srv/nico-input/base-bundle/dpu/dpf-v26.4.0/charts/maintenance-operator-chart-0.3.0.tgz	=> bundle/dpu/dpf-v26.4.0/charts/maintenance-operator-chart-0.3.0.tgz
+copy	/srv/nico-input/base-bundle/dpu/dpf-v26.4.0/charts/node-feature-discovery-chart-0.18.3.tgz	=> bundle/dpu/dpf-v26.4.0/charts/node-feature-discovery-chart-0.18.3.tgz
+copy	/srv/nico-input/base-bundle/dpu/dpf-v26.4.0/images/doca-hbn-3.4.0.oci.tar	=> bundle/dpu/dpf-v26.4.0/images/doca-hbn-3.4.0.oci.tar
+copy	/srv/nico-input/base-bundle/dpu/dpf-v26.4.0/images/doca-telemetry-1.25.5.oci.tar	=> bundle/dpu/dpf-v26.4.0/images/doca-telemetry-1.25.5.oci.tar
+copy	/srv/nico-input/base-bundle/dpu/dpf-v26.4.0/images/dpf-system-v26.4.0.oci.tar	=> bundle/dpu/dpf-v26.4.0/images/dpf-system-v26.4.0.oci.tar
+copy	/srv/nico-input/base-bundle/dpu/dpf-v26.4.0/manifest.json	=> bundle/dpu/dpf-v26.4.0/manifest.json
+copy	/srv/nico-input/base-bundle/dpu/dpf-v26.4.0/metadata/bf3-bfb-upstream.json	=> bundle/dpu/dpf-v26.4.0/metadata/bf3-bfb-upstream.json
+copy	/srv/nico-input/base-bundle/dpu/dpf-v26.4.0/metadata/dpf-system-fetch.log	=> bundle/dpu/dpf-v26.4.0/metadata/dpf-system-fetch.log
+copy	/srv/nico-input/base-bundle/dpu/dpf-v26.4.0/metadata/image-platforms.json	=> bundle/dpu/dpf-v26.4.0/metadata/image-platforms.json
+copy	/srv/nico-input/base-bundle/dpu/dpf-v26.4.0/metadata/images.json	=> bundle/dpu/dpf-v26.4.0/metadata/images.json
+copy	/srv/nico-input/base-bundle/dpu/dpf-v26.4.0/source/doca-platform-8551df0d3ac4ed51a67d4a5148a7646493a30e10.tar.gz	=> bundle/dpu/dpf-v26.4.0/source/doca-platform-8551df0d3ac4ed51a67d4a5148a7646493a30e10.tar.gz
+copy	/srv/nico-input/base-bundle/dpu/dpf-v26.4.0/source/nico-dpu-service-charts-e703126e4.tar.gz	=> bundle/dpu/dpf-v26.4.0/source/nico-dpu-service-charts-e703126e4.tar.gz
+copy	/srv/nico-input/base-bundle/dpu/dpf-v26.4.0/tools/dpfctl-linux-amd64	=> bundle/dpu/dpf-v26.4.0/tools/dpfctl-linux-amd64
+copy	/srv/nico-input/base-bundle/http/nico/dpu/bf3-doca3.4.0-26.04/SHA256SUMS	=> bundle/http/nico/dpu/bf3-doca3.4.0-26.04/SHA256SUMS
+copy	/srv/nico-input/base-bundle/http/nico/dpu/bf3-doca3.4.0-26.04/bf-bundle-3.4.0-92_26.04_ubuntu-24.04_64k_prod.bfb	=> bundle/http/nico/dpu/bf3-doca3.4.0-26.04/bf-bundle-3.4.0-92_26.04_ubuntu-24.04_64k_prod.bfb
+copy	/srv/nico-input/base-bundle/source/20261107170813_staged_interface_address.sql	=> bundle/source/20261107170813_staged_interface_address.sql
+copy	/srv/nico-input/base-bundle/source/bmc-redfish-20261107/Dockerfile	=> bundle/source/bmc-redfish-20261107/Dockerfile
+copy	/srv/nico-input/base-bundle/source/boot-build/Dockerfile.cross	=> bundle/source/boot-build/Dockerfile.cross
+copy	/srv/nico-input/base-bundle/source/boot-build/Dockerfile.pxe-builder	=> bundle/source/boot-build/Dockerfile.pxe-builder
+copy	/srv/nico-input/base-bundle/source/boot-build/build-adaptation.diff	=> bundle/source/boot-build/build-adaptation.diff
+copy	/srv/nico-input/base-bundle/source/boot-build/build-arm-loader.sh	=> bundle/source/boot-build/build-arm-loader.sh
+copy	/srv/nico-input/base-bundle/source/boot-build/build-arm-rootfs.sh	=> bundle/source/boot-build/build-arm-rootfs.sh
+copy	/srv/nico-input/base-bundle/source/boot-build/extend-build-wait.py	=> bundle/source/boot-build/extend-build-wait.py
+copy	/srv/nico-input/base-bundle/source/boot-build/inspect-arm-rootfs.py	=> bundle/source/boot-build/inspect-arm-rootfs.py
+copy	/srv/nico-input/base-bundle/source/boot-build/package-arm-scout.sh	=> bundle/source/boot-build/package-arm-scout.sh
+copy	/srv/nico-input/base-bundle/source/boot-build/patch-nvidia-arm-profile.py	=> bundle/source/boot-build/patch-nvidia-arm-profile.py
+copy	/srv/nico-input/base-bundle/source/boot-build/prepare-arm-source.py	=> bundle/source/boot-build/prepare-arm-source.py
+copy	/srv/nico-input/base-bundle/source/boot-build/update-scout-apt.py	=> bundle/source/boot-build/update-scout-apt.py
+copy	/srv/nico-input/base-bundle/source/core-build-source-r2.tar.gz	=> bundle/source/core-build-source-r2.tar.gz
+copy	/srv/nico-input/base-bundle/source/core-runtime/carbide-api	=> bundle/source/core-runtime/carbide-api
+copy	/srv/nico-input/base-bundle/source/grace-arm64-build-source.tar.gz	=> bundle/source/grace-arm64-build-source.tar.gz
+copy	/srv/nico-input/base-bundle/source/libredfish-build-source.tar.gz	=> bundle/source/libredfish-build-source.tar.gz
+copy	/srv/nico-input/base-bundle/source/nico-customizations.patch	=> bundle/source/nico-customizations.patch
+copy	/srv/nico-input/base-bundle/source/nico-upstream-e703126e4.tar.gz	=> bundle/source/nico-upstream-e703126e4.tar.gz
+copy	/srv/nico-input/base-bundle/source/ui-runtime/accept_config.py	=> bundle/source/ui-runtime/accept_config.py
+copy	/srv/nico-input/base-bundle/source/ui-runtime/accept_host.py	=> bundle/source/ui-runtime/accept_host.py
+copy	/srv/nico-input/base-bundle/source/ui-runtime/adapter.py	=> bundle/source/ui-runtime/adapter.py
+copy	/srv/nico-input/base-bundle/source/ui-runtime/apt_preflight.py	=> bundle/source/ui-runtime/apt_preflight.py
+copy	/srv/nico-input/base-bundle/source/ui-runtime/bmc_addresses.py	=> bundle/source/ui-runtime/bmc_addresses.py
+copy	/srv/nico-input/base-bundle/source/ui-runtime/bmc_redfish.py	=> bundle/source/ui-runtime/bmc_redfish.py
+copy	/srv/nico-input/base-bundle/source/ui-runtime/boot_control.py	=> bundle/source/ui-runtime/boot_control.py
+copy	/srv/nico-input/base-bundle/source/ui-runtime/csv_to_expected_machines.py	=> bundle/source/ui-runtime/csv_to_expected_machines.py
+copy	/srv/nico-input/base-bundle/source/ui-runtime/current_systems.py	=> bundle/source/ui-runtime/current_systems.py
+copy	/srv/nico-input/base-bundle/source/ui-runtime/device_config.py	=> bundle/source/ui-runtime/device_config.py
+copy	/srv/nico-input/base-bundle/source/ui-runtime/device_identity.py	=> bundle/source/ui-runtime/device_identity.py
+copy	/srv/nico-input/base-bundle/source/ui-runtime/device_plans.py	=> bundle/source/ui-runtime/device_plans.py
+copy	/srv/nico-input/base-bundle/source/ui-runtime/discovery.py	=> bundle/source/ui-runtime/discovery.py
+copy	/srv/nico-input/base-bundle/source/ui-runtime/disk_identity.py	=> bundle/source/ui-runtime/disk_identity.py
+copy	/srv/nico-input/base-bundle/source/ui-runtime/equipment.py	=> bundle/source/ui-runtime/equipment.py
+copy	/srv/nico-input/base-bundle/source/ui-runtime/executor.py	=> bundle/source/ui-runtime/executor.py
+copy	/srv/nico-input/base-bundle/source/ui-runtime/hardware.py	=> bundle/source/ui-runtime/hardware.py
+copy	/srv/nico-input/base-bundle/source/ui-runtime/install_events.py	=> bundle/source/ui-runtime/install_events.py
+copy	/srv/nico-input/base-bundle/source/ui-runtime/install_profiles.py	=> bundle/source/ui-runtime/install_profiles.py
+copy	/srv/nico-input/base-bundle/source/ui-runtime/installer_runtime.py	=> bundle/source/ui-runtime/installer_runtime.py
+copy	/srv/nico-input/base-bundle/source/ui-runtime/instances.py	=> bundle/source/ui-runtime/instances.py
+copy	/srv/nico-input/base-bundle/source/ui-runtime/inventory_workbook.py	=> bundle/source/ui-runtime/inventory_workbook.py
+copy	/srv/nico-input/base-bundle/source/ui-runtime/management_addresses.py	=> bundle/source/ui-runtime/management_addresses.py
+copy	/srv/nico-input/base-bundle/source/ui-runtime/onboarding.py	=> bundle/source/ui-runtime/onboarding.py
+copy	/srv/nico-input/base-bundle/source/ui-runtime/os_library.py	=> bundle/source/ui-runtime/os_library.py
+copy	/srv/nico-input/base-bundle/source/ui-runtime/profile_template.py	=> bundle/source/ui-runtime/profile_template.py
+copy	/srv/nico-input/base-bundle/source/ui-runtime/resources.py	=> bundle/source/ui-runtime/resources.py
+copy	/srv/nico-input/base-bundle/source/ui-runtime/server.py	=> bundle/source/ui-runtime/server.py
+copy	/srv/nico-input/base-bundle/source/ui-runtime/static/app.js	=> bundle/source/ui-runtime/static/app.js
+copy	/srv/nico-input/base-bundle/source/ui-runtime/static/contracts.js	=> bundle/source/ui-runtime/static/contracts.js
+copy	/srv/nico-input/base-bundle/source/ui-runtime/static/equipment.js	=> bundle/source/ui-runtime/static/equipment.js
+copy	/srv/nico-input/base-bundle/source/ui-runtime/static/hardware.js	=> bundle/source/ui-runtime/static/hardware.js
+copy	/srv/nico-input/base-bundle/source/ui-runtime/static/icons/NOTICE.txt	=> bundle/source/ui-runtime/static/icons/NOTICE.txt
+copy	/srv/nico-input/base-bundle/source/ui-runtime/static/icons/bolt.svg	=> bundle/source/ui-runtime/static/icons/bolt.svg
+copy	/srv/nico-input/base-bundle/source/ui-runtime/static/icons/building-warehouse.svg	=> bundle/source/ui-runtime/static/icons/building-warehouse.svg
+copy	/srv/nico-input/base-bundle/source/ui-runtime/static/icons/cpu.svg	=> bundle/source/ui-runtime/static/icons/cpu.svg
+copy	/srv/nico-input/base-bundle/source/ui-runtime/static/icons/network.svg	=> bundle/source/ui-runtime/static/icons/network.svg
+copy	/srv/nico-input/base-bundle/source/ui-runtime/static/icons/server-2.svg	=> bundle/source/ui-runtime/static/icons/server-2.svg
+copy	/srv/nico-input/base-bundle/source/ui-runtime/static/index.html	=> bundle/source/ui-runtime/static/index.html
+copy	/srv/nico-input/base-bundle/source/ui-runtime/static/instances.js	=> bundle/source/ui-runtime/static/instances.js
+copy	/srv/nico-input/base-bundle/source/ui-runtime/static/live.css	=> bundle/source/ui-runtime/static/live.css
+copy	/srv/nico-input/base-bundle/source/ui-runtime/static/live.html	=> bundle/source/ui-runtime/static/live.html
+copy	/srv/nico-input/base-bundle/source/ui-runtime/static/live.js	=> bundle/source/ui-runtime/static/live.js
+copy	/srv/nico-input/base-bundle/source/ui-runtime/static/machines-template.xlsx	=> bundle/source/ui-runtime/static/machines-template.xlsx
+copy	/srv/nico-input/base-bundle/source/ui-runtime/static/management.js	=> bundle/source/ui-runtime/static/management.js
+copy	/srv/nico-input/base-bundle/source/ui-runtime/static/management_addresses.js	=> bundle/source/ui-runtime/static/management_addresses.js
+copy	/srv/nico-input/base-bundle/source/ui-runtime/static/onboarding.js	=> bundle/source/ui-runtime/static/onboarding.js
+copy	/srv/nico-input/base-bundle/source/ui-runtime/static/profiles.js	=> bundle/source/ui-runtime/static/profiles.js
+copy	/srv/nico-input/base-bundle/source/ui-runtime/static/styles.css	=> bundle/source/ui-runtime/static/styles.css
+copy	/srv/nico-input/base-bundle/source/ui-runtime/static/topology.js	=> bundle/source/ui-runtime/static/topology.js
+copy	/srv/nico-input/base-bundle/source/ui-runtime/storage_policy.py	=> bundle/source/ui-runtime/storage_policy.py
+copy	/srv/nico-input/base-bundle/source/ui-runtime/store.py	=> bundle/source/ui-runtime/store.py
+copy	/srv/nico-input/base-bundle/source/ui-runtime/workflow.py	=> bundle/source/ui-runtime/workflow.py
+generate	=> bundle/bundle.json
+generate	=> bundle/config/deployment-settings.json
+generate	=> bundle/config/runtime.json
+generate	=> bundle/deployment/charts/pxeye-nico-platform-0.1.0.tgz
+generate	=> bundle/deployment/deployment.json
+generate	=> bundle/deployment/nico-cluster-permissions.yaml
+generate	=> bundle/deployment/nico-target-namespace-rbac.yaml
+generate	=> bundle/deployment/patches/core-runtime-compatibility.patch
+generate	=> bundle/deployment/patches/migration-job-lifecycle.patch
+generate	=> bundle/deployment/patches/pin-service-ips.patch
+generate	=> bundle/deployment/patches/platform-tls-vault-roles.patch
+generate	=> bundle/deployment/pxeye-bootstrap.yaml
+generate	=> bundle/deployment/values/cert-manager.yaml
+generate	=> bundle/deployment/values/core.yaml
+generate	=> bundle/deployment/values/platform.yaml
+generate	=> bundle/deployment/values/vault.yaml
+generate	=> bundle/docs/INSTALL.md
+generate	=> bundle/manifests/build-file-plan.json
+generate	=> bundle/manifests/build-report.json
+generate	=> bundle/manifests/deployment-images-lock.json
+generate	=> bundle/manifests/file-inventory.json
+generate	=> bundle/manifests/materials-input-lock.json
+generate	=> bundle/tools/deployment-client.py
+generate	=> bundle/tools/import-oci-bundle.py
+generate	=> bundle/tools/import-pxeye-images.py
+generate	=> bundle/tools/prepare-auth.py
+generate	=> bundle/tools/verify-bundle.py
+generate	=> bundle/tools/verify-core.py
+PLAN_COMPLETE inputs=122 generated=28 bundle_files=150 input_bytes=17857964250

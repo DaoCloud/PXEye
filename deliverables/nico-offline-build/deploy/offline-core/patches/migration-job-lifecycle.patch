@@ -1,0 +1,25 @@
+--- a/nico/charts/nico-api/templates/migration-job.yaml
++++ b/nico/charts/nico-api/templates/migration-job.yaml
+@@ -6,6 +6,7 @@
+   labels:
+     {{- include "nico-api.labels" . | nindent 4 }}
+     app: {{ include "nico-api.name" . }}-migrate
++    app.kubernetes.io/instance: {{ include "nico-api.name" . }}-migrate
+   annotations:
+     argocd.argoproj.io/hook: Sync
+     argocd.argoproj.io/sync-wave: "-5"
+@@ -14,12 +15,14 @@
+     helm.sh/hook-delete-policy: before-hook-creation
+     helm.sh/hook-weight: "-5"
+ spec:
++  activeDeadlineSeconds: 900
+   template:
+     metadata:
+       name: {{ include "nico-api.name" . }}-migrate
+       labels:
+         {{- include "nico-api.labels" . | nindent 8 }}
+         app: {{ include "nico-api.name" . }}-migrate
++        app.kubernetes.io/instance: {{ include "nico-api.name" . }}-migrate
+     spec:
+       restartPolicy: OnFailure
+       {{- with .Values.nodeSelector }}

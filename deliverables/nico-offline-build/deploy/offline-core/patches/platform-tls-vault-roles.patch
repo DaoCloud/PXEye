@@ -1,0 +1,126 @@
+--- a/pxeye-nico-platform/templates/bootstrap.yaml
++++ b/pxeye-nico-platform/templates/bootstrap.yaml
+@@ -1,4 +1,13 @@
+ {{- if eq .Values.mode "vault-bootstrap" }}
++apiVersion: v1
++kind: ConfigMap
++metadata:
++  name: {{ .Values.prefix }}-vault-bootstrap-code
++  namespace: {{ .Release.Namespace }}
++data:
++  roles.py: |
++{{ .Files.Get "files/vault-roles.py" | indent 4 }}
++---
+ apiVersion: v1
+ kind: ServiceAccount
+ metadata:
+@@ -54,7 +63,7 @@
+         - name: bootstrap
+           image: {{ required "Set bootstrapImage to the PXEye image containing pxeye-bootstrap-vault" .Values.bootstrapImage | quote }}
+           imagePullPolicy: IfNotPresent
+-          command: [pxeye-bootstrap-vault]
++          command: [sh, -ec, "pxeye-bootstrap-vault; python3 /bootstrap/roles.py"]
+           env:
+             - {name: NICO_PREFIX, value: "{{ .Values.prefix }}"}
+             - {name: NICO_VAULT_URL, value: "https://{{ .Values.prefix }}-nico-vault.{{ .Release.Namespace }}.svc:8200"}
+@@ -65,7 +74,10 @@
+           securityContext: {readOnlyRootFilesystem: true, allowPrivilegeEscalation: false}
+           volumeMounts:
+             - {name: temporary, mountPath: /tmp}
++            - {name: bootstrap-code, mountPath: /bootstrap, readOnly: true}
+       volumes:
++        - name: bootstrap-code
++          configMap: {name: "{{ .Values.prefix }}-vault-bootstrap-code"}
+         - name: temporary
+           emptyDir: {sizeLimit: 16Mi}
+ ---
+@@ -96,7 +108,7 @@
+             - name: maintenance
+               image: {{ required "Set bootstrapImage" .Values.bootstrapImage | quote }}
+               imagePullPolicy: IfNotPresent
+-              command: [pxeye-bootstrap-vault]
++              command: [sh, -ec, "pxeye-bootstrap-vault; python3 /bootstrap/roles.py"]
+               env:
+                 - {name: NICO_PREFIX, value: "{{ .Values.prefix }}"}
+                 - {name: NICO_VAULT_URL, value: "https://{{ .Values.prefix }}-nico-vault.{{ .Release.Namespace }}.svc:8200"}
+@@ -107,7 +119,10 @@
+               securityContext: {readOnlyRootFilesystem: true, allowPrivilegeEscalation: false}
+               volumeMounts:
+                 - {name: temporary, mountPath: /tmp}
++                - {name: bootstrap-code, mountPath: /bootstrap, readOnly: true}
+           volumes:
++            - name: bootstrap-code
++              configMap: {name: "{{ .Values.prefix }}-vault-bootstrap-code"}
+             - name: temporary
+               emptyDir: {sizeLimit: 16Mi}
+ {{- end }}
+--- a/pxeye-nico-platform/templates/infrastructure.yaml
++++ b/pxeye-nico-platform/templates/infrastructure.yaml
+@@ -211,6 +211,8 @@
+           imagePullPolicy: IfNotPresent
+           {{- if eq $name "vault" }}
+           command: [vault, server, -config=/vault/config/vault.hcl]
++          {{- else }}
++          args: [postgres, -c, ssl=on, -c, ssl_cert_file=/var/lib/postgresql/tls/tls.crt, -c, ssl_key_file=/var/lib/postgresql/tls/tls.key]
+           {{- end }}
+           securityContext:
+             runAsNonRoot: true
+@@ -244,6 +246,8 @@
+             {{- if eq $name "vault" }}
+             - {name: config, mountPath: /vault/config, readOnly: true}
+             - {name: tls, mountPath: /vault/tls, readOnly: true}
++            {{- else }}
++            - {name: postgres-tls, mountPath: /var/lib/postgresql/tls, readOnly: true}
+             {{- end }}
+       volumes:
+         - name: data
+@@ -253,6 +257,9 @@
+           configMap: {name: "{{ $prefix }}-nico-vault-config"}
+         - name: tls
+           secret: {secretName: "{{ $prefix }}-nico-vault-tls", defaultMode: 0440}
++        {{- else }}
++        - name: postgres-tls
++          secret: {secretName: "{{ $prefix }}-nico-postgres-tls", defaultMode: 0640}
+         {{- end }}
+ {{- end }}
+ {{- end }}
+--- /dev/null
++++ b/pxeye-nico-platform/templates/postgres-tls.yaml
+@@ -0,0 +1,23 @@
++{{- if eq .Values.mode "infrastructure" }}
++apiVersion: cert-manager.io/v1
++kind: Certificate
++metadata:
++  name: {{ .Values.prefix }}-nico-postgres-tls
++  namespace: {{ .Release.Namespace }}
++  annotations:
++    meta.helm.sh/release-name: {{ .Release.Name }}
++    meta.helm.sh/release-namespace: {{ .Release.Namespace }}
++  labels:
++    app.kubernetes.io/managed-by: Helm
++spec:
++  secretName: {{ .Values.prefix }}-nico-postgres-tls
++  dnsNames:
++    - {{ .Values.prefix }}-nico-postgres
++    - {{ .Values.prefix }}-nico-postgres.{{ .Release.Namespace }}.svc
++    - {{ .Values.prefix }}-nico-postgres.{{ .Release.Namespace }}.svc.cluster.local
++  issuerRef: {name: "{{ .Values.prefix }}-nico-site-issuer", kind: Issuer}
++  privateKey: {algorithm: ECDSA, size: 384}
++  usages: [server auth, digital signature]
++  duration: 720h
++  renewBefore: 360h
++{{- end }}
+--- /dev/null
++++ b/pxeye-nico-platform/files/vault-roles.py
+@@ -0,0 +1,11 @@
++import base64,json,os,ssl,urllib.request
++from pxeye.deployment.kubernetes import CurrentCluster
++k=CurrentCluster({},'/tmp');p=os.environ['NICO_PREFIX']
++def secret(n):return {key:base64.b64decode(v).decode() for key,v in k.get('secrets',n)['data'].items()}
++ca=secret(p+'-nico-site-ca');recovery=json.loads(secret(p+'-nico-vault-recovery')['initialization.json'])
++o=urllib.request.build_opener(urllib.request.ProxyHandler({}),urllib.request.HTTPSHandler(context=ssl.create_default_context(cadata=ca['tls.crt'])))
++for account in (os.environ.get('NICO_CORE_SERVICE_ACCOUNT') or p+'-nico-api',p+'-nico-bmc-proxy'):
++ body={'bound_service_account_names':[account],'bound_service_account_namespaces':[k.namespace],'policies':['nico-core'],'ttl':'1h'}
++ request=urllib.request.Request(os.environ['NICO_VAULT_URL']+'/v1/auth/kubernetes/role/'+account,data=json.dumps(body).encode(),headers={'X-Vault-Token':recovery['root_token'],'Content-Type':'application/json'},method='POST')
++ with o.open(request,timeout=15) as result:assert result.status in (200,204)
++print('Service-account Vault roles configured.')

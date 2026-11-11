@@ -1,0 +1,119 @@
+#!/usr/bin/env python3
+"""Command-line companion to the PXEye UI; authenticate through its public API."""
+import argparse
+import getpass
+import http.cookiejar
+import json
+import time
+import urllib.error
+import urllib.request
+
+p = argparse.ArgumentParser(description=__doc__)
+p.add_argument('action', choices=['status', 'preflight', 'start', 'wait-install', 'connect', 'wait-connected'])
+p.add_argument('--url', required=True)
+p.add_argument('--timeout', type=int, default=3900)
+a = p.parse_args()
+base = a.url.rstrip('/')
+jar = http.cookiejar.CookieJar()
+opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), urllib.request.HTTPCookieProcessor(jar))
+csrf = ''
+
+def request(path, body=None):
+    headers = {'Origin': base, 'Content-Type': 'application/json', 'X-CSRF-Token': csrf}
+    req = urllib.request.Request(base + path, headers=headers,
+        data=None if body is None else json.dumps(body).encode())
+    try:
+        with opener.open(req, timeout=40) as response:
+            return json.load(response)
+    except urllib.error.HTTPError as error:
+        try:
+            message = json.loads(error.read()).get('error', str(error.code))
+        except (ValueError, AttributeError):
+            message = str(error.code)
+        raise SystemExit('PXEye API: ' + str(message)) from None
+
+password = getpass.getpass('PXEye 登录口令（不回显）: ')
+csrf = request('/api/login', {'password': password})['csrf']
+del password
+
+def snapshot():
+    return request('/api/nico-deployment?refresh=1')
+
+def summary(v):
+    op = v.get('operation') or {}
+    return {'id': op.get('id'), 'status': op.get('status'),
+        'phases': [{k: phase.get(k) for k in ('id', 'state', 'release', 'detail')} for phase in op.get('phases', [])],
+        **{k: v.get(k) for k in ('ready', 'ready_count', 'required_count', 'initialization_ready', 'boot_ready', 'site_connected')},
+        'error': op.get('error') or v.get('error', '')}
+
+try:
+    view = snapshot()
+    op = view.get('operation') or {}
+    if a.action == 'status':
+        # The refresh response can contain the previous observation. Wait for
+        # that single refresh without repeatedly requesting another one.
+        deadline = time.monotonic() + 30
+        while view.get('observing') and time.monotonic() < deadline:
+            time.sleep(1)
+            view = request('/api/nico-deployment')
+        if view.get('observing'):
+            raise SystemExit('状态观察仍在进行，请稍后查询；未执行任何安装操作。')
+        print(json.dumps(summary(view), ensure_ascii=False, indent=2))
+        print('BUNDLES', json.dumps(view.get('bundles', []), ensure_ascii=False))
+    elif a.action == 'preflight':
+        if op:
+            raise SystemExit('已存在部署记录；停止首次安装预检，不覆盖历史任务。请在 UI 核对原任务。')
+        bundles = [b for b in view.get('bundles', []) if b.get('id') == '@@BUNDLE_ID@@']
+        assert len(bundles) == 1 and bundles[0].get('valid') and bundles[0].get('recipe_ready'), 'Bundle 不完整'
+        assert bundles[0]['version'] == '@@VERSION@@', 'Bundle 版本不符'
+        print(json.dumps(request('/api/nico-deployment/preflight', {
+            'mode': 'offline', 'package_id': 'bundle-@@BUNDLE_ID@@',
+            'site_name': @@SITE_NAME@@, 'release_prefix': '@@RELEASE@@',
+            'core_url': 'https://@@RELEASE@@-nico-api.@@NAMESPACE@@.svc.cluster.local:1079',
+            'pxe_url': 'http://@@RELEASE@@-nico-pxe.@@NAMESPACE@@.svc.cluster.local:8080',
+            'architecture': 'x86_64', 'timeout_seconds': 900}), ensure_ascii=False))
+        deadline = time.monotonic() + 360
+        while time.monotonic() < deadline:
+            time.sleep(3)
+            view = snapshot(); op = view.get('operation') or {}
+            if op.get('status') == 'prepared':
+                print(json.dumps(summary(view), ensure_ascii=False, indent=2)); break
+            if op.get('status') == 'needs_attention':
+                raise SystemExit(op.get('error') or '预检失败，请查看 UI')
+        else:
+            raise SystemExit('预检等待超时；后台任务未被取消，请查询原任务，不要重复创建。')
+    elif a.action == 'start':
+        assert op.get('status') == 'prepared' and not op.get('started_at'), '仅启动首次 prepared 任务；不自动重试失败任务'
+        print(json.dumps(request('/api/nico-deployment/start', {'id': op['id'], 'confirm': True}), ensure_ascii=False))
+    elif a.action == 'connect':
+        assert op and op.get('status') != 'connected', '任务已连接或不存在，不重放'
+        assert op.get('phases') and all(x['state'] == 'ready' for x in op['phases']), 'Helm 阶段尚未完成'
+        print(json.dumps(request('/api/nico-deployment/connect', {
+            'id': op['id'], 'confirm': True,
+            'core_url': 'https://@@RELEASE@@-nico-api.@@NAMESPACE@@.svc.cluster.local:1079',
+            'pxe_url': 'http://@@RELEASE@@-nico-pxe.@@NAMESPACE@@.svc.cluster.local:8080'}), ensure_ascii=False))
+    else:
+        assert op, '没有部署记录'
+        expected_id = op['id']; deadline = time.monotonic() + a.timeout; previous = None
+        while time.monotonic() < deadline:
+            view = snapshot(); op = view.get('operation') or {}
+            assert op.get('id') == expected_id, '任务已改变，停止监控'
+            result = summary(view)
+            text = json.dumps(result, ensure_ascii=False, sort_keys=True)
+            if text != previous:
+                print(json.dumps(result, ensure_ascii=False), flush=True); previous = text
+            if op.get('status') == 'needs_attention':
+                raise SystemExit(op.get('error') or '任务需要处理；未自动重试或重启服务')
+            phases_ready = bool(op.get('phases')) and all(x['state'] == 'ready' for x in op['phases'])
+            if a.action == 'wait-install' and phases_ready and view.get('ready'):
+                break
+            if a.action == 'wait-connected' and op.get('status') == 'connected' and view.get('site_connected') and view.get('ready'):
+                break
+            time.sleep(5)
+        else:
+            raise SystemExit('等待超时；后台任务未被取消，请查询原任务。')
+finally:
+    # This version has no logout implementation. Discard local cookies; the
+    # standard server session expires after eight hours. Never change its DB.
+    jar.clear()
+    csrf = ''

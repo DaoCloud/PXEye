@@ -1,0 +1,36 @@
+{
+  "bundle_id": "nico-core-field",
+  "site_name": "NICo lab",
+  "namespace": "nico-system",
+  "release_prefix": "nico",
+  "registry": "registry.example.invalid:5000",
+  "repository_prefix": "nico-offline",
+  "service_cidr": "10.96.0.0/12",
+  "service_ips": {
+    "dns": "10.96.40.10",
+    "pxe": "10.96.40.11",
+    "ntp": "10.96.40.12"
+  },
+  "host_network": {
+    "name": "host_boot",
+    "prefix": "192.0.2.0/24",
+    "gateway": "192.0.2.1",
+    "mtu": 1500
+  },
+  "bundle_host_path": "/home/kind/nico-bundles",
+  "node_port": 31808,
+  "ui": {
+    "archive": "./inputs/pxeye-ui.oci.tar",
+    "source_image": "registry.example.invalid:5000/nico/pxeye:0.22.16-73b8236",
+    "tag": "0.22.16-73b8236",
+    "digest": "sha256:229c5053944b074759d064a5cc70093815dc2c07bcc28855396d797ce3cc8e56"
+  },
+  "bootstrap": {
+    "archive": "./inputs/pxeye-bootstrap.oci.tar",
+    "source_image": "registry.example.invalid:5000/nico/pxeye:0.22.13-9dbcff8",
+    "tag": "0.22.13-9dbcff8",
+    "digest": "sha256:9699795bf6c427bae0828406493ba7cc6721664f308e1ce6cb3fafbe41c8c09b"
+  },
+  "context": "kind-lab",
+  "kind_node": "lab-control-plane"
+}

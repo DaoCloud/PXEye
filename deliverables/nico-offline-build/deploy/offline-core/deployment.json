@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "name": "NICo Core single-node lab",
+  "version": "@{version}",
+  "description": "Core、PXE、DHCP、DNS、NTP、BMC Proxy、PostgreSQL、Vault 和 cert-manager；不包含 REST/Temporal/Keycloak。",
+  "profile": "helm",
+  "initialization": {
+    "vault": "vault"
+  },
+  "defaults": {
+    "site_name": "@{site_name}",
+    "release_prefix": "@{release_prefix}",
+    "core_url": "https://@{release_prefix}-nico-api.@{namespace}.svc.cluster.local:1079",
+    "pxe_url": "http://@{release_prefix}-nico-pxe.@{namespace}.svc.cluster.local:8080"
+  },
+  "phases": [
+    {
+      "id": "cert-manager",
+      "name": "证书管理",
+      "release": "@{release_prefix}-cert-manager",
+      "chart": "charts/cert-manager-v1.17.1.tgz",
+      "values": [
+        "values/cert-manager.yaml"
+      ],
+      "timeout_seconds": 900
+    },
+    {
+      "id": "platform",
+      "name": "数据库与站点证书",
+      "release": "@{release_prefix}-platform",
+      "chart": "charts/pxeye-nico-platform-0.1.0.tgz",
+      "values": [
+        "values/platform.yaml"
+      ],
+      "timeout_seconds": 900
+    },
+    {
+      "id": "vault",
+      "name": "Vault 初始化",
+      "release": "@{release_prefix}-vault",
+      "chart": "charts/pxeye-nico-platform-0.1.0.tgz",
+      "values": [
+        "values/vault.yaml"
+      ],
+      "timeout_seconds": 900
+    },
+    {
+      "id": "core",
+      "name": "NICo Core 与网络引导",
+      "release": "@{release_prefix}",
+      "chart": "charts/nico-0.1.1.tgz",
+      "values": [
+        "values/core.yaml"
+      ],
+      "timeout_seconds": 900
+    }
+  ],
+  "connection": {
+    "namespace": "@{namespace}",
+    "client_secret": "@{release_prefix}-nico-admin-client",
+    "ca_secret": "@{release_prefix}-nico-site-ca",
+    "ca_key": "tls.crt",
+    "pxe_internal_url": "http://@{release_prefix}-nico-pxe.@{namespace}.svc:8080"
+  },
+  "boot_checks": [
+    {
+      "architecture": "x86_64",
+      "url": "http://@{release_prefix}-nico-pxe.@{namespace}.svc:8080/public/blobs/internal/x86_64/ipxe.efi",
+      "min_bytes": 100000
+    },
+    {
+      "architecture": "x86_64",
+      "url": "http://@{release_prefix}-nico-pxe.@{namespace}.svc:8080/public/blobs/internal/x86_64/scout.efi",
+      "min_bytes": 100000
+    },
+    {
+      "architecture": "x86_64",
+      "url": "http://@{release_prefix}-nico-pxe.@{namespace}.svc:8080/public/blobs/internal/x86_64/scout.squashfs",
+      "min_bytes": 100000000
+    }
+  ]
+}
