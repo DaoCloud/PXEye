@@ -1,6 +1,6 @@
 # 第三步：导入 Helm 离线包并部署 NICo
 
-本工具不构建镜像、不连接公网、不改containerd。它消费 `kind=pxeye-nico-helm` 包：校验解压→relok8s入库→Helm OCI发布→冻结部署配方→按阶段Helm安装。当前先覆盖包内单节点amd64 Core；不自动部署REST，不发起设备发现、Redfish或OS安装。
+本工具不构建镜像、不主动拉取公网依赖、不改containerd。它消费 `kind=pxeye-nico-helm` 包：校验解压→relok8s入库→Helm OCI发布→冻结部署配方→按阶段Helm安装。当前先覆盖包内单节点amd64 Core；不自动部署REST，不发起设备发现、Redfish或OS安装。
 
 部署执行和构建产物是不同验收：脚本完成Helm阶段后仍需核对Core严格mTLS、材料HTTP与实际网络。以下是脚本使用说明，其中现场参数为示例，尚未在火种机完成本版本端到端验收。
 
@@ -66,7 +66,7 @@ test -f "$BUNDLE/profiles/install-plan.json"
 
 ## 3. 创建现场配置
 
-主要目标：把目标集群、Registry和现场信息集中到一个JSON文件；不依赖默认context。`write-config`只创建文件，不操作集群。
+主要目标：把目标集群、Registry和现场信息集中到一个JSON文件；不依赖默认context。`write-config`只读查询集群以探测Registry，并创建配置文件，不修改集群。
 
 执行命令（火种机；本轮保留旧release/PVC的Kind恢复场景）：
 
@@ -78,7 +78,6 @@ python3 "$KIT/onsite.py" write-config \
   --context kind-fireseed \
   --namespace nico-system \
   --release-prefix previous-nico-release \
-  --registry-url https://registry.example.invalid:443 \
   --restore
 ```
 
@@ -88,7 +87,9 @@ python3 "$KIT/onsite.py" write-config \
 python3 -m json.tool "$CONFIG"
 ```
 
-`https://registry.example.invalid:443`、context和previous-nico-release为示例，执行前替换成实际现场值；协议与TLS须匹配；HTTP入口使用`http://`，不是`skip_tls_verify`。有自签名CA时，创建配置可加`--ca-file /绝对路径/ca.crt`；明确接受跳过该Registry校验时可加`--skip-tls-verify`。需要认证时加`--docker-config-directory /绝对路径/docker-auth`，该目录须有已登录的`config.json`；不在命令行传密码。工具不代替Harbor项目创建或账号授权。
+省略`--registry-url`时，脚本从目标namespace的PXEye镜像地址、私有IP/回环镜像地址，以及Kind的`kube-public/local-registry-hosting`声明收集候选，验证`/v2/`后将唯一可用端点写入配置的`registry.url`，来源和探测结果写入`registry.discovery`。不扫描网段。Registry V2返回200或401且有标准API响应头才识别；401只证明端点存在，不证明认证或推送权限。HTTPS优先，证书失败不自动降级HTTP；使用私有CA可加`--ca-file /绝对路径/ca.crt`，明确允许跳过校验时加`--skip-tls-verify`。没有候选、不可达或多个可用端点时停止，可用`--registry-url https://实际入口`明确指定。全新集群没有发现线索时同样需要该覆盖参数。
+
+需要认证时加`--docker-config-directory /绝对路径/docker-auth`，目录须包含有效`config.json`；不在命令行传密码。工具不代替Harbor项目创建或账号授权。自动探测不修改containerd；主机可达不代表Kind节点可拉取。
 
 restore模式自动读取原release的有效values和旧DNS/PXE/NTP Service地址；保留原HostInband和凭据引用。Core镜像采用本次离线包版本，不自动采用来源环境当前运行镜像。配置及values有变化时用新的work_directory；唯有补充data_backup_directory不使已入库内容失效。
 

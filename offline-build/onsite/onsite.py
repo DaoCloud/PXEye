@@ -5,6 +5,7 @@ import copy
 from datetime import datetime, timezone
 import fcntl
 import hashlib
+import http.client
 import importlib.util
 import ipaddress
 import json
@@ -13,6 +14,7 @@ from pathlib import Path
 import re
 import shlex
 import shutil
+import ssl
 import subprocess
 import sys
 import tarfile
@@ -698,6 +700,106 @@ class Onsite:
         print('PXEYE_HELM_READY; existing non-Helm PXEye is never automatically adopted')
 
 
+def detect_registry(args):
+    """Discover a site endpoint from explicit cluster evidence, then probe Registry V2."""
+    candidates = {}
+
+    def add(authority, source):
+        if not authority or '/' in authority or '@' in authority:
+            return
+        parsed = urlsplit('//' + authority)
+        try:
+            valid = parsed.hostname and parsed.port != 0 and not parsed.username and not parsed.password
+        except ValueError:
+            valid = False
+        if valid:
+            candidates.setdefault(authority.lower(), set()).add(source)
+
+    def read(arguments, optional=False):
+        result = subprocess.run(['kubectl', '--context', args.context, '--request-timeout=15s'] + arguments,
+                                text=True, capture_output=True, timeout=20)
+        if optional and result.returncode:
+            print('REGISTRY_DISCOVERY_HINT_UNAVAILABLE: optional local-registry-hosting ConfigMap', flush=True)
+            return {}
+        require(result.returncode == 0, 'Registry discovery cannot read target namespace workloads')
+        return json.loads(result.stdout) if result.stdout.strip() else {}
+
+    # No subnet scan or public image-Registry enumeration. Use the existing PXEye
+    # image authority and private-IP/loopback image authorities in this namespace.
+    objects = read(['-n', args.namespace, 'get', 'pods,deployments', '-o', 'json'])
+    for item in objects.get('items', []):
+        spec = item['spec'] if item['kind'] == 'Pod' else item['spec']['template']['spec']
+        for container in spec.get('containers', []) + spec.get('initContainers', []):
+            image = container.get('image', '')
+            if '/' not in image:
+                continue
+            authority = image.split('/', 1)[0]
+            if not ('.' in authority or ':' in authority or authority == 'localhost'):
+                continue
+            host = urlsplit('//' + authority).hostname
+            try:
+                address = ipaddress.ip_address(host)
+                local = address.is_private and not address.is_unspecified and not address.is_multicast
+            except ValueError:
+                local = host == 'localhost' or bool(host and host.endswith('.localhost'))
+            public = host in {'docker.io', 'index.docker.io', 'registry-1.docker.io', 'ghcr.io',
+                              'quay.io', 'nvcr.io', 'registry.k8s.io', 'gcr.io'}
+            if not public and (local or container.get('name') == 'pxeye'):
+                add(authority, 'workload-image')
+    hint = read(['-n', 'kube-public', 'get', 'configmap', 'local-registry-hosting',
+                 '--ignore-not-found', '-o', 'json'], optional=True)
+    if hint:
+        data = yaml.safe_load(hint.get('data', {}).get('localRegistryHosting.v1', '')) or {}
+        if isinstance(data, dict):
+            add(data.get('host'), 'local-registry-hosting')
+    require(candidates, 'No Registry candidate found; use --registry-url to specify the site endpoint')
+    require(len(candidates) <= 16, 'Too many Registry candidates; use --registry-url to select the site endpoint')
+    context = ssl.create_default_context(cafile=str(args.ca_file) if args.ca_file else None)
+    if args.skip_tls_verify:
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+    found, probes = set(), []
+    for authority in sorted(candidates):
+        # Prefer TLS. Certificate failure never silently falls back to HTTP.
+        for scheme in ('https', 'http'):
+            url = scheme + '://' + authority
+            parsed = urlsplit(url)
+            connection = None
+            certificate_error = False
+            try:
+                options = {'context': context} if scheme == 'https' else {}
+                cls = http.client.HTTPSConnection if scheme == 'https' else http.client.HTTPConnection
+                connection = cls(parsed.hostname, parsed.port, timeout=4, **options)
+                connection.request('GET', '/v2/', headers={'Accept': 'application/json'})
+                response = connection.getresponse()
+                api = response.getheader('Docker-Distribution-Api-Version', '').lower()
+                valid = response.status in (200, 401) and api == 'registry/2.0'
+                probes.append({'url': url, 'status': response.status, 'registry_v2': valid})
+                if valid:
+                    host = '[' + parsed.hostname + ']' if ':' in parsed.hostname else parsed.hostname
+                    port = parsed.port
+                    canonical = scheme + '://' + host + (':' + str(port) if port and port != {'https': 443, 'http': 80}[scheme] else '')
+                    found.add(canonical)
+                    break
+            except ssl.SSLCertVerificationError:
+                certificate_error = True
+                probes.append({'url': url, 'error': 'TLS certificate verification failed'})
+            except (OSError, http.client.HTTPException, ValueError) as error:
+                probes.append({'url': url, 'error': type(error).__name__})
+            finally:
+                if connection:
+                    connection.close()
+            if certificate_error:
+                break
+    for probe in probes:
+        print('REGISTRY_PROBE', json.dumps(probe, sort_keys=True), flush=True)
+    require(len(found) == 1, 'Expected one reachable Registry V2 endpoint, found ' + str(len(found)) +
+            '; check probe results or select explicitly with --registry-url')
+    selected = next(iter(found))
+    print('REGISTRY_DETECTED', selected, flush=True)
+    return selected, {'sources': {key: sorted(value) for key, value in candidates.items()}, 'probes': probes}
+
+
 def main():
     os.umask(0o077)
     parser = argparse.ArgumentParser(description=__doc__)
@@ -710,7 +812,7 @@ def main():
     config.add_argument('--work-directory', type=Path, required=True)
     config.add_argument('--namespace', default='nico-system'); config.add_argument('--release-prefix', default='nico')
     config.add_argument('--restore', action='store_true')
-    config.add_argument('--registry-url', required=True)
+    config.add_argument('--registry-url', help='Explicit Registry endpoint; omit to discover from the selected cluster')
     config.add_argument('--ca-file', type=Path)
     config.add_argument('--skip-tls-verify', action='store_true')
     config.add_argument('--docker-config-directory', type=Path)
@@ -731,9 +833,12 @@ def main():
         document.update(context=args.context, namespace=args.namespace, release_prefix=args.release_prefix,
                         bundle=str(args.bundle.resolve()), work_directory=str(args.work_directory.resolve()),
                         mode='restore' if args.restore else 'new')
-        document['registry'].update(url=args.registry_url, skip_tls_verify=args.skip_tls_verify,
+        registry_url, discovery = (args.registry_url, None) if args.registry_url else detect_registry(args)
+        document['registry'].update(url=registry_url, skip_tls_verify=args.skip_tls_verify,
                                     ca_file=str(args.ca_file.resolve()) if args.ca_file else None,
                                     docker_config_directory=str(args.docker_config_directory.resolve()) if args.docker_config_directory else None)
+        if discovery:
+            document['registry']['discovery'] = discovery
         write_json(args.output, document); print('SITE_CONFIG_CREATED', args.output); return
     onsite = Onsite(args.config)
     if args.action == 'backup': onsite.cold_backup(args.engine, args.node)

@@ -63,7 +63,7 @@ The helper checks Python3.11+/PyYAML, verifies/unpacks the archive and writes KI
 
 ## 3. Create one site config
 
-Goal: explicitly select the Kubernetes context, Registry and release identity. The following example restores existing releases/PVCs; replace the example Registry/context/prefix with the real site values.
+Goal: explicitly select the Kubernetes context, Registry and release identity. The following example restores existing releases/PVCs; replace context/prefix with the real site values. Registry discovery performs read-only cluster queries and endpoint GET requests before creating the config.
 
 Commands:
 
@@ -75,7 +75,6 @@ python3 "$KIT/onsite.py" write-config \
   --context kind-fireseed \
   --namespace nico-system \
   --release-prefix previous-nico-release \
-  --registry-url https://registry.example.invalid:443 \
   --restore
 ```
 
@@ -85,7 +84,9 @@ Confirm:
 python3 -m json.tool "$CONFIG"
 ```
 
-Use the actual protocol (`http://` is different from disabling HTTPS verification). A private CA can be configured with `--ca-file /absolute/path/ca.crt`; explicit Registry verification bypass uses `--skip-tls-verify`. For authentication, use `--docker-config-directory /absolute/path/docker-auth` containing an already authenticated `config.json`. No passwords on command lines. Harbor project/account provisioning is outside this helper.
+Omitting `--registry-url` discovers candidates from PXEye image authorities, private-IP/loopback image authorities in the selected namespace, and Kind's `kube-public/local-registry-hosting` declaration. The unique reachable Registry V2 endpoint is saved as `registry.url`, with evidence in `registry.discovery`. No subnet scan is performed. A 200/401 response must include the Registry V2 API header; 401 does not prove credentials or push access. HTTPS is preferred; certificate failures never silently downgrade to HTTP. Use `--ca-file /absolute/path/ca.crt` for a private CA or explicitly opt into `--skip-tls-verify`. Missing, unreachable or ambiguous candidates stop configuration creation; override with `--registry-url https://actual-endpoint`. A new cluster without discovery evidence also needs this override.
+
+For authentication, use `--docker-config-directory /absolute/path/docker-auth` with an authenticated `config.json`. No passwords on command lines. Harbor project/account provisioning remains separate. Discovery does not change containerd or prove Kind-node image pulls.
 
 Restore mode reads existing effective Helm values and DNS/PXE/NTP Service IPs, retaining credentials/network settings while selecting the imported image versions. It does not silently choose running images from a source cluster. Configuration/override-file changes require a new work directory, except that recovery backup evidence can be supplied later.
 
