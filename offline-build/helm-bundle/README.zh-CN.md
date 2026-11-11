@@ -2,7 +2,7 @@
 
 [English](README.md) · **简体中文**
 
-本目录是新的relok8s打包入口。输入是上一版构建器已经验收的`kind=nico-materials`解压目录，脚本自动复用其中的23张Core镜像、2张PXEye镜像和固定Chart，构建选中的材料镜像，再交付一个完整归档。不需要填写目标现场Registry、IP、网关或namespace。
+本目录是新的relok8s打包入口。输入是上一版构建器已经验收的`kind=nico-materials`解压目录，脚本自动复用其中的23张Core镜像、2张PXEye镜像和固定Chart，构建选中的材料镜像，再交付一个完整归档。OCI归档在摘要校验后只解包一次，按已有导入器的dir transport处理OCI及Docker v2 manifest，保留原digest，避免CoreDNS等镜像被旧版skopeo拒绝。不需要填写目标现场Registry、IP、网关或namespace。
 
 ## 1. 检查构建机
 

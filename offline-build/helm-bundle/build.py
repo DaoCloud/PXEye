@@ -187,6 +187,39 @@ def docker_archive(source, reference, destination, tag):
         add_bytes('manifest.json', json.dumps([{'Config': config_name, 'RepoTags': [tag], 'Layers': layers}]).encode())
 
 
+def unpack_oci(source, target):
+    """Extract a previously hash-verified layout once, without archive ownership."""
+    target.mkdir(parents=True)
+    with tarfile.open(source, 'r:') as archive:
+        for member in archive:
+            name = b.safe_name(member.name)
+            b.require(member.isfile() or member.isdir(), 'OCI links/devices are not allowed')
+            if member.isdir():
+                continue
+            path = target / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with archive.extractfile(member) as incoming, path.open('xb') as outgoing:
+                shutil.copyfileobj(incoming, outgoing, 8 * 1024**2)
+    return target
+
+
+def image_view(layout, reference, target):
+    """Same dir transport as the existing importer: OCI and Docker v2, no conversion."""
+    index = json.loads((layout / 'index.json').read_text())
+    desc = next(d for d in index['manifests'] if d.get('annotations', {}).get('org.opencontainers.image.ref.name') == reference)
+    target.mkdir()
+    raw = (layout / 'blobs/sha256' / desc['digest'][7:]).read_bytes()
+    b.write(target / 'version', 'Directory Transport Version: 1.1\n')
+    (target / 'manifest.json').write_bytes(raw)
+    manifest = json.loads(raw)
+    for blob in [manifest['config']] + manifest['layers']:
+        b.require(b.DIGEST.fullmatch(blob['digest']), 'Invalid OCI blob digest')
+        name = blob['digest'][7:]
+        if not (target / name).exists():
+            os.link(layout / 'blobs/sha256' / name, target / name)
+    return target
+
+
 class BuildRegistry:
     def __init__(self, docker, work, run_id):
         self.docker, self.work, self.run_id = docker, work, run_id
@@ -233,15 +266,15 @@ class BuildRegistry:
                 failures.append('Could not remove per-run tag: ' + tag)
         b.require(not failures, '; '.join(failures))
 
-    def skopeo(self, args, log, archive=None):
+    def skopeo(self, args, log, view=None):
         cmd = [self.docker, 'run', '--rm', '--network', 'host', '--user', '0:0', '--entrypoint', 'skopeo']
-        if archive:
-            cmd += ['--mount', f'type=bind,src={archive},dst=/input.tar,readonly']
+        if view:
+            cmd += ['--mount', f'type=bind,src={view},dst=/input,readonly']
         return command(cmd + [self.tool_image] + args, self.work / log)
 
-    def seed(self, source, reference, dest, log):
-        self.skopeo(['copy', '--preserve-digests', '--dest-tls-verify=false',
-            'oci-archive:/input.tar:' + reference, 'docker://' + dest], log, source)
+    def seed(self, view, dest, log):
+        self.skopeo(['copy', '--retry-times', '3', '--preserve-digests', '--dest-tls-verify=false',
+            '--dest-oci-accept-uncompressed-layers', 'dir:/input', 'docker://' + dest], log, view)
 
 
 def stage_charts(bundle, source, mapping, material_images, bootstrap, core_references):
@@ -396,12 +429,16 @@ def build(config, args):
                 loaded.unlink()
                 mapping = {}
                 image_records = []
+                layouts = {}
                 for i, row in enumerate(base + extra):
                     reference = row.get('source_image') or row['image']
                     destination = registry.address + '/build/' + reference.rsplit('/', 1)[-1]
                     b.require(destination not in mapping.values(), 'Input image basenames collide: ' + reference)
                     archive = source / row.get('archive', 'images/nico-amd64.oci.tar')
-                    registry.seed(archive, reference, destination, f'image-{i:02}.log')
+                    if archive not in layouts:
+                        layouts[archive] = unpack_oci(archive, registry.work / ('oci-' + str(len(layouts))))
+                    view = image_view(layouts[archive], reference, registry.work / f'view-{i:02}')
+                    registry.seed(view, destination, f'image-{i:02}.log')
                     mapping[reference] = destination
                     image_records.append({'source': reference, 'build_reference': destination,
                         'digest': row.get('amd64_manifest') or row['digest'], 'kind': row.get('purpose', 'core')})
@@ -423,6 +460,9 @@ def build(config, args):
                         'image_payload': '/payload', 'published_path': '/materials/' + name + '/' + version, 'files': records}
                     b.dump(payload / 'manifest.json', manifest)
                     shutil.copyfile(HOME / 'material-publish.py', context / 'publish.py')
+                    (context / 'publish.py').chmod(0o644)
+                    for folder in [payload] + [p for p in payload.rglob('*') if p.is_dir()]:
+                        folder.chmod(0o755)
                     b.write(context / 'Dockerfile', 'FROM ' + registry.tool_image + '\nCOPY payload /payload\nCOPY publish.py /publish.py\nENTRYPOINT ["python3", "/publish.py"]\n')
                     ref = registry.address + '/build/nico-material-' + name + ':' + version
                     command([registry.docker, 'build', '--pull=false', '--network=none', '--label',

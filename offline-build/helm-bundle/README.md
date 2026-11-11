@@ -2,7 +2,7 @@
 
 **English** · [简体中文](README.zh-CN.md)
 
-This entry point converts the existing verified `kind=nico-materials` delivery into a relok8s delivery. It reuses 23 locked Core images, two PXEye images and prepared Charts, builds the selected material images, and produces one archive with inventories. It does not need the deployment site's Registry, namespace, IP addresses or gateway.
+This entry point converts the existing verified `kind=nico-materials` delivery into a relok8s delivery. It reuses 23 locked Core images, two PXEye images and prepared Charts, builds the selected material images, and produces one archive with inventories. After hash verification, each OCI archive is extracted once; the existing importer’s dir-transport approach accepts both OCI and Docker v2 manifests without changing digests, including CoreDNS. It does not need the deployment site's Registry, namespace, IP addresses or gateway.
 
 ## 1. Check the builder
 
