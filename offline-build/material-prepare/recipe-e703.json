@@ -1,0 +1,250 @@
+{
+  "schema_version": 1,
+  "profile": "e703126e4-core-pxeye",
+  "platform": "linux/amd64",
+  "scope": "Core/PXEye only; REST, Temporal, Keycloak, resolver and DPF services are not included",
+  "archives": {
+    "base": {
+      "sha256": "67a36d111080860e3b4e98ecd48e5c83557d437f3472643cb344c12fab965a5e",
+      "bytes": 8797296640
+    },
+    "ui": {
+      "sha256": "a2362c8fe7ca5532a093bfb14d1fa83946df30c928ca2af977aa620209cdc12d",
+      "bytes": 226609664
+    },
+    "bootstrap": {
+      "sha256": "5bfcd9dcda9707f9cb00bcf8a7b01365b47fa54cc0af960c9f8a5239dd7370f6",
+      "bytes": 223624704
+    }
+  },
+  "images": [
+    {
+      "id": "boot-artifacts-x86_64",
+      "kind": "core",
+      "purpose": "x86_64 native boot materials",
+      "method": "archive",
+      "archive": "base",
+      "reference": "docker.io/library/boot-artifacts-x86_64:mmzhou-e703126e4",
+      "digest": "sha256:c9045e25ce3d34751ce88e2a5b3f0ce63c28da877a90f39349ce3bafa6e97630"
+    },
+    {
+      "id": "nico-api",
+      "kind": "core",
+      "purpose": "Core API, migration, DHCP, DNS and hardware services",
+      "method": "archive",
+      "archive": "base",
+      "reference": "docker.io/library/nico-api:mmzhou-e703126e4",
+      "digest": "sha256:a497d208f1fb4cbd85c4b9c9ec7e48fd004aad6dbc612703a9807c2e5f96074b"
+    },
+    {
+      "id": "nico-bmc-proxy",
+      "kind": "core",
+      "purpose": "BMC proxy",
+      "method": "archive",
+      "archive": "base",
+      "reference": "docker.io/library/nico-bmc-proxy:mmzhou-e703126e4",
+      "digest": "sha256:8e88b6017e040939dfbc260afeebc1987e971b1df29bb2873187bce10e0be465"
+    },
+    {
+      "id": "nico-pxe",
+      "kind": "core",
+      "purpose": "PXE HTTP server",
+      "method": "archive",
+      "archive": "base",
+      "reference": "docker.io/library/nico-pxe:mmzhou-e703126e4",
+      "digest": "sha256:034f27240d4fa79b560a6f663c9c4ec1a37108112a1486b4a942dfdeb5b29eca"
+    },
+    {
+      "id": "chrony",
+      "kind": "core",
+      "purpose": "NTP",
+      "method": "archive",
+      "archive": "base",
+      "reference": "m.daocloud.io/docker.io/dockurr/chrony:latest",
+      "digest": "sha256:ac7bbdbae1ddd5c9c4efb5a24dd3ad42d8ff0e9d04a0fe28fccdeaf152e7823f"
+    },
+    {
+      "id": "vault",
+      "kind": "core",
+      "purpose": "Credential and certificate storage",
+      "method": "archive",
+      "archive": "base",
+      "reference": "m.daocloud.io/docker.io/hashicorp/vault:1.20.2",
+      "digest": "sha256:55e6b1b25b1bcf05949d8818a326c6133bf9a5189568a002dc91159c68e00c96"
+    },
+    {
+      "id": "postgres",
+      "kind": "core",
+      "purpose": "Core database",
+      "method": "archive",
+      "archive": "base",
+      "reference": "m.daocloud.io/docker.io/library/postgres:16.6",
+      "digest": "sha256:2c70671424b21cc706545c364bc96d12ea1526d6080e29abf7e25b50b28ba97b"
+    },
+    {
+      "id": "cert-manager-cainjector",
+      "kind": "core",
+      "purpose": "cert-manager controller or install hook",
+      "method": "archive",
+      "archive": "base",
+      "reference": "m.daocloud.io/quay.io/jetstack/cert-manager-cainjector:v1.17.1",
+      "digest": "sha256:da14ecb33386bd53c86d22a7a996e9783da5a09aa4ce9c55e161128fc2632985"
+    },
+    {
+      "id": "cert-manager-controller",
+      "kind": "core",
+      "purpose": "cert-manager controller or install hook",
+      "method": "archive",
+      "archive": "base",
+      "reference": "m.daocloud.io/quay.io/jetstack/cert-manager-controller:v1.17.1",
+      "digest": "sha256:8615625f29f821542fca5351e3791a21121bf869aa63c72607e0a51e4c233a4a"
+    },
+    {
+      "id": "cert-manager-startupapicheck",
+      "kind": "core",
+      "purpose": "cert-manager controller or install hook",
+      "method": "archive",
+      "archive": "base",
+      "reference": "m.daocloud.io/quay.io/jetstack/cert-manager-startupapicheck:v1.17.1",
+      "digest": "sha256:48048d4b951e1a7378658cc4f93b6ff1f4e6a14fc7daaa069236634ac187bc9e"
+    },
+    {
+      "id": "cert-manager-webhook",
+      "kind": "core",
+      "purpose": "cert-manager controller or install hook",
+      "method": "archive",
+      "archive": "base",
+      "reference": "m.daocloud.io/quay.io/jetstack/cert-manager-webhook:v1.17.1",
+      "digest": "sha256:f7ad7d3c6dbe73ead365c2324dbe6575b4fc618ed06f0863f250c5eafb35a246"
+    },
+    {
+      "id": "ui",
+      "kind": "ui",
+      "purpose": "PXEye application",
+      "method": "archive",
+      "archive": "ui",
+      "reference": "docker.io/library/mmzhou-os-install-console:0.22.16-73b8236",
+      "digest": "sha256:229c5053944b074759d064a5cc70093815dc2c07bcc28855396d797ce3cc8e56"
+    },
+    {
+      "id": "bootstrap",
+      "kind": "bootstrap",
+      "purpose": "Offline import and Vault bootstrap tools",
+      "method": "archive",
+      "archive": "bootstrap",
+      "reference": "docker.io/library/mmzhou-os-install-console:0.22.13-9dbcff8",
+      "digest": "sha256:9699795bf6c427bae0828406493ba7cc6721664f308e1ce6cb3fafbe41c8c09b"
+    }
+  ],
+  "materials": [
+    {
+      "group": "aarch64",
+      "path": "boot/aarch64/BUILD-INFO.json",
+      "target": "BUILD-INFO.json",
+      "bytes": 1191,
+      "sha256": "4582658be57c49fe3bc35d63cc04033a25939f7701af2be3e5e815b92ff56d5b"
+    },
+    {
+      "group": "aarch64",
+      "path": "boot/aarch64/ROOTFS-PACKAGES.json",
+      "target": "ROOTFS-PACKAGES.json",
+      "bytes": 65836,
+      "sha256": "e8ecd06c1fe3f631936316f1f7a62815fbd09397c44f6a095ee0140a875226af"
+    },
+    {
+      "group": "aarch64",
+      "path": "boot/aarch64/golan.efi",
+      "target": "golan.efi",
+      "bytes": 425472,
+      "sha256": "c666a5545878970da003623bb6d060873a43a408c6fe3f3691d8a760ef720355"
+    },
+    {
+      "group": "aarch64",
+      "path": "boot/aarch64/ipxe.efi",
+      "target": "ipxe.efi",
+      "bytes": 380928,
+      "sha256": "94bfeebecd857c123ca050ac3ea9426dc5079fcaf47b4a5987d2e3888691f2c1"
+    },
+    {
+      "group": "aarch64",
+      "path": "boot/aarch64/scout.efi",
+      "target": "scout.efi",
+      "bytes": 229019648,
+      "sha256": "28e2ab2b8a8814c6558ea3d3d671931a1bd6473370d6e061b44a7c9e0340a1ac"
+    },
+    {
+      "group": "aarch64",
+      "path": "boot/aarch64/scout.squashfs",
+      "target": "scout.squashfs",
+      "bytes": 2636091392,
+      "sha256": "e5cbdf8bf6daa52b663cad0d6e86f0cf584c9ba06d5d442a6d8b111774b0447b"
+    },
+    {
+      "group": "apt",
+      "path": "boot/apt/dists/focal/Release",
+      "target": "dists/focal/Release",
+      "bytes": 579,
+      "sha256": "d233194a34836530b3f4f167a02cba3112134097abcfb4f6a6813405518ced26"
+    },
+    {
+      "group": "apt",
+      "path": "boot/apt/dists/focal/main/binary-amd64/Packages",
+      "target": "dists/focal/main/binary-amd64/Packages",
+      "bytes": 470,
+      "sha256": "2cfa4c3124141fb2f9f6fff53bff5d9f5a2d15e1aee6de11931d100f887c3607"
+    },
+    {
+      "group": "apt",
+      "path": "boot/apt/dists/focal/main/binary-amd64/Release",
+      "target": "dists/focal/main/binary-amd64/Release",
+      "bytes": 95,
+      "sha256": "44fa689d816504f1c9ba27b08d46f25a4897a4f21ced7921f5a8530e32ce0b60"
+    },
+    {
+      "group": "apt",
+      "path": "boot/apt/dists/focal/main/binary-arm64/Packages",
+      "target": "dists/focal/main/binary-arm64/Packages",
+      "bytes": 382,
+      "sha256": "47212e33c6a2eff9d8987cbf4f31872439bc9a767202c1f120ea17d7f242bf0f"
+    },
+    {
+      "group": "apt",
+      "path": "boot/apt/dists/focal/main/binary-arm64/Release",
+      "target": "dists/focal/main/binary-arm64/Release",
+      "bytes": 65,
+      "sha256": "31c7758d18620f4e6d19ad231dc24b046c101ddebcbf16f4117785bed27f5e8a"
+    },
+    {
+      "group": "apt",
+      "path": "boot/apt/pool/base/f/forge-scout/forge-scout_2.5.0-pr-260-ge703126e4_amd64.deb",
+      "target": "pool/base/f/forge-scout/forge-scout_2.5.0-pr-260-ge703126e4_amd64.deb",
+      "bytes": 12540476,
+      "sha256": "6ff41c4c82072cac6de5815baa7a5b6b1cc50f784c0c13167c8951c616244071"
+    },
+    {
+      "group": "apt",
+      "path": "boot/apt/pool/base/f/forge-scout/forge-scout_2.5.0-pr-260-ge703126e4_arm64.deb",
+      "target": "pool/base/f/forge-scout/forge-scout_2.5.0-pr-260-ge703126e4_arm64.deb",
+      "bytes": 11181060,
+      "sha256": "2448c008c4f6721255d3d332d4ad291fde0f469d8fab78058a305f17b739f1ce"
+    },
+    {
+      "group": "bfb",
+      "path": "http/nico/dpu/bf3-doca3.4.0-26.04/SHA256SUMS",
+      "target": "bf3-doca3.4.0-26.04/SHA256SUMS",
+      "bytes": 117,
+      "sha256": "f54e9ab3372f38957cd83cc9f71ce5777a6152fd76491304bcb68f162efc55bd"
+    },
+    {
+      "group": "bfb",
+      "path": "http/nico/dpu/bf3-doca3.4.0-26.04/bf-bundle-3.4.0-92_26.04_ubuntu-24.04_64k_prod.bfb",
+      "target": "bf3-doca3.4.0-26.04/bf-bundle-3.4.0-92_26.04_ubuntu-24.04_64k_prod.bfb",
+      "bytes": 1556838472,
+      "sha256": "691173d8fa6926f79549683ce885347fdf0eee686b3eb54bd176af7b078bf8d1"
+    }
+  ],
+  "raw_charts": {
+    "nico-0.1.1.tgz": "9e38837fcd7305ffd5e060ba18e973794388d3b0f83363b7903a21d3ae94ad67",
+    "cert-manager-v1.17.1.tgz": "48707f6e8937290da96065dc7de8b4f5a95d9707798d4b5a0d560f78c12996f7"
+  }
+}

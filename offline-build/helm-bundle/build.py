@@ -33,6 +33,8 @@ import charts
 sys.path.insert(0, str(HOME.parent / 'onsite'))
 from relocation import prepare_intermediate
 from verify import verify
+sys.path.insert(0, str(HOME.parent / 'material-prepare'))
+import prepared
 
 spec = importlib.util.spec_from_file_location('materials_builder', HOME.parent / 'build.py')
 b = importlib.util.module_from_spec(spec)
@@ -68,6 +70,11 @@ def read_config(path):
     b.require(source.is_dir() and not source.is_symlink(), 'materials_bundle must be an extracted existing schema4 materials bundle')
     b.require(not output.is_relative_to(source) and not source.is_relative_to(output), 'Output must be outside input materials')
     b.require(not output.is_relative_to(REPO), 'Keep artifacts outside the Git checkout')
+    if (source / 'prepared.json').is_file():
+        descriptor = json.loads((source / 'prepared.json').read_text())
+        b.require(descriptor.get('kind') == 'nico-prepared' and descriptor.get('complete'), 'Incomplete prepared input')
+        b.require(descriptor['include'] == config['include'], 'Material switches must match prepared input; run preparation with the intended switches')
+        return config
     descriptor = json.loads((source / 'bundle.json').read_text())
     report = json.loads((source / 'manifests/build-report.json').read_text())
     b.require(descriptor.get('kind') == 'nico-materials' and report.get('profile') == 'e703126e4-core-single-node', 'Use the verified generic e703 materials bundle, not a site deployment or raw upstream bundle')
@@ -76,6 +83,14 @@ def read_config(path):
 
 def input_plan(config):
     source = config['materials_bundle']
+    if (source / 'prepared.json').is_file():
+        rows = json.loads((source / 'manifests/files.json').read_text())['files']
+        records = json.loads((source / 'manifests/images-lock.json').read_text())
+        base = [r for r in records if r['kind'] == 'core']
+        extra = [dict(r, source_image=r['image'], purpose=r['kind']) for r in records if r['kind'] in ('ui', 'bootstrap')]
+        b.require(len(extra) == 2, 'Expected one UI and one bootstrap image')
+        print('BUILD_PLAN', json.dumps({'prepared_images': len(records), 'new_material_images': [], 'package_builds_images': False, 'charts': ['pxeye', 'cert-manager', 'platform', 'core', 'materials']}), flush=True)
+        return rows, base, extra, {}
     rows = json.loads((source / 'manifests/file-inventory.json').read_text())['files']
     paths = {r['path']: r for r in rows}
     base = json.loads((source / 'manifests/images-lock.json').read_text())
@@ -189,6 +204,22 @@ def docker_archive(source, reference, destination, tag):
         add_bytes('manifest.json', json.dumps([{'Config': config_name, 'RepoTags': [tag], 'Layers': layers}]).encode())
 
 
+def archive_image(layout, reference, destination):
+    """Bridge only one prepared image into an OCI tar without duplicating all blobs."""
+    index = json.loads((layout / 'index.json').read_text())
+    desc = next(d for d in index['manifests'] if d.get('annotations', {}).get('org.opencontainers.image.ref.name') == reference)
+    manifest_path = layout / 'blobs/sha256' / desc['digest'][7:]
+    manifest = json.loads(manifest_path.read_text())
+    with tarfile.open(destination, 'w:') as tar:
+        data = json.dumps({'schemaVersion': 2, 'manifests': [desc]}).encode()
+        entry = tarfile.TarInfo('index.json'); entry.size = len(data)
+        tar.addfile(entry, io.BytesIO(data))
+        tar.add(layout / 'oci-layout', arcname='oci-layout')
+        for blob in [desc, manifest['config']] + manifest['layers']:
+            name = 'blobs/sha256/' + blob['digest'][7:]
+            tar.add(layout / name, arcname=name)
+
+
 def unpack_oci(source, target):
     """Extract a previously hash-verified layout once, without archive ownership."""
     target.mkdir(parents=True)
@@ -218,7 +249,11 @@ def image_view(layout, reference, target):
         b.require(b.DIGEST.fullmatch(blob['digest']), 'Invalid OCI blob digest')
         name = blob['digest'][7:]
         if not (target / name).exists():
-            os.link(layout / 'blobs/sha256' / name, target / name)
+            try:
+                os.link(layout / 'blobs/sha256' / name, target / name)
+            except OSError as error:
+                if error.errno != 18: raise
+                shutil.copyfile(layout / 'blobs/sha256' / name, target / name)
     return target
 
 
@@ -304,7 +339,10 @@ def stage_charts(bundle, source, mapping, material_images, bootstrap, core_refer
         if key == 'core':
             # Explicit locked runtime dependencies belong to the real Core Chart,
             # not to a dummy Deployment created only for image collection.
-            values['offlineDependencies'] = {'image' + str(i): r for i, r in enumerate(core_references)}
+            if not (source / 'prepared.json').is_file():
+                values['offlineDependencies'] = {'image' + str(i): r for i, r in enumerate(core_references)}
+            else:
+                values.pop('offlineDependencies', None)
         hints = charts.bind_images(values, mapping | {v: v for v in mapping.values()})
         # Match the dependency default's collection type to the root override.
         # Without this Helm silently discards defaults with a coalesce warning.
@@ -396,13 +434,17 @@ def build(config, args):
     b.require(docker_root.is_dir() and shutil.disk_usage(docker_root).free > size * 2 + 2 * 1024**3,
               'Need at least twice the input size plus 2 GiB free in local Docker storage')
     print('VERIFY_INPUT_MATERIALS (full hashes; no cluster operations)', flush=True)
-    b.verify(source)
-    b.require(b.sha(source / 'images/nico-amd64.oci.tar') == b.OCI_SHA, 'Unsupported Core archive')
+    is_prepared = (source / 'prepared.json').is_file()
+    if is_prepared:
+        prepared.verify(source)
+    else:
+        b.verify(source)
+        b.require(b.sha(source / 'images/nico-amd64.oci.tar') == b.OCI_SHA, 'Unsupported Core archive')
     if args.check_inputs:
         print('HELM_INPUTS_READY; relok8s and pinned registry image will be prepared during build', flush=True)
         return
     revision = command(['git', '-C', REPO, 'rev-parse', 'HEAD']).stdout.strip()
-    tracked = ['offline-build/onsite', 'offline-build/helm-bundle', 'offline-build/build.py', 'deploy/bootstrap-kubernetes.yaml',
+    tracked = ['offline-build/material-prepare', 'offline-build/onsite', 'offline-build/helm-bundle', 'offline-build/build.py', 'deploy/bootstrap-kubernetes.yaml',
                'deploy/nico-platform', 'deploy/offline-core', 'deploy/nico-cluster-permissions.yaml']
     dirty = command(['git', '-C', REPO, 'status', '--porcelain', '--untracked-files=all', '--'] + tracked).stdout
     b.require(not dirty, 'Commit build sources before constructing images; unrelated changes are preserved')
@@ -415,8 +457,8 @@ def build(config, args):
             for folder in ('charts', 'relocation', 'manifests', 'profiles', 'tools', 'docs'):
                 (bundle / folder).mkdir(parents=True)
             relok = relok_tool(config, output.parent / '.tool-cache')
-            rows = b.oci_check(source / 'images/nico-amd64.oci.tar', base)
-            for row in extra:
+            rows = base if is_prepared else b.oci_check(source / 'images/nico-amd64.oci.tar', base)
+            for row in ([] if is_prepared else extra):
                 verified = b.oci_check(source / row['archive'], reference=row['source_image'])[0]
                 b.require(verified['digest'] == row['digest'], 'PXEye archive digest mismatch')
             run_id = uuid.uuid4().hex[:12]
@@ -425,28 +467,41 @@ def build(config, args):
             with BuildRegistry(config['tools']['docker'], stage / '.work', run_id) as registry:
                 bootstrap = next(row for row in extra if row['purpose'] == 'bootstrap')
                 loaded = registry.work / 'build-tools.tar'
-                docker_archive(source / bootstrap['archive'], bootstrap['source_image'], loaded, registry.tool_image)
+                if is_prepared:
+                    tool_archive = registry.work / 'bootstrap.oci.tar'
+                    archive_image(source / 'images/layout', bootstrap['source_image'], tool_archive)
+                    docker_archive(tool_archive, bootstrap['source_image'], loaded, registry.tool_image)
+                    tool_archive.unlink()
+                else:
+                    docker_archive(source / bootstrap['archive'], bootstrap['source_image'], loaded, registry.tool_image)
                 command([registry.docker, 'load', '--input', loaded], registry.work / 'tools-load.log')
                 registry.owned_tags.append(registry.tool_image)
                 loaded.unlink()
                 mapping = {}
                 image_records = []
                 layouts = {}
-                for i, row in enumerate(base + extra):
+                prepared_materials = json.loads((source / 'manifests/materials.json').read_text()) if is_prepared else []
+                material_rows = [r for r in json.loads((source / 'manifests/images-lock.json').read_text()) if r['kind'] == 'material'] if is_prepared else []
+                for i, row in enumerate(base + extra + material_rows):
                     reference = row.get('source_image') or row['image']
                     destination = registry.address + '/build/' + reference.rsplit('/', 1)[-1]
                     b.require(destination not in mapping.values(), 'Input image basenames collide: ' + reference)
-                    archive = source / row.get('archive', 'images/nico-amd64.oci.tar')
-                    if archive not in layouts:
-                        layouts[archive] = unpack_oci(archive, registry.work / ('oci-' + str(len(layouts))))
-                    view = image_view(layouts[archive], reference, registry.work / f'view-{i:02}')
+                    if is_prepared:
+                        layout = source / 'images/layout'
+                    else:
+                        archive = source / row.get('archive', 'images/nico-amd64.oci.tar')
+                        if archive not in layouts:
+                            layouts[archive] = unpack_oci(archive, registry.work / ('oci-' + str(len(layouts))))
+                        layout = layouts[archive]
+                    view = image_view(layout, reference, registry.work / f'view-{i:02}')
                     registry.seed(view, destination, f'image-{i:02}.log')
                     mapping[reference] = destination
                     image_records.append({'source': reference, 'build_reference': destination,
-                        'digest': row.get('amd64_manifest') or row['digest'], 'kind': row.get('purpose', 'core')})
+                        'digest': row.get('amd64_manifest') or row['digest'], 'kind': row.get('kind', row.get('purpose', 'core'))})
                 mapping['__ui__'] = mapping[next(r['source_image'] for r in extra if r['purpose'] == 'ui')]
                 bootstrap_ref = mapping[bootstrap['source_image']]
-                material_images = {}
+                material_images = {r['id']: mapping[r['image']] for r in prepared_materials}
+                material_records.extend(r | {'build_reference': mapping[r['image']]} for r in prepared_materials)
                 for name, group in groups.items():
                     context = registry.work / ('material-' + name)
                     payload = context / 'payload'; payload.mkdir(parents=True)
@@ -530,8 +585,9 @@ def build(config, args):
             b.dump(bundle / 'bundle.json', {'schema_version': 1, 'kind': 'pxeye-nico-helm', 'id': config['bundle_id'],
                 'version': version, 'source_revision': revision, 'architecture': 'linux/amd64', 'charts': packages,
                 'requires_site_configuration': True, 'multi_phase_oci_ui_ready': False})
-            b.dump(bundle / 'manifests/build-report.json', {'source_revision': revision, 'input_bundle': json.loads((source / 'bundle.json').read_text()),
-                'input_inventory_sha256': b.sha(source / 'manifests/file-inventory.json'), 'base_images': rows,
+            b.dump(bundle / 'manifests/build-report.json', {'source_revision': revision, 'input_bundle': json.loads((source / ('prepared.json' if is_prepared else 'bundle.json')).read_text()),
+                'input_inventory_sha256': b.sha(source / ('manifests/files.json' if is_prepared else 'manifests/file-inventory.json')),
+                'package_builds_images': not is_prepared, 'base_images': rows,
                 'native_x86_boot_artifacts': {'source': 'existing locked image', 'internal_files_verified': False},
                 'validation_render': render, 'tool_hashes': {n: b.sha(bundle / 'tools' / n) for n in ('helm', 'relok8s')},
                 'cold_install_tested': False, 'multi_phase_oci_ui_ready': False})

@@ -1,6 +1,8 @@
 # 一键构建 PXEye / NICo Helm离线包
 
 [English](README.md) · **简体中文**
+> 新流程：优先用[第一步单脚本](../material-prepare/README.zh-CN.md)生成`nico-prepared`目录及第二步配置；此输入不要求固定23镜像，不构建材料镜像，仅引用实际选中镜像并检查真实渲染闭包。下文旧`nico-materials`输入仍兼容，其固定23镜像及材料构建描述仅适用于旧路径。
+
 
 本目录是新的relok8s打包入口。输入是上一版构建器已经验收的`kind=nico-materials`解压目录，脚本自动复用其中的23张Core镜像、2张PXEye镜像和固定Chart，构建选中的材料镜像，再交付一个完整归档。OCI归档在摘要校验后只解包一次，按已有导入器的dir transport处理OCI及Docker v2 manifest，保留原digest，避免CoreDNS等镜像被旧版skopeo拒绝。不需要填写目标现场Registry、IP、网关或namespace。
 

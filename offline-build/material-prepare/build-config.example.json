@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "recipe": "recipe-e703.json",
+  "input_root": "/srv/nico-input",
+  "archives": {
+    "base": "images/nico-amd64.oci.tar",
+    "ui": "images/pxeye-0.22.16-73b8236.oci.tar",
+    "bootstrap": "images/pxeye-0.22.13-9dbcff8.oci.tar"
+  },
+  "output_root": "/srv/nico-build/prepared",
+  "cache_directory": "/srv/nico-build/cache",
+  "package_output_root": "/srv/nico-build/output",
+  "include": {
+    "aarch64": true,
+    "apt": true,
+    "bfb": true
+  },
+  "tools": {
+    "docker": "docker",
+    "helm": "helm",
+    "relok8s": null
+  }
+}

@@ -1,6 +1,8 @@
 # One-command PXEye / NICo Helm offline build
 
 **English** · [简体中文](README.zh-CN.md)
+> Preferred input: use the [step-1 script](../material-prepare/README.md) to create a `nico-prepared` directory and generated packaging configuration. This path has no fixed 23-image requirement and builds no material images; it validates the selected rendered closure. The legacy `nico-materials` path described below remains supported and retains its previous build behavior.
+
 
 This entry point converts the existing verified `kind=nico-materials` delivery into a relok8s delivery. It reuses 23 locked Core images, two PXEye images and prepared Charts, builds the selected material images, and produces one archive with inventories. After hash verification, each OCI archive is extracted once; the existing importer’s dir-transport approach accepts both OCI and Docker v2 manifests without changing digests, including CoreDNS. It does not need the deployment site's Registry, namespace, IP addresses or gateway.
 
