@@ -30,6 +30,8 @@ rev = a.revision or git('rev-parse', 'HEAD').decode().strip()
 if not re.fullmatch('[0-9a-f]{40}', rev):
     raise SystemExit('A full committed source revision is required')
 config = json.loads(a.config.read_text() if a.config else git('show', rev + ':offline-build/build-config.example.json'))
+if a.site_config and config.get('schema_version') == 3:
+    raise SystemExit('Schema 3 has no site inputs; copy site-config.example.json and initialize at the deployment site')
 if a.site_config:
     site = json.loads(a.site_config.read_text())
     for purpose in ('ui', 'bootstrap'):

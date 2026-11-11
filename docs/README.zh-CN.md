@@ -8,6 +8,7 @@ PXEye 公开项目文档均提供内容对应的中英文版本。首次使用�
 | --- | --- | --- | --- |
 | 独立离线构建工具目录 | [Read](../deliverables/nico-offline-build/README.md) | [阅读](../deliverables/nico-offline-build/README.zh-CN.md) | 可整体复制的通用工具目录，包含脚本、显式文件配置、模板和产物说明；现场配置在仓库外维护。 |
 | 完整离线包制作 | [Read](../offline-build/README.md) | [阅读](../offline-build/README.zh-CN.md) | 可重复的锁定输入打包、Core兼容修复与现场交付门禁。 |
+| 离线包现场初始化 | [Read](../offline-build/CONFIGURE.md) | [阅读](../offline-build/CONFIGURE.zh-CN.md) | 构建后填写现场参数，复用已有大文件并生成完整部署手册。 |
 | 装机前检查 | [Read](pre-installation-checklist.md) | [阅读](pre-installation-checklist.zh-CN.md) | 一句话一项，分发现、主机 OS 写入及受管 DPU 阶段检查。 |
 | 部署指南 | [Read](deployment.md) | [阅读](deployment.zh-CN.md) | 二进制、站点配置、凭据、挂载和持久化。 |
 | NICo 集群部署 | [Read](nico-deployment.md) | [阅读](nico-deployment.zh-CN.md) | 独立启动 PXEye、在线/离线 Helm 部署、权限与站点连接。 |
