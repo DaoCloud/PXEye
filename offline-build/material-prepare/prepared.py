@@ -70,7 +70,9 @@ def verify(root):
     rows = json.loads((root / 'manifests/files.json').read_text())['files']
     expected = {r['path'] for r in rows}
     require(len(expected) == len(rows), 'Duplicate prepared inventory records')
-    actual = {p.relative_to(root).as_posix() for p in root.rglob('*') if p.is_file()}
+    paths = list(root.rglob('*'))
+    require(not any(p.is_symlink() for p in paths), 'Prepared symlinks are not allowed')
+    actual = {p.relative_to(root).as_posix() for p in paths if p.is_file()}
     require(actual == expected | {'manifests/files.json'}, 'Prepared inventory membership differs')
     for row in rows:
         path = relative(root, row['path'])

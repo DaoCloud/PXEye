@@ -55,6 +55,7 @@ def read_config(path):
     b.require(not c['output_root'].is_relative_to(c['cache_directory']) and not c['cache_directory'].is_relative_to(c['output_root']), 'Separate prepared and cache directories')
     b.require(len({r['id'] for r in recipe['images']}) == len(recipe['images']), 'Duplicate image IDs')
     for row in recipe['images']:
+        b.require(re.fullmatch(r'[a-z0-9][a-z0-9._-]{0,79}', row['id']), 'Invalid image ID')
         b.require(row['method'] in ('archive', 'registry'), 'This profile supports archive or digest-pinned registry image sources; material images are built by this script')
         b.require(b.DIGEST.fullmatch(row['digest']), 'Every input image requires an immutable amd64 manifest digest')
         b.require(re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9./:_-]*:[A-Za-z0-9][A-Za-z0-9._-]*', row['reference']), 'Image reference must include an explicit tag')
@@ -139,7 +140,10 @@ def verify_payload(layout, reference, manifest):
 
 
 def build(c, recipe, plan=False):
+    run_started = time.monotonic()
+    run_started_at = datetime.now(timezone.utc).isoformat()
     selected, size = preflight(c, recipe, full=not plan)
+    verification_seconds = time.monotonic() - run_started
     if plan: return
     b.require(sys.platform == 'linux' and platform.machine() in ('x86_64', 'amd64'), 'Run preparation on Linux x86_64')
     docker = c['tools']['docker']
@@ -153,7 +157,8 @@ def build(c, recipe, plan=False):
     tracked = ['offline-build/material-prepare', 'offline-build/helm-bundle', 'offline-build/build.py', 'offline-build/onsite', 'deploy/offline-core', 'deploy/nico-platform', 'deploy/bootstrap-kubernetes.yaml', 'deploy/nico-cluster-permissions.yaml']
     b.require(not h.command(['git', '-C', REPO, 'status', '--porcelain', '--untracked-files=all', '--'] + tracked).stdout, 'Commit build sources before preparation')
     source_hashes = {str(p.relative_to(REPO)): b.sha(p) for name in tracked for p in ([REPO / name] if (REPO / name).is_file() else sorted((REPO / name).rglob('*'))) if p.is_file() and '__pycache__' not in p.parts and p.suffix != '.pyc'}
-    fingerprint = identity({'recipe': recipe, 'include': c['include'], 'implementation': source_hashes})
+    helm_path = Path(shutil.which(c['tools']['helm']))
+    fingerprint = identity({'recipe': recipe, 'include': c['include'], 'implementation': source_hashes, 'helm_sha256': b.sha(helm_path)})
     c['output_root'].mkdir(parents=True, exist_ok=True);c['cache_directory'].mkdir(parents=True, exist_ok=True)
     output = c['output_root'] / fingerprint[:24]
     with (c['output_root'] / '.prepare.lock').open('a') as lock:
@@ -162,7 +167,7 @@ def build(c, recipe, plan=False):
             contract.verify(output);write_result(c, output, fingerprint, 'REUSE');return
         b.require(shutil.disk_usage(output.parent).free > size * 3 + 2 * 1024**3, 'Need three times selected input size plus 2 GiB free')
         stage = Path(tempfile.mkdtemp(prefix='.' + fingerprint[:16] + '.building-', dir=output.parent))
-        started = time.monotonic();timings = []
+        started = run_started;timings = [{'id': 'verify-inputs', 'action': 'VERIFY', 'seconds': round(verification_seconds, 3)}]
         try:
             layout = stage / 'images/layout';records = [];layouts = {};checked = set()
             for row in recipe['images']:
@@ -206,6 +211,7 @@ def build(c, recipe, plan=False):
                     key = identity({'files': group, 'publisher': b.sha(HOME.parent / 'helm-bundle/material-publish.py'), 'base': bootstrap['digest'], 'platform': 'linux/amd64', 'recipe': 'COPY payload /payload; COPY publish.py /publish.py; ENTRYPOINT python3 /publish.py'})
                     cached = c['cache_directory'] / 'materials' / key
                     ref = 'prepared.local/nico-material-' + name + ':' + key[:24]
+                    expected_files = [{'path': r['target'], 'bytes': r['bytes'], 'sha256': r['sha256']} for r in group]
                     before = time.monotonic();action = 'REUSE'
                     if not cached.exists():
                         print('BUILD_MATERIAL', name, ref, flush=True);action = 'BUILD'
@@ -232,8 +238,12 @@ def build(c, recipe, plan=False):
                         cached.parent.mkdir(parents=True, exist_ok=True)
                         with (cached.parent / '.cache.lock').open('a') as cache_lock:
                             fcntl.flock(cache_lock, fcntl.LOCK_EX)
-                            if not cached.exists(): shutil.copytree(temp, cached)
+                            if not cached.exists():
+                                cache_stage = Path(tempfile.mkdtemp(prefix='.' + key[:16] + '.building-', dir=cached.parent))
+                                shutil.copytree(temp, cache_stage, dirs_exist_ok=True)
+                                cache_stage.rename(cached)
                     manifest = json.loads((cached / 'material.json').read_text());desc = json.loads((cached / 'index.json').read_text())['manifests'][0]
+                    b.require(manifest['id'] == name and manifest['version'] == key[:24] and manifest['files'] == expected_files and manifest['image_payload'] == '/payload' and manifest['published_path'] == '/materials/' + name + '/' + key[:24], 'Cached material identity differs: ' + name)
                     contract.image(cached, ref, desc['digest']);verify_payload(cached, ref, manifest)
                     add_image(cached, layout, desc)
                     materials.append(manifest | {'image': ref, 'image_digest': desc['digest'], 'input_fingerprint': key})
@@ -247,7 +257,7 @@ def build(c, recipe, plan=False):
             (stage / 'tools').mkdir();shutil.copyfile(shutil.which(c['tools']['helm']), stage / 'tools/helm');(stage / 'tools/helm').chmod(0o755)
             b.dump(stage / 'manifests/images-lock.json', records);b.dump(stage / 'manifests/materials.json', materials)
             b.dump(stage / 'reports/timings.json', timings)
-            b.dump(stage / 'reports/sources.json', {'recipe': recipe, 'implementation_sha256': source_hashes, 'source_revision': revision, 'helm_version': helm_version, 'seconds': round(time.monotonic() - started, 3), 'material_payloads_verified': True})
+            b.dump(stage / 'reports/sources.json', {'recipe': recipe, 'implementation_sha256': source_hashes, 'source_revision': revision, 'helm_version': helm_version, 'started_at': run_started_at, 'finished_at': datetime.now(timezone.utc).isoformat(), 'seconds': round(time.monotonic() - started, 3), 'material_payloads_verified': True})
             b.dump(stage / 'prepared.json', {'schema_version': 1, 'kind': 'nico-prepared', 'complete': True, 'profile': recipe['profile'], 'architecture': 'linux/amd64', 'fingerprint': fingerprint, 'source_revision': revision, 'include': c['include'], 'scope': recipe['scope']})
             # Staging only: no old outputs, caches or global Docker resources are removed.
             logs = stage / 'logs';logs.mkdir()

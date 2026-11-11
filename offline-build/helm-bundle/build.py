@@ -67,7 +67,7 @@ def read_config(path):
         b.require(value.is_absolute() and not any(c in str(value) for c in ',\n\r'), 'Use absolute paths without commas/newlines: ' + key)
         config[key] = value.resolve()
     source, output = config['materials_bundle'], config['output_root']
-    b.require(source.is_dir() and not source.is_symlink(), 'materials_bundle must be an extracted existing schema4 materials bundle')
+    b.require(source.is_dir() and not source.is_symlink(), 'materials_bundle must be an extracted materials or prepared directory')
     b.require(not output.is_relative_to(source) and not source.is_relative_to(output), 'Output must be outside input materials')
     b.require(not output.is_relative_to(REPO), 'Keep artifacts outside the Git checkout')
     if (source / 'prepared.json').is_file():
@@ -533,6 +533,9 @@ def build(config, args):
                 roots = stage_charts(bundle, source, mapping, material_images, bootstrap_ref, [r['image'] for r in base])
                 render_dir = stage / 'render'; render_dir.mkdir()
                 render = validate_charts(roots, config['tools']['helm'], mapping, material_images, render_dir)
+                image_usage = [{'image': r['build_reference'], 'source': r.get('source'), 'used_by': [v['chart'] + '/' + v['mode'] for v in render if r['build_reference'] in v['images']]} for r in image_records]
+                if is_prepared:
+                    b.require(all(r['used_by'] for r in image_usage), 'Prepared images include entries unused by the selected Charts')
                 for key, root in roots.items():
                     metadata = yaml.safe_load((root / 'Chart.yaml').read_text())
                     chart_path = bundle / 'charts' / (key + '.tgz')
@@ -589,7 +592,7 @@ def build(config, args):
                 'input_inventory_sha256': b.sha(source / ('manifests/files.json' if is_prepared else 'manifests/file-inventory.json')),
                 'package_builds_images': not is_prepared, 'base_images': rows,
                 'native_x86_boot_artifacts': {'source': 'existing locked image', 'internal_files_verified': False},
-                'validation_render': render, 'tool_hashes': {n: b.sha(bundle / 'tools' / n) for n in ('helm', 'relok8s')},
+                'validation_render': render, 'image_usage': image_usage, 'tool_hashes': {n: b.sha(bundle / 'tools' / n) for n in ('helm', 'relok8s')},
                 'cold_install_tested': False, 'multi_phase_oci_ui_ready': False})
             b.inventory(bundle)
             verify(bundle)
