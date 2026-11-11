@@ -53,7 +53,7 @@ def write_json(path, value):
     temporary = path.with_suffix(path.suffix + '.tmp')
     with temporary.open('w') as stream:
         os.fchmod(stream.fileno(), 0o600)
-        json.dump(value, stream, indent=2, ensure_ascii=False); stream.write('\n')
+        json.dump(value, stream, indent=2, ensure_ascii=False); stream.write('\n'); stream.flush(); os.fsync(stream.fileno())
     temporary.replace(path)
 
 
@@ -213,7 +213,7 @@ class Onsite:
         # Exact predecessor identities may retain completed imports. All site,
         # archive and bridge inputs must still match; no arbitrary state reset.
         if self.state['config_sha256'] != fingerprint and self.state['bundle_inventory_sha256'] == identity:
-            for previous_source, with_relocation in (('1373ef5d197251e0cddce51bde01508af20e01e7333fd34f6ea1097caa6ef510', True), ('88b3747ca185f5fd10f7625f5800c29f717fb7876fe5b3274fedc45e2a740161', True), ('4315ad8762820d95b3054ae5e241ef7e4b366d0f556029d274bfb19c31bce0e4', True), ('19e0d0fc117c305257967152f3c330813883ddc202c567ce1dbc6037f8df235d', True), ('5dacea47145f7fca625ff001d1ff4496e9d6b32ca4ed2b9d8c58537c22e538b7', True), ('1c4a17c382cf1743a62b6ff260aca98f581bff7252bb5dc9e86b3286dc793701', False), ('d0cdd13aab92e73b9eed0437b5f632fcdc2efcb90385d9c325a21e70c5c6c421', False)):
+            for previous_source, with_relocation in (('83a3456004069e52fae69fb1a0f3cd4b6f1285040699d183f1a51d1931d4ef3b', True), ('1373ef5d197251e0cddce51bde01508af20e01e7333fd34f6ea1097caa6ef510', True), ('88b3747ca185f5fd10f7625f5800c29f717fb7876fe5b3274fedc45e2a740161', True), ('4315ad8762820d95b3054ae5e241ef7e4b366d0f556029d274bfb19c31bce0e4', True), ('19e0d0fc117c305257967152f3c330813883ddc202c567ce1dbc6037f8df235d', True), ('5dacea47145f7fca625ff001d1ff4496e9d6b32ca4ed2b9d8c58537c22e538b7', True), ('1c4a17c382cf1743a62b6ff260aca98f581bff7252bb5dc9e86b3286dc793701', False), ('d0cdd13aab92e73b9eed0437b5f632fcdc2efcb90385d9c325a21e70c5c6c421', False)):
                 predecessor = copy.deepcopy(identity_config)
                 if not with_relocation:
                     predecessor['implementation_sha256'].pop('relocation.py')
@@ -246,7 +246,9 @@ class Onsite:
                 return value.decode(errors='replace') if isinstance(value, bytes) else (value or '')
             result = subprocess.CompletedProcess(args, 124, text(error.stdout), text(error.stderr) + '\nCommand timed out')
         log = directory / (label + '.log')
-        log.write_text(result.stdout + '\nSTDERR:\n' + result.stderr); log.chmod(0o600)
+        with log.open('a') as stream:
+            stream.write('\nATTEMPT ' + datetime.now(timezone.utc).isoformat() + '\n' + result.stdout + '\nSTDERR:\n' + result.stderr + '\nEXIT_CODE=' + str(result.returncode) + '\n')
+        log.chmod(0o600)
         with (self.work / 'timings.jsonl').open('a') as stream:
             stream.write(json.dumps({'step': label, 'seconds': round(time.monotonic() - start, 3), 'exit_code': result.returncode}) + '\n')
         require(not check or result.returncode == 0, f'{label} failed (exit {result.returncode}); see {log}')
@@ -564,8 +566,8 @@ class Onsite:
         write_json(recipe / 'catalog.json', catalog)
         plan['files']['catalog.json'] = sha(recipe / 'catalog.json')
         write_json(recipe / 'deployment.json', plan)
+        self.state['recipe_manifest_sha256'] = sha(recipe / 'deployment.json'); self.save()
         recipe.rename(existing)
-        self.state['recipe_manifest_sha256'] = sha(existing / 'deployment.json'); self.save()
         shutil.rmtree(stage)
         print('RECIPE_READY', existing)
         self.ui_package()
@@ -587,7 +589,7 @@ class Onsite:
             require((root / name).resolve().is_relative_to(root) and sha(root / name) == digest, 'Frozen recipe changed: ' + name)
         return manifest
 
-    def install(self, phase, resume_failed=False):
+    def install(self, phase, resume_failed=False, automatic=False):
         self.preflight()
         root = self.work / 'recipe'; manifest = self.validate_recipe()
         phases = manifest['phases']
@@ -600,12 +602,33 @@ class Onsite:
             if self.state['steps'].get('installed-' + key) and not resume_failed:
                 status = self.helm_run(['status', item['release'], '-n', self.config['namespace'], '-o', 'json'], key + '-status', private=True)
                 require(json.loads(status.stdout)['info']['status'] == 'deployed', 'Previously completed Helm phase is no longer deployed: ' + key)
+                if automatic: self.check_pvcs(key)
                 self.check_health(root, item)
                 print('ALREADY_INSTALLED', key); continue
             earlier = phases[:phases.index(item)]
             require(all(self.state['steps'].get('installed-' + p['id']) for p in earlier), 'Run previous phases first, or use --phase all')
             self.check_ownership(root, item)
-            self.snapshot(key, resume_failed)
+            if automatic and (self.private / ('before-' + key) / 'complete.json').exists():
+                self.check_pvcs(key)  # Keep the original PVC baseline across every retry.
+                result = self.helm_run(['status', item['release'], '-n', self.config['namespace'], '-o', 'json'],
+                                       key + '-resume-status', check=False, private=True)
+                require(result.returncode == 0 or 'release: not found' in result.stderr.lower(), 'Cannot establish Helm state; stop before retry')
+                status = json.loads(result.stdout)['info']['status'] if result.returncode == 0 else 'not-found'
+                require(status in ('deployed', 'failed', 'not-found'), 'Helm is pending or requires operator review: ' + status)
+                if status == 'deployed':
+                    # Helm may have succeeded before the process was interrupted. Verify
+                    # the exact intent instead of rerunning migrations/bootstrap hooks.
+                    intent = self.state.get('install_intents', {}).get(key)
+                    require(intent == self.install_intent(root, item), 'No matching install intent; inspect deployed release before continuing')
+                    self.verify_deployed(root, item)
+                    self.state['steps']['installed-' + key] = {'release': item['release'], 'at': datetime.now(timezone.utc).isoformat(), 'recovered': True}
+                    self.save(); print('RECOVERED_INSTALLED', key, flush=True); continue
+                print('RESUME_FAILED_PHASE', key, status, flush=True)
+                # The original complete snapshot remains authoritative.
+            else:
+                self.snapshot(key, resume_failed)
+            self.state.setdefault('install_intents', {})[key] = self.install_intent(root, item)
+            self.save()
             args = ['upgrade', '--install', item['release'], str(root / item['chart']), '-n', self.config['namespace'],
                     '--create-namespace', '--wait', '--wait-for-jobs', '--timeout', str(item.get('timeout_seconds', 900)) + 's']
             for value in item['values']: args += ['-f', str(root / value)]
@@ -614,6 +637,27 @@ class Onsite:
             self.check_health(root, item)
             self.state['steps']['installed-' + key] = {'release': item['release'], 'at': datetime.now(timezone.utc).isoformat()}; self.save()
         print('HELM_PHASES_COMPLETE; strict Core mTLS, boot HTTP and physical-network acceptance remain explicit follow-up checks')
+
+    def verify_deployed(self, root, item):
+        key = item['id']
+        current = self.helm_run(['get', 'values', item['release'], '-n', self.config['namespace'], '-o', 'json'],
+                                key + '-resume-values', private=True)
+        wanted = {}
+        for value in item['values']:
+            wanted = merge(wanted, yaml.safe_load((root / value).read_text()) or {})
+        require((json.loads(current.stdout) or {}) == wanted, 'Deployed Helm values differ from frozen intent')
+        with tarfile.open(root / item['chart']) as archive:
+            names = [name for name in archive.getnames() if name.count('/') == 1 and name.endswith('/Chart.yaml')]
+            require(len(names) == 1, 'Expected one root Chart metadata file')
+            metadata = yaml.safe_load(archive.extractfile(names[0]).read())
+        releases = json.loads(self.helm_run(['list', '--all', '-n', self.config['namespace'], '-o', 'json'], key + '-resume-releases', private=True).stdout)
+        matches = [r for r in releases if r['name'] == item['release']]
+        require(len(matches) == 1 and matches[0]['chart'] == metadata['name'] + '-' + str(metadata['version']), 'Deployed Chart differs from frozen intent')
+        self.check_health(root, item)
+
+    def install_intent(self, root, item):
+        return {'release': item['release'], 'chart_sha256': sha(root / item['chart']),
+                'values': {value: sha(root / value) for value in item['values']}}
 
     def check_images(self, rendered, catalog):
         allowed = {row['image'] for row in catalog['images']}
@@ -758,7 +802,7 @@ class Onsite:
                     item['spec'].get('volumeName') == old['spec'].get('volumeName'),
                     'Existing PVC identity/binding changed; stop and inspect')
 
-    def bootstrap(self):
+    def bootstrap(self, resume=False):
         self.preflight()
         catalog = json.loads((self.work / 'catalog.json').read_text())
         require(catalog.get('ready'), 'Import bundle first')
@@ -776,8 +820,25 @@ class Onsite:
         rendered = self.helm_run(['template', release, str(chart), '-n', self.config['namespace'], '-f', str(path)], 'pxeye-render', private=True).stdout
         self.check_images(rendered, catalog)
         self.check_ownership(self.work, phase)
+        if resume and self.state['steps'].get('bootstrapped-pxeye'):
+            status = self.helm_run(['status', release, '-n', self.config['namespace'], '-o', 'json'], 'pxeye-status', private=True)
+            require(json.loads(status.stdout)['info']['status'] == 'deployed', 'PXEye release is no longer deployed')
+            self.check_health(self.work, phase)
+            print('ALREADY_INSTALLED pxeye', flush=True); return
+        if resume:
+            status = self.helm_run(['status', release, '-n', self.config['namespace'], '-o', 'json'], 'pxeye-resume-status', check=False, private=True)
+            require(status.returncode == 0 or 'release: not found' in status.stderr.lower(), 'Cannot establish PXEye release state')
+            if status.returncode == 0:
+                actual = json.loads(status.stdout)['info']['status']
+                require(actual in ('deployed', 'failed'), 'PXEye Helm operation is pending; inspect before retry')
+                if actual == 'deployed' and self.state.get('pxeye_install_intent') == self.install_intent(self.work, phase):
+                    self.verify_deployed(self.work, phase)
+                    self.state['steps']['bootstrapped-pxeye'] = {'release': release, 'at': datetime.now(timezone.utc).isoformat(), 'recovered': True}
+                    self.save(); print('RECOVERED_INSTALLED pxeye', flush=True); return
+        self.state['pxeye_install_intent'] = self.install_intent(self.work, phase); self.save()
         self.helm_run(['upgrade', '--install', release, str(chart), '-n', self.config['namespace'], '--create-namespace',
                        '--wait', '--timeout', '900s', '-f', str(path)], 'pxeye-bootstrap', private=True, timeout=960)
+        self.state['steps']['bootstrapped-pxeye'] = {'release': release, 'at': datetime.now(timezone.utc).isoformat()}; self.save()
         print('PXEYE_HELM_READY; existing non-Helm PXEye is never automatically adopted')
 
 

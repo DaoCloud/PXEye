@@ -21,6 +21,7 @@ import tarfile
 import tempfile
 import time
 import urllib.request
+import urllib.error
 import uuid
 
 import yaml
@@ -32,6 +33,7 @@ sys.path.insert(0, str(HOME))
 import charts
 sys.path.insert(0, str(HOME.parent / 'onsite'))
 from relocation import prepare_intermediate
+from progress import Progress, atomic_json, transcript, install_signal_handlers
 from verify import verify
 sys.path.insert(0, str(HOME.parent / 'material-prepare'))
 import prepared
@@ -49,7 +51,9 @@ def command(argv, log=None, timeout=3600, check=True, **kwargs):
                             stderr=subprocess.PIPE, timeout=timeout, **kwargs)
     if log:
         log.parent.mkdir(parents=True, exist_ok=True)
-        log.write_text(result.stdout + ('\nSTDERR:\n' + result.stderr if result.stderr else ''))
+        with log.open('a') as stream:
+            stream.write('\nATTEMPT ' + datetime.now(timezone.utc).isoformat() + '\n' + result.stdout +
+                         ('\nSTDERR:\n' + result.stderr if result.stderr else '') + '\nEXIT_CODE=' + str(result.returncode) + '\n')
     if check and result.returncode:
         raise ValueError(f'{argv[0]} exited {result.returncode}; ' + (f'log: {log}' if log else (result.stdout + result.stderr)[-2000:]))
     return result
@@ -258,26 +262,42 @@ def image_view(layout, reference, target):
 
 
 class BuildRegistry:
-    def __init__(self, docker, work, run_id):
+    def __init__(self, docker, work, run_id, resumable=False):
         self.docker, self.work, self.run_id = docker, work, run_id
+        self.resumable = resumable
         self.name = 'mmzhou-offline-' + run_id
         self.container = None
         self.tool_image = 'mmzhou-offline-tools:' + run_id
         self.owned_tags = []
 
     def __enter__(self):
-        self.work.mkdir(parents=True)
+        self.work.mkdir(parents=True, exist_ok=self.resumable)
         try:
             if command([self.docker, 'image', 'inspect', LOCK['registry_image']], check=False).returncode:
                 command([self.docker, 'pull', LOCK['registry_image']], self.work / 'registry-pull.log')
-            storage = self.work / 'registry-data'; storage.mkdir()
+            storage = self.work / 'registry-data'; storage.mkdir(exist_ok=self.resumable)
+            port_file = self.work / 'registry-port.json'
+            port = json.loads(port_file.read_text())['port'] if self.resumable and port_file.exists() else ''
+            previous = command([self.docker, 'inspect', self.name], check=False)
+            if previous.returncode == 0:
+                info = json.loads(previous.stdout)[0]
+                b.require(info['Config'].get('Labels', {}).get('io.pxeye.offline-build') == self.run_id,
+                          'Registry name belongs to another run')
+                b.require(self.resumable and port, 'Existing Registry needs inspection')
+                command([self.docker, 'stop', '--time', '5', self.name], check=False)
+                remaining = command([self.docker, 'inspect', self.name], check=False)
+                if remaining.returncode == 0:
+                    b.require(not json.loads(remaining.stdout)[0]['State']['Running'], 'Registry is still running')
+                    command([self.docker, 'rm', self.name])
             self.container = command([self.docker, 'run', '--rm', '-d', '--name', self.name,
                 '--label', 'io.pxeye.offline-build=' + self.run_id,
-                '-p', '127.0.0.1::5000', '--mount', f'type=bind,src={storage},dst=/var/lib/registry', LOCK['registry_image']],
+                '-p', '127.0.0.1:' + str(port) + ':5000', '--mount', f'type=bind,src={storage},dst=/var/lib/registry', LOCK['registry_image']],
                 self.work / 'registry-start.log').stdout.strip()
             endpoint = command([self.docker, 'port', self.container, '5000/tcp']).stdout.strip()
             b.require(re.fullmatch(r'127\.0\.0\.1:[0-9]+', endpoint), 'Registry must listen on loopback only')
             self.address = 'localhost:' + endpoint.rsplit(':', 1)[1]
+            if self.resumable:
+                atomic_json(port_file, {'port': int(endpoint.rsplit(':', 1)[1])})
             for _ in range(30):
                 try:
                     with urllib.request.urlopen('http://' + endpoint + '/v2/', timeout=1) as response:
@@ -409,7 +429,7 @@ def check_intermediate(path, expected):
     return len(names)
 
 
-def build(config, args):
+def build(config, args, progress=None):
     _, base, extra, groups = input_plan(config)
     b.require(sys.platform == 'linux' and platform.machine() in ('x86_64', 'amd64'), 'Build on Linux x86_64, such as the .50 builder')
     for key in ('docker', 'helm'):
@@ -433,13 +453,13 @@ def build(config, args):
     docker_root = Path(command([docker, 'info', '--format', '{{.DockerRootDir}}'], timeout=30).stdout.strip())
     b.require(docker_root.is_dir() and shutil.disk_usage(docker_root).free > size * 2 + 2 * 1024**3,
               'Need at least twice the input size plus 2 GiB free in local Docker storage')
-    print('VERIFY_INPUT_MATERIALS (full hashes; no cluster operations)', flush=True)
     is_prepared = (source / 'prepared.json').is_file()
-    if is_prepared:
-        prepared.verify(source)
-    else:
-        b.verify(source)
-        b.require(b.sha(source / 'images/nico-amd64.oci.tar') == b.OCI_SHA, 'Unsupported Core archive')
+    with progress.stage('01-inputs', 'Verify input hashes and toolchain'):
+        if is_prepared:
+            prepared.verify(source)
+        else:
+            b.verify(source)
+            b.require(b.sha(source / 'images/nico-amd64.oci.tar') == b.OCI_SHA, 'Unsupported Core archive')
     if args.check_inputs:
         print('HELM_INPUTS_READY; relok8s and pinned registry image will be prepared during build', flush=True)
         return
@@ -451,20 +471,21 @@ def build(config, args):
     with (output.parent / ('.' + version + '.lock')).open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         b.require(not output.exists(), 'Output already exists')
-        stage = Path(tempfile.mkdtemp(prefix='.' + version + '.building-', dir=output.parent))
+        stage = progress.directory
         try:
             bundle = stage / 'bundle'
             for folder in ('charts', 'relocation', 'manifests', 'profiles', 'tools', 'docs'):
-                (bundle / folder).mkdir(parents=True)
-            relok = relok_tool(config, output.parent / '.tool-cache')
+                (bundle / folder).mkdir(parents=True, exist_ok=True)
+            with progress.stage('02-tools', 'Prepare locked packaging tools'):
+                relok = relok_tool(config, output.parent / '.tool-cache')
             rows = base if is_prepared else b.oci_check(source / 'images/nico-amd64.oci.tar', base)
             for row in ([] if is_prepared else extra):
                 verified = b.oci_check(source / row['archive'], reference=row['source_image'])[0]
                 b.require(verified['digest'] == row['digest'], 'PXEye archive digest mismatch')
-            run_id = uuid.uuid4().hex[:12]
+            run_id = hashlib.sha256(str(stage).encode()).hexdigest()[:12]
             material_records = []
             packages = []
-            with BuildRegistry(config['tools']['docker'], stage / '.work', run_id) as registry:
+            with BuildRegistry(config['tools']['docker'], stage / '.work', run_id, resumable=True) as registry:
                 bootstrap = next(row for row in extra if row['purpose'] == 'bootstrap')
                 loaded = registry.work / 'build-tools.tar'
                 if is_prepared:
@@ -491,10 +512,19 @@ def build(config, args):
                     else:
                         archive = source / row.get('archive', 'images/nico-amd64.oci.tar')
                         if archive not in layouts:
-                            layouts[archive] = unpack_oci(archive, registry.work / ('oci-' + str(len(layouts))))
+                            target = registry.work / ('oci-' + str(len(layouts)))
+                            if target.exists(): shutil.rmtree(target)
+                            layouts[archive] = unpack_oci(archive, target)
                         layout = layouts[archive]
-                    view = image_view(layout, reference, registry.work / f'view-{i:02}')
-                    registry.seed(view, destination, f'image-{i:02}.log')
+                    with progress.stage(f'02-image-{i:02}', 'Stage image ' + reference):
+                        view_path = registry.work / f'view-{i:02}'
+                        if view_path.exists(): shutil.rmtree(view_path)
+                        view = image_view(layout, reference, view_path)
+                        digest = row.get('amd64_manifest') or row['digest']
+                        if registry_has(registry, destination, digest):
+                            print('REUSE_IMAGE', reference, flush=True)
+                        else:
+                            registry.seed(view, destination, f'image-{i:02}.log')
                     mapping[reference] = destination
                     image_records.append({'source': reference, 'build_reference': destination,
                         'digest': row.get('amd64_manifest') or row['digest'], 'kind': row.get('kind', row.get('purpose', 'core'))})
@@ -504,6 +534,7 @@ def build(config, args):
                 material_records.extend(r | {'build_reference': mapping[r['image']]} for r in prepared_materials)
                 for name, group in groups.items():
                     context = registry.work / ('material-' + name)
+                    if context.exists(): shutil.rmtree(context)
                     payload = context / 'payload'; payload.mkdir(parents=True)
                     records = []
                     prefix = {'aarch64': 'boot/aarch64/', 'apt': 'boot/apt/', 'bfb': 'http/nico/dpu/'}[name]
@@ -530,9 +561,11 @@ def build(config, args):
                     material_images[name] = ref
                     material_records.append(manifest | {'build_reference': ref, 'image_digest': digest})
                     image_records.append({'build_reference': ref, 'digest': digest, 'kind': 'material'})
-                roots = stage_charts(bundle, source, mapping, material_images, bootstrap_ref, [r['image'] for r in base])
-                render_dir = stage / 'render'; render_dir.mkdir()
-                render = validate_charts(roots, config['tools']['helm'], mapping, material_images, render_dir)
+                if (stage / '.charts').exists(): shutil.rmtree(stage / '.charts')
+                with progress.stage('03-charts', 'Compose and render Charts'):
+                    roots = stage_charts(bundle, source, mapping, material_images, bootstrap_ref, [r['image'] for r in base])
+                    render_dir = stage / 'render'; render_dir.mkdir(exist_ok=True)
+                    render = validate_charts(roots, config['tools']['helm'], mapping, material_images, render_dir)
                 image_usage = [{'image': r['build_reference'], 'source': r.get('source'), 'used_by': [v['chart'] + '/' + v['mode'] for v in render if r['build_reference'] in v['images']]} for r in image_records]
                 if is_prepared:
                     b.require(all(r['used_by'] for r in image_usage), 'Prepared images include entries unused by the selected Charts')
@@ -541,15 +574,23 @@ def build(config, args):
                     chart_path = bundle / 'charts' / (key + '.tgz')
                     b.pack_tree(root, chart_path, metadata['name'])
                     relocation = bundle / 'relocation' / (key + '.tar')
-                    command([relok, 'chart', 'move', chart_path, '--to-intermediate-bundle', relocation, '--yes'],
-                            stage / (key + '-relok8s.log'), env={**os.environ, 'TMPDIR': str(registry.work)})
-                    # Derive exact references by rendering only the simple hints,
-                    # not by inventing image entries from arbitrary text.
-                    expected = hinted_images(root)
-                    compatible = prepare_intermediate(relocation, relocation.with_suffix('.compatible.tar'))
-                    if compatible != relocation:
-                        compatible.replace(relocation)
-                    count = check_intermediate(relocation, expected)
+                    with progress.stage('04-relocate-' + key, 'Package Chart ' + key) as checkpoint:
+                        expected = hinted_images(root)
+                        chart_hash = b.sha(chart_path)
+                        reuse = (checkpoint.get('chart_sha256') == chart_hash and relocation.is_file()
+                                 and checkpoint.get('relocation_sha256') == b.sha(relocation))
+                        if reuse:
+                            print('REUSE_RELOCATION', key, flush=True)
+                        else:
+                            partial = relocation.with_suffix('.partial.tar')
+                            partial.unlink(missing_ok=True)
+                            command([relok, 'chart', 'move', chart_path, '--to-intermediate-bundle', partial, '--yes'],
+                                    stage / (key + '-relok8s.log'), env={**os.environ, 'TMPDIR': str(registry.work)})
+                            compatible = prepare_intermediate(partial, relocation.with_suffix('.compatible.tar'))
+                            compatible.replace(relocation)
+                            partial.unlink(missing_ok=True)
+                        count = check_intermediate(relocation, expected)
+                        checkpoint.update(chart_sha256=chart_hash, relocation_sha256=b.sha(relocation))
                     packages.append({'id': key, 'name': metadata['name'], 'version': metadata['version'],
                         'chart': chart_path.relative_to(bundle).as_posix(), 'relocation': relocation.relative_to(bundle).as_posix(),
                         'images': sorted(expected), 'image_count': count})
@@ -560,7 +601,7 @@ def build(config, args):
             for tool in ('relok8s', 'helm'):
                 (bundle / 'tools' / tool).chmod(0o755)
             shutil.copyfile(HOME / 'verify.py', bundle / 'tools/verify.py')
-            shutil.copytree(REPO / 'offline-build/onsite', bundle / 'tools/onsite',
+            shutil.copytree(REPO / 'offline-build/onsite', bundle / 'tools/onsite', dirs_exist_ok=True,
                             ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
             shutil.copyfile(REPO / 'offline-build/onsite/prepare-bundle.sh', bundle / 'tools/prepare-bundle.sh')
             (bundle / 'tools/prepare-bundle.sh').chmod(0o755)
@@ -596,40 +637,99 @@ def build(config, args):
                 'cold_install_tested': False, 'multi_phase_oci_ui_ready': False})
             b.inventory(bundle)
             verify(bundle)
-            print('ARCHIVE', flush=True)
-            b.pack_tree(bundle, stage / 'bundle.tar.gz', config['bundle_id'])
+            with progress.stage('05-archive', 'Compress delivery archive') as checkpoint:
+                inventory_hash = b.sha(bundle / 'manifests/file-inventory.json')
+                archive = stage / 'bundle.tar.gz'
+                if (archive.is_file() and checkpoint.get('inventory_sha256') == inventory_hash
+                        and checkpoint.get('archive_sha256') == b.sha(archive)):
+                    print('REUSE_ARCHIVE', archive, flush=True)
+                else:
+                    partial = stage / 'bundle.partial.tar.gz'
+                    b.pack_tree(bundle, partial, config['bundle_id'])
+                    partial.replace(archive)
+                checkpoint.update(inventory_sha256=inventory_hash, archive_sha256=b.sha(archive))
             digest = b.sha(stage / 'bundle.tar.gz')
             b.write(stage / 'SHA256SUMS', digest + '  bundle.tar.gz\n')
             # Read back every archive member; directory verification alone does
             # not prove that the compressed delivery contains the same bytes.
-            expected = {r['path']: r for r in json.loads((bundle / 'manifests/file-inventory.json').read_text())['files']}
-            expected['manifests/file-inventory.json'] = {'sha256': b.sha(bundle / 'manifests/file-inventory.json'), 'bytes': (bundle / 'manifests/file-inventory.json').stat().st_size}
-            seen = set()
-            with tarfile.open(stage / 'bundle.tar.gz', 'r|gz') as tar:
-                for member in tar:
-                    if member.isdir(): continue
-                    name = b.safe_name(member.name)
-                    b.require(member.isfile() and name.startswith(config['bundle_id'] + '/'), 'Unexpected delivery archive member')
-                    relative = name[len(config['bundle_id']) + 1:]
-                    b.require(relative in expected and relative not in seen and member.size == expected[relative]['bytes'], 'Archive inventory mismatch')
-                    seen.add(relative); h = hashlib.sha256()
-                    with tar.extractfile(member) as stream:
-                        for block in iter(lambda: stream.read(8 * 1024**2), b''): h.update(block)
-                    b.require(h.hexdigest() == expected[relative]['sha256'], 'Archive content checksum mismatch: ' + relative)
-            b.require(seen == set(expected), 'Delivery archive is incomplete')
-            logs = stage / 'logs'; logs.mkdir()
+            with progress.stage('06-verify', 'Read back every archived file'):
+                expected = {r['path']: r for r in json.loads((bundle / 'manifests/file-inventory.json').read_text())['files']}
+                expected['manifests/file-inventory.json'] = {'sha256': b.sha(bundle / 'manifests/file-inventory.json'), 'bytes': (bundle / 'manifests/file-inventory.json').stat().st_size}
+                seen = set()
+                with tarfile.open(stage / 'bundle.tar.gz', 'r|gz') as tar:
+                    for member in tar:
+                        if member.isdir(): continue
+                        name = b.safe_name(member.name)
+                        b.require(member.isfile() and name.startswith(config['bundle_id'] + '/'), 'Unexpected delivery archive member')
+                        relative = name[len(config['bundle_id']) + 1:]
+                        b.require(relative in expected and relative not in seen and member.size == expected[relative]['bytes'], 'Archive inventory mismatch')
+                        seen.add(relative); h = hashlib.sha256()
+                        with tar.extractfile(member) as stream:
+                            for block in iter(lambda: stream.read(8 * 1024**2), b''): h.update(block)
+                        b.require(h.hexdigest() == expected[relative]['sha256'], 'Archive content checksum mismatch: ' + relative)
+                b.require(seen == set(expected), 'Delivery archive is incomplete')
+            logs = stage / 'logs'; logs.mkdir(exist_ok=True)
             for path in (stage / '.work').glob('*.log'):
                 shutil.copyfile(path, logs / path.name)
-            shutil.rmtree(stage / '.work')
-            shutil.rmtree(stage / '.charts')
             b.dump(stage / 'build-result.json', {'version': version, 'source_revision': revision,
                 'archive_bytes': (stage / 'bundle.tar.gz').stat().st_size, 'archive_sha256': digest,
                 'distinct_images': len(image_records), 'charts': len(packages), 'cold_install_tested': False})
+            progress.complete()
             stage.rename(output)
+            shutil.rmtree(output / '.work')
+            shutil.rmtree(output / '.charts')
             print('HELM_BUILD_COMPLETE', output, flush=True)
         except BaseException:
             print('HELM_BUILD_FAILED; staging retained at', stage, flush=True)
             raise
+
+
+def registry_has(registry, reference, digest):
+    path, tag = reference.partition('/')[2].rsplit(':', 1)
+    request = urllib.request.Request('http://' + registry.address + '/v2/' + path + '/manifests/' + tag,
+        method='HEAD', headers={'Accept': 'application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json'})
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            return response.headers.get('Docker-Content-Digest') == digest
+    except urllib.error.HTTPError as error:
+        if error.code == 404: return False
+        raise
+
+
+def run_build(config, args):
+    output = config['output_root']; output.mkdir(parents=True, exist_ok=True)
+    identity = {'config': {k: str(v) if isinstance(v, Path) else v for k, v in config.items()},
+                'implementation': command(['git', '-C', REPO, 'rev-parse', 'HEAD']).stdout.strip(),
+                'input_inventory_sha256': b.sha(config['materials_bundle'] / ('manifests/files.json' if (config['materials_bundle'] / 'prepared.json').exists() else 'manifests/file-inventory.json'))}
+    # Persist a default version per configuration. New deliveries use --version.
+    key = hashlib.sha256(json.dumps(identity['config'], sort_keys=True).encode()).hexdigest()[:24]
+    pointer = output / ('.active-' + key + '.json')
+    with (output / ('.active-' + key + '.lock')).open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        if not args.version:
+            if pointer.exists(): args.version = json.loads(pointer.read_text())['version']
+            else: args.version = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
+        b.require(re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,79}', args.version), 'Unsafe build version')
+        identity['version'] = args.version
+        directory = output / ('.' + args.version + '.building')
+        final = output / args.version
+        if final.exists():
+            record = json.loads((final / 'progress.json').read_text())
+            b.require(record['identity'] == identity and record['status'] == 'completed', 'Output exists with different inputs or incomplete state')
+            with transcript(final):
+                verify(final / 'bundle')
+                result = json.loads((final / 'build-result.json').read_text())
+                b.require(b.sha(final / 'bundle.tar.gz') == result['archive_sha256'], 'Completed archive changed')
+                print('HELM_BUILD_REUSED', final, flush=True)
+            return
+        progress = Progress(directory, identity)
+        if not args.check_inputs: atomic_json(pointer, {'version': args.version})
+        with transcript(directory):
+            try:
+                build(config, args, progress)
+            except BaseException as error:
+                progress.fail(error)
+                raise
 
 
 def main():
@@ -642,6 +742,7 @@ def main():
     parser.add_argument('--check-inputs', action='store_true')
     parser.add_argument('--version')
     args = parser.parse_args()
+    install_signal_handlers()
     if args.write_config:
         b.require(not args.write_config.exists(), 'Configuration exists; not overwriting')
         config = json.loads((HOME / 'build-config.example.json').read_text())
@@ -658,7 +759,7 @@ def main():
     if args.plan:
         input_plan(config)
         return
-    build(config, args)
+    run_build(config, args)
 
 
 if __name__ == '__main__':

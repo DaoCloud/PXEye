@@ -19,7 +19,7 @@ def main():
     if root.exists() or archive.exists():
         raise SystemExit('Output directory/archive exists; choose a new output')
     target = root / 'tools/onsite'; target.mkdir(parents=True)
-    for name in ('onsite.py', 'registry_bridge.py', 'site-config.example.json', 'README.zh-CN.md', 'README.md', 'prepare_bundle.py', 'prepare-site.sh', 'relocation.py'):
+    for name in ('run.py', 'run-config.example.json', 'progress.py', 'onsite.py', 'registry_bridge.py', 'site-config.example.json', 'README.zh-CN.md', 'README.md', 'prepare_bundle.py', 'prepare-site.sh', 'relocation.py'):
         shutil.copyfile(HOME / name, target / name)
     wrapper = HOME / 'prepare-bundle.sh'
     if not wrapper.is_file(): wrapper = HOME.parent / 'prepare-bundle.sh'

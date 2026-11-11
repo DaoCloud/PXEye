@@ -2,6 +2,7 @@
 
 **English** · [简体中文](README.zh-CN.md)
 
+Onsite entry point for the three-step workflow: [Step 3: one-config deployment and recovery](onsite/README.md).
 I perform these steps on a Linux build machine. Building locks materials and versions without knowing the target Registry, IPs, gateway or Kubernetes details. Onsite initialization and deployment are covered in [Part 2](CONFIGURE.md). The pinned profile contains NICo e703126e4, official Charts and compatibility patches for one Podman Kind node and single-replica Core, without REST/Temporal/Keycloak. It assembles existing images; it does not compile NICo or build PXEye images.
 
 The preferred flow is [step 1: prepare materials with one script](material-prepare/README.md), followed by [step 2: Helm/relok8s packaging](helm-bundle/README.md). Step 1 generates the packaging configuration and does not require the legacy generic bundle described below. The schema4 flow remains available for historical artifacts.

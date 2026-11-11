@@ -1,192 +1,121 @@
-# 一键构建 PXEye / NICo Helm离线包
+# 第二步：一键构建 Helm 离线交付包
 
 [English](README.md) · **简体中文**
-> 新流程：优先用[第一步单脚本](../material-prepare/README.zh-CN.md)生成`nico-prepared`目录及第二步配置；此输入不要求固定23镜像，不构建材料镜像，仅引用实际选中镜像并检查真实渲染闭包。下文旧`nico-materials`输入仍兼容，其固定23镜像及材料构建描述仅适用于旧路径。
 
+输入为[第一步](../material-prepare/README.zh-CN.md)生成的 `nico-prepared` 目录和自动生成的 `*.helm-build.json`。一个配置、一个执行入口；不填写现场 Registry、namespace 或网络参数，不访问 Kubernetes。推荐路径只打包镜像，不再构建材料镜像。
 
-本目录是新的relok8s打包入口。输入是上一版构建器已经验收的`kind=nico-materials`解压目录，脚本自动复用其中的23张Core镜像、2张PXEye镜像和固定Chart，构建选中的材料镜像，再交付一个完整归档。OCI归档在摘要校验后只解包一次，按已有导入器的dir transport处理OCI及Docker v2 manifest，保留原digest，避免CoreDNS等镜像被旧版skopeo拒绝。不需要填写目标现场Registry、IP、网关或namespace。
+## 1. 准备配置
 
-## 1. 检查构建机
+主要目标：使用第一步输出的配置文件。执行位置为 Linux amd64 构建机；前提为 Python 3.11+/PyYAML、Docker、本地 Unix Docker endpoint、Helm 3、已提交的源码，以及足够存储。第一步终端会打印第二步配置的绝对路径，将这份文件保存为 `/srv/nico-build/helm-build.json`；只维护该文件。
 
-主要目标：使用Linux x86_64、Python3.11+/PyYAML、Docker服务、Helm3。以下命令在构建机同一个Bash终端执行；假定仓库已经在`/srv/PXEye`，输入材料包在`/srv/nico-input/materials-bundle`。
+配置字段：
 
-执行命令：
-
-```bash
-bash
-set -euo pipefail
-export REPO=/srv/PXEye
-export MATERIALS=/srv/nico-input/materials-bundle
-export BUILD_WORK=/srv/nico-build
-cd "$REPO"
-uname -m
-python3 -c 'import sys,yaml; assert sys.version_info >= (3,11); print(sys.version); print(yaml.__version__)'
-docker version --format '{{.Server.Version}}'
-helm version --short
-mkdir -p "$BUILD_WORK"
-```
-
-确认命令：
-
-```bash
-test -r "$MATERIALS/bundle.json"
-test -r "$MATERIALS/manifests/file-inventory.json"
-test -r "$REPO/offline-build/helm-bundle/build.py"
-df -h "$BUILD_WORK"
-python3 "$REPO/offline-build/helm-bundle/build.py" --help
-```
-
-输入必须是已有通用材料包，不是原始上游目录，也不是现场初始化后的包。脚本要求至少“输入目录总大小×4＋2GiB”空闲空间，本机Unix socket的Docker存储至少需要“输入大小×2＋2GiB”空闲空间；与输出同盘时仍需满足总容量。首次构建会下载锁定的relok8s 0.5.4 Linux x86_64发行件并校验仓库中固定SHA256，且通过Docker准备锁定digest的Registry镜像；已缓存时复用。完全断网的构建机须预先缓存Registry镜像，并在配置`tools.relok8s`中填写已有0.5.4二进制绝对路径；不能在缺工具时假报成功。构建用临时无认证HTTP仓库，仅绑定127.0.0.1随机端口，不修改Docker/containerd配置。
-
-## 2. 创建一次配置
-
-主要目标：只填写本地路径和材料开关，重复构建复用同一配置；已有文件不会覆盖。
-
-执行命令（同一终端、仓库根目录）：
-
-```bash
-export CONFIG="$BUILD_WORK/helm-build.json"
-python3 "$REPO/offline-build/helm-bundle/build.py" \
-  --write-config "$CONFIG" \
-  --materials-bundle "$MATERIALS" \
-  --output-root "$BUILD_WORK/output"
-```
-
-确认命令：
-
-```bash
-cat "$CONFIG"
-python3 "$REPO/offline-build/helm-bundle/build.py" --config "$CONFIG" --plan
-```
-
-| 字段 | 作用 |
+| 字段 | 内容 |
 | --- | --- |
-| materials_bundle | 已验收的通用材料包根目录 |
-| output_root / bundle_id | 版本输出父目录、归档内的根目录名 |
-| include.aarch64 / bfb / apt | 是否把这三组原文件构建为材料镜像，默认均开启 |
-| tools.docker / helm | 构建工具命令或绝对路径 |
-| tools.relok8s | null表示自动准备固定版本；也可以提供已有二进制绝对路径 |
+| `materials_bundle` | 第一步生成的完整 prepared 目录 |
+| `output_root` | 交付包输出父目录，位于源码与输入目录之外 |
+| `bundle_id` | 归档解压后的根目录名 |
+| `include` | 必须与第一步的材料开关一致 |
+| `tools` | Docker、Helm 与可选的已缓存 relok8s 绝对路径 |
 
-逐文件列表/SHA由输入包inventory读取；工具版本和构建Registry digest在`toolchain-lock.json`维护，不要求用户手工复制几百项材料配置。x86_64 Scout继续使用已锁定的原boot-artifacts镜像及NICo原生加载方式，不重复打入一份松散文件。材料清单记录镜像内/payload及PVC版本目录。原x86_64镜像仅校验镜像层digest，本轮不把松散x86文件清单当作镜像内部核验结果。当前不增加Ubuntu ISO、GPU软件或启用DPF。
-
-## 3. 一键构建
-
-主要目标：一个命令完成输入完整性校验、临时Registry、镜像导入、材料镜像构建、5组Chart/6种模式渲染、relok8s打包、文件清单、压缩及逐文件读回。不会访问Kubernetes或执行部署。
+首次未指定 relok8s 时下载并校验固定版本；断网构建必须提前提供该工具和锁定的 Registry 镜像。兼容旧 `nico-materials` 输入，但该路径仍会构建材料镜像；新构建优先使用第一步产物。
 
 执行命令：
 
 ```bash
-python3 "$REPO/offline-build/helm-bundle/build.py" --config "$CONFIG"
+python3 /srv/PXEye/offline-build/helm-bundle/build.py --config /srv/nico-build/helm-build.json
 ```
 
-需要固定输出版本或保留终端日志时执行下面这一组，替代上面命令：
+确认命令：
 
 ```bash
-export VERSION="$(date -u +%Y%m%dT%H%M%SZ)"
-export OUTPUT="$BUILD_WORK/output/$VERSION"
-python3 "$REPO/offline-build/helm-bundle/build.py" \
-  --config "$CONFIG" --version "$VERSION" \
-  2>&1 | tee "$BUILD_WORK/build-$VERSION.log"
+ls -la /srv/nico-build/output
 ```
 
-确认命令（固定版本这一组执行后）：
+`output_root` 以配置为准。成功输出 `HELM_BUILD_COMPLETE` 和最终目录；重复执行完成的版本输出 `HELM_BUILD_REUSED`。
+
+## 2. 阶段、日志与失败续跑
+
+主要目标：终端明确显示当前阶段；失败后修复原因，再运行原命令。
+
+| 阶段 | 动作与恢复粒度 |
+| --- | --- |
+| 输入与工具 | 校验输入摘要、构建工具；续跑仍核对输入 |
+| 镜像暂存 | 私有本地 Registry 持久存储；按 manifest digest 复用已导入镜像 |
+| Chart 渲染 | 重新生成小型配置，校验实际镜像消费者 |
+| Chart 离线打包 | 逐 Chart 校验并复用完成的 relok8s 包；失败的 Chart 重新执行 |
+| 压缩 | 完整归档匹配清单与摘要时复用；未完成的压缩重新执行 |
+| 验收 | 逐文件读回压缩包；成功后发布最终目录 |
+
+执行命令（失败续跑与首次相同）：
 
 ```bash
-test -r "$OUTPUT/build-result.json"
-cat "$OUTPUT/build-result.json"
-ls -lh "$OUTPUT/bundle.tar.gz"
+python3 /srv/PXEye/offline-build/helm-bundle/build.py --config /srv/nico-build/helm-build.json
 ```
 
-成功终端显示`HELM_BUILD_COMPLETE <绝对输出目录>`。源码必须已提交；脚本检查本次构建涉及的源码路径，不把用户其他无关改动纳入镜像。创建新版本目录，不覆盖已有产物。临时Registry和本轮Docker标签在退出时清理；成功后删除临时仓库存储与材料构建目录，保留日志。失败保留`.building-*`暂存目录及真实日志，以新版本重试；不会清空旧包或执行全局Docker prune。
-
-## 4. 验证交付件
-
-主要目标：确认压缩件和解压目录完整。构建器已自动读回压缩包每个文件；以下为独立验包命令。
-
-执行命令（同一终端）：
+确认命令：
 
 ```bash
-cd "$OUTPUT"
+find /srv/nico-build/output -name progress.json -o -name run.log -o -name events.jsonl
+```
+
+首次自动生成并记住版本，同配置重跑会继续该版本；创建另一个交付版本时才添加 `--version`。配置、输入清单或源码版本改变时拒绝混用旧记录，应选择新版本。不能跨文件字节偏移续传；恢复粒度为镜像、Chart 和归档阶段。初次旧脚本产生的随机 `.building-*` 目录不自动接管。
+
+失败目录为 `output_root/.<version>.building/`，隐藏目录可以用 `ls -la` 查看。原始 Registry 数据和端口记录保留以便恢复，Registry 容器退出时停止，续跑恢复同一地址；端口被其他服务占用时明确失败，不改变旧引用。不会执行全局清理。
+
+`progress.json` 原子更新阶段状态、尝试次数、起止时间、耗时、失败原因；`events.jsonl` 追加每次阶段结果；`run.log` 自动追加终端输出，无需手工 `tee`。命令日志保留实际退出码。不要修改或删除断点记录。
+
+## 3. 交付目录与验包
+
+主要目标：确认最终归档及清单。以下变量在本节设置为成功命令输出的绝对目录；示例版本为 `field-01`。
+
+执行命令：
+
+```bash
+cd /srv/nico-build/output/field-01
 sha256sum -c SHA256SUMS
 python3 bundle/tools/verify.py bundle
-export UNPACK="$OUTPUT-unpacked"
-test ! -e "$UNPACK"
-mkdir "$UNPACK"
-tar -xzf bundle.tar.gz -C "$UNPACK"
 ```
 
 确认命令：
 
 ```bash
-export BUNDLE_ID="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["bundle_id"])' "$CONFIG")"
-python3 "$UNPACK/$BUNDLE_ID/tools/verify.py" "$UNPACK/$BUNDLE_ID"
-cat "$UNPACK/$BUNDLE_ID/bundle.json"
+cat build-result.json
+cat progress.json
 ```
-
-目录结构：
 
 ```text
-<output_root>/<version>/
-  bundle.tar.gz
-  SHA256SUMS
-  build-result.json
-  logs/                         # 临时Registry/镜像导入/材料镜像日志
-  *-relok8s.log                  # 真实relok8s输出
-  render/                       # 构建期渲染证据，不用于部署
-  bundle/
-    bundle.json
-    charts/                     # pxeye/cert-manager/platform/core/materials
-    relocation/                 # 5个真实Chart对应的relok8s中间包
-    profiles/
-      install-plan.json         # 继承原四阶段；Vault复用platform Chart
-      site-values.example.yaml  # 现场待填写项，尚未绑定现场
-    manifests/
-      file-inventory.json       # 解压文件的路径/大小/SHA
-      images-lock.json          # 镜像引用/digest/用途
-      materials.json            # 材料镜像内部文件清单与SHA
-      toolchain-lock.json
-      build-report.json
-    tools/helm
-    tools/relok8s
-    tools/verify.py
-    tools/onsite/               # 现场导入/Chart发布/冻结配方/Helm分阶段脚本
-    docs/README.md
-    docs/README.zh-CN.md
-    docs/relok8s-LICENSE
+output_root/
+  .active-<config-hash>.json      # 记住本配置的版本；无需手工管理
+  .<version>.building/           # 失败现场，成功后改名
+  <version>/
+    bundle.tar.gz
+    SHA256SUMS
+    build-result.json
+    progress.json
+    events.jsonl
+    run.log
+    logs/                       # Registry、镜像命令记录
+    *-relok8s.log
+    render/
+    bundle/
+      bundle.json
+      charts/
+      relocation/
+      profiles/
+      manifests/                # 文件清单、镜像锁、材料及构建报告
+      tools/
+        helm
+        relok8s
+        verify.py
+        onsite/
+          run.py                # 第三步唯一推荐执行入口
+          run-config.example.json
+      docs/
 ```
 
-外层归档仅包含`bundle/`的内容，解压根名为`bundle_id`。没有另外交付原始OCI归档或材料原文件副本；大材料在镜像中，镜像字节在relok8s中间包中。多个真实Chart引用共同镜像时，中间包之间可能重复保存镜像，当前不宣称跨包去重。
+归档只包含 `bundle/` 交付内容，解压根名为 `bundle_id`；构建日志与进度保留在归档外。成功后删除本次 Registry 数据和临时构建目录。交付只需复制归档与 `SHA256SUMS`；现场运行见[第三步](../onsite/README.zh-CN.md)。已有旧大包可另行导出小型现场工具包，不必重建镜像。
 
-## 5. 构建成功的边界
+Helm 打包成功不等于控制面安装、严格 mTLS、材料 HTTP、物理 DHCP 或 OS 装机验收通过。新包当前仍不支持旧 UI 自动读取 OCI 目录。
 
-主要目标：明确新打包格式与现有部署入口的兼容范围，防止把构建完成当成安装通过。
-
-执行命令：
-
-```bash
-python3 -m json.tool "$OUTPUT/bundle/bundle.json"
-python3 -m json.tool "$OUTPUT/bundle/manifests/build-report.json"
-```
-
-确认命令：
-
-```bash
-python3 - "$OUTPUT/bundle/bundle.json" <<'PY'
-import json,sys
-d=json.load(open(sys.argv[1]))
-assert d['kind']=='pxeye-nico-helm'
-assert d['requires_site_configuration'] is True
-assert d['multi_phase_oci_ui_ready'] is False
-print('RELOK8S_DELIVERY_READY; ONSITE/UI_ADAPTER_PENDING')
-PY
-```
-
-构建器完成交付；[第三步现场工具](../onsite/README.zh-CN.md)已提供迁移、Chart OCI发布、冻结兼容配方和分阶段Helm命令，尚未完成真实火种端到端验收。PXEye自动读取多阶段OCI目录仍未实现，因此新包明确标记`requires_site_configuration=true`、`multi_phase_oci_ui_ready=false`；不能把它直接交给旧版FieldBundles扫描器或按旧OCI导入命令运行。现场迁移使用relok8s中间包格式，不能把它当作`nico-amd64.oci.tar`。
-
-构建使用临时验证参数，不是目标现场参数。新PXEye和材料发布Chart只有构建渲染证据，尚无冷启动安装/升级/实际网络验证；原有固定e703兼容补丁继续保留。脚本不改变生产/学习集群、物理机器、DHCP、证书或数据库，也不执行回归/GPU工作负载。
-
-依据：[relok8s源代码v0.5.4](https://github.com/vmware-tanzu/asset-relocation-tool-for-kubernetes/tree/v0.5.4)、[Helm OCI](https://helm.sh/docs/v3/topics/registries/)、[NVIDIA参考安装](https://docs.nvidia.com/infra-controller/documentation/getting-started/installation-options/reference-installation)。
-
-## relok8s 0.5.4 顶层镜像字段兼容
-
-该版本改写顶层镜像字段时可能报`need path or selectors or both`。构建和现场导入共用relocation.py：仅在中间包中将顶层字段临时映射到嵌套字段，迁移完成后恢复原values结构；镜像内容不变。现场对已有包在工作目录生成派生副本，原归档和校验清单保持不变，无需重建大包。修复后使用原配置重新执行import，已完成的Chart回查后复用。
+依据：[Helm OCI](https://helm.sh/docs/v3/topics/registries/)、[relok8s 0.5.4](https://github.com/vmware-tanzu/asset-relocation-tool-for-kubernetes/tree/v0.5.4)、[NICo Reference Installation](https://docs.nvidia.com/infra-controller/documentation/getting-started/installation-options/reference-installation)。

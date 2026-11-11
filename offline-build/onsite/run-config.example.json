@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "archive": "/srv/nico/bundle.tar.gz",
+  "checksums": "/srv/nico/SHA256SUMS",
+  "extract_directory": "/srv/nico/releases/field-install-01",
+  "work_directory": "/srv/nico/onsite/field-install-01",
+  "bootstrap_pxeye": false,
+  "site": {
+    "context": null,
+    "namespace": "nico-system",
+    "release_prefix": null,
+    "site_name": "PXEye",
+    "mode": "restore",
+    "registry": {
+      "url": null,
+      "repository_prefix": "nico-offline",
+      "ca_file": null,
+      "skip_tls_verify": false,
+      "docker_config_directory": null
+    },
+    "storage_class": null,
+    "service_ips": {"dns": null, "pxe": null, "ntp": null},
+    "host_network": null,
+    "publish_materials": false,
+    "phase_values": {}
+  }
+}
