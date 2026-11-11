@@ -213,7 +213,7 @@ class Onsite:
         # Exact predecessor identities may retain completed imports. All site,
         # archive and bridge inputs must still match; no arbitrary state reset.
         if self.state['config_sha256'] != fingerprint and self.state['bundle_inventory_sha256'] == identity:
-            for previous_source, with_relocation in (('4315ad8762820d95b3054ae5e241ef7e4b366d0f556029d274bfb19c31bce0e4', True), ('19e0d0fc117c305257967152f3c330813883ddc202c567ce1dbc6037f8df235d', True), ('5dacea47145f7fca625ff001d1ff4496e9d6b32ca4ed2b9d8c58537c22e538b7', True), ('1c4a17c382cf1743a62b6ff260aca98f581bff7252bb5dc9e86b3286dc793701', False), ('d0cdd13aab92e73b9eed0437b5f632fcdc2efcb90385d9c325a21e70c5c6c421', False)):
+            for previous_source, with_relocation in (('88b3747ca185f5fd10f7625f5800c29f717fb7876fe5b3274fedc45e2a740161', True), ('4315ad8762820d95b3054ae5e241ef7e4b366d0f556029d274bfb19c31bce0e4', True), ('19e0d0fc117c305257967152f3c330813883ddc202c567ce1dbc6037f8df235d', True), ('5dacea47145f7fca625ff001d1ff4496e9d6b32ca4ed2b9d8c58537c22e538b7', True), ('1c4a17c382cf1743a62b6ff260aca98f581bff7252bb5dc9e86b3286dc793701', False), ('d0cdd13aab92e73b9eed0437b5f632fcdc2efcb90385d9c325a21e70c5c6c421', False)):
                 predecessor = copy.deepcopy(identity_config)
                 if not with_relocation:
                     predecessor['implementation_sha256'].pop('relocation.py')
@@ -411,6 +411,11 @@ class Onsite:
 
     def image_defaults(self, defaults, values):
         """Retain site settings while replacing every locked image field from the migrated Chart."""
+        # Legacy releases used arrays for boot artifacts; the offline Chart
+        # uses index-keyed maps so relok8s can relocate each image.
+        if (isinstance(defaults, dict) and defaults and isinstance(values, list)
+                and all(isinstance(key, str) and key.isdecimal() for key in defaults)):
+            values = {str(index): value for index, value in enumerate(values)}
         if isinstance(defaults, dict) and isinstance(values, dict):
             if isinstance(defaults.get('repository'), str) and defaults['repository'].startswith(self.registry + '/'):
                 for key in ('repository', 'tag', 'digest', 'registry'):
