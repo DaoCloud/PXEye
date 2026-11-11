@@ -87,7 +87,7 @@ python3 -m json.tool "$CONFIG"
 
 需要认证时加`--docker-config-directory /绝对路径/docker-auth`，目录须包含有效`config.json`；不在命令行传密码。工具不代替Harbor项目创建或账号授权。自动探测不修改containerd；主机可达不代表Kind节点可拉取。
 
-restore模式自动读取原release的有效values和旧DNS/PXE/NTP Service地址；保留原HostInband和凭据引用。Core镜像采用本次离线包版本，不自动采用来源环境当前运行镜像。配置及values有变化时用新的work_directory；唯有补充data_backup_directory不使已入库内容失效。
+restore模式自动读取原release的有效values和旧DNS/PXE Service及NTP客户端Service（-nico-ntp-client）地址；Headless NTP Service不作为客户端地址；保留原HostInband和凭据引用。Core镜像采用本次离线包版本，不自动采用来源环境当前运行镜像。配置及values有变化时用新的work_directory；唯有补充data_backup_directory不使已入库内容失效。
 
 prepare-site.sh用于保留数据恢复；全新现场使用onsite.py write-config，省略`--restore`，显式设置context、包路径和工作目录，前缀自行选择；必须在配置中填写`service_ips`和`host_network`，并按现场选择storage_class。例如host_network对象字段为name、prefix、gateway、mtu。生成配置后的更新命令如下，值从交接表设置到同一Bash环境后再执行：
 

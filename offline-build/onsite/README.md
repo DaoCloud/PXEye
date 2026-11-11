@@ -84,7 +84,7 @@ Omitting `--registry-url` discovers candidates from PXEye image authorities, pri
 
 For authentication, use `--docker-config-directory /absolute/path/docker-auth` with an authenticated `config.json`. No passwords on command lines. Harbor project/account provisioning remains separate. Discovery does not change containerd or prove Kind-node image pulls.
 
-Restore mode reads existing effective Helm values and DNS/PXE/NTP Service IPs, retaining credentials/network settings while selecting the imported image versions. It does not silently choose running images from a source cluster. Configuration/override-file changes require a new work directory, except that recovery backup evidence can be supplied later.
+Restore mode reads existing effective Helm values and DNS/PXE Service IPs and the NTP client Service (-nico-ntp-client) IP; the headless NTP Service is not a client address, retaining credentials/network settings while selecting the imported image versions. It does not silently choose running images from a source cluster. Configuration/override-file changes require a new work directory, except that recovery backup evidence can be supplied later.
 
 prepare-site.sh is for restoring retained releases/data. For a new site use onsite.py write-config with explicit context/bundle/work paths, omit `--restore`, select a prefix and configure storage/network from the handover table. After setting DNS_IP, PXE_IP, NTP_IP, HOST_PREFIX and HOST_GATEWAY in the terminal:
 

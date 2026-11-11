@@ -213,16 +213,17 @@ class Onsite:
         # Exact predecessor identities may retain completed imports. All site,
         # archive and bridge inputs must still match; no arbitrary state reset.
         if self.state['config_sha256'] != fingerprint and self.state['bundle_inventory_sha256'] == identity:
-            for previous_source in ('1c4a17c382cf1743a62b6ff260aca98f581bff7252bb5dc9e86b3286dc793701', 'd0cdd13aab92e73b9eed0437b5f632fcdc2efcb90385d9c325a21e70c5c6c421'):
+            for previous_source, with_relocation in (('5dacea47145f7fca625ff001d1ff4496e9d6b32ca4ed2b9d8c58537c22e538b7', True), ('1c4a17c382cf1743a62b6ff260aca98f581bff7252bb5dc9e86b3286dc793701', False), ('d0cdd13aab92e73b9eed0437b5f632fcdc2efcb90385d9c325a21e70c5c6c421', False)):
                 predecessor = copy.deepcopy(identity_config)
-                predecessor['implementation_sha256'].pop('relocation.py')
+                if not with_relocation:
+                    predecessor['implementation_sha256'].pop('relocation.py')
                 predecessor['implementation_sha256']['onsite.py'] = previous_source
                 old_fingerprint = hashlib.sha256(json.dumps(predecessor, sort_keys=True).encode()).hexdigest()
                 if self.state['config_sha256'] == old_fingerprint:
                     self.state.setdefault('implementation_updates', []).append({
-                        'from': old_fingerprint, 'to': fingerprint, 'reason': 'relok8s-root-image-fields'})
+                        'from': old_fingerprint, 'to': fingerprint, 'reason': 'onsite-compatibility-fix'})
                     self.state['config_sha256'] = fingerprint
-                    print('REUSE_STATE: root image compatibility updated; completed imports retained', flush=True)
+                    print('REUSE_STATE: compatible onsite update; completed imports retained', flush=True)
                     break
         require(self.state['config_sha256'] == fingerprint and self.state['bundle_inventory_sha256'] == identity,
                 'Config/bundle changed; use a new work_directory')
@@ -396,12 +397,16 @@ class Onsite:
 
     def service_ips(self):
         values = dict(self.config.get('service_ips') or {})
-        for key, suffix in (('dns', 'dns'), ('pxe', 'pxe'), ('ntp', 'ntp')):
+        for key, suffix in (('dns', 'dns'), ('pxe', 'pxe'), ('ntp', 'ntp-client')):
             if not values.get(key) and self.config['mode'] == 'restore':
                 result = self.kubectl(['-n', self.config['namespace'], 'get', 'service', self.config['release_prefix'] + '-nico-' + suffix, '-o', 'json'], 'service-' + key)
                 values[key] = json.loads(result.stdout)['spec']['clusterIP']
             require(values.get(key), 'Missing service_ips.' + key)
-            require(ipaddress.ip_address(values[key]).version == 4, 'Service IP must be IPv4')
+            try:
+                address = ipaddress.ip_address(values[key])
+            except (ValueError, TypeError):
+                raise ValueError('Invalid service_ips.' + key + ': expected a client-facing IPv4 address, not a headless Service or empty value') from None
+            require(address.version == 4, 'service_ips.' + key + ' must be IPv4')
         require(len(set(values.values())) == 3, 'Service IPs must be distinct')
         return values
 
