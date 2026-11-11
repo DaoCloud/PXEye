@@ -31,9 +31,7 @@ cd /srv/nico
 sha256sum -c nico-onsite-tools.tar.gz.sha256
 test ! -e /srv/nico/nico-onsite-tools
 tar -xzf nico-onsite-tools.tar.gz
-export KIT=/srv/nico/nico-onsite-tools/tools/onsite
-python3 -c 'import sys,yaml; assert sys.version_info >= (3,11); print(sys.version); print(yaml.__version__)'
-python3 "$KIT/onsite.py" --help
+
 ```
 
 确认命令：
@@ -53,17 +51,8 @@ Python/PyYAML是火种机前提，不在断网现场自动pip安装。不要使�
 执行命令（火种机）：
 
 ```bash
-python3 "$KIT/onsite.py" unpack \
-  --archive /srv/nico/bundle.tar.gz \
-  --checksums /srv/nico/SHA256SUMS \
-  --output /srv/nico/releases/field-import-01
-export BUNDLE="$(python3 - <<'PY'
-import json
-from pathlib import Path
-p=Path('/srv/nico/releases/field-import-01')
-print(p/json.loads((p/'unpack-result.json').read_text())['root'])
-PY
-)"
+bash /srv/nico/nico-onsite-tools/tools/prepare-bundle.sh
+source /srv/nico/onsite/environment.sh
 ```
 
 确认命令：
@@ -73,7 +62,7 @@ python3 -m json.tool "$BUNDLE/bundle.json"
 test -f "$BUNDLE/profiles/install-plan.json"
 ```
 
-应看到`UNPACK_COMPLETE`。目录已存在就停止，不覆盖；新一轮使用新的output路径。不要以文件大小推断版本，以bundle.json为准。SHA文件仅匹配本次归档那一行。解压拒绝危险路径、链接和重复成员，按剩余空间限制展开，随后校验内部清单。
+脚本检查Python3.11+/PyYAML、验包解压并生成KIT/BUNDLE/CONFIG/WORK，最后输出`BUNDLE_READY`。第二条命令将变量加载到当前终端。已完整解压且清单匹配时验证后复用；不完整或不同包的目录拒绝覆盖。可加`--directory /srv/nico`、`--output /srv/nico/releases/field-import-02`；从源码目录运行必须提供`--directory`。不要以文件大小推断版本，以bundle.json为准。SHA文件仅匹配本次归档那一行。解压拒绝危险路径、链接和重复成员，按剩余空间限制展开，随后校验内部清单。
 
 ## 3. 创建现场配置
 
@@ -82,11 +71,10 @@ test -f "$BUNDLE/profiles/install-plan.json"
 执行命令（火种机；本轮保留旧release/PVC的Kind恢复场景）：
 
 ```bash
-export CONFIG=/srv/nico/onsite/site-config.json
 python3 "$KIT/onsite.py" write-config \
   --output "$CONFIG" \
   --bundle "$BUNDLE" \
-  --work-directory /srv/nico/onsite/field-import-01 \
+  --work-directory "$WORK" \
   --context kind-fireseed \
   --namespace nico-system \
   --release-prefix previous-nico-release \
@@ -152,7 +140,6 @@ PY
 ```bash
 python3 "$KIT/onsite.py" preflight --config "$CONFIG"
 python3 "$KIT/onsite.py" import --config "$CONFIG"
-export WORK=/srv/nico/onsite/field-import-01
 ```
 
 确认命令：

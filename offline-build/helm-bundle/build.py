@@ -499,6 +499,8 @@ def build(config, args):
             shutil.copyfile(HOME / 'verify.py', bundle / 'tools/verify.py')
             shutil.copytree(REPO / 'offline-build/onsite', bundle / 'tools/onsite',
                             ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
+            shutil.copyfile(REPO / 'offline-build/onsite/prepare-bundle.sh', bundle / 'tools/prepare-bundle.sh')
+            (bundle / 'tools/prepare-bundle.sh').chmod(0o755)
             for name in ('README.md', 'README.zh-CN.md'):
                 shutil.copyfile(HOME / name, bundle / 'docs' / name)
             shutil.copyfile(HOME / 'toolchain-lock.json', bundle / 'manifests/toolchain-lock.json')

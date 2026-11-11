@@ -28,9 +28,7 @@ cd /srv/nico
 sha256sum -c nico-onsite-tools.tar.gz.sha256
 test ! -e /srv/nico/nico-onsite-tools
 tar -xzf nico-onsite-tools.tar.gz
-export KIT=/srv/nico/nico-onsite-tools/tools/onsite
-python3 -c 'import sys,yaml; assert sys.version_info >= (3,11); print(sys.version); print(yaml.__version__)'
-python3 "$KIT/onsite.py" --help
+
 ```
 
 Confirm:
@@ -50,17 +48,8 @@ Goal: verify the outer SHA and every delivered file, using a new extraction dire
 Commands:
 
 ```bash
-python3 "$KIT/onsite.py" unpack \
-  --archive /srv/nico/bundle.tar.gz \
-  --checksums /srv/nico/SHA256SUMS \
-  --output /srv/nico/releases/field-import-01
-export BUNDLE="$(python3 - <<'PY'
-import json
-from pathlib import Path
-p=Path('/srv/nico/releases/field-import-01')
-print(p/json.loads((p/'unpack-result.json').read_text())['root'])
-PY
-)"
+bash /srv/nico/nico-onsite-tools/tools/prepare-bundle.sh
+source /srv/nico/onsite/environment.sh
 ```
 
 Confirm:
@@ -70,7 +59,7 @@ python3 -m json.tool "$BUNDLE/bundle.json"
 test -f "$BUNDLE/profiles/install-plan.json"
 ```
 
-Expect `UNPACK_COMPLETE`. Existing output is never overwritten. Unsafe paths, links, special files and duplicate members are rejected. Expansion is bounded by available space. Do not infer the version from archive size.
+The helper checks Python3.11+/PyYAML, verifies/unpacks the archive and writes KIT/BUNDLE/CONFIG/WORK, then prints `BUNDLE_READY`. The second command activates those variables in the current shell. A complete matching extraction is verified and reused; incomplete or mismatched output is never overwritten. Options: `--directory /srv/nico` and `--output /srv/nico/releases/field-import-02`. Source-checkout usage requires `--directory`. Unsafe paths, links, special files and duplicate members are rejected. Expansion is bounded by available space. Do not infer the version from archive size.
 
 ## 3. Create one site config
 
@@ -79,11 +68,10 @@ Goal: explicitly select the Kubernetes context, Registry and release identity. T
 Commands:
 
 ```bash
-export CONFIG=/srv/nico/onsite/site-config.json
 python3 "$KIT/onsite.py" write-config \
   --output "$CONFIG" \
   --bundle "$BUNDLE" \
-  --work-directory /srv/nico/onsite/field-import-01 \
+  --work-directory "$WORK" \
   --context kind-fireseed \
   --namespace nico-system \
   --release-prefix previous-nico-release \
@@ -148,7 +136,6 @@ Commands:
 ```bash
 python3 "$KIT/onsite.py" preflight --config "$CONFIG"
 python3 "$KIT/onsite.py" import --config "$CONFIG"
-export WORK=/srv/nico/onsite/field-import-01
 ```
 
 Confirm:
