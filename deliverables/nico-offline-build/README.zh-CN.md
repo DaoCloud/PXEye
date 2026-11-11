@@ -1,143 +1,77 @@
-# 第一部分：构建 NICo 离线安装包
+# 第一部分：构建通用 NICo 离线材料包
 
 [English](README.md) · **简体中文**
 
-这份文档只负责准备输入、查看文件清单、构建、验包及说明产物。通过离线包部署 NICo 的操作由另一份文档负责，生成位置为最终包的 `docs/INSTALL.md`。
+构建只确定材料和版本，不需要目标现场的Registry、IP、网关、Kubernetes context或节点名。现场初始化与部署见[第二部分](CONFIGURE.zh-CN.md)。namespace默认`nico-system`，在现场初始化时统一使用。
 
-当前配方：NICo Core e703126e4、官方 nico-0.1.1/cert-manager-v1.17.1 Chart，加上已收敛的兼容补丁和平台依赖。组装预先构建的镜像和材料，不编译 NICo、不构建 PXEye 镜像。目标为已有 Podman Kind 的单副本 Core 演练，不包含 REST/Temporal/Keycloak。
+固定配方为NICo e703126e4、官方nico-0.1.1/cert-manager-v1.17.1 Chart及已收敛兼容补丁，单节点Podman Kind、单副本Core；不包含REST/Temporal/Keycloak。本工具组装现有镜像，不编译NICo或构建PXEye镜像。
 
-## 1. 构建目录与依赖
+## 1. 准备构建工具和依赖
 
-**主要目标：** 将整个构建工具目录放在构建机 `/srv/nico-build-kit`，后续所有命令都在该机的 Bash 中执行。目录可整体复制，不依赖原 PXEye Git 工作区。大文件从配置指定的输入目录读取。
+主要目标：使用Git中的独立工具目录，或将整个目录放在构建机`/srv/nico-build-kit`。本文件所有构建命令均在构建机Bash、该工具目录执行。Git克隆后也可直接进入`deliverables/nico-offline-build`执行，不强制使用`/srv`。
 
-交付的构建目录：
-
-```text
-/srv/nico-build-kit/
-├── README.zh-CN.md                 # 本文：构建与产物说明
-├── README.md                       # 英文对应文档
-├── build.py                        # 实际构建脚本
-├── build-config.json               # 本次构建配置，编辑入口
-├── build-config.example.json       # 通用配置示例
-├── source-revision.txt             # 导出这些脚本/模板的固定 Git commit
-├── FILE-PLAN.txt                   # 导出时生成的完整文件计划
-├── deploy/
-│   ├── bootstrap-kubernetes.yaml   # 生成完整 PXEye Deployment 的源模板
-│   ├── nico-cluster-permissions.yaml
-│   ├── nico-platform/              # PostgreSQL TLS、Vault、CA 等平台 Chart 源码
-│   └── offline-core/               # 四阶段定义、values 模板、兼容补丁
-└── tools/
-    ├── import-oci-bundle.py         # 已修复的 OCI 集合导入工具
-    └── offline-field/              # 现场工具/部署文档模板
-```
-
-仓库中的维护入口是本目录 `build.py`、`export.py`、`build-config.example.json`。`export.py`从指定 Git 提交导出以上独立目录，模板仍以仓库原路径为唯一源码。旧 `tools/build-nico-offline-bundle.py` 仅兼容转发，不维护另一份实现。
-
-**执行命令：** 构建机 Bash。
+执行命令：
 
 ```bash
 bash
 set -euo pipefail
 cd /srv/nico-build-kit
-python3 --version
-python3 -c 'import yaml; print("PyYAML", yaml.__version__)'
-command -v patch helm
+python3 -c 'import sys,yaml; assert sys.version_info >= (3,11); print(sys.version); print("PyYAML",yaml.__version__)'
+command -v helm
+command -v patch
+cp -n build-config.example.json build-config.json
+vi build-config.json
 ```
 
-**确认命令：** 同一终端。
+确认命令：
 
 ```bash
-test -r build.py
-test -r build-config.json
-test -r source-revision.txt
 python3 -m json.tool build-config.json >/dev/null
+python3 -c 'import json; c=json.load(open("build-config.json")); assert c["schema_version"]==3 and "site" not in c; print(c["build"]); print(c["package"])'
 ```
 
-依赖 Linux、Python3.11+/PyYAML、Helm3、GNU patch。构建脚本不访问 Kubernetes/Registry，不需要 Docker socket、skopeo、kubeconfig 或登录凭据。空间门禁按输入大小的两倍加2GiB估算；压缩和归档读回需要时间。
+依赖Linux、Python3.11+/PyYAML、Helm3、GNU patch。构建不访问Kubernetes或Registry，不需要kubeconfig、Docker socket或登录凭据。空间检查按输入总大小两倍加2GiB估算。不需要另外创建固定名称的配置目录；`--config`可以指向Git仓库外任意文件。
 
-## 2. 配置文件：打包什么、从哪里来
+## 2. 配置输入并查看完整计划
 
-**主要目标：** `build-config.json`是本次构建的配置入口。文件列表逐项明确，没有通配符，也不自动扫描目录补入其他材料。
+主要目标：只声明构建机能够确定的输入。配置不含现场网络或集群信息。
 
-| 字段 | 作用 |
+| 字段 | 构建时提供的内容 |
 | --- | --- |
-| `schema_version` | 固定为2，使用显式文件计划 |
-| `build.source_bundle` | 原始固定版本材料目录，包含raw charts、23镜像OCI及材料 |
-| `build.output_root` | 构建输出的父目录；每个版本生成一个新子目录 |
-| `site` | 生成配方所需的站点参数：namespace、发布名、镜像仓库、Service IP、HostInband等；不含密码 |
-| `site.ui` / `site.bootstrap` | 两张额外PXEye OCI归档的路径、归档内原引用、目标tag、镜像manifest digest |
-| `files.base_image_manifests` | 原始OCI中23张镜像的完整引用和manifest摘要；UI/初始化另由site声明 |
-| `files.inputs` | 每个大文件/二进制/raw Chart的输入和包内路径；含字节数、SHA256与处理角色 |
-| `files.generated` | 脚本会生成的每一个文件在最终包中的路径 |
-| `files.repository` | 随构建工具一起交付的每个模板/Chart源码/辅助脚本，共24项 |
-| `files.toolkit` | 构建脚本、双语文档、通用配置模板的源码与工具目录内路径 |
+| `schema_version` | `3`，通用材料模式 |
+| `build.source_bundle` | 原始锁定材料目录，含raw Charts、23镜像OCI、引导和DPU材料 |
+| `build.output_root` | 输出父目录，每次生成新的版本子目录 |
+| `package.bundle_id` | 通用材料包标识，与现场站点名无关 |
+| `package.ui`、`package.bootstrap` | 镜像归档路径、tag、manifest digest；归档内源引用自动按digest读取 |
+| `files.inputs` | 每项输入的来源、角色、目标路径、字节数、SHA256；不使用通配符 |
+| `files.base_image_manifests` | 23张原始镜像的引用和manifest摘要 |
+| `files.repository`、`files.toolkit` | 随包模板、工具和说明的逐文件列表 |
+| `files.generated` | 每个生成文件的最终路径 |
 
-`files.inputs`每项的格式：
+`root=bundle`相对`build.source_bundle`读取；`root=package`从`package.ui.archive`或`package.bootstrap.archive`读取两张额外镜像。归档路径相对配置文件解析，也可为绝对路径。tag/digest与`files.inputs`的大小/文件SHA256必须一起更新。归档原始Registry引用只用于材料溯源，不作为部署Registry。
 
-```json
-{
-  "role": "material",
-  "root": "bundle",
-  "source": "boot/x86_64/ipxe.efi",
-  "target": "boot/x86_64/ipxe.efi",
-  "bytes": 352256,
-  "sha256": "完整的64位SHA256，实际值已在配置文件中提供"
-}
-```
+当前清单含122项输入：3个OCI归档、原始镜像锁、2个raw Chart、Helm/CLI、20项boot、20项DPF/DOCA、2项BFB及72项历史材料。8个macOS `._`文件、Ubuntu安装ISO和额外GPU软件不在清单中。NICo Chart应用补丁后打包；其他材料按锁复制。工具自身和部署模板也逐项声明，不扫描新增文件补入包。
 
-`root=bundle`表示相对`build.source_bundle`读取；`root=site`用于两张额外镜像，例如`source=ui.archive`引用`site.ui.archive`，不重复维护路径。归档路径相对配置文件解析，也可使用绝对路径。
-
-当前默认清单的准确内容：
-
-| 内容 | 输入文件数 | 处理与最终位置 |
-| --- | ---: | --- |
-| 原始23镜像集合 | 1 | 原样复制为`images/nico-amd64.oci.tar`，不拆分/重打包其manifest |
-| UI与Vault初始化镜像 | 2 | 两个独立`images/pxeye-<tag>.oci.tar` |
-| 原始镜像锁 | 1 | 原样复制为`manifests/images-lock.json` |
-| 原始官方Chart | 2 | cert-manager复制；NICo解包、应用兼容补丁再重新打包 |
-| Helm与nico-admin-cli | 2 | 原样复制到`tools/`，保留可执行权限 |
-| Scout/iPXE引导材料 | 20 | `boot/`，包含x86_64/aarch64、Scout包及摘要 |
-| DPF/DOCA材料 | 20 | `dpu/dpf-v26.4.0/`，含Chart、3个OCI、源码及dpfctl |
-| BlueField BFB及摘要 | 2 | `http/nico/dpu/...` |
-| 历史源码/二进制备份 | 72 | `source/`，供溯源；不作为当前PXEye应用源码维护入口 |
-| **合计输入文件** | **122** | 输入摘要在复制/使用时核对 |
-| **生成文件** | **28** | 配方、values、平台Chart、完整Deployment/RBAC、runtime、工具、部署文档、清单等 |
-| **最终包内文件** | **150** | file-inventory记录149项，自身不记录自己 |
-
-原始OCI保留其23张锁定镜像，其中含历史材料；实际部署引用以生成的recipe为准。
-
-8个macOS `._`伴生文件已从新清单排除。Ubuntu安装ISO、额外GPU驱动/业务软件不在当前清单内；如需增加，须明确加入`files.inputs`中受支持的材料路径及对应大小/摘要。普通材料可放在`boot/`、`dpu/`、`http/`或`source/`下；它们的source与target须一致。8项核心输入角色及固定生成路径按配方约束，不随意更名。
-
-`files.inputs[].sha256`校验输入文件；`site.ui.digest`等校验镜像manifest，二者不同。应用补丁后的NICo Chart与输入raw Chart摘要不同，最终摘要写入`deployment/deployment.json`和`manifests/file-inventory.json`。
-
-**执行命令：** 同一构建机终端，先查看输入根路径和完整计划。
+执行命令：
 
 ```bash
-python3 - <<'PY'
-import json
-from pathlib import Path
-c=json.loads(Path('build-config.json').read_text())
-print('原始材料：',c['build']['source_bundle'])
-print('输出父目录：',c['build']['output_root'])
-print('UI归档：',c['site']['ui']['archive'])
-print('初始化归档：',c['site']['bootstrap']['archive'])
-PY
-python3 build.py --config build-config.json --plan | tee /tmp/nico-build-plan.txt
+python3 build.py --config build-config.json --plan > FILE-PLAN.current.txt
+cat FILE-PLAN.current.txt
 ```
 
-**确认命令：** 同一终端。
+确认命令：
 
 ```bash
-tail -1 /tmp/nico-build-plan.txt
+tail -1 FILE-PLAN.current.txt
 ```
 
-默认清单显示`PLAN_COMPLETE inputs=122 generated=28 bundle_files=150`。`--plan`只解析计划，不读取大文件内容、不构建。输出的每一行显示复制/生成方式及包内路径；编辑材料清单后按实际数量输出。
+计划末行报告实际输入/生成/总文件数和输入字节数；本版默认122项输入、50项生成、172个最终文件。`--plan`只检查清单和工具依赖，不读取大材料、不构建。`FILE-PLAN.txt`是参考输出，不是额外构建输入，不必从另一台机器复制。
 
-## 3. 执行构建与确认
+## 3. 构建并验包
 
-**主要目标：** 只打包已列出的输入，生成完整四阶段配方，并核对实际产物与配置计划完全一致。
+主要目标：产生与现场无关、版本锁定的材料包，禁止把演练地址当作现场配置写入可部署recipe。
 
-**执行命令：** 同一构建机Bash、`/srv/nico-build-kit`。
+执行命令（同一构建机Bash、工具目录）：
 
 ```bash
 VERSION="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -146,9 +80,7 @@ OUTPUT="$OUTPUT_ROOT/$VERSION"
 python3 build.py --config build-config.json --version "$VERSION"
 ```
 
-版本使用UTC；源码commit自动读取`source-revision.txt`。输出目录必须不存在且在输入/工具目录之外；旧产物不会覆盖。失败打印保留的`.building-*`路径，先排查原因，再以新版本重试。
-
-**确认命令：** 同一Bash，保留上面的`OUTPUT`变量。
+确认命令：
 
 ```bash
 cd "$OUTPUT"
@@ -158,93 +90,75 @@ python3 -m json.tool build-result.json
 ls -lh bundle.tar.gz
 ```
 
-必须输出`BUILD_COMPLETE`、`bundle.tar.gz: OK`、`BUNDLE_VERIFIED`，并确认源码commit和版本。日志阶段包括`VERIFY_DECLARED_INPUTS`、`VERIFY_INPUT_OCI`、`COPY_VERIFIED_MATERIALS`、`ARCHIVE`、`HASH_ARCHIVE`、`VERIFY_ARCHIVE_CONTENTS`。计算摘要和读回期间文件不增长属于正常行为。
+必须输出`BUILD_COMPLETE`、`bundle.tar.gz: OK`、`BUNDLE_VERIFIED`。构建检查输入摘要、OCI blobs/闭包、四阶段真实Helm渲染、13单副本、证书身份/服务IP一致性、完整输出集合及归档逐文件读回。渲染使用临时验证参数，仅作为模板组合检查，最终材料包没有`deployment/deployment.json`，`recipe_ready=false`。它必须先现场初始化，不能在UI直接安装。
 
-构建门禁包含：raw Chart/OCI固定摘要、完整amd64 OCI blobs/镜像闭包、输入大小/摘要、24项模板依赖一致性、四阶段真实Helm渲染、13单副本、证书CN、规范服务身份、镜像锁、DNS/PXE/NTP地址一致性、输出与配置完全一致、tar逐文件读回。历史故障修复已固化到模板/导入器，不在现场临时补文件。
+版本目录必须不存在且在工具/输入目录之外。失败保留`.building-*`目录；先排查，再使用新版本。摘要计算和归档读回时文件不增长属正常行为，不以此判断卡住。
 
-## 4. 构建产物与压缩包目录结构
+## 4. 产物与解压结构
 
-**主要目标：** 清楚区分构建工具目录、未压缩产物和最终压缩包。
+主要目标：区分构建工具、通用材料和现场生成文件。
 
 ```text
 <build.output_root>/<VERSION>/
-├── bundle/                 # 可直接检查的完整离线材料目录
-├── bundle.tar.gz           # 整个bundle目录的压缩交付件
-├── SHA256SUMS              # 压缩交付件SHA256
-└── build-result.json       # 版本、源码commit、归档大小/摘要、镜像及workload数量
-```
+├── bundle/                       # 未压缩通用材料
+├── bundle.tar.gz                 # 压缩交付件
+├── SHA256SUMS
+└── build-result.json
 
-压缩包顶层名使用`site.bundle_id`，解压后的结构为：
-
-```text
-<site.bundle_id>/
-├── bundle.json
-├── config/
-│   ├── runtime.json
-│   └── deployment-settings.json
+<package.bundle_id>/              # tar解压后的顶层目录
+├── bundle.json                   # kind=nico-materials；recipe_ready=false
+├── config/site-config.example.json
 ├── deployment/
-│   ├── deployment.json
-│   ├── pxeye-bootstrap.yaml
-│   ├── nico-cluster-permissions.yaml
-│   ├── nico-target-namespace-rbac.yaml
-│   ├── charts/
-│   │   ├── cert-manager-v1.17.1.tgz
-│   │   ├── nico-0.1.1.tgz
-│   │   └── pxeye-nico-platform-0.1.0.tgz
-│   ├── values/              # cert-manager/platform/vault/core四份yaml
-│   └── patches/             # migration、Core、平台与固定Service IP补丁
-├── images/
-│   ├── nico-amd64.oci.tar   # 23张原镜像集合
-│   └── pxeye-<tag>.oci.tar  # UI和初始化两份
-├── manifests/
-│   ├── images-lock.json
-│   ├── deployment-images-lock.json
-│   ├── materials-input-lock.json
-│   ├── build-file-plan.json
-│   ├── build-report.json
-│   └── file-inventory.json
-├── tools/
-│   ├── helm
-│   ├── nico-admin-cli
-│   ├── import-oci-bundle.py
-│   ├── import-pxeye-images.py
-│   ├── prepare-auth.py
-│   ├── deployment-client.py
-│   ├── verify-core.py
-│   └── verify-bundle.py
-├── docs/INSTALL.md          # 第二部分：通过离线包部署NICo
-├── boot/                   # 20项，完整文件名见构建配置
-├── dpu/                    # 20项
-├── http/                   # 2项
-└── source/                 # 72项历史材料
+│   ├── charts/                   # 3个已准备Chart
+│   └── patches/                  # 4个补丁记录
+├── deployment-kit/               # 独立现场初始化工具及逐项锁定模板
+│   ├── configure.py
+│   ├── generic.py
+│   ├── build.py
+│   ├── site-config.example.json
+│   ├── deploy/
+│   └── tools/
+├── images/                       # 23镜像OCI集合及2个PXEye归档
+├── manifests/                    # 镜像锁、输入锁、计划、构建报告和文件inventory
+├── tools/                        # Helm、CLI及验包工具
+├── docs/CONFIGURE.md
+├── docs/CONFIGURE.zh-CN.md
+├── boot/
+├── dpu/
+├── http/
+└── source/
 ```
 
-`FILE-PLAN.txt`与配置中的`files.inputs/ generated`逐项列出全部150个文件，而不只列出目录。
-
-**执行命令：** 同一构建机Bash，演示解压到独立目录；至少预留另一个完整材料目录的空间。
+执行命令（同一终端，保留`OUTPUT`；解压需要额外空间）：
 
 ```bash
 UNPACK="$OUTPUT-unpacked"
 test ! -e "$UNPACK"
 mkdir -p "$UNPACK"
 tar -xzf "$OUTPUT/bundle.tar.gz" -C "$UNPACK"
-BUNDLE_ID="$(python3 -c 'import json; print(json.load(open("/srv/nico-build-kit/build-config.json"))["site"]["bundle_id"])')"
+find "$UNPACK" -mindepth 1 -maxdepth 1 -type d
 ```
 
-**确认命令：** 同一终端。
+确认命令：
 
 ```bash
-python3 "$UNPACK/$BUNDLE_ID/tools/verify-bundle.py" "$UNPACK/$BUNDLE_ID"
-find "$UNPACK/$BUNDLE_ID" -maxdepth 2 -type d | sort
+MATERIALS="$(find "$UNPACK" -mindepth 1 -maxdepth 1 -type d)"
+python3 "$MATERIALS/tools/verify-bundle.py" "$MATERIALS"
+python3 "$MATERIALS/deployment-kit/configure.py" --help
 ```
 
-`build-report.json`记录渲染、来源和兼容配方；`build-file-plan.json`记录本次实际输入与输出规则；`file-inventory.json`记录最终文件摘要。登录口令、kubeconfig、运行数据库和Vault恢复材料由部署现场维护，不从运行站点采集到包里。
+完整逐文件目录由`--plan`和最终`manifests/file-inventory.json`提供。密码、kubeconfig、数据库和Vault恢复材料不入包。
 
-## 5. 验证边界
+## 5. 已有大包如何处理
 
-此前`1c732234`版本已在构建机完成完整17GiB目录及12.16GiB压缩包的构建/验包。该结果属于旧布局；本版增加显式文件清单、独立工具目录并移除8个伴生文件，实际大小以新构建的`build-result.json`为准。
+主要目标：复用材料，避免因现场地址变化重复构建十几GiB归档。
 
-构建检查和空集群安装验收是两个结果。当前兼容配方只支持固定e703版本的Core演练；保留ARM/DPU材料不代表ARM装机、完整DPU管理、物理DHCP/PXE或生产HA已验证。
+当前工具支持把此前`1c732234`构建器产出的完整Core包作为现场初始化输入。保留原`bundle.tar.gz`及SHA256SUMS，使用其已解压`bundle/`和新版`configure.py`即可，具体命令见[第二部分](CONFIGURE.zh-CN.md)。不支持缺少`build-report`/完整inventory的任意旧包。
 
+现场初始化校验旧材料，在同一文件系统的新目录中硬链接大文件，只重新生成小配置/工具及清单；不重新编译、下载、复制或压缩大镜像。硬链接失败会停止，不偷偷退化成大文件复制。只能编辑现场配置，镜像/引导材料按不可变文件使用；Pod只读挂载它们。
 
-参考：[NVIDIA Machine-a-Tron部署指南](https://docs.nvidia.com/infra-controller/documentation/reference/development/machine-a-tron-deployment)。当前配方以固定e703源码和已收敛修复为准，不推定在线最新版兼容。
+如要交付一个已经自带新版初始化工具的单一`bundle.tar.gz`，须用schema3重新组装压缩交付件，镜像内容仍原样复用。新材料版本或镜像摘要变化也需重新构建。现场Registry/IP/网关变化，只需在新目录重新初始化，不重打通用大包。
+
+本次仅更新工具；旧版12.16GiB实际构建证据不等于schema3已完整重打包或空集群安装成功。真实DHCP/Relay/HTTP Boot、ARM/DPU及生产HA仍需另验收。
+
+参考：[NVIDIA Machine-a-Tron部署指南](https://docs.nvidia.com/infra-controller/documentation/reference/development/machine-a-tron-deployment)。配方能力以固定e703源码和模板为准。

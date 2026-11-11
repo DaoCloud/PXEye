@@ -1,44 +1,21 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "build": {
     "source_bundle": "/srv/nico-input/base-bundle",
     "output_root": "/srv/nico-output"
   },
-  "site": {
-    "bundle_id": "nico-core-field",
-    "site_name": "NICo lab",
-    "namespace": "nico-system",
-    "release_prefix": "nico",
-    "registry": "registry.example.invalid:5000",
-    "repository_prefix": "nico-offline",
-    "service_cidr": "10.96.0.0/12",
-    "service_ips": {
-      "dns": "10.96.40.10",
-      "pxe": "10.96.40.11",
-      "ntp": "10.96.40.12"
-    },
-    "host_network": {
-      "name": "host_boot",
-      "prefix": "192.0.2.0/24",
-      "gateway": "192.0.2.1",
-      "mtu": 1500
-    },
-    "bundle_host_path": "/home/kind/nico-bundles",
-    "node_port": 31808,
+  "package": {
+    "bundle_id": "nico-core-materials",
     "ui": {
-      "archive": "./inputs/pxeye-ui.oci.tar",
-      "source_image": "registry.example.invalid:5000/nico/pxeye:0.22.16-73b8236",
+      "archive": "/srv/nico-input/pxeye-ui.oci.tar",
       "tag": "0.22.16-73b8236",
       "digest": "sha256:229c5053944b074759d064a5cc70093815dc2c07bcc28855396d797ce3cc8e56"
     },
     "bootstrap": {
-      "archive": "./inputs/pxeye-bootstrap.oci.tar",
-      "source_image": "registry.example.invalid:5000/nico/pxeye:0.22.13-9dbcff8",
+      "archive": "/srv/nico-input/pxeye-bootstrap.oci.tar",
       "tag": "0.22.13-9dbcff8",
       "digest": "sha256:9699795bf6c427bae0828406493ba7cc6721664f308e1ce6cb3fafbe41c8c09b"
-    },
-    "context": "kind-lab",
-    "kind_node": "lab-control-plane"
+    }
   },
   "files": {
     "inputs": [
@@ -76,7 +53,7 @@
       },
       {
         "role": "ui",
-        "root": "site",
+        "root": "package",
         "source": "ui.archive",
         "target": "images/pxeye-@{ui_tag}.oci.tar",
         "bytes": 226609664,
@@ -84,7 +61,7 @@
       },
       {
         "role": "bootstrap",
-        "root": "site",
+        "root": "package",
         "source": "bootstrap.archive",
         "target": "images/pxeye-@{bootstrap_tag}.oci.tar",
         "bytes": 223624704,
@@ -1021,33 +998,55 @@
     ],
     "generated": [
       "bundle.json",
-      "config/deployment-settings.json",
-      "config/runtime.json",
+      "config/site-config.example.json",
+      "deployment-kit/CONFIGURE.md",
+      "deployment-kit/CONFIGURE.zh-CN.md",
+      "deployment-kit/README.md",
+      "deployment-kit/README.zh-CN.md",
+      "deployment-kit/build-config.example.json",
+      "deployment-kit/build.py",
+      "deployment-kit/configure.py",
+      "deployment-kit/deploy/bootstrap-kubernetes.yaml",
+      "deployment-kit/deploy/nico-cluster-permissions.yaml",
+      "deployment-kit/deploy/nico-platform/Chart.yaml",
+      "deployment-kit/deploy/nico-platform/files/vault-roles.py",
+      "deployment-kit/deploy/nico-platform/templates/bootstrap.yaml",
+      "deployment-kit/deploy/nico-platform/templates/infrastructure.yaml",
+      "deployment-kit/deploy/nico-platform/templates/postgres-tls.yaml",
+      "deployment-kit/deploy/nico-platform/values.yaml",
+      "deployment-kit/deploy/offline-core/build.example.json",
+      "deployment-kit/deploy/offline-core/deployment.json",
+      "deployment-kit/deploy/offline-core/patches/core-runtime-compatibility.patch",
+      "deployment-kit/deploy/offline-core/patches/migration-job-lifecycle.patch",
+      "deployment-kit/deploy/offline-core/patches/platform-tls-vault-roles.patch",
+      "deployment-kit/deploy/offline-core/values/cert-manager.yaml",
+      "deployment-kit/deploy/offline-core/values/core.yaml",
+      "deployment-kit/deploy/offline-core/values/platform.yaml",
+      "deployment-kit/deploy/offline-core/values/vault.yaml",
+      "deployment-kit/generic.py",
+      "deployment-kit/site-config.example.json",
+      "deployment-kit/source-revision.txt",
+      "deployment-kit/tools/import-oci-bundle.py",
+      "deployment-kit/tools/offline-field/INSTALL.md.in",
+      "deployment-kit/tools/offline-field/INSTALL.site.md.in",
+      "deployment-kit/tools/offline-field/deployment-client.py.in",
+      "deployment-kit/tools/offline-field/import-pxeye-images.py",
+      "deployment-kit/tools/offline-field/prepare-auth.py",
+      "deployment-kit/tools/offline-field/verify-bundle.py",
+      "deployment-kit/tools/offline-field/verify-core.py.in",
       "deployment/charts/pxeye-nico-platform-0.1.0.tgz",
-      "deployment/deployment.json",
-      "deployment/nico-cluster-permissions.yaml",
-      "deployment/nico-target-namespace-rbac.yaml",
       "deployment/patches/core-runtime-compatibility.patch",
       "deployment/patches/migration-job-lifecycle.patch",
       "deployment/patches/pin-service-ips.patch",
       "deployment/patches/platform-tls-vault-roles.patch",
-      "deployment/pxeye-bootstrap.yaml",
-      "deployment/values/cert-manager.yaml",
-      "deployment/values/core.yaml",
-      "deployment/values/platform.yaml",
-      "deployment/values/vault.yaml",
-      "docs/INSTALL.md",
+      "docs/CONFIGURE.md",
+      "docs/CONFIGURE.zh-CN.md",
       "manifests/build-file-plan.json",
       "manifests/build-report.json",
       "manifests/deployment-images-lock.json",
       "manifests/file-inventory.json",
       "manifests/materials-input-lock.json",
-      "tools/deployment-client.py",
-      "tools/import-oci-bundle.py",
-      "tools/import-pxeye-images.py",
-      "tools/prepare-auth.py",
-      "tools/verify-bundle.py",
-      "tools/verify-core.py"
+      "tools/verify-bundle.py"
     ],
     "repository": [
       "deploy/bootstrap-kubernetes.yaml",
@@ -1069,6 +1068,7 @@
       "deploy/offline-core/values/vault.yaml",
       "tools/import-oci-bundle.py",
       "tools/offline-field/INSTALL.md.in",
+      "tools/offline-field/INSTALL.site.md.in",
       "tools/offline-field/deployment-client.py.in",
       "tools/offline-field/import-pxeye-images.py",
       "tools/offline-field/prepare-auth.py",
@@ -1091,6 +1091,26 @@
       {
         "source": "offline-build/build-config.example.json",
         "target": "build-config.example.json"
+      },
+      {
+        "source": "offline-build/generic.py",
+        "target": "generic.py"
+      },
+      {
+        "source": "offline-build/configure.py",
+        "target": "configure.py"
+      },
+      {
+        "source": "offline-build/site-config.example.json",
+        "target": "site-config.example.json"
+      },
+      {
+        "source": "offline-build/CONFIGURE.md",
+        "target": "CONFIGURE.md"
+      },
+      {
+        "source": "offline-build/CONFIGURE.zh-CN.md",
+        "target": "CONFIGURE.zh-CN.md"
       }
     ],
     "base_image_manifests": {

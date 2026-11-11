@@ -1,0 +1,187 @@
+# NICo Core：现场部署 @@VERSION@@
+
+此文件已由现场初始化生成。适用范围：现有单节点Podman Kind、linux/amd64、无认证Registry、单副本Core；不安装REST/Temporal/Keycloak，不操作物理机。Registry的TLS信任由现场明确选择，Core/Vault仍使用严格TLS。需要认证的Harbor尚不在本配方范围内。
+
+## 1. 核对现场材料及集群
+
+主要目标：确认初始化产物位于已共享的宿主目录。执行位置：火种机root、Bash；此目录必须是前一步configure.py的完整输出。所有命令沿用同一终端。
+
+执行命令：
+
+```bash
+bash
+set -euo pipefail
+export BUNDLE=@@HOST_PATH@@/@@BUNDLE_ID@@
+export CONTEXT=@@CONTEXT@@
+export NAMESPACE=@@NAMESPACE@@
+export NODE=@@NODE@@
+export DEPLOYMENT=@@PXEYE@@
+export POD_BUNDLE=/nico-bundles/@@BUNDLE_ID@@
+export REGISTRY=@@REGISTRY@@
+export REGISTRY_PUSH_URL=@@PUSH_URL@@
+export REGISTRY_PULL_URL=@@PULL_URL@@
+command -v podman kubectl python3 skopeo
+python3 "$BUNDLE/tools/verify-bundle.py" "$BUNDLE"
+kubectl --context "$CONTEXT" get node "$NODE"
+kubectl --context "$CONTEXT" get storageclass @@STORAGE_CLASS@@
+podman inspect "$NODE" --format '{{json .Mounts}}' | python3 -c 'import json,sys; assert any(x["Source"]=="/home/kind" and x["Destination"]=="/home/kind" and x["Type"]=="bind" for x in json.load(sys.stdin)),"此Kind配方要求/home/kind共享挂载"'
+podman exec "$NODE" test -r "$BUNDLE/bundle.json"
+```
+
+确认命令：
+
+```bash
+kubectl --context "$CONTEXT" get nodes -o wide
+kubectl --context "$CONTEXT" get services -A -o json > /tmp/nico-services-before.json
+python3 - "$BUNDLE" /tmp/nico-services-before.json <<'PY'
+import json,sys
+from pathlib import Path
+site=json.loads((Path(sys.argv[1])/'config/site-config.json').read_text())['site']
+rows=json.loads(Path(sys.argv[2]).read_text())['items']
+used={x['spec'].get('clusterIP'):x['metadata']['namespace']+'/'+x['metadata']['name'] for x in rows}
+for ip in site['service_ips'].values():assert ip not in used,'Service地址已占用：'+ip+' '+used.get(ip,'')
+for row in rows:
+ for port in row['spec'].get('ports',[]):assert port.get('nodePort')!=site['node_port'],'UI NodePort已占用'
+print('SERVICE_IPS_AND_NODEPORT_AVAILABLE')
+PY
+```
+
+还须将site.service_cidr与目标集群实际Service网段核对，HostInband与现场网络规划核对；初始化的格式/Helm检查不能代替实际网络验收。已有NICo/PXEye实例时停止首次安装流程，先核对原发布与数据，不重放以下命令。
+
+## 2. 导入UI镜像并配置Kind独立containerd
+
+主要目标：按digest推送两张UI/初始化镜像；image中的Registry名称与节点拉取endpoint分别配置，不推定HTTP/HTTPS或内部Service地址。
+
+执行命令（火种机，同一Bash）：
+
+```bash
+curl --noproxy '*' @@CURL_TLS@@ -fsS --connect-timeout 5 --max-time 15 "$REGISTRY_PUSH_URL/v2/"
+podman exec "$NODE" curl --noproxy '*' @@CURL_TLS@@ -fsS --connect-timeout 5 --max-time 15 "$REGISTRY_PULL_URL/v2/"
+python3 "$BUNDLE/tools/import-pxeye-images.py" --bundle "$BUNDLE" --registry-url "$REGISTRY_PUSH_URL" @@INSECURE@@
+BACKUP="$PWD/nico-registry-backup-$(date -u +%Y%m%dT%H%M%SZ)"
+mkdir -m 700 "$BACKUP"
+podman exec "$NODE" cat /etc/containerd/config.toml > "$BACKUP/config.toml"
+podman exec "$NODE" sh -c 'test ! -f "/etc/containerd/certs.d/@@REGISTRY@@/hosts.toml" || cat "/etc/containerd/certs.d/@@REGISTRY@@/hosts.toml"' > "$BACKUP/hosts.toml"
+podman exec -i "$NODE" python3 - "$REGISTRY" "$REGISTRY_PULL_URL" <<'PY'
+import re,sys,tomllib
+from pathlib import Path
+registry,endpoint=sys.argv[1:];p=Path('/etc/containerd/config.toml');text=p.read_text();c=tomllib.loads(text)
+version=c.get('version');assert version in (2,3),'仅支持已核验的containerd配置版本2/3'
+plugin='io.containerd.cri.v1.images' if version==3 else 'io.containerd.grpc.v1.cri'
+registry_config=c.get('plugins',{}).get(plugin,{}).get('registry',{})
+current=registry_config.get('config_path','');assert current in ('','/etc/containerd/certs.d'),'已有不同Registry配置目录'
+if not current:
+ pattern=r'(?ms)^\[plugins\.["\x27]'+re.escape(plugin)+r'["\x27]\.registry\]\s*\n(.*?)(?=^\[|\Z)'
+ match=re.search(pattern,text)
+ if match:
+  old=match[0];new=re.sub(r'(?m)^\s*config_path\s*=.*$', '  config_path = "/etc/containerd/certs.d"',old)
+  if new==old:new=old.rstrip()+'\n  config_path = "/etc/containerd/certs.d"\n\n'
+  text=text[:match.start()]+new+text[match.end():]
+ else:text+='\n[plugins."'+plugin+'".registry]\n  config_path = "/etc/containerd/certs.d"\n'
+ assert tomllib.loads(text)['plugins'][plugin]['registry']['config_path']=='/etc/containerd/certs.d'
+ p.write_text(text)
+hosts=Path('/etc/containerd/certs.d')/registry/'hosts.toml'
+content='server = "'+endpoint+'"\n[host."'+endpoint+'"]\n  capabilities = ["pull", "resolve"]\n  skip_verify = @@SKIP_VERIFY@@\n'
+assert not hosts.exists() or hosts.read_text()==content,'已有不同Registry映射，停止核对；配置备份已保存'
+hosts.parent.mkdir(parents=True,exist_ok=True);hosts.write_text(content)
+PY
+if ! cmp -s "$BACKUP/config.toml" <(podman exec "$NODE" cat /etc/containerd/config.toml); then
+  podman exec "$NODE" systemctl restart containerd
+fi
+```
+
+确认命令：
+
+```bash
+podman exec "$NODE" systemctl is-active containerd
+python3 - "$BUNDLE" "$NODE" <<'PY'
+import json,subprocess,sys
+from pathlib import Path
+for row in json.loads((Path(sys.argv[1])/'manifests/deployment-images-lock.json').read_text()):
+ subprocess.run(['podman','exec',sys.argv[2],'crictl','pull',row['image']+'@'+row['digest']],check=True,timeout=600)
+PY
+```
+
+## 3. 创建配置、认证及带材料挂载的PXEye
+
+主要目标：先建立ConfigMap和Secret，再启动Pod；明确RBAC依赖，保持材料只读。
+
+执行命令（火种机，同一Bash）：
+
+```bash
+kubectl --context "$CONTEXT" create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl --context "$CONTEXT" apply -f -
+PRIVATE="$PWD/private-$DEPLOYMENT"
+python3 "$BUNDLE/tools/prepare-auth.py" "$PRIVATE/auth.json"
+kubectl --context "$CONTEXT" -n "$NAMESPACE" create configmap "$DEPLOYMENT" --from-file=site.json="$BUNDLE/config/runtime.json" --dry-run=client -o yaml | kubectl --context "$CONTEXT" apply -f -
+kubectl --context "$CONTEXT" -n "$NAMESPACE" create secret generic "$DEPLOYMENT" --from-file=auth.json="$PRIVATE/auth.json" --dry-run=client -o yaml | kubectl --context "$CONTEXT" apply -f -
+kubectl --context "$CONTEXT" apply -f "$BUNDLE/deployment/pxeye-bootstrap.yaml"
+kubectl --context "$CONTEXT" apply -f "$BUNDLE/deployment/nico-cluster-permissions.yaml"
+kubectl --context "$CONTEXT" apply -f "$BUNDLE/deployment/nico-target-namespace-rbac.yaml"
+kubectl --context "$CONTEXT" -n "$NAMESPACE" rollout status deployment/"$DEPLOYMENT" --timeout=300s
+```
+
+确认命令：
+
+```bash
+SA="system:serviceaccount:$NAMESPACE:$DEPLOYMENT"
+test "$(kubectl --context "$CONTEXT" auth can-i get customresourcedefinitions.apiextensions.k8s.io --as="$SA")" = yes
+kubectl --context "$CONTEXT" -n "$NAMESPACE" exec deploy/"$DEPLOYMENT" -- helm version --short
+kubectl --context "$CONTEXT" -n "$NAMESPACE" exec deploy/"$DEPLOYMENT" -- ls -lh "$POD_BUNDLE/images" "$POD_BUNDLE/deployment"
+```
+
+## 4. 导入23张NICo镜像
+
+主要目标：从Pod经明确的拉取endpoint导入锁定镜像，不假定火种机外部地址在Kind内可达。
+
+执行命令（火种机，同一Bash）：
+
+```bash
+kubectl --context "$CONTEXT" -n "$NAMESPACE" exec deploy/"$DEPLOYMENT" -- mkdir -p /materials/nico-import
+kubectl --context "$CONTEXT" -n "$NAMESPACE" exec deploy/"$DEPLOYMENT" -- env TMPDIR=/materials/nico-import \
+  python3 "$POD_BUNDLE/tools/import-oci-bundle.py" --archive "$POD_BUNDLE/images/nico-amd64.oci.tar" \
+  --lock "$POD_BUNDLE/manifests/images-lock.json" --registry "$REGISTRY_PULL_URL" --repository-prefix @@REPO_PREFIX@@ @@INSECURE@@
+```
+
+确认命令：
+
+```bash
+kubectl --context "$CONTEXT" -n "$NAMESPACE" exec -i deploy/"$DEPLOYMENT" -- python3 - "$REGISTRY_PULL_URL" "$POD_BUNDLE" <<'PY'
+import json,ssl,sys,urllib.request
+from pathlib import Path
+context=ssl._create_unverified_context() if @@SKIP_VERIFY_PY@@ else ssl.create_default_context()
+op=urllib.request.build_opener(urllib.request.ProxyHandler({}),urllib.request.HTTPSHandler(context=context))
+for row in json.loads((Path(sys.argv[2])/'manifests/images-lock.json').read_text()):
+ repo,tag=row['image'].rsplit(':',1)
+ q=urllib.request.Request(sys.argv[1]+'/v2/@@REPO_PREFIX@@/'+repo+'/manifests/'+tag,method='HEAD',headers={'Accept':'application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json'})
+ with op.open(q,timeout=20) as r:assert r.headers.get('Docker-Content-Digest')==row['amd64_manifest'],row['image']
+print('LOCKED_IMAGES_OK_23')
+PY
+```
+
+## 5. UI/API安装及验收
+
+主要目标：Helm在PXEye Pod中按证书→平台→Vault初始化→Core执行。UI与命令选一种入口，避免重复创建任务。此步骤开始前，核对生成的`deployment/values/`与现场规划一致。
+
+执行命令（火种机，同一Bash）：
+
+```bash
+NODE_IP="$(kubectl --context "$CONTEXT" get node "$NODE" -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}')"
+UI="http://$NODE_IP:@@NODE_PORT@@"
+python3 "$BUNDLE/tools/deployment-client.py" status --url "$UI"
+python3 "$BUNDLE/tools/deployment-client.py" preflight --url "$UI"
+python3 "$BUNDLE/tools/deployment-client.py" start --url "$UI"
+python3 "$BUNDLE/tools/deployment-client.py" wait-install --url "$UI" --timeout 3900
+kubectl --context "$CONTEXT" -n "$NAMESPACE" exec deploy/"$DEPLOYMENT" -- python3 "$POD_BUNDLE/tools/verify-core.py"
+python3 "$BUNDLE/tools/deployment-client.py" connect --url "$UI"
+python3 "$BUNDLE/tools/deployment-client.py" wait-connected --url "$UI" --timeout 180
+```
+
+确认命令：
+
+```bash
+kubectl --context "$CONTEXT" -n "$NAMESPACE" exec deploy/"$DEPLOYMENT" -- helm list -n "$NAMESPACE" --all
+kubectl --context "$CONTEXT" -n "$NAMESPACE" get deploy,sts,pods,jobs,certificate
+python3 "$BUNDLE/tools/deployment-client.py" status --url "$UI"
+```
+
+预期四阶段deployed、13个必需工作负载就绪、证书/Vault/Boot/严格mTLS通过且connected。needs_attention时查看原任务与日志，不自动重试或重启硬件。初始化通过不表示空集群部署、物理DHCP/Relay/HTTP Boot已验证。

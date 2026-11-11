@@ -22,6 +22,7 @@ import re
 import shutil
 import subprocess
 import sys
+sys.dont_write_bytecode = True
 import tarfile
 import tempfile
 
@@ -244,11 +245,17 @@ def patch_core(source, output, scratch):
     pack_tree(REPO / 'deploy/nico-platform', output / 'charts/pxeye-nico-platform-0.1.0.tgz', 'pxeye-nico-platform')
 
 
-def prepare_recipe(bundle, config, version, settings, scratch, source):
+def prepare_recipe(bundle, config, version, settings, scratch, source, prepared_charts=None):
     deployment = bundle / 'deployment'
     for folder in ('charts', 'patches', 'values'):
         (deployment / folder).mkdir(parents=True)
-    patch_core(source, deployment, scratch)
+    if prepared_charts is None:
+        patch_core(source, deployment, scratch)
+    else:
+        for folder in ('charts', 'patches'):
+            for path in sorted((prepared_charts / folder).iterdir()):
+                require(path.is_file() and not path.is_symlink(), 'Invalid prepared chart/patch')
+                shutil.copyfile(path, deployment / folder / path.name)
     records = json.loads((bundle / 'manifests/images-lock.json').read_text())
     image_map = {r['image']: config['registry'] + '/' + config['repository_prefix'] + '/' + r['image'] for r in records}
     for name in ('cert-manager', 'platform', 'vault', 'core'):
@@ -263,6 +270,8 @@ def prepare_recipe(bundle, config, version, settings, scratch, source):
                 return substitute(repos.get(item, item), {k: v for k, v in settings.items() if k != 'site_name'})
             return item
         value = map_images(value)
+        if name == 'platform' and 'storage_class' in config:
+            value['storageClass'] = config['storage_class']
         if name == 'core':
             api = value['nico-api']
             # Keep NICo tokens for all identity/DNS fields, using the same
@@ -304,6 +313,8 @@ def prepare_bootstrap(bundle, config, settings, ui):
             obj['metadata']['labels'] = labels;obj['spec']['selector']['matchLabels'] = labels
             spec = obj['spec']['template'];spec['metadata']['labels'] = labels;pod = spec['spec']
             pod['serviceAccountName'] = name
+            if 'storage_class' in config:
+                pod['nodeSelector'] = {'kubernetes.io/hostname': config['kind_node']}
             container = pod['containers'][0];container['image'] = ui['image'] + '@' + ui['digest']
             container['imagePullPolicy'] = 'IfNotPresent'
             container['volumeMounts'].append({'name': 'nico-bundles', 'mountPath': '/nico-bundles', 'readOnly': True})
@@ -316,6 +327,8 @@ def prepare_bootstrap(bundle, config, settings, ui):
         if obj['kind'] == 'Service':
             obj['spec']['selector'] = {'app.kubernetes.io/instance': name}
             obj['spec']['ports'][0]['nodePort'] = config['node_port']
+        if obj['kind'] == 'PersistentVolumeClaim' and 'storage_class' in config:
+            obj['spec']['storageClassName'] = config['storage_class']
     write(bundle / 'deployment/pxeye-bootstrap.yaml', yaml.safe_dump_all(objects, sort_keys=False))
     role = next(o for o in objects if o['kind'] == 'Role')
     binding = next(o for o in objects if o['kind'] == 'RoleBinding')
@@ -398,6 +411,11 @@ def verify(bundle):
         p = bundle / safe_name(row['path'])
         require(p.resolve().is_relative_to(bundle), 'Inventory escapes bundle')
         require(p.is_file() and not p.is_symlink() and p.stat().st_size == row['bytes'] and sha(p) == row['sha256'], 'Inventory mismatch: ' + row['path'])
+    descriptor = json.loads((bundle / 'bundle.json').read_text())
+    if descriptor.get('kind') == 'nico-materials':
+        require(descriptor.get('recipe_ready') is False and not (bundle / 'deployment/deployment.json').exists(), 'Materials must not be directly deployable')
+        print('BUNDLE_VERIFIED', len(inv['files']), 'files; site initialization required', flush=True)
+        return
     manifest = json.loads((bundle / 'deployment/deployment.json').read_text())
     for name, digest in manifest['files'].items(): require(sha(bundle / 'deployment' / safe_name(name)) == digest, 'Recipe mismatch: ' + name)
     require(manifest['version'] == json.loads((bundle / 'bundle.json').read_text())['version'], 'Descriptor version mismatch')
@@ -406,6 +424,7 @@ def verify(bundle):
 
 def load_plan(document, config):
     """The schema is an allow-list, not a directory scan."""
+    generic = document.get('schema_version') == 3
     files = document['files']
     require(set(files) == {'inputs', 'generated', 'repository', 'toolkit', 'base_image_manifests'}, 'Invalid files sections')
     require(len(files['base_image_manifests']) == 23 and all(DIGEST.fullmatch(v) for v in files['base_image_manifests'].values()), 'Declare all 23 base image manifests')
@@ -433,21 +452,26 @@ def load_plan(document, config):
             role = row['role'];require(role in expected_roles and role not in seen_roles, 'Unknown/duplicate input role: ' + role)
             seen_roles.add(role)
             require((row['source'], row['target']) == expected_roles[role], 'Unsupported input/output mapping: ' + role)
-            require(row['root'] == ('site' if role in ('ui', 'bootstrap') else 'bundle'), 'Invalid source root')
+            require(row['root'] == (('package' if generic else 'site') if role in ('ui', 'bootstrap') else 'bundle'), 'Invalid source root')
     require(seen_roles == set(expected_roles), 'Missing mandatory input roles')
     for target in files['generated']:
         require(safe_name(target) == target and '@{' not in target, 'Invalid generated output')
         targets.append(target)
     require(len(targets) == len(set(targets)), 'Duplicate output files in configuration')
-    require({'bundle.json', 'manifests/file-inventory.json', 'manifests/build-file-plan.json', 'deployment/deployment.json', 'config/runtime.json', 'docs/INSTALL.md'} <= set(files['generated']), 'Missing mandatory generated files')
+    mandatory = {'bundle.json', 'manifests/file-inventory.json', 'manifests/build-file-plan.json'}
+    mandatory |= {'deployment-kit/configure.py', 'config/site-config.example.json', 'docs/CONFIGURE.zh-CN.md'} if generic else {'deployment/deployment.json', 'config/runtime.json', 'docs/INSTALL.md'}
+    require(mandatory <= set(files['generated']), 'Missing mandatory generated files')
     for name in files['repository']:
         require(safe_name(name) == name and '*' not in name, 'List repository files individually')
     require(len(files['repository']) == len(set(files['repository'])), 'Duplicate repository inputs')
-    require(files['toolkit'] == [
+    toolkit = [
         {'source': 'offline-build/build.py', 'target': 'build.py'},
         {'source': 'offline-build/README.md', 'target': 'README.md'},
         {'source': 'offline-build/README.zh-CN.md', 'target': 'README.zh-CN.md'},
-        {'source': 'offline-build/build-config.example.json', 'target': 'build-config.example.json'}], 'Unsupported toolkit files')
+        {'source': 'offline-build/build-config.example.json', 'target': 'build-config.example.json'}]
+    if generic:
+        toolkit += [{'source': 'offline-build/' + name, 'target': name} for name in ('generic.py', 'configure.py', 'site-config.example.json', 'CONFIGURE.md', 'CONFIGURE.zh-CN.md')]
+    require(files['toolkit'] == toolkit, 'Unsupported toolkit files')
     return files
 
 
@@ -481,6 +505,8 @@ def verify_declared_inputs(plan, config, source):
 def verify_repository_inputs(plan):
     actual_resources = {p.relative_to(REPO).as_posix() for folder in (ASSETS, REPO / 'deploy/nico-platform', REPO / 'tools/offline-field') for p in folder.rglob('*') if p.is_file()}
     actual_resources |= {'deploy/bootstrap-kubernetes.yaml', 'deploy/nico-cluster-permissions.yaml', 'tools/import-oci-bundle.py'}
+    if 'tools/offline-field/INSTALL.site.md.in' not in plan['repository']:
+        actual_resources.discard('tools/offline-field/INSTALL.site.md.in')
     require(actual_resources == set(plan['repository']), 'Repository resources differ from declared file list')
     for name in plan['repository']:
         path = REPO / name
@@ -502,6 +528,11 @@ def main():
         verify(a.verify.resolve());return
     require(a.config, '--config is required')
     document = json.loads(a.config.read_text())
+    if document.get('schema_version') == 3:
+        from generic import build_generic
+        build_generic(a, document)
+        return
+    print('LEGACY_SITE_BOUND_CONFIG: schema 3 builds reusable materials without site parameters.', flush=True)
     explicit = document.get('schema_version') == 2
     if explicit:
         require(set(document) == {'schema_version', 'build', 'site', 'files'}, 'Invalid build configuration fields')

@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "site": {
+    "bundle_id": "nico-site",
+    "site_name": "NICo",
+    "namespace": "nico-system",
+    "release_prefix": "nico",
+    "registry": null,
+    "repository_prefix": "nico-offline",
+    "context": null,
+    "kind_node": null,
+    "service_cidr": null,
+    "service_ips": {
+      "dns": null,
+      "pxe": null,
+      "ntp": null
+    },
+    "host_network": {
+      "name": "host_boot",
+      "prefix": null,
+      "gateway": null,
+      "mtu": 1500
+    },
+    "bundle_host_path": "/home/kind/nico-bundles",
+    "node_port": 31808
+  },
+  "registry_access": {
+    "push_url": null,
+    "pull_url": null,
+    "insecure": false
+  },
+  "storage_class": null
+}

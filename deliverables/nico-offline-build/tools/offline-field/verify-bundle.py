@@ -18,8 +18,15 @@ for row in inv['files']:
     known.add(row['path'])
 actual={p.relative_to(root).as_posix() for p in root.rglob('*') if p.is_file()}
 assert actual==known|{'manifests/file-inventory.json'},'Unlisted/missing files in delivery'
-m=json.loads((root/'deployment/deployment.json').read_text())
-for name,digest in m['files'].items():
-    assert hashlib.sha256((root/'deployment'/name).read_bytes()).hexdigest()==digest,name
-assert m['version']==json.loads((root/'bundle.json').read_text())['version']
-print('BUNDLE_VERIFIED',len(known),'files; recipe and descriptor agree')
+descriptor=json.loads((root/'bundle.json').read_text())
+if descriptor.get('kind')=='nico-materials':
+    assert descriptor.get('recipe_ready') is False and not (root/'deployment/deployment.json').exists()
+    print('BUNDLE_VERIFIED',len(known),'files; site initialization required')
+else:
+    m=json.loads((root/'deployment/deployment.json').read_text())
+    for name,digest in m['files'].items():
+        path=(root/'deployment'/name).resolve()
+        assert path.is_relative_to(root/'deployment'),name
+        assert hashlib.sha256(path.read_bytes()).hexdigest()==digest,name
+    assert m['version']==descriptor['version']
+    print('BUNDLE_VERIFIED',len(known),'files; recipe and descriptor agree')

@@ -1,3 +1,4 @@
+MODE materials-only;现场参数不参与构建
 contained-image	docker.io/library/boot-artifacts-x86_64:mmzhou-e703126e4	sha256:c9045e25ce3d34751ce88e2a5b3f0ce63c28da877a90f39349ce3bafa6e97630
 contained-image	docker.io/library/mmzhou-os-install-console:0.20.3-20261107-r16	sha256:1860fe8692f84d11a2784dda24db17d239cb6eb4a9b876b6acd1a60f2ae1f48c
 contained-image	docker.io/library/nico-api:mmzhou-bmc-redfish-20261107-r2	sha256:0d99c3a056e148275c2957d31ef7ea45176742e0a39f33235290bf1f08c7d1b3
@@ -144,31 +145,53 @@ copy	/srv/nico-input/base-bundle/source/ui-runtime/storage_policy.py	=> bundle/s
 copy	/srv/nico-input/base-bundle/source/ui-runtime/store.py	=> bundle/source/ui-runtime/store.py
 copy	/srv/nico-input/base-bundle/source/ui-runtime/workflow.py	=> bundle/source/ui-runtime/workflow.py
 generate	=> bundle/bundle.json
-generate	=> bundle/config/deployment-settings.json
-generate	=> bundle/config/runtime.json
+generate	=> bundle/config/site-config.example.json
+generate	=> bundle/deployment-kit/CONFIGURE.md
+generate	=> bundle/deployment-kit/CONFIGURE.zh-CN.md
+generate	=> bundle/deployment-kit/README.md
+generate	=> bundle/deployment-kit/README.zh-CN.md
+generate	=> bundle/deployment-kit/build-config.example.json
+generate	=> bundle/deployment-kit/build.py
+generate	=> bundle/deployment-kit/configure.py
+generate	=> bundle/deployment-kit/deploy/bootstrap-kubernetes.yaml
+generate	=> bundle/deployment-kit/deploy/nico-cluster-permissions.yaml
+generate	=> bundle/deployment-kit/deploy/nico-platform/Chart.yaml
+generate	=> bundle/deployment-kit/deploy/nico-platform/files/vault-roles.py
+generate	=> bundle/deployment-kit/deploy/nico-platform/templates/bootstrap.yaml
+generate	=> bundle/deployment-kit/deploy/nico-platform/templates/infrastructure.yaml
+generate	=> bundle/deployment-kit/deploy/nico-platform/templates/postgres-tls.yaml
+generate	=> bundle/deployment-kit/deploy/nico-platform/values.yaml
+generate	=> bundle/deployment-kit/deploy/offline-core/build.example.json
+generate	=> bundle/deployment-kit/deploy/offline-core/deployment.json
+generate	=> bundle/deployment-kit/deploy/offline-core/patches/core-runtime-compatibility.patch
+generate	=> bundle/deployment-kit/deploy/offline-core/patches/migration-job-lifecycle.patch
+generate	=> bundle/deployment-kit/deploy/offline-core/patches/platform-tls-vault-roles.patch
+generate	=> bundle/deployment-kit/deploy/offline-core/values/cert-manager.yaml
+generate	=> bundle/deployment-kit/deploy/offline-core/values/core.yaml
+generate	=> bundle/deployment-kit/deploy/offline-core/values/platform.yaml
+generate	=> bundle/deployment-kit/deploy/offline-core/values/vault.yaml
+generate	=> bundle/deployment-kit/generic.py
+generate	=> bundle/deployment-kit/site-config.example.json
+generate	=> bundle/deployment-kit/source-revision.txt
+generate	=> bundle/deployment-kit/tools/import-oci-bundle.py
+generate	=> bundle/deployment-kit/tools/offline-field/INSTALL.md.in
+generate	=> bundle/deployment-kit/tools/offline-field/INSTALL.site.md.in
+generate	=> bundle/deployment-kit/tools/offline-field/deployment-client.py.in
+generate	=> bundle/deployment-kit/tools/offline-field/import-pxeye-images.py
+generate	=> bundle/deployment-kit/tools/offline-field/prepare-auth.py
+generate	=> bundle/deployment-kit/tools/offline-field/verify-bundle.py
+generate	=> bundle/deployment-kit/tools/offline-field/verify-core.py.in
 generate	=> bundle/deployment/charts/pxeye-nico-platform-0.1.0.tgz
-generate	=> bundle/deployment/deployment.json
-generate	=> bundle/deployment/nico-cluster-permissions.yaml
-generate	=> bundle/deployment/nico-target-namespace-rbac.yaml
 generate	=> bundle/deployment/patches/core-runtime-compatibility.patch
 generate	=> bundle/deployment/patches/migration-job-lifecycle.patch
 generate	=> bundle/deployment/patches/pin-service-ips.patch
 generate	=> bundle/deployment/patches/platform-tls-vault-roles.patch
-generate	=> bundle/deployment/pxeye-bootstrap.yaml
-generate	=> bundle/deployment/values/cert-manager.yaml
-generate	=> bundle/deployment/values/core.yaml
-generate	=> bundle/deployment/values/platform.yaml
-generate	=> bundle/deployment/values/vault.yaml
-generate	=> bundle/docs/INSTALL.md
+generate	=> bundle/docs/CONFIGURE.md
+generate	=> bundle/docs/CONFIGURE.zh-CN.md
 generate	=> bundle/manifests/build-file-plan.json
 generate	=> bundle/manifests/build-report.json
 generate	=> bundle/manifests/deployment-images-lock.json
 generate	=> bundle/manifests/file-inventory.json
 generate	=> bundle/manifests/materials-input-lock.json
-generate	=> bundle/tools/deployment-client.py
-generate	=> bundle/tools/import-oci-bundle.py
-generate	=> bundle/tools/import-pxeye-images.py
-generate	=> bundle/tools/prepare-auth.py
 generate	=> bundle/tools/verify-bundle.py
-generate	=> bundle/tools/verify-core.py
-PLAN_COMPLETE inputs=122 generated=28 bundle_files=150 input_bytes=17857964250
+PLAN_COMPLETE inputs=122 generated=50 bundle_files=172 input_bytes=17857964250
