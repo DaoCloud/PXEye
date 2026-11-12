@@ -39,6 +39,8 @@ Ingestion preparation: [NVIDIA BMC and Out-of-Band Setup](https://docs.nvidia.co
 
 Configuration and verification: [NVIDIA IP and Network Configuration](https://docs.nvidia.com/infra-controller/documentation/provisioning-day-0/ip-and-network-configuration).
 
+For Discover/Offer commands, see the [onsite DHCP check](dhcp-check.md). Full DORA and physical network acceptance remain separate.
+
 ## 2. Before writing the host OS
 
 Owners: the OS supplier, hardware/network teams and PXEye operator. Follow [Install your first server](getting-started.md) to prepare and check the effective configuration.

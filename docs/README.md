@@ -11,6 +11,7 @@ Public PXEye documentation is maintained in English and Simplified Chinese. Star
 | Complete offline bundle builder | [Read](../offline-build/README.md) | [阅读](../offline-build/README.zh-CN.md) | Reusable locked-input packaging, integrated Core compatibility fixes and field delivery gates. |
 | Onsite offline initialization | [Read](../offline-build/CONFIGURE.md) | [阅读](../offline-build/CONFIGURE.zh-CN.md) | Supply site parameters after building, reuse existing large materials and generate the deployment guide. |
 | Pre-installation checklist | [Read](pre-installation-checklist.md) | [阅读](pre-installation-checklist.zh-CN.md) | One-sentence checks for discovery, host OS writing and managed DPUs. |
+| Onsite DHCP quick check | [Read](dhcp-check.md) | [阅读](dhcp-check.zh-CN.md) | Dependency-free Discover/Offer check through Make, with result diagnosis. |
 | Deployment | [Read](deployment.md) | [阅读](deployment.zh-CN.md) | Binaries, site config, credentials, mounts and persistence. |
 | NICo cluster deployment | [Read](nico-deployment.md) | [阅读](nico-deployment.zh-CN.md) | Independent startup, online/offline Helm deployment, permissions and site connection. |
 | Install your first server | [Read](getting-started.md) | [阅读](getting-started.zh-CN.md) | First-device path from enrollment to acceptance. |

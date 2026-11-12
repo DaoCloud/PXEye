@@ -39,6 +39,8 @@
 
 配置与验证方法见 NVIDIA [IP and Network Configuration](https://docs.nvidia.com/infra-controller/documentation/provisioning-day-0/ip-and-network-configuration)。
 
+Discover/Offer 快速检测命令见[现场 DHCP 检查](dhcp-check.zh-CN.md)，完整 DORA 和真实设备网络验收仍需单独完成。
+
 ## 2. 写入主机 OS 前
 
 责任方：OS 供应方、硬件/网络团队及 PXEye 操作员；按[首台装机指南](getting-started.zh-CN.md)准备并核对实际生效配置。

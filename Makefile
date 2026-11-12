@@ -11,8 +11,10 @@ BUILD_WORK_DIRECTORY ?= $(REPO_ROOT)/../outputs_
 BUNDLE_VERSION ?= bundle-$(VERSION)-$(shell TZ=Asia/Shanghai date +%Y%m%d%H%M)
 DELIVERY_SCRIPT := $(REPO_ROOT)/offline-build/delivery.py
 VERSION_ARG := $(if $(BUNDLE_VERSION),--version $(BUNDLE_VERSION),)
+DHCP_TIMEOUT ?= 15
+DHCP_ATTEMPTS ?= 3
 
-.PHONY: syntax lint format-check test wheel image cache-images bundles
+.PHONY: syntax lint format-check test wheel image cache-images bundles dhcp-check
 syntax:
 	$(PYTHON) -m compileall -q src tests/unit
 	@find src/pxeye/web -name '*.js' -exec $(NODE) --check {} \;
@@ -58,3 +60,8 @@ bundles:
 cache-images:
 	@test -n "$(REGISTRY)" || { echo "Set REGISTRY=host:port" >&2; exit 1; }
 	REGISTRY="$(REGISTRY)" REGISTRY_INSECURE="$(REGISTRY_INSECURE)" $(PYTHON) "$(DELIVERY_SCRIPT)" --config "$(BUILD_CONFIG)" --cache-images
+
+# Run on the client VLAN; this sends Discover only and never configures an IP.
+dhcp-check:
+	@test -n "$(IFACE)" || { echo "Usage: sudo make dhcp-check IFACE=eno1 [DHCP_SERVER=192.0.2.10] [DHCP_SUBNET=192.0.2.0/24]" >&2; exit 2; }
+	$(PYTHON) "$(REPO_ROOT)/tools/dhcp-check.py" --interface "$(IFACE)" --timeout "$(DHCP_TIMEOUT)" --attempts "$(DHCP_ATTEMPTS)" $(if $(DHCP_MAC),--mac "$(DHCP_MAC)",) $(if $(DHCP_SERVER),--server "$(DHCP_SERVER)",) $(if $(DHCP_SUBNET),--subnet "$(DHCP_SUBNET)",) $(if $(DHCP_REPORT),--report "$(DHCP_REPORT)",)
