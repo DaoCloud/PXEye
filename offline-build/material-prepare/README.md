@@ -1,14 +1,12 @@
-# Step 1: generate raw inputs and prepare images
+# Step 1: offline image and material preparation
 
 **English** · [简体中文](README.zh-CN.md) · [Three-step overview](../README.md)
 
-**Run on a Linux amd64 build host. One configuration and one script, starting with creation of the raw input directory.** No running-cluster image discovery, containerd changes or deployment.
+`build.py` generates an offline image directory, builds material images and publishes a prepared directory for step two. It runs on a Linux amd64 build host with one configuration declaring the build contents and paths.
 
-## Where raw inputs come from
+## Offline image directory
 
-The historical offline directory was assembled manually: 23 containerd images were exported, Charts, x86/APT artifacts and a vendor BFB were collected, and separately cross-compiled ARM64 Scout outputs were added. It was neither Git content nor the output of one reproducible historical entry point.
-
-The script now creates `input_root/<source-id>/` itself. It does not require that historical directory. The same configuration declares its original sources:
+`input_root/<source-id>/` contains exported OCI image archives, Helm Charts and boot materials. The script generates the directory; its identifier is derived from source settings, the version recipe and material switches. The `sources` configuration declares the upstream inputs:
 
 | Source | Script action | Required upstream input |
 | --- | --- | --- |
@@ -18,9 +16,13 @@ The script now creates `input_root/<source-id>/` itself. It does not require tha
 | `sources.materials.apt` | Collect indexes and two Scout packages | `dists/` and `pool/` under this root |
 | `sources.materials.bfb` | Collect vendor BFB and checksum | `bf3-doca3.4.0-26.04/` under this root |
 
-**Exporting images and collecting binary releases does not recompile NICo/Scout.** The current profile locks e703 and existing customized outputs; it cannot rebuild them starting solely from Git. ARM64 Scout requires independent cross-build outputs; BFB is a vendor release. Missing sources are listed together before generation, without falling back to the historical bundle. Disabled material groups do not require their files.
+## Supported scope
 
-## Stages
+`recipe-e703.json` locks image, Chart and material digests for the e703 profile and its customized artifacts. Preparation exports existing images, collects binary releases and builds material images. NICo and ARM64 Scout compilation belongs to upstream build workflows; BFB uses a vendor release.
+
+Enabled material groups require source files matching the recipe. Missing sources are reported together before generation; disabled groups do not require their files. Containerd content is accessed read-only, with image versions pinned by the recipe.
+
+## Build stages
 
 | Stage | Action | Key point |
 | --- | --- | --- |
@@ -32,7 +34,7 @@ The script now creates `input_root/<source-id>/` itself. It does not require tha
 
 ## Configure and run
 
-Goal: declare original source and output locations. Run on the build host; these commands assume the repository is `/srv/PXEye`. Create the configuration yourself:
+The configuration declares upstream sources and output locations. These examples run on the build host with the repository at `/srv/PXEye`:
 
 ```bash
 mkdir -p /srv/nico-build
@@ -43,21 +45,21 @@ ${EDITOR:-vi} /srv/nico-build/build-config.json
 
 `sources` points to existing upstream inputs. `input_root` is the generated raw-input parent. `output_root`, `cache_directory` and `package_output_root` are the prepared, cache and packaging parents. Keep them separate from sources and the checkout. `/srv/nico-sources/` in the example is only a placeholder; the script does not create or download its contents.
 
-Confirm source presence, sizes and image graphs without copying, exporting or building:
+`--plan` checks source presence, sizes and image graphs without generating build artifacts:
 
 ```bash
 python3 /srv/PXEye/offline-build/material-prepare/build.py --config /srv/nico-build/build-config.json --plan
 ```
 
-Execute:
+Build command:
 
 ```bash
 python3 /srv/PXEye/offline-build/material-prepare/build.py --config /srv/nico-build/build-config.json
 ```
 
-Confirm `RAW_INPUT_COMPLETE`, `MATERIAL_PREPARE_COMPLETE`, `HELM_BUILD_CONFIG` and `NEXT_COMMAND`. Run the last command to enter [step two](../helm-bundle/README.md); no manual packaging configuration is needed.
+Successful completion emits `RAW_INPUT_COMPLETE`, `MATERIAL_PREPARE_COMPLETE`, `HELM_BUILD_CONFIG` and `NEXT_COMMAND`. The last two provide the generated configuration path and build command for [step two](../helm-bundle/README.md).
 
-## Outputs and resume
+## Directory structure and recovery
 
 ```text
 input_root/<source-id>/
@@ -79,6 +81,6 @@ output_root/<id>.helm-build.json
 output_root/<id>.result.json
 ```
 
-Fix failures and rerun the same command. Raw-input generation resumes per file after checksum verification; material images and complete prepared outputs reuse verified content. Unrecorded or changed files are never overwritten, and old outputs are retained. The terminal prints stages and per-file generation/reuse. `source-progress.json` records source-stage progress, sizes, hashes and origins; prepared logs and provenance remain available. This step does not create the final compressed bundle.
+Recovery uses the same configuration and build command. Raw inputs are verified and reused per file; material images and complete prepared outputs are reused by digest. Unrecorded or changed files block overwrites, and existing outputs are retained. Terminal output reports stages and file generation/reuse status. `source-progress.json` records source-stage progress, sizes, hashes and origins; prepared `logs/` and `reports/` retain build output and provenance. Step two creates the final compressed bundle.
 
-Legacy schema 1 configurations still accept existing archives. New configurations use schema 2.
+Configuration schema 2 generates the offline image directory; schema 1 supports existing archives.

@@ -10,11 +10,11 @@ Each step has one script and one configuration. Run steps 1–2 on the builder a
 | [2. Package](helm-bundle/README.md) | Render Charts, package images with relok8s, compress and verify | Generated configuration and prepared directory | `bundle.tar.gz`, `onsite-tools.tar.gz`, `SHA256SUMS` |
 | [3. Deploy](onsite/README.md) | Unpack, import images/Charts, install through Helm in order | Those three files and one site configuration | Optional PXEye, NICo Core/dependencies, progress and logs |
 
-## Key rules
+## Configuration and state management
 
 - Configure contents/versions during building; configure Registry, namespace, networking, storage and authentication onsite. The default namespace is `nico-system`.
-- Scripts use controlled Helm Charts. Do not manually import individual images or create Deployment/ConfigMap/Secret YAML.
-- Fix failures and rerun the original command. Step 1 reuses verified materials; steps 2–3 verify and reuse completed stages. Preserve checkpoints and keep different inputs separate.
+- Scripts manage image imports, and project Helm Charts manage Kubernetes resources.
+- Recovery reuses verified materials and completed stages with the same configuration. Progress records are associated with their inputs; changed inputs require a separate version or work directory.
 - Package verification, Helm readiness and physical provisioning acceptance are separate outcomes.
 
 ## Requirements and paths
@@ -35,4 +35,4 @@ Fireseed: Linux amd64, Python 3.11+/PyYAML, kubectl, an available cluster/Regist
 
 The pinned e703 profile covers single-node Core/PXEye, without REST/Temporal/Keycloak, DPF services or Ubuntu ISOs. It does not discover current running images. Material images are built in step 1; the preferred step-2 path only packages them. Material HTTP readiness does not establish consumer URLs or physical connectivity.
 
-Use [legacy material preparation](legacy-materials.md) and [legacy site initialization](CONFIGURE.md) only to maintain old deliveries; do not combine them with this workflow.
+Compatibility-format maintenance is documented in [legacy material preparation](legacy-materials.md) and [legacy deployment configuration](CONFIGURE.md). Those input formats and entry points are separate from this workflow.

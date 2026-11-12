@@ -2,11 +2,11 @@
 
 [English](README.md) · **简体中文** · [三步总览](../README.zh-CN.md)
 
-**目标：把离线交付件安装到明确的 Kubernetes 集群。执行位置：火种机。** 一个现场配置、一个执行脚本；不手工写资源 YAML，不构建镜像，不改 containerd。
+`run.py` 在火种机上导入离线镜像和 Chart，并将 PXEye 与 NICo 部署到配置指定的 Kubernetes 集群。部署使用一份配置，通过 Helm 管理资源。
 
-## 脚本会经历哪些阶段
+## 部署阶段
 
-| 阶段 | 做什么 | 关注什么 |
+| 阶段 | 处理内容 | 约束与产物 |
 | --- | --- | --- |
 | 验包与解压 | 验证归档和内部清单，生成独立解压目录 | 已完成目录验证后复用 |
 | 现场解析与预检 | 确认 context、Registry、工具和配置 | 不使用默认集群；namespace默认nico-system |
@@ -15,9 +15,9 @@
 | 可选 PXEye 启动 | 按配置通过独立 Helm Chart 启动 UI | 已有PXEye时设为false，保留原服务 |
 | NICo 顺序安装 | cert-manager → 平台依赖 → Vault → 可选材料 → Core | 每阶段通过后才继续，保留原PVC身份 |
 
-## 准备一次
+## 环境与配置
 
-主要目标：让现场拥有完整工具和唯一配置。前提：Python 3.11+/PyYAML、kubectl、可用集群和 Registry；节点已配置好镜像拉取。Helm 和 relok8s 随大包提供。
+运行要求：Python 3.11+/PyYAML、kubectl、可用集群和 Registry；节点已配置好镜像拉取。Helm 和 relok8s 随大包提供。
 
 将第二步 `DELIVERY_FILES` 列出的三个文件复制到火种机 `/srv/nico/`，首次执行：
 
@@ -31,9 +31,9 @@ cp onsite-tools/tools/onsite/run-config.example.json onsite-run.json &&
 ${EDITOR:-vi} onsite-run.json
 ```
 
-只维护 `onsite-run.json`，按下表检查：
+`onsite-run.json` 为部署配置入口：
 
-| 配置 | 最重要的填写规则 |
+| 配置 | 含义与约束 |
 | --- | --- |
 | `archive` / `checksums` | 大包和SHA文件的绝对路径 |
 | `extract_directory` / `work_directory` | 每次安装独立，互相分开；脚本自动创建 |
@@ -46,7 +46,7 @@ ${EDITOR:-vi} onsite-run.json
 
 模板默认为 **恢复模式、保留已有PXEye**；全新现场必须修改对应选项和网络参数。工具解压、配置创建只做一次；续跑不要重复覆盖。
 
-## 执行一个脚本
+## 部署命令
 
 执行命令（任意工作目录，首次与失败后相同）：
 
@@ -54,7 +54,7 @@ ${EDITOR:-vi} onsite-run.json
 python3 /srv/nico/onsite-tools/tools/onsite/run.py --config /srv/nico/onsite-run.json
 ```
 
-确认：终端显示当前 `STAGE` 和 `DONE` / `FAILED`，最终出现 `ONSITE_COMPLETE`。无需另外执行 import、recipe、install 或 source 环境变量。
+确认：终端显示当前 `STAGE` 和 `DONE` / `FAILED`，最终出现 `ONSITE_COMPLETE`。导入、配方生成和安装均由该入口调度。
 
 ## 失败续跑与日志
 

@@ -10,12 +10,12 @@
 | [2. 构建交付包](helm-bundle/README.zh-CN.md) | 渲染 Chart，relok8s 打包镜像，压缩验包 | 第一步生成的配置及 prepared 目录 | `bundle.tar.gz`、`onsite-tools.tar.gz`、`SHA256SUMS` |
 | [3. 现场部署](onsite/README.zh-CN.md) | 解包、镜像与 Chart 入库、顺序 Helm 安装 | 上述三个文件；一份现场配置 | 可选 PXEye、NICo Core 及其依赖；安装日志和进度 |
 
-## 最重要的约定
+## 配置与状态管理
 
-- **构建与现场分开配置。** 构建阶段只确定内容与版本；Registry、namespace、网络地址、存储和认证在第三步填写。namespace 默认 `nico-system`。
-- **不手工拼资源。** 不逐张导镜像，不临时写 Deployment、ConfigMap 或 Secret；脚本使用受控 Helm Chart。
-- **失败保留现场。** 修复原因后运行原命令。第一步复用有效材料缓存；第二、三步核验并复用完成的阶段。不要删除断点或混用不同输入。
-- **看清完成边界。** 构建通过、Helm 就绪和物理装机验收是三个不同结果。
+- **配置分层。** 构建配置定义内容与版本；部署配置定义 Registry、namespace、网络地址、存储和认证。namespace 默认 `nico-system`。
+- **资源管理。** 镜像导入由脚本统一处理，Kubernetes 资源通过项目提供的 Helm Chart 管理。
+- **故障恢复。** 相同配置可复用已验证的材料缓存和已完成阶段。进度记录与输入版本关联，变更输入后使用独立版本或工作目录。
+- **验收范围。** 构建校验、Helm 就绪和物理装机分别验收。
 
 ## 执行条件与路径
 
@@ -37,4 +37,4 @@
 
 当前配方是固定 e703 的单节点 Core/PXEye，不自动追踪运行集群镜像；不包含 REST/Temporal/Keycloak、DPF 服务或 Ubuntu ISO。材料镜像在第一步构建，第二步推荐路径只打包。材料 HTTP 就绪不等于消费者 URL 或实机链路已验证。
 
-旧交付件仅在需要维护时查阅[历史材料构建](legacy-materials.zh-CN.md)和[历史现场初始化](CONFIGURE.zh-CN.md)，不要与当前三步流程混用。
+兼容格式的维护说明见[旧版材料构建](legacy-materials.zh-CN.md)和[旧版部署配置](CONFIGURE.zh-CN.md)；其输入格式和执行入口独立于本流程。

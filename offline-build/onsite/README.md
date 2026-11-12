@@ -2,9 +2,9 @@
 
 **English** · [简体中文](README.zh-CN.md) · [Overview](../README.md)
 
-**Goal: install the delivery into an explicit Kubernetes cluster. Run on the fireseed host.** One site configuration and one runner; no manual resource YAML, image builds or containerd changes.
+`run.py` imports offline images and Charts on the fireseed host and deploys PXEye and NICo to the configured Kubernetes cluster. One deployment configuration controls resource management through Helm.
 
-## Stages
+## Deployment stages
 
 | Stage | Action | Key point |
 | --- | --- | --- |
@@ -15,9 +15,9 @@
 | Optional PXEye | Bootstrap the UI through its own Helm Chart | false preserves existing PXEye |
 | Install NICo | cert-manager → platform → Vault → optional materials → Core | Each phase must pass; preserve original PVC identities |
 
-## Prepare once
+## Environment and configuration
 
-Goal: provide the complete tools and one configuration. Requirements: Python 3.11+/PyYAML, kubectl, an available cluster/Registry and configured node image pulls. Helm/relok8s come with the large bundle.
+Requirements: Python 3.11+/PyYAML, kubectl, an available cluster/Registry and configured node image pulls. Helm/relok8s come with the large bundle.
 
 Copy the three files printed by step 2's `DELIVERY_FILES` to `/srv/nico/`, then run once:
 
@@ -31,7 +31,7 @@ cp onsite-tools/tools/onsite/run-config.example.json onsite-run.json &&
 ${EDITOR:-vi} onsite-run.json
 ```
 
-Maintain only `onsite-run.json`:
+`onsite-run.json` is the deployment configuration entry point:
 
 | Setting | Key rule |
 | --- | --- |
@@ -46,7 +46,7 @@ Maintain only `onsite-run.json`:
 
 The template defaults to **restore mode and preserving existing PXEye**. Fresh sites must change the mode/options/network. Preparation runs once; do not overwrite tools or configuration when resuming.
 
-## Run one script
+## Deployment command
 
 Command, from any working directory; identical after failure:
 
@@ -54,7 +54,7 @@ Command, from any working directory; identical after failure:
 python3 /srv/nico/onsite-tools/tools/onsite/run.py --config /srv/nico/onsite-run.json
 ```
 
-Confirmation: current `STAGE`, `DONE` / `FAILED`, then `ONSITE_COMPLETE`. No separate import/recipe/install commands or shell activation are needed.
+Confirmation: current `STAGE`, `DONE` / `FAILED`, then `ONSITE_COMPLETE`. The runner coordinates import, recipe generation and installation.
 
 ## Recovery and logs
 
