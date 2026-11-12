@@ -12,6 +12,7 @@ import sys
 import tempfile
 import os
 import re
+import hashlib
 
 import yaml
 
@@ -122,6 +123,41 @@ def cache_images(path):
     print('CACHE_IMAGES_COMPLETE', registry, flush=True)
 
 
+def registry_input(path, package_value, packager):
+    """Materialize the Chart closure from REGISTRY into an isolated OCI input.
+
+    containerd is only an export transport here: every image is first pulled from
+    REGISTRY and retagged to its Chart reference before the existing OCI exporter
+    reads it.  No old offline-images directory or handwritten image list is used.
+    """
+    registry = os.environ.get('REGISTRY', '').strip().removeprefix('http://').removeprefix('https://').rstrip('/')
+    if not registry or '/' in registry:
+        raise ValueError('Set REGISTRY to a registry host[:port], for example REGISTRY=127.0.0.1:1027')
+    insecure = os.environ.get('REGISTRY_INSECURE', 'true').lower() in ('1', 'true', 'yes')
+    image_list = chart_images(path, package_value, packager)
+    references = [line.strip() for line in image_list.read_text().splitlines() if line.strip()]
+    identity = hashlib.sha256(json.dumps({'registry': registry, 'images': references}, sort_keys=True).encode()).hexdigest()[:24]
+    work = package_value['work_directory'] / 'registry-inputs' / identity
+    config = work / 'build-config.json'
+    raw = build_config.read(path)
+    chart_source = str(package_value['sources']['charts'])
+    generated = {'work_directory': str(work), 'image_export': raw.get('image_export', {}),
+                 'helm_bundle': raw['helm_bundle'] | {'chart_sources': chart_source}}
+    work.mkdir(parents=True, exist_ok=True)
+    config.write_text(json.dumps(generated, indent=2) + '\n')
+    options = containerd_export.DEFAULTS | generated['image_export']
+    for source in references:
+        target = cache_reference(source, registry)
+        print('PULL_REGISTRY_IMAGE', target, 'AS', source, flush=True)
+        pull = [options['ctr'], '--address', options['containerd_address'], '--namespace', options['containerd_namespace'], 'images', 'pull']
+        if insecure: pull.append('--plain-http')
+        subprocess.run(pull + ['--platform', 'linux/amd64', target], check=True)
+        subprocess.run([options['ctr'], '--address', options['containerd_address'], '--namespace', options['containerd_namespace'], 'images', 'tag', target, source], check=True)
+    print('DELIVERY_STAGE [registry-oci-export]', flush=True)
+    containerd_export.run(config, image_list=image_list)
+    return config, assembly.configuration(config)
+
+
 def run(path, plan, version, seed_cache=False):
     path = path.expanduser().resolve()
     value = json.loads(path.read_text())
@@ -143,14 +179,12 @@ def run(path, plan, version, seed_cache=False):
         containerd_export.run(path, plan=plan, image_list=image_list)
         print('CACHE_SEED_COMPLETE', package_value['work_directory'] / 'offline-images', flush=True)
         return
-    source, roles = seeded_roles(package_value)
-    print('DELIVERY_STAGE [chart-image-closure]', flush=True)
-    image_list = chart_images(path, package_value, packager, ui=roles['ui'])
-    require_seed_matches(source, image_list)
+    print('DELIVERY_STAGE [registry-input]', flush=True)
+    registry_config, package_value = registry_input(path, package_value, packager)
     if plan:
         print('DELIVERY_STAGE [package-plan]', flush=True)
         assembly.plan(package_value)
-        print('DELIVERY_PLAN_OK', path, flush=True)
+        print('DELIVERY_PLAN_OK', registry_config, flush=True)
         return
     work = package_value['work_directory']
     work.mkdir(parents=True, exist_ok=True)

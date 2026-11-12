@@ -52,8 +52,8 @@ bundles:
 		$(PYTHON) "$(OFFLINE_DELIVERY)" --write-config "$(OFFLINE_BUILD_CONFIG)" --work-directory "$(OFFLINE_WORK_DIRECTORY)"; \
 	fi
 	@test -f "$(OFFLINE_BUILD_CONFIG)" || { echo "Missing OFFLINE_BUILD_CONFIG=$(OFFLINE_BUILD_CONFIG)" >&2; exit 1; }
-	$(PYTHON) "$(OFFLINE_DELIVERY)" --config "$(OFFLINE_BUILD_CONFIG)" --seed-cache
-	$(PYTHON) "$(OFFLINE_DELIVERY)" --config "$(OFFLINE_BUILD_CONFIG)" $(OFFLINE_VERSION_ARG)
+	@test -n "$(REGISTRY)" || { echo "Set REGISTRY=host:port" >&2; exit 1; }
+	REGISTRY="$(REGISTRY)" REGISTRY_INSECURE="$(REGISTRY_INSECURE)" $(PYTHON) "$(OFFLINE_DELIVERY)" --config "$(OFFLINE_BUILD_CONFIG)" $(OFFLINE_VERSION_ARG)
 
 cache-images:
 	@test -n "$(REGISTRY)" || { echo "Set REGISTRY=host:port" >&2; exit 1; }
