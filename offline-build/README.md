@@ -80,6 +80,11 @@ defaults to `outputs_/build-config.json` and creates
 `bundle-0.22.16-202611121650`. Override only when needed, for example
 `BUNDLE_VERSION=release-1`.
 
+After each Registry pull, the builder verifies the selected amd64 content graph
+in containerd. If an old local image record has dangling content, it fetches
+that image's content once from the same Registry and validates again; it never
+deletes image tags or Kubernetes resources.
+
 Registry OCI exports and bundle staging are cached under `cache/registry-exports/`; final delivery files always go to `output/bundle-<version>/` at the build work-directory root.
 
 | Internal stage | Purpose | Delivery/cache |

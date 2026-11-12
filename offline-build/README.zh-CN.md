@@ -72,6 +72,10 @@ REGISTRY=127.0.0.1:1027 REGISTRY_INSECURE=true make bundles
 `outputs_/output/bundle-<PXEye版本>-<Asia/Shanghai时间戳>/`，例如
 `bundle-0.22.16-202611121650`。只有需要固定版本（例如 `BUNDLE_VERSION=release-1`）时才覆盖。
 
+每次从 Registry 拉取后，构建器都会校验 containerd 内对应 amd64 内容图。如果本地旧镜像记录
+指向缺失内容，它只会从同一 Registry 补拉该镜像内容一次并再次校验；不会删除镜像 tag 或
+Kubernetes 资源。
+
 Registry OCI 导出和 bundle staging 缓存在 `cache/registry-exports/`；最终交付文件始终写入构建工作目录根部的 `output/bundle-<version>/`。
 
 | 内部阶段 | 作用 | 交付/缓存 |

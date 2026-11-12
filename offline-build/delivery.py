@@ -383,6 +383,53 @@ def cache_images(path):
     print('CACHE_IMAGES_COMPLETE', registry, flush=True)
 
 
+def containerd_args(options):
+    """Return the immutable ctr connection prefix used by this build."""
+    return [options['ctr'], '--address', options['containerd_address'],
+            '--namespace', options['containerd_namespace']]
+
+
+def ensure_registry_content(options, source, target, insecure):
+    """Pull a Chart image and repair a stale containerd image record if needed.
+
+    ``ctr images pull`` may accept an already-tagged image whose content was
+    garbage-collected or copied incompletely. The direct OCI exporter needs the
+    complete graph below the configured content store, not merely an image
+    record. Verify that graph after every pull; only then use ``content fetch``
+    for the requested platform as a bounded repair. This never removes an image
+    tag or touches Kubernetes workloads.
+    """
+    base = containerd_args(options)
+    pull = base + ['images', 'pull', '--platform', 'linux/amd64']
+    if insecure:
+        pull.append('--plain-http')
+    subprocess.run(pull + [target], check=True)
+    if target != source:
+        subprocess.run(base + ['images', 'tag', target, source], check=True)
+    try:
+        containerd_export.resolve_images(options, [source])
+        return
+    except (ValueError, KeyError, OSError) as pull_error:
+        # A stale tag is a local cache condition, not evidence that the remote
+        # Registry lacks the image. Fetch the exact target content once, then
+        # re-run the same strict graph validation before proceeding.
+        print('REFETCH_REGISTRY_CONTENT', target, 'AS', source, flush=True)
+        fetch = base + ['content', 'fetch', '--platform', 'linux/amd64']
+        if insecure:
+            fetch.append('--plain-http')
+        result = subprocess.run(fetch + [target], capture_output=True, text=True)
+        if result.returncode:
+            raise ValueError('Cannot repair incomplete containerd content for ' + target + ': ' +
+                             result.stderr[-1000:].strip()) from pull_error
+        if target != source:
+            subprocess.run(base + ['images', 'tag', target, source], check=True)
+        try:
+            containerd_export.resolve_images(options, [source])
+        except (ValueError, KeyError, OSError) as error:
+            raise ValueError('Registry image remains incomplete in containerd after content fetch: ' +
+                             source + ': ' + str(error)) from error
+
+
 def registry_input(path, package_value, packager, material_records=None):
     """Materialize the Chart closure from REGISTRY into an isolated OCI input.
 
@@ -400,7 +447,14 @@ def registry_input(path, package_value, packager, material_records=None):
     config = work / 'build-config.json'
     raw = build_config.read(path)
     chart_source = str(package_value['sources']['charts'])
-    generated = {'work_directory': str(work), 'image_export': raw.get('image_export', {}),
+    # Registry input is build-private.  Do not reuse the Kubernetes image
+    # namespace: an old image record there can make `ctr images pull` report a
+    # cache hit even after content GC, and deleting that record would affect
+    # running workloads.  This deterministic namespace retains the exact
+    # graph for this closure and is distinct for changed inputs.
+    image_export = dict(raw.get('image_export', {}))
+    image_export['containerd_namespace'] = 'pxeye-offline-' + identity
+    generated = {'work_directory': str(work), 'image_export': image_export,
                  'helm_bundle': raw['helm_bundle'] | {'chart_sources': chart_source}}
     work.mkdir(parents=True, exist_ok=True)
     # Registry inputs are isolated from old OCI exports, but upstream Chart
@@ -419,11 +473,7 @@ def registry_input(path, package_value, packager, material_records=None):
     for source in references:
         target = cache_reference(source, registry)
         print('PULL_REGISTRY_IMAGE', target, 'AS', source, flush=True)
-        pull = [options['ctr'], '--address', options['containerd_address'], '--namespace', options['containerd_namespace'], 'images', 'pull']
-        if insecure: pull.append('--plain-http')
-        subprocess.run(pull + ['--platform', 'linux/amd64', target], check=True)
-        if target != source:
-            subprocess.run([options['ctr'], '--address', options['containerd_address'], '--namespace', options['containerd_namespace'], 'images', 'tag', target, source], check=True)
+        ensure_registry_content(options, source, target, insecure)
     print('DELIVERY_STAGE [registry-oci-export]', flush=True)
     containerd_export.run(config, image_list=image_list)
     return config, assembly.configuration(config)
