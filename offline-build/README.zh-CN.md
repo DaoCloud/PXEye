@@ -2,9 +2,9 @@
 
 [English](README.md) · **简体中文**
 
-标准流程只使用一份 `build-config.json` 和一个 `make bundles` 入口。它渲染锁定的
-PXEye 父 Chart，从指定 Registry 导出精确镜像闭包，执行一次 relocation，并校验最终离线
-交付包。现场部署仍在火种机执行。
+标准流程只使用一份 `build-config.json` 和依序执行的三个 Make 目标：发布 PXEye、缓存父
+Chart 镜像闭包、构建交付包。最后一步从指定 Registry 导出精确镜像闭包，执行一次
+relocation，并校验最终离线交付包。现场部署仍在火种机执行。
 
 简洁、可直接复制的构建步骤、交付文件和解压目录见[构建离线交付包](BUILD.zh-CN.md)。
 
@@ -101,7 +101,9 @@ Registry OCI 导出和 bundle staging 缓存在 `cache/registry-exports/`；最�
 
 ## 执行条件与路径
 
-构建机：Linux amd64、Python 3.11+/PyYAML、Docker 本地服务、Helm 3、足够空间。ARM 材料构建会在 Docker 修改本地或 Registry 状态前拒绝其他主机架构。断网构建需预置锁定的工具和基础镜像。
+构建机：Linux amd64、Python 3.11+/PyYAML、Docker 本地服务、可通过 `ctr` 访问的本机
+containerd 内容存储、Helm 3、足够空间。ARM 材料构建会在 Docker 修改本地或 Registry
+状态前拒绝其他主机架构。断网构建需预置锁定的工具和基础镜像。
 
 火种机：Linux amd64、Python 3.11+/PyYAML、kubectl、可用 Registry 和 Kubernetes；节点已能从该 Registry 拉镜像。Helm、relok8s 随离线包交付。
 

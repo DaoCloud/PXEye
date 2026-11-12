@@ -2,10 +2,11 @@
 
 **English** · [简体中文](README.zh-CN.md)
 
-The supported workflow uses one `build-config.json` and one `make bundles`
-entry point. It renders the locked PXEye parent Chart, exports exactly that
-closure from the configured Registry, relocates it once, and verifies the
-offline delivery. Onsite deployment still runs on the fireseed host.
+The supported workflow uses one `build-config.json` and three ordered Make
+targets: publish PXEye, cache the parent-Chart image closure, then build the
+delivery. The final target exports exactly that closure from the configured
+Registry, relocates it once, and verifies the offline delivery. Onsite
+deployment still runs on the fireseed host.
 
 For the concise, copyable build sequence, delivery files and extracted bundle
 layout, see [Build an offline delivery](BUILD.md).
@@ -112,7 +113,10 @@ are not steps in this workflow. The onsite handoff starts at
 
 ## Requirements and paths
 
-Builder: Linux amd64, Python 3.11+/PyYAML, local Docker, Helm 3 and sufficient space. ARM material construction rejects another host architecture before Docker mutates local or Registry state. Fully offline builds require cached locked tools and base images.
+Builder: Linux amd64, Python 3.11+/PyYAML, local Docker, a local containerd
+content store accessible with `ctr`, Helm 3 and sufficient space. ARM material
+construction rejects another host architecture before Docker mutates local or
+Registry state. Fully offline builds require cached locked tools and base images.
 
 Fireseed: Linux amd64, Python 3.11+/PyYAML, kubectl, an available cluster/Registry and working node image pulls. Helm and relok8s are delivered in the bundle.
 

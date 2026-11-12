@@ -8,9 +8,9 @@ PXEye、NICo Core 及其所需的 Helm 依赖。现场导入和安装是独立�
 
 ## 前置条件
 
-在 Linux amd64 构建机执行，并具备 Docker、Helm 3、Python 3.11+ 及足够空间，用于
-Registry 缓存和最终归档。执行 `make images` 前必须提交 PXEye 源码；该目标会主动拒绝
-脏工作树。
+在 Linux amd64 构建机执行，并具备 Docker、可通过 `ctr` 访问的本机 containerd 内容存储、
+Helm 3、Python 3.11+/PyYAML 及足够空间，用于 Registry 缓存和最终归档。执行 `make images`
+前必须提交 PXEye 源码；该目标会主动拒绝脏工作树。
 
 PXEye 镜像引用由 `charts/pxeye/values.yaml` 固定。在当前 shell 一次性设置构建 Registry；
 它必须可被构建机访问并允许推送镜像。
@@ -60,6 +60,7 @@ NICo PXE init container 使用的不可变材料镜像；它们不会作为散�
 ```text
 outputs_/
 ├── build-config.json                  # 首次自动创建；保留各阶段设置
+├── chart-sources.json                  # 锁定的上游子 Chart 来源
 ├── generated/resolved-images.txt      # 父 Chart 渲染出的镜像闭包
 ├── cache/registry-exports/            # 可恢复构建缓存，不是交付文件
 └── output/bundle-<version>/

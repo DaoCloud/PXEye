@@ -9,7 +9,8 @@ dependencies. Onsite import and installation are a separate step; see
 
 ## Prerequisites
 
-Run on a Linux amd64 builder with Docker, Helm 3, Python 3.11+ and enough free
+Run on a Linux amd64 builder with Docker, a local containerd content store
+available through `ctr`, Helm 3, Python 3.11+ with PyYAML, and enough free
 space for the Registry cache and the final archive. Commit the PXEye source
 before `make images`; that target deliberately refuses a dirty tree.
 
@@ -68,6 +69,7 @@ With the default configuration, generated state stays under the ignored
 ```text
 outputs_/
 ├── build-config.json                  # created once; preserves stage settings
+├── chart-sources.json                  # locked upstream child-Chart sources
 ├── generated/resolved-images.txt      # parent-Chart image closure
 ├── cache/registry-exports/            # resumable build cache, not handoff data
 └── output/bundle-<version>/
