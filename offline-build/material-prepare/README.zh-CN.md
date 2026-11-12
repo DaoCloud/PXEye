@@ -6,17 +6,20 @@
 
 ## 配置
 
-默认配置只需指定工作目录，支持 `~/`：
+配置模板显式指定工作目录和镜像清单文件，支持 `~/`：
 
 ```json
 {
-  "work_directory": "~/pxeye-build"
+  "work_directory": "~/pxeye-build",
+  "sources": {
+    "image_list": "images.txt"
+  }
 }
 ```
 
 [images.txt](images.txt) 为默认镜像清单，每行一个完整的本地镜像引用，支持空行与 `#` 注释。随项目提供的清单选择13张 Core/PXEye e703系列镜像；它不会自动枚举运行中的 Pod，也不会导出未列出的其他镜像。镜像内容以执行时解析并记录的摘要为准。
 
-非标准环境可选填 `sources`：
+`sources.image_list` 相对配置文件所在目录解析，因此示例使用 `$HOME/pxeye-build/images.txt`。仓库原始清单位于 `offline-build/material-prepare/images.txt`；修改工作目录内的清单可选择本次导出的镜像。其他 `sources` 字段仅在非标准环境下需要：
 
 | 字段 | 默认值 | 用途 |
 | --- | --- | --- |
@@ -35,7 +38,16 @@
 ```bash
 mkdir -p "$HOME/pxeye-build"
 test ! -e "$HOME/pxeye-build/build-config.json" &&
+test ! -e "$HOME/pxeye-build/images.txt" &&
+cp /srv/PXEye/offline-build/material-prepare/images.txt "$HOME/pxeye-build/images.txt" &&
 cp /srv/PXEye/offline-build/material-prepare/build-config.example.json "$HOME/pxeye-build/build-config.json"
+```
+
+查看和修改本次镜像清单：
+
+```bash
+cat "$HOME/pxeye-build/images.txt"
+${EDITOR:-vi} "$HOME/pxeye-build/images.txt"
 ```
 
 检查清单、镜像引用与所需 amd64 内容是否存在；不创建输出目录：

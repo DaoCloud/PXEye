@@ -6,17 +6,20 @@
 
 ## Configuration
 
-Only the work directory is required; `~/` is supported:
+The configuration template explicitly names the work directory and image list; `~/` is supported:
 
 ```json
 {
-  "work_directory": "~/pxeye-build"
+  "work_directory": "~/pxeye-build",
+  "sources": {
+    "image_list": "images.txt"
+  }
 }
 ```
 
 The default [images.txt](images.txt) lists one exact local image reference per line, with blank lines and `#` comments supported. The supplied list selects 13 Core/PXEye e703-series images; it does not discover running Pods or include unlisted images. Each execution resolves and records the image digests.
 
-Optional `sources` settings support nonstandard environments:
+`sources.image_list` resolves relative to the configuration file, so this example uses `$HOME/pxeye-build/images.txt`. The repository source list is `offline-build/material-prepare/images.txt`; edit the working copy to select images for the export. Other `sources` fields support nonstandard environments:
 
 | Field | Default | Purpose |
 | --- | --- | --- |
@@ -35,7 +38,16 @@ These examples assume the repository is `/srv/PXEye` and run on the containerd h
 ```bash
 mkdir -p "$HOME/pxeye-build"
 test ! -e "$HOME/pxeye-build/build-config.json" &&
+test ! -e "$HOME/pxeye-build/images.txt" &&
+cp /srv/PXEye/offline-build/material-prepare/images.txt "$HOME/pxeye-build/images.txt" &&
 cp /srv/PXEye/offline-build/material-prepare/build-config.example.json "$HOME/pxeye-build/build-config.json"
+```
+
+Inspect and edit the image list for this export:
+
+```bash
+cat "$HOME/pxeye-build/images.txt"
+${EDITOR:-vi} "$HOME/pxeye-build/images.txt"
 ```
 
 Check references and required amd64 content without creating output directories:
