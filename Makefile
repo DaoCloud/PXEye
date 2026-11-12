@@ -15,6 +15,9 @@ BUILD_WORK_DIRECTORY ?= $(REPO_ROOT)/outputs_
 BUNDLE_VERSION ?= bundle-$(VERSION)-$(shell TZ=Asia/Shanghai date +%Y%m%d%H%M)
 DELIVERY_SCRIPT := $(REPO_ROOT)/offline-build/delivery.py
 VERSION_ARG := $(if $(BUNDLE_VERSION),--version $(BUNDLE_VERSION),)
+# The supported field workflow uses an HTTP Registry unless the caller
+# explicitly selects TLS.  Export a real default instead of an empty variable.
+REGISTRY_INSECURE ?= true
 # Optional ARM64 boot-material image.  Keep it disabled unless the input
 # directory is intentionally supplied for this build.
 INCLUDE_ARM64_MATERIALS ?= 0

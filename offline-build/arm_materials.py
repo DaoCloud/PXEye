@@ -65,6 +65,7 @@ class ArmMaterial:
     files: tuple[MaterialFile, ...] = ()
     cache_dir: Path | None = None
     lock_path: Path | None = None
+    recipe_sha256: str | None = None
 
     def as_manifest(self) -> dict:
         if not self.enabled:
@@ -73,6 +74,7 @@ class ArmMaterial:
             'enabled': True,
             'id': MATERIAL_ID,
             'content_id': self.content_id,
+            'recipe_sha256': self.recipe_sha256,
             'files': [row.as_dict() for row in self.files],
             'payload_root': '/payload/aarch64',
             'publish_path': 'aarch64',
@@ -243,7 +245,8 @@ def prepare(work_directory: Path | str, environ: Mapping[str, str] | None = None
     cache_dir = cache_root / ('sha-' + source_content_id)
     lock_path = cache_dir / 'materials-lock.json'
     material = ArmMaterial(enabled=True, content_id=source_content_id, source_dir=source,
-                           files=files, cache_dir=cache_dir, lock_path=lock_path)
+                           files=files, cache_dir=cache_dir, lock_path=lock_path,
+                           recipe_sha256=recipe_sha256)
     existing = read_image_lock(material)
     lock = {
         'schema_version': LOCK_SCHEMA_VERSION,
@@ -296,13 +299,15 @@ def write_image_lock(material: ArmMaterial, *, reference: str, digest: str,
     _require(DIGEST.fullmatch(base_digest) is not None, 'Invalid ARM material base image digest')
     _require(SHA256.fullmatch(initializer_sha256) is not None,
              'Invalid ARM material initializer SHA-256')
-    existing = read_image_lock(material) or {}
+    _require(SHA256.fullmatch(str(material.recipe_sha256)) is not None,
+             'ARM material lacks a validated recipe SHA-256')
     data = {
         'schema_version': LOCK_SCHEMA_VERSION,
         'kind': 'pxeye-arm64-material',
         'material_id': MATERIAL_ID,
         'content_id': material.content_id,
         'layout_version': LAYOUT_VERSION,
+        'recipe_sha256': material.recipe_sha256,
         'files': [row.as_dict() for row in material.files],
         'image': {
             'reference': reference,
@@ -312,9 +317,5 @@ def write_image_lock(material: ArmMaterial, *, reference: str, digest: str,
             'initializer_sha256': initializer_sha256,
         },
     }
-    # Preserve the recipe hash written by prepare while never preserving stale
-    # image metadata from another material content identity.
-    if 'recipe_sha256' in existing:
-        data['recipe_sha256'] = existing['recipe_sha256']
     _atomic_json(material.lock_path, data)
     return data

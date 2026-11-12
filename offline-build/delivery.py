@@ -162,6 +162,38 @@ def material_record(material, *, reference, digest, image_content, base_digest, 
     }
 
 
+def require_clean_arm_material_sources():
+    """Reject an ARM image publish from uncommitted material implementation.
+
+    ``make bundles`` reaches ARM construction before the existing package
+    builder's clean-source gate.  Put the equivalent guard here, before Docker
+    receives the payload, so a dirty checkout cannot create a Registry side
+    effect and then fail later during packaging.  Unrelated product work is
+    intentionally outside this narrow delivery-source list.
+    """
+    sources = (
+        'Makefile',
+        'charts/pxeye',
+        'deploy/offline-core',
+        'offline-build/delivery.py',
+        'offline-build/arm_materials.py',
+        'offline-build/arm-material-init.py',
+        'offline-build/material-prepare/recipe-e703.json',
+        'offline-build/helm-bundle/assembly.py',
+        'offline-build/helm-bundle/build.py',
+        'offline-build/helm-bundle/charts.py',
+    )
+    result = subprocess.run(
+        ['git', '-C', str(HOME.parent), 'status', '--porcelain', '--untracked-files=all', '--', *sources],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode:
+        raise ValueError('Cannot verify ARM material build sources are committed: ' + result.stderr[-1000:].strip())
+    if result.stdout.strip():
+        raise ValueError('Commit ARM material sources before constructing or publishing the material image')
+
+
 def arm_material_record(package_value, registry, insecure, *, allow_build=True):
     """Build or reuse the optional immutable ARM boot-material image.
 
@@ -170,6 +202,8 @@ def arm_material_record(package_value, registry, insecure, *, allow_build=True):
     immutable PXEye base manifest.  All normal workload images still arrive
     from the pre-populated Registry through the ordinary cache-images flow.
     """
+    if allow_build and arm_materials.enabled():
+        require_clean_arm_material_sources()
     material = arm_materials.prepare(package_value['work_directory'])
     if not material.enabled:
         return []
