@@ -191,6 +191,7 @@ def run(path, plan, version, seed_cache=False):
         print('CACHE_SEED_COMPLETE', package_value['work_directory'] / 'offline-images', flush=True)
         return
     print('DELIVERY_STAGE [registry-input]', flush=True)
+    original_work = package_value['work_directory']
     registry_config, package_value = registry_input(path, package_value, packager)
     if plan:
         print('DELIVERY_STAGE [package-plan]', flush=True)
@@ -201,8 +202,11 @@ def run(path, plan, version, seed_cache=False):
     work.mkdir(parents=True, exist_ok=True)
     print('DELIVERY_STAGE [package]', flush=True)
     config = assembly.prepare(package_value, packager)
+    # Registry closure exports and bundle staging are cache entries.  Final
+    # deliverables belong to the stable top-level output directory instead.
+    config['output_root'] = original_work / 'output'
     packager.run_build(config, argparse.Namespace(version=version, check_inputs=False))
-    print('DELIVERY_COMPLETE', work / 'output', flush=True)
+    print('DELIVERY_COMPLETE', original_work / 'output', flush=True)
 
 
 def main():

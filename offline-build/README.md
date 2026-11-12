@@ -26,6 +26,8 @@ REGISTRY=127.0.0.1:1027 REGISTRY_INSECURE=true \
 
 The command does not read `images.txt`. It renders the PXEye parent and locked child Charts, pulls only missing images from their original public references, and pushes them to `REGISTRY`. Third-party and NICo images retain their repository path and tag while their registry host changes; the PXEye image becomes `REGISTRY/pxeye:<tag>`. It does not create a bundle or deploy Kubernetes.
 
+Registry OCI exports and bundle staging are cached under `cache/registry-exports/`; final delivery files always go to `output/bundle-<version>/` at the build work-directory root.
+
 Read-only validation of local images, roles, Chart sources and delivery input:
 
 ```bash

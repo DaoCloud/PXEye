@@ -26,6 +26,8 @@ REGISTRY=127.0.0.1:1027 REGISTRY_INSECURE=true \
 
 该命令不读取 `images.txt`：它从 PXEye 父 Chart 及锁定子 Chart 自动得到镜像闭包，缺失镜像才从其原始公网引用拉取，再推送到 `REGISTRY`。第三方和 NICo 镜像仅替换 Registry 主机名，保留 repository 路径和 tag；PXEye 自建镜像使用 `REGISTRY/pxeye:<tag>`。该步骤不制作 bundle、不部署 Kubernetes。
 
+Registry OCI 导出和 bundle staging 缓存在 `cache/registry-exports/`；最终交付文件始终写入构建工作目录根部的 `output/bundle-<version>/`。
+
 只读检查本地镜像、用途、Chart 来源和交付输入：
 
 ```bash
