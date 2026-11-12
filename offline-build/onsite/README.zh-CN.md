@@ -58,6 +58,10 @@ namespace 没有 Helm Release。默认 PXEye NodePort 已被占用时，设置�
 `site.pxeye_values.service.nodePort`，或改为 `ClusterIP`。恢复模式仅支持已经使用单个父 Chart Release
 的站点；旧的四个独立 NICo Release 必须先完成明确的迁移，或使用干净 namespace，脚本会在入库前拒绝该布局。
 
+Kubernetes 中未被占用的 NodePort 不等于主机或外部网络可访问。尤其是 Kind 节点只会发布建集群时
+已配置的端口（例如 `extraPortMappings`）。运行器只检查 NodePort 未被其他 Service 占用，不会修改
+Kind、主机网络或防火墙；应使用已有的平台访问入口，或在部署前为 Kind 创建所需端口映射。
+
 ## 部署命令
 
 执行命令（任意工作目录，首次与失败后相同）：

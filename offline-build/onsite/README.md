@@ -65,6 +65,13 @@ only when the existing site already uses the single parent-Chart release; a
 legacy four-release NICo installation requires an explicit migration or a
 clean namespace and is rejected before Registry import.
 
+A free Kubernetes NodePort is not an external-access guarantee. In particular,
+a Kind node publishes only ports configured when the cluster was created (for
+example, with `extraPortMappings`). The runner checks that the NodePort is not
+claimed by another Service but does not modify Kind, host networking, or a
+firewall. Use an existing platform access route, or create the required Kind
+port mapping before deployment.
+
 ## Deployment command
 
 Command, from any working directory; identical after failure:

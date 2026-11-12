@@ -340,7 +340,10 @@ class Onsite:
                 raise ValueError('PXEye NodePort ' + str(port) + ' is already used by ' +
                                  str(metadata.get('namespace')) + '/' + str(metadata.get('name')) +
                                  '; set pxeye_values.service.nodePort to a free port or use ClusterIP')
-        print('PXEYE_NODEPORT_AVAILABLE', port, flush=True)
+        # This only proves Kubernetes has not assigned the NodePort to another
+        # Service.  It does not prove a containerized node publishes that port
+        # to its host or any external network.
+        print('PXEYE_NODEPORT_UNALLOCATED_IN_CLUSTER', port, flush=True)
 
     def preflight(self):
         # Avoid rereading every GiB for each phase when the verified input tree is unchanged.
