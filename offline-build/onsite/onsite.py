@@ -189,6 +189,15 @@ class Onsite:
         require(NAME.fullmatch(c['namespace']) and NAME.fullmatch(c['release_prefix']), 'Invalid namespace/release prefix')
         require(len(c['release_prefix']) <= 35, 'Release prefix too long for generated resource names')
         require(c.get('mode') in ('new', 'restore'), 'Mode must be new or restore')
+        cert_manager = c.get('cert_manager', {})
+        require(isinstance(cert_manager, dict) and set(cert_manager) <= {'mode'},
+                'cert_manager must contain only mode')
+        self.cert_manager_mode = cert_manager.get('mode', 'install')
+        require(self.cert_manager_mode in ('install', 'reuse'),
+                'cert_manager.mode must be install or reuse')
+        require(self.cert_manager_mode == 'install' or c['mode'] == 'new',
+                'cert_manager.mode=reuse is supported only for a new isolated namespace')
+        require(isinstance(c.get('pxeye_values', {}), dict), 'pxeye_values must contain an object')
         self.bundle, self.work = Path(c['bundle']).resolve(), Path(c['work_directory']).resolve()
         require(not self.work.is_relative_to(self.bundle) and not self.bundle.is_relative_to(self.work), 'Work directory must be outside bundle')
         self.work.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -286,6 +295,53 @@ class Onsite:
             result += ['--ca-file', registry['ca_file']]
         return result
 
+    def require_shared_cert_manager(self):
+        """Verify a reusable cluster-wide cert-manager without taking ownership."""
+        for crd in ('certificates.cert-manager.io', 'issuers.cert-manager.io', 'clusterissuers.cert-manager.io'):
+            result = self.kubectl(['get', 'crd', crd, '-o', 'name'], 'shared-cert-manager-crd-' + crd,
+                                  private=True)
+            require(result.stdout.strip(), 'cert_manager.mode=reuse requires CRD ' + crd)
+        deployments = json.loads(self.kubectl(['get', 'deployments', '-A', '-o', 'json'],
+                                              'shared-cert-manager-deployments', private=True).stdout)
+        required = {'cert-manager-controller', 'cert-manager-webhook', 'cert-manager-cainjector'}
+        ready = set()
+        for deployment in deployments.get('items', []):
+            status = deployment.get('status') or {}
+            if int(status.get('readyReplicas') or 0) < 1:
+                continue
+            containers = ((deployment.get('spec') or {}).get('template') or {}).get('spec', {}).get('containers') or []
+            for container in containers:
+                image = str(container.get('image') or '')
+                for component in required:
+                    if component in image:
+                        ready.add(component)
+        missing = sorted(required - ready)
+        require(not missing, 'cert_manager.mode=reuse requires ready shared deployments: ' + ', '.join(missing))
+        print('REUSE_SHARED_CERT_MANAGER', ','.join(sorted(ready)), flush=True)
+
+    def check_pxeye_node_port(self, release, values):
+        """Fail before Helm writes when a standalone PXEye NodePort is occupied."""
+        service = values.get('service', {})
+        require(isinstance(service, dict), 'pxeye_values.service must contain an object')
+        if service.get('type', 'NodePort') != 'NodePort':
+            return
+        port = service.get('nodePort', 31808)
+        require(type(port) is int and 1 <= port <= 65535,
+                'pxeye_values.service.nodePort must be an integer from 1 to 65535')
+        rows = json.loads(self.kubectl(['get', 'services', '-A', '-o', 'json'], 'pxeye-nodeport-check',
+                                       private=True).stdout)
+        for item in rows.get('items', []):
+            metadata = item.get('metadata') or {}
+            for endpoint in (item.get('spec') or {}).get('ports') or []:
+                if endpoint.get('nodePort') != port:
+                    continue
+                if metadata.get('namespace') == self.config['namespace'] and metadata.get('name') == release:
+                    continue
+                raise ValueError('PXEye NodePort ' + str(port) + ' is already used by ' +
+                                 str(metadata.get('namespace')) + '/' + str(metadata.get('name')) +
+                                 '; set pxeye_values.service.nodePort to a free port or use ClusterIP')
+        print('PXEYE_NODEPORT_AVAILABLE', port, flush=True)
+
     def preflight(self):
         # Avoid rereading every GiB for each phase when the verified input tree is unchanged.
         stamps = {}
@@ -309,20 +365,37 @@ class Onsite:
         self.state['cluster_endpoint'] = endpoint; self.save()
         self.helm_run(['version', '--short'], 'helm-version')
         self.run([self.relok, 'version'], 'relok8s-version')
+        releases = json.loads(self.helm_run(
+            ['list', '--all', '-n', self.config['namespace'], '-o', 'json'],
+            'namespace-release-layout', private=True).stdout)
+        if self.config['mode'] == 'new':
+            allowed = set()
+            bootstrap = self.state['steps'].get('bootstrapped-pxeye')
+            if isinstance(bootstrap, dict) and isinstance(bootstrap.get('release'), str):
+                allowed.add(bootstrap['release'])
+            bootstrap_intent = self.state.get('pxeye_install_intent')
+            if isinstance(bootstrap_intent, dict) and isinstance(bootstrap_intent.get('release'), str):
+                allowed.add(bootstrap_intent['release'])
+            if self.state.get('install_intents') or any(key.startswith('installed-') for key in self.state['steps']):
+                allowed.add(self.release('core'))
+            unexpected = sorted(item.get('name') for item in releases
+                                if isinstance(item, dict) and isinstance(item.get('name'), str) and item['name'] not in allowed)
+            require(not unexpected,
+                    'New installation requires an empty namespace or only releases created by this run; unexpected: ' +
+                    ', '.join(unexpected))
         # A parent Chart cannot safely adopt the legacy four-release layout:
         # cert-manager, platform and Vault objects retain separate Helm owners.
         # Stop before Registry import or any Helm write instead of leaving an
         # operator to diagnose the collision later in the recipe phase.
         parent_chart = [item.get('id') for item in self.descriptor.get('charts', [])] == ['pxeye']
         if self.config['mode'] == 'restore' and parent_chart:
-            releases = json.loads(self.helm_run(
-                ['list', '--all', '-n', self.config['namespace'], '-o', 'json'],
-                'legacy-release-layout', private=True).stdout)
             expected = {self.config['release_prefix'] + suffix for suffix in ('', '-cert-manager', '-platform', '-vault')}
             if expected.issubset({item.get('name') for item in releases}):
                 raise ValueError('Legacy four-release NICo layout detected for ' + self.config['release_prefix'] +
                                  '; this parent-Chart delivery has no in-place migration. Migrate to one parent '
                                  'release or use a clean namespace before restoring')
+        if self.cert_manager_mode == 'reuse':
+            self.require_shared_cert_manager()
         print('PREFLIGHT_OK', self.config['context'], self.config['namespace'])
 
     def import_bundle(self):
@@ -554,6 +627,9 @@ class Onsite:
         plan['schema_version'] = 1
         phases = []
         for phase in plan['phases']:
+            if self.cert_manager_mode == 'reuse' and phase['id'] == 'cert-manager':
+                print('SKIP_CERT_MANAGER_PHASE reuse-shared-controller', flush=True)
+                continue
             phase.pop('material_chart', None)
             phases.append(phase)
         plan['phases'] = phases
@@ -581,6 +657,12 @@ class Onsite:
             overrides = self.config.get('phase_values', {}).get(phase['id'])
             if overrides:
                 values = merge(values, yaml.safe_load(Path(overrides).read_text()) or {})
+            if self.cert_manager_mode == 'reuse':
+                components = values.setdefault('components', {})
+                require(isinstance(components, dict), 'Parent Chart components must contain an object')
+                cert_manager = components.setdefault('certManager', {})
+                require(isinstance(cert_manager, dict), 'Parent Chart components.certManager must contain an object')
+                cert_manager['enabled'] = False
             if phase['id'] == 'core': self.configure_core(values['nicoCore'], ips)
             require(not TOKEN.search(json.dumps(values)), 'Unresolved values variables in ' + phase['id'])
             target = recipe / 'values' / (phase['id'] + '.yaml')
@@ -593,6 +675,7 @@ class Onsite:
         plan = substitute(plan, settings)
         plan['version'] = str(catalog['bundle_version'])
         plan['name'] = 'NICo offline onsite recipe'
+        plan['cert_manager_mode'] = self.cert_manager_mode
         plan['files'] = {str(path.relative_to(recipe)): sha(path) for directory in ('charts', 'values') for path in (recipe / directory).rglob('*') if path.is_file()}
         write_json(recipe / 'catalog.json', catalog)
         plan['files']['catalog.json'] = sha(recipe / 'catalog.json')
@@ -854,6 +937,9 @@ class Onsite:
         path = directory / 'values.yaml'; path.write_text(yaml.safe_dump(values)); path.chmod(0o600)
         release = self.config.get('pxeye_release') or self.config['namespace'] + '-pxeye'
         require(NAME.fullmatch(release), 'Invalid PXEye release')
+        require(release != self.release('core'),
+                'pxeye_release must differ from release_prefix; PXEye and Core parent releases are separate')
+        self.check_pxeye_node_port(release, values)
         phase = {'id': 'pxeye', 'release': release, 'chart': str(chart.relative_to(self.work)),
                  'values': [str(path.relative_to(self.work))]}
         rendered = self.helm_run(['template', release, str(chart), '-n', self.config['namespace'], '-f', str(path)], 'pxeye-render', private=True).stdout

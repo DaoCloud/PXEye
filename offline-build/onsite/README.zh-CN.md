@@ -39,6 +39,7 @@ ${EDITOR:-vi} onsite-run.json
 | `extract_directory` / `work_directory` | 每次安装独立，互相分开；脚本自动创建 |
 | `site.context` / `namespace` | 推荐明确指定context；null只允许唯一Kind context；namespace默认nico-system |
 | `site.mode` / `release_prefix` | 恢复填restore，留空前缀时读取唯一现有Core或PXEye父Chart release；全新填new |
+| `site.cert_manager.mode` | 默认 `install` 安装包内控制器；`reuse` 仅用于已有共享 cert-manager 且目标为空 namespace 的全新安装 |
 | `site.registry` | URL留空自动探测唯一可用端点；CA/跳过TLS校验及认证文件按现场设置 |
 | `site.service_ips` / `host_network` | 全新安装必须填写DNS/PXE/NTP IPv4，以及网络name/prefix/gateway/mtu；恢复可复用旧配置 |
 | `bootstrap_pxeye` | 在顶层控制独立 PXEye UI 启动，默认false |
@@ -47,8 +48,11 @@ ${EDITOR:-vi} onsite-run.json
 模板默认为 **恢复模式、保留已有PXEye**；全新现场必须修改对应选项和网络参数。工具解压、配置创建只做一次；续跑不要重复覆盖。
 
 `bootstrap_pxeye=true` 只启动 PXEye UI，NICo 组件仍保持关闭，直到后续有序安装阶段逐个启用。
-恢复模式仅支持已经使用单个父 Chart Release 的站点；旧的四个独立 NICo Release 必须先完成明确的
-迁移，或使用干净 namespace，脚本会在入库前拒绝该布局。
+同一集群需要第二套隔离部署且已有 cert-manager 时，设置 `site.cert_manager.mode=reuse`；安装器会核验
+共享 CRD 与控制器就绪、跳过包内 cert-manager 阶段，绝不接管已有 Release。全新安装还要求目标
+namespace 没有 Helm Release。默认 PXEye NodePort 已被占用时，设置不同的
+`site.pxeye_values.service.nodePort`，或改为 `ClusterIP`。恢复模式仅支持已经使用单个父 Chart Release
+的站点；旧的四个独立 NICo Release 必须先完成明确的迁移，或使用干净 namespace，脚本会在入库前拒绝该布局。
 
 ## 部署命令
 

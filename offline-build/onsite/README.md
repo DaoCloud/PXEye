@@ -39,6 +39,7 @@ ${EDITOR:-vi} onsite-run.json
 | extract_directory / work_directory | Independent per-installation directories, created automatically |
 | site.context / namespace | Explicit context recommended; null allows only one Kind context; namespace defaults to nico-system |
 | site.mode / release_prefix | restore reuses the unique existing Core or PXEye parent release when prefix is empty; new is for fresh sites |
+| site.cert_manager.mode | `install` (default) installs the bundled controller; `reuse` is only for a new, empty namespace with a verified shared cert-manager |
 | site.registry | Empty URL discovers one valid endpoint; configure CA/TLS policy and external authentication references |
 | site.service_ips / host_network | New sites require DNS/PXE/NTP IPv4 and network name/prefix/gateway/mtu; restore may reuse existing settings |
 | bootstrap_pxeye | Optional standalone PXEye UI startup; defaults to false |
@@ -47,10 +48,16 @@ ${EDITOR:-vi} onsite-run.json
 The template defaults to **restore mode and preserving existing PXEye**. Fresh sites must change the mode/options/network. Preparation runs once; do not overwrite tools or configuration when resuming.
 
 `bootstrap_pxeye=true` starts only the PXEye UI. NICo components remain
-disabled until their ordered installation phases. Restore is supported only
-when the existing site already uses the single parent-Chart release; a legacy
-four-release NICo installation requires an explicit migration or a clean
-namespace and is rejected before Registry import.
+disabled until their ordered installation phases. For a second isolated
+deployment in a cluster that already has cert-manager, set
+`site.cert_manager.mode` to `reuse`; the installer validates the shared CRDs
+and controller, skips the bundled cert-manager phase, and never adopts the
+existing release. A new install requires a namespace with no Helm releases.
+If the default PXEye NodePort is occupied, set a distinct
+`site.pxeye_values.service.nodePort` (or use `ClusterIP`). Restore is supported
+only when the existing site already uses the single parent-Chart release; a
+legacy four-release NICo installation requires an explicit migration or a
+clean namespace and is rejected before Registry import.
 
 ## Deployment command
 
