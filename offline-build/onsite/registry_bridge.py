@@ -18,6 +18,31 @@ class RegistryBridge:
             self.context.check_hostname = False
             self.context.verify_mode = ssl.CERT_NONE
 
+    def probe_upstream(self):
+        """Check Registry V2 transport before relok8s hides the cause behind its loopback relay."""
+        connection = None
+        try:
+            cls = http.client.HTTPSConnection if self.upstream.scheme == 'https' else http.client.HTTPConnection
+            options = {'context': self.context} if self.upstream.scheme == 'https' else {}
+            connection = cls(self.upstream.hostname, self.upstream.port, timeout=15, **options)
+            connection.request('GET', '/v2/', headers={'User-Agent': 'pxeye-onsite-preflight'})
+            response = connection.getresponse()
+            # A private Registry commonly challenges the unauthenticated V2
+            # endpoint.  Credentials are checked later by relok8s, but a 401
+            # still proves the endpoint and its TLS policy are usable.
+            if response.status not in (200, 401):
+                raise ValueError('Registry V2 endpoint returned HTTP ' + str(response.status) +
+                                 '; expected 200 or 401')
+        except ssl.SSLCertVerificationError as error:
+            raise ValueError('Registry TLS certificate verification failed; provide registry.ca_file or, only for a verified self-signed endpoint, set registry.skip_tls_verify=true') from error
+        except ssl.SSLError as error:
+            raise ValueError('Registry TLS connection failed; check registry.url scheme, certificate and TLS policy') from error
+        except (OSError, http.client.HTTPException) as error:
+            raise ValueError('Registry V2 endpoint is unreachable; check registry.url, network reachability and service health') from error
+        finally:
+            if connection:
+                connection.close()
+
     def __enter__(self):
         bridge = self
 

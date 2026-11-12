@@ -40,12 +40,16 @@ ${EDITOR:-vi} onsite-run.json
 | `site.context` / `namespace` | 推荐明确指定context；null只允许唯一Kind context；namespace默认nico-system |
 | `site.mode` / `release_prefix` | 恢复填restore，留空前缀时读取唯一现有Core或PXEye父Chart release；全新填new |
 | `site.cert_manager.mode` | 默认 `install` 安装包内控制器；`reuse` 仅用于已有共享 cert-manager 且目标为空 namespace 的全新安装 |
-| `site.registry` | URL留空自动探测唯一可用端点；CA/跳过TLS校验及认证文件按现场设置 |
+| `site.registry` | URL留空自动探测唯一可用端点；HTTPS 提供 `ca_file`，仅已核验的自签名端点可设 `skip_tls_verify: true` |
 | `site.service_ips` / `host_network` | 全新安装必须填写DNS/PXE/NTP IPv4，以及网络name/prefix/gateway/mtu；恢复可复用旧配置 |
 | `bootstrap_pxeye` | 在顶层控制独立 PXEye UI 启动，默认false |
 | `site.storage_class` / `phase_values` | 按需指定存储及阶段定制文件；凭据仅引用受限文件 |
 
 模板默认为 **恢复模式、保留已有PXEye**；全新现场必须修改对应选项和网络参数。工具解压、配置创建只做一次；续跑不要重复覆盖。
+
+导入前，运行器会按已配置的 TLS 策略探测 `GET /v2/`。Registry 返回 `200` 或认证挑战
+`401` 都表示端点可达。若证书校验失败，必须配置现场 Registry CA，或仅针对已经核验的自签名
+现场 Registry 显式设置 `site.registry.skip_tls_verify`；不会再让 relok8s 的本地转发桥将该问题显示成通用 502。
 
 `bootstrap_pxeye=true` 只启动 PXEye UI，NICo 组件仍保持关闭，直到后续有序安装阶段逐个启用。
 同一集群需要第二套隔离部署且已有 cert-manager 时，设置 `site.cert_manager.mode=reuse`；安装器会核验

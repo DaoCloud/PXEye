@@ -365,6 +365,11 @@ class Onsite:
         self.state['cluster_endpoint'] = endpoint; self.save()
         self.helm_run(['version', '--short'], 'helm-version')
         self.run([self.relok, 'version'], 'relok8s-version')
+        # relok8s accesses the target through a loopback bridge and otherwise
+        # reports upstream TLS failures as a generic local 502.  Check the
+        # configured Registry directly before any import work begins.
+        RegistryBridge(self.config['registry'], self.private / 'registry-preflight').probe_upstream()
+        print('REGISTRY_V2_OK', self.registry, flush=True)
         releases = json.loads(self.helm_run(
             ['list', '--all', '-n', self.config['namespace'], '-o', 'json'],
             'namespace-release-layout', private=True).stdout)
@@ -740,7 +745,10 @@ class Onsite:
                 print('RESUME_FAILED_PHASE', key, status, flush=True)
                 # The original complete snapshot remains authoritative.
             else:
-                self.snapshot(key, resume_failed)
+                # The ordered parent-Chart phases all use one Helm release.
+                # Snapshot/recovery must therefore query the selected item's
+                # release, not derive the obsolete per-phase release name.
+                self.snapshot(key, item['release'], resume_failed)
             self.state.setdefault('install_intents', {})[key] = self.install_intent(root, item)
             self.save()
             args = ['upgrade', '--install', item['release'], str(root / item['chart']), '-n', self.config['namespace'],
@@ -826,11 +834,11 @@ class Onsite:
                     annotations.get('meta.helm.sh/release-namespace') == self.config['namespace'],
                     'Existing object belongs to another owner: ' + obj['kind'] + '/' + name)
 
-    def snapshot(self, phase, resume_failed=False):
+    def snapshot(self, phase, release, resume_failed=False):
         directory = self.private / ('before-' + phase)
         if (directory / 'complete.json').exists():
             require(resume_failed, 'Snapshot exists; inspect Helm/Jobs, then explicitly use --phase NAME --resume-failed')
-            status = self.helm_run(['status', self.release(phase), '-n', self.config['namespace'], '-o', 'json'], phase + '-resume-status', check=False, private=True)
+            status = self.helm_run(['status', release, '-n', self.config['namespace'], '-o', 'json'], phase + '-resume-status', check=False, private=True)
             require(status.returncode == 0 or 'release: not found' in status.stderr.lower(), 'Could not establish Helm state; inspect before retry')
             if status.returncode == 0:
                 require(not json.loads(status.stdout)['info']['status'].startswith('pending-'), 'Helm operation is still pending; inspect instead of replaying')
@@ -841,7 +849,7 @@ class Onsite:
             result = self.kubectl(['-n', self.config['namespace'], 'get', 'pvc', '-o', 'json'], phase + '-pvc-before', private=True)
             pvcs = json.loads(result.stdout)
         write_json(directory / 'pvcs.json', pvcs)
-        result = self.helm_run(['get', 'all', self.release(phase), '-n', self.config['namespace']], phase + '-helm-before', check=False, private=True)
+        result = self.helm_run(['get', 'all', release, '-n', self.config['namespace']], phase + '-helm-before', check=False, private=True)
         require(result.returncode == 0 or 'release: not found' in result.stderr.lower(), 'Cannot capture Helm release state; inspect before install')
         (directory / 'helm.txt').write_text(result.stdout); (directory / 'helm.txt').chmod(0o600)
         write_json(directory / 'complete.json', {'metadata_only': True, 'helm_exit_code': result.returncode})

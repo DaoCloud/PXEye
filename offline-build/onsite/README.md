@@ -40,12 +40,18 @@ ${EDITOR:-vi} onsite-run.json
 | site.context / namespace | Explicit context recommended; null allows only one Kind context; namespace defaults to nico-system |
 | site.mode / release_prefix | restore reuses the unique existing Core or PXEye parent release when prefix is empty; new is for fresh sites |
 | site.cert_manager.mode | `install` (default) installs the bundled controller; `reuse` is only for a new, empty namespace with a verified shared cert-manager |
-| site.registry | Empty URL discovers one valid endpoint; configure CA/TLS policy and external authentication references |
+| site.registry | Empty URL discovers one valid endpoint; for HTTPS provide `ca_file`, or use `skip_tls_verify: true` only for a verified self-signed endpoint |
 | site.service_ips / host_network | New sites require DNS/PXE/NTP IPv4 and network name/prefix/gateway/mtu; restore may reuse existing settings |
 | bootstrap_pxeye | Optional standalone PXEye UI startup; defaults to false |
 | site.storage_class / phase_values | Optional storage and per-phase overrides; credentials remain protected-file references |
 
 The template defaults to **restore mode and preserving existing PXEye**. Fresh sites must change the mode/options/network. Preparation runs once; do not overwrite tools or configuration when resuming.
+
+The runner probes `GET /v2/` using the configured TLS policy before importing
+anything. A Registry may return either `200` or an authentication challenge
+(`401`). A certificate failure must be fixed with the Registry CA, or by
+explicitly setting `site.registry.skip_tls_verify` for a verified self-signed
+site Registry; it is not retried through relok8s' local transport bridge.
 
 `bootstrap_pxeye=true` starts only the PXEye UI. NICo components remain
 disabled until their ordered installation phases. For a second isolated
