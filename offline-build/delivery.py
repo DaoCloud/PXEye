@@ -389,6 +389,15 @@ def containerd_args(options):
             '--namespace', options['containerd_namespace']]
 
 
+def tag_registry_image(base, target, source):
+    """Create or refresh a build-private source alias for a pulled image."""
+    if target != source:
+        # A retry reaches the same deterministic private namespace.  Force is
+        # safe there and makes a repaired target replace its earlier alias;
+        # unlike the Kubernetes namespace, no runtime workload consumes it.
+        subprocess.run(base + ['images', 'tag', '--force', target, source], check=True)
+
+
 def ensure_registry_content(options, source, target, insecure):
     """Pull a Chart image and repair a stale containerd image record if needed.
 
@@ -404,8 +413,7 @@ def ensure_registry_content(options, source, target, insecure):
     if insecure:
         pull.append('--plain-http')
     subprocess.run(pull + [target], check=True)
-    if target != source:
-        subprocess.run(base + ['images', 'tag', target, source], check=True)
+    tag_registry_image(base, target, source)
     try:
         containerd_export.resolve_images(options, [source])
         return
@@ -421,8 +429,7 @@ def ensure_registry_content(options, source, target, insecure):
         if result.returncode:
             raise ValueError('Cannot repair incomplete containerd content for ' + target + ': ' +
                              result.stderr[-1000:].strip()) from pull_error
-        if target != source:
-            subprocess.run(base + ['images', 'tag', target, source], check=True)
+        tag_registry_image(base, target, source)
         try:
             containerd_export.resolve_images(options, [source])
         except (ValueError, KeyError, OSError) as error:
