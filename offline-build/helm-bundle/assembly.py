@@ -38,7 +38,7 @@ def configuration(path):
     prepared.require(work.is_absolute(), 'work_directory must be absolute or start with ~/')
     value['work_directory'] = work.resolve()
     repository = HOME.parents[1]
-    prepared.require((not value['work_directory'].is_relative_to(repository) or value['work_directory'] == repository / 'outputs_') and
+    prepared.require((not value['work_directory'].is_relative_to(repository) or value['work_directory'].is_relative_to(repository / 'outputs_')) and
                      not any(c in str(work) for c in ',\n\r'), 'Use repository outputs_ or a location outside the checkout, without commas/newlines')
     source = value.setdefault('sources', {})
     prepared.require(set(source) <= {'charts', 'materials', 'images'}, 'Unknown packaging source fields')
@@ -114,7 +114,7 @@ def plan(value):
 def prepare(value, h):
     b = h.b
     work = value['work_directory']
-    b.require(not work.is_relative_to(h.REPO) or work == h.REPO / 'outputs_',
+    b.require(not work.is_relative_to(h.REPO) or work.is_relative_to(h.REPO / 'outputs_'),
               'Use repository outputs_ or a location outside the checkout')
     source, descriptor, rows, roles, groups = inputs(value)
     containerd_export.verify_output(source, descriptor['identity'])

@@ -38,7 +38,7 @@ def configuration(path, image_list=None):
     work = Path(raw['work_directory']).expanduser()
     contract.require(work.is_absolute(), 'work_directory must be absolute or start with ~/')
     work = work.resolve()
-    contract.require(not work.is_relative_to(REPO) or work == REPO / 'outputs_',
+    contract.require(not work.is_relative_to(REPO) or work.is_relative_to(REPO / 'outputs_'),
                      'Use the repository outputs_ directory or a location outside the Git checkout')
     selected_list = image_list or options.get('image_list')
     contract.require(selected_list, 'No image list supplied; use the unified delivery entry or provide image_export.image_list for the legacy exporter')
