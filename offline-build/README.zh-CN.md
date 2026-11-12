@@ -15,6 +15,17 @@ make -f ./PXEye/Makefile bundles
 
 `make bundles` 默认读取 PXEye 检出目录同级的 `../build-config.json`，使用同级 `../outputs_/`，并生成 `outputs_/output/bundle-<PXEye版本>-<Asia/Shanghai时间戳>/`，例如 `bundle-0.22.16-202611121650`。已有配置不会被覆盖。只有需要固定版本（例如 `OFFLINE_BUNDLE_VERSION=release-1`）或独立工作区时才覆盖。现场 Registry、namespace 和网络属于部署阶段配置，不是构建参数。
 
+## 镜像缓存
+
+首次构建或 Chart 镜像版本变化后，先将父 Chart 渲染出的镜像缓存到 Registry：
+
+```bash
+REGISTRY=127.0.0.1:1027 REGISTRY_INSECURE=true \
+  make -f ./PXEye/Makefile cache-images
+```
+
+该命令不读取 `images.txt`：它从 PXEye 父 Chart 及锁定子 Chart 自动得到镜像闭包，缺失镜像才从其原始公网引用拉取，再推送到 `REGISTRY`。第三方和 NICo 镜像仅替换 Registry 主机名，保留 repository 路径和 tag；PXEye 自建镜像使用 `REGISTRY/pxeye:<tag>`。该步骤不制作 bundle、不部署 Kubernetes。
+
 只读检查本地镜像、用途、Chart 来源和交付输入：
 
 ```bash

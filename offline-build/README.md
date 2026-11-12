@@ -15,6 +15,17 @@ make -f ./PXEye/Makefile bundles
 
 `make bundles` defaults to `../build-config.json` and `../outputs_/` relative to the PXEye checkout, and creates `outputs_/output/bundle-<PXEye version>-<Asia/Shanghai timestamp>/`, such as `bundle-0.22.16-202611121650`. Existing configuration is preserved. Override only when needed, for example `OFFLINE_BUNDLE_VERSION=release-1`; the target-site Registry, namespace and networking remain onsite deployment configuration, not build arguments.
 
+## Image cache
+
+Before the first build, or after a Chart image version changes, cache the parent-Chart closure in a Registry:
+
+```bash
+REGISTRY=127.0.0.1:1027 REGISTRY_INSECURE=true \
+  make -f ./PXEye/Makefile cache-images
+```
+
+The command does not read `images.txt`. It renders the PXEye parent and locked child Charts, pulls only missing images from their original public references, and pushes them to `REGISTRY`. Third-party and NICo images retain their repository path and tag while their registry host changes; the PXEye image becomes `REGISTRY/pxeye:<tag>`. It does not create a bundle or deploy Kubernetes.
+
 Read-only validation of local images, roles, Chart sources and delivery input:
 
 ```bash
