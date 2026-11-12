@@ -31,7 +31,9 @@ def initialize(path, section, work_directory=None):
     with (path.parent / '.build-config.lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         value = read(path) if path.exists() else {}
-        proposed = (work_directory or path.parent).expanduser().resolve()
+        # Keep large, resumable build state alongside the checkout rather than
+        # among source files.  Callers may still select another stable location.
+        proposed = (work_directory or path.parent / 'outputs_').expanduser().resolve()
         if 'work_directory' in value:
             configured = Path(value['work_directory']).expanduser().resolve()
             if work_directory is not None and configured != proposed:

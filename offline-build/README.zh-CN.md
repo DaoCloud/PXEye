@@ -8,13 +8,12 @@
 
 ```bash
 cd ~/pxeye-build
-python3 ./PXEye/offline-build/delivery.py --write-config ./build-config.json --work-directory "$PWD"
 make -f ./PXEye/Makefile bundles
 ```
 
-第一条仅在首次创建共用配置和默认来源文件时执行。`make bundles` 是完整构建入口：先渲染父 Chart 自动得出镜像闭包；只有闭包变化时才从本地 containerd 更新 OCI 缓存；随后完成打包与校验。闭包未变化时缓存初始化会直接返回，不会导出镜像。打包阶段复用 `localhost:1027` 的持久 Registry。
+`make bundles` 是完整构建入口。首次运行时会在 PXEye 检出目录的同级位置创建 `build-config.json` 和默认 Chart 来源文件，并将可恢复的构建状态统一放入 `outputs_/`。随后渲染父 Chart 自动得出镜像闭包；只有闭包变化时才从本地 containerd 更新 OCI 缓存；随后完成打包与校验。闭包未变化时缓存初始化会直接返回，不会导出镜像。打包阶段复用 `localhost:1027` 的持久 Registry。
 
-`make bundles` 默认读取当前目录的 `./build-config.json`，并自动生成 UTC 时间戳版本目录。只有需要固定版本（例如 `OFFLINE_BUNDLE_VERSION=release-1`）或非默认配置路径时才覆盖。现场 Registry、namespace 和网络属于部署阶段配置，不是构建参数。
+`make bundles` 默认读取 PXEye 检出目录同级的 `../build-config.json`，使用同级 `../outputs_/`，并生成 `outputs_/output/bundle-<UTC 时间戳>/`。已有配置不会被覆盖。只有需要固定版本（例如 `OFFLINE_BUNDLE_VERSION=release-1`）或独立工作区时才覆盖。现场 Registry、namespace 和网络属于部署阶段配置，不是构建参数。
 
 只读检查本地镜像、用途、Chart 来源和交付输入：
 

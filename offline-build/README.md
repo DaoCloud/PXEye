@@ -8,13 +8,12 @@ Run one builder script with one `build-config.json`. It exports local containerd
 
 ```bash
 cd ~/pxeye-build
-python3 ./PXEye/offline-build/delivery.py --write-config ./build-config.json --work-directory "$PWD"
 make -f ./PXEye/Makefile bundles
 ```
 
-The first command is only needed once to initialize the shared configuration and default source files. `make bundles` is the complete build command: it first renders the parent Chart and derives its image closure, then updates the local OCI cache only if that closure changed, then packages and verifies the delivery. With an unchanged closure, the cache-seed phase returns without exporting from containerd. The package phase reuses the persistent loopback Registry at `localhost:1027`.
+`make bundles` is the complete build command. On its first run it creates `build-config.json` and the default Chart-source file beside the PXEye checkout, with resumable build state under `outputs_/`. It then renders the parent Chart and derives its image closure, updates the local OCI cache only if that closure changed, then packages and verifies the delivery. With an unchanged closure, the cache-seed phase returns without exporting from containerd. The package phase reuses the persistent loopback Registry at `localhost:1027`.
 
-`make bundles` defaults to `./build-config.json` and creates `output/bundle-<UTC timestamp>/`. Override only when needed, for example `OFFLINE_BUNDLE_VERSION=release-1`; the target-site Registry, namespace and networking remain onsite deployment configuration, not build arguments.
+`make bundles` defaults to `../build-config.json` and `../outputs_/` relative to the PXEye checkout, and creates `outputs_/output/bundle-<UTC timestamp>/`. Existing configuration is preserved. Override only when needed, for example `OFFLINE_BUNDLE_VERSION=release-1`; the target-site Registry, namespace and networking remain onsite deployment configuration, not build arguments.
 
 Read-only validation of local images, roles, Chart sources and delivery input:
 

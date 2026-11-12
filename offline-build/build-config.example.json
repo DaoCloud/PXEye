@@ -1,5 +1,4 @@
 {
-  "work_directory": "~/pxeye-build",
   "image_export": {},
   "helm_bundle": {
     "chart_sources": "chart-sources.json"
