@@ -14,7 +14,7 @@ VERSION_ARG := $(if $(BUNDLE_VERSION),--version $(BUNDLE_VERSION),)
 DHCP_TIMEOUT ?= 15
 DHCP_ATTEMPTS ?= 3
 
-.PHONY: syntax lint format-check test wheel image ensure-build-config cache-images bundles dhcp-check
+.PHONY: syntax lint format-check test wheel image ensure-build-config cache-images bundles dhcp-check dhcp-check-help
 syntax:
 	$(PYTHON) -m compileall -q src tests/unit
 	@find src/pxeye/web -name '*.js' -exec $(NODE) --check {} \;
@@ -65,5 +65,11 @@ cache-images: ensure-build-config
 
 # Run on the client VLAN; this sends Discover only and never configures an IP.
 dhcp-check:
-	@test -n "$(IFACE)" || { echo "Usage: sudo make dhcp-check IFACE=eno1 [DHCP_SERVER=192.0.2.10] [DHCP_SUBNET=192.0.2.0/24]" >&2; exit 2; }
-	$(PYTHON) "$(REPO_ROOT)/tools/dhcp-check.py" --interface "$(IFACE)" --timeout "$(DHCP_TIMEOUT)" --attempts "$(DHCP_ATTEMPTS)" $(if $(DHCP_MAC),--mac "$(DHCP_MAC)",) $(if $(DHCP_SERVER),--server "$(DHCP_SERVER)",) $(if $(DHCP_SUBNET),--subnet "$(DHCP_SUBNET)",) $(if $(DHCP_REPORT),--report "$(DHCP_REPORT)",)
+	@if test "$(HELP)" = "1" || test -z "$(IFACE)"; then \
+		$(PYTHON) "$(REPO_ROOT)/tools/dhcp-check.py" --help; \
+	else \
+		$(PYTHON) "$(REPO_ROOT)/tools/dhcp-check.py" --interface "$(IFACE)" --timeout "$(DHCP_TIMEOUT)" --attempts "$(DHCP_ATTEMPTS)" $(if $(DHCP_MAC),--mac "$(DHCP_MAC)",) $(if $(DHCP_SERVER),--server "$(DHCP_SERVER)",) $(if $(DHCP_SUBNET),--subnet "$(DHCP_SUBNET)",) $(if $(DHCP_REPORT),--report "$(DHCP_REPORT)",); \
+	fi
+
+dhcp-check-help:
+	@$(PYTHON) "$(REPO_ROOT)/tools/dhcp-check.py" --help

@@ -6,6 +6,16 @@ Use Make on a Linux test host attached to the target device VLAN to check DHCP r
 
 The script uses the selected interface's MAC and sends Discover from `0.0.0.0:68` to `255.255.255.255:67`. By default, it sends three times within 15 seconds, collecting and deduplicating Offers matching the transaction and MAC. It never sends Request, accepts a lease, configures IP/routes, or changes Kubernetes, Relay, or firewall configuration. DHCP/NICo may still record the test MAC or a temporary allocation.
 
+Show all parameters and examples (no root or network traffic required):
+
+```bash
+make dhcp-check HELP=1
+# Equivalent entry
+make dhcp-check-help
+```
+
+Without `IFACE`, `make dhcp-check` also displays help only. `make dhcp-check --help` invokes GNU Make's own help; it cannot pass that option to the script.
+
 ## Commands
 
 Run from the PXEye repository root on the Linux test host. Select an enabled Ethernet/VLAN interface attached to the target VLAN:

@@ -162,7 +162,22 @@ def parse_offer(frame, xid, client_mac):
 
 def arguments():
     parser = argparse.ArgumentParser(
-        description="Linux DHCPv4 Discover/Offer check; never requests a lease or changes IP/routes."
+        description="Linux DHCPv4 Discover/Offer check; never requests a lease or changes IP/routes.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Make examples (run on the client VLAN):
+  make dhcp-check HELP=1                 Show this help; no network traffic
+  make dhcp-check-help                   Same help
+  sudo make dhcp-check IFACE=eno1         Probe with the interface MAC
+  sudo make dhcp-check IFACE=eno1 DHCP_TIMEOUT=20 DHCP_ATTEMPTS=3
+  sudo make dhcp-check IFACE=eno1 DHCP_SERVER=192.0.2.10 DHCP_SUBNET=192.0.2.0/24
+  sudo make dhcp-check IFACE=eno1 DHCP_MAC=02:00:00:00:00:01
+  sudo make dhcp-check IFACE=eno1 DHCP_REPORT=/tmp/dhcp-result.json
+
+Without IFACE, make dhcp-check shows help. make --help is Make's own help.
+Requires Linux and raw packet privileges; no Nmap or third-party Python packages.
+Script exit codes: 0=Offer matches, 1=no Offer, 2=error, 3=mismatch, 130=interrupted.
+Make normally returns 2 on any recipe failure; JSON reports retain the script code.
+""",
     )
     parser.add_argument("-i", "--interface", required=True, help="Client interface on the target VLAN")
     parser.add_argument("--mac", type=mac_address, help="BOOTP client MAC; default: interface MAC")

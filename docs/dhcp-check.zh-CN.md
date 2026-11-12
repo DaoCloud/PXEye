@@ -6,6 +6,16 @@
 
 脚本使用所选网卡的真实 MAC，从 `0.0.0.0:68` 向 `255.255.255.255:67` 发送 Discover。默认在 15 秒内发送三次，收集并去重显示匹配本次事务和 MAC 的 Offer。不会发送 Request、接受租约、配置主机 IP 或路由，也不修改 Kubernetes、Relay 或防火墙。DHCP/NICo 仍可能记录测试 MAC 或临时地址分配。
 
+查看全部参数和示例（无需 root，不发送报文）：
+
+```bash
+make dhcp-check HELP=1
+# 等价入口
+make dhcp-check-help
+```
+
+未指定 `IFACE` 时，`make dhcp-check` 也只显示帮助。`make dhcp-check --help` 会触发 GNU Make 自身的帮助，不能作为脚本参数传递。
+
 ## 执行命令
 
 在 Linux 测试主机的 PXEye 仓库根目录执行，选择实际连接目标 VLAN 且已启用的 Ethernet/VLAN 网卡：
