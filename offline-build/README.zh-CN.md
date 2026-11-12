@@ -2,7 +2,9 @@
 
 [English](README.md) · **简体中文**
 
-构建机只执行一个脚本、使用一份 `build-config.json`。它依次导出本地 containerd 镜像、准备固定 Chart、生成并校验离线交付包。现场部署仍在火种机执行。
+标准流程只使用一份 `build-config.json` 和一个 `make bundles` 入口。它渲染锁定的
+PXEye 父 Chart，从指定 Registry 导出精确镜像闭包，执行一次 relocation，并校验最终离线
+交付包。现场部署仍在火种机执行。
 
 ## 构建
 
@@ -41,8 +43,10 @@ REGISTRY=127.0.0.1:1027 REGISTRY_INSECURE=true \
   make bundles
 ```
 
-构建会校验固定校验和、生成按内容寻址的材料镜像，并由 Core PXE 服务通过既有的
-引导材料路径发布。为 ARM 构建预热 Registry 时，`make cache-images` 也使用同样的两个变量。
+构建会校验固定校验和、生成 `linux/amd64` 的内容寻址材料镜像，并由 Core PXE 服务通过既有的
+引导材料路径发布。镜像身份同时包含 payload、基础 manifest、初始化程序和渲染后的镜像定义，
+因此镜像合同变更不会错误复用旧 tag。为 ARM 构建预热 Registry 时，`make cache-images`
+也使用同样的两个变量。
 
 ## 镜像缓存
 
@@ -70,22 +74,14 @@ REGISTRY=127.0.0.1:1027 REGISTRY_INSECURE=true make bundles
 
 Registry OCI 导出和 bundle staging 缓存在 `cache/registry-exports/`；最终交付文件始终写入构建工作目录根部的 `output/bundle-<version>/`。
 
-只读检查本地镜像、用途、Chart 来源和交付输入：
-
-```bash
-python3 ./PXEye/offline-build/delivery.py --config ./build-config.json --plan
-```
-
 | 内部阶段 | 作用 | 交付/缓存 |
 | --- | --- | --- |
-| 缓存初始化（`make bundles` 内部） | 渲染父 Chart；仅闭包变化时才从本地 containerd 导出精确镜像闭包 | `offline-images/` |
-| package | 核对缓存闭包、将锁定子 Chart 引入 PXEye 父 Chart、使用配置的 Registry、只执行一次 relok8s 并交付 | `cache/registry-exports/`、`charts/`、`bundle-staging/`、`output/` |
+| Registry 输入 | 渲染父 Chart，从 `REGISTRY` 拉取精确镜像闭包，再生成隔离的 OCI 导出 | `cache/registry-exports/` |
+| package | 将锁定子 Chart 引入 PXEye 父 Chart、只执行一次 relok8s，并校验最终交付物 | `bundle-staging/`、`output/` |
 
-| 步骤 | 做什么 | 关键输入 | 输出与交接 |
-| --- | --- | --- | --- |
-| [构建内部镜像导出](material-prepare/README.zh-CN.md) | 按清单导出本地 containerd 镜像 | 镜像清单 | `offline-images/` |
-| [构建内部打包](helm-bundle/README.zh-CN.md) | 准备 PXEye 父/子 Chart、一次 relok8s 搬迁和验包 | 导出镜像与 Chart 来源 | 三个交付文件 |
-| [现场部署](onsite/README.zh-CN.md) | 解包、镜像与 Chart 入库、顺序 Helm 安装 | 三个交付文件；现场配置 | PXEye、NICo Core 与依赖 |
+旧版[显式镜像导出器](material-prepare/README.zh-CN.md)和
+[schema-1 打包器](helm-bundle/README.zh-CN.md)只保留兼容用途，不是本流程的步骤。
+现场交接从[现场部署](onsite/README.zh-CN.md)开始。
 
 ## 配置与状态管理
 
@@ -96,7 +92,7 @@ python3 ./PXEye/offline-build/delivery.py --config ./build-config.json --plan
 
 ## 执行条件与路径
 
-构建机：Linux amd64、Python 3.11+/PyYAML、Docker 本地服务、Helm 3、足够空间。断网构建需预置锁定的工具和基础镜像。
+构建机：Linux amd64、Python 3.11+/PyYAML、Docker 本地服务、Helm 3、足够空间。ARM 材料构建会在 Docker 修改本地或 Registry 状态前拒绝其他主机架构。断网构建需预置锁定的工具和基础镜像。
 
 火种机：Linux amd64、Python 3.11+/PyYAML、kubectl、可用 Registry 和 Kubernetes；节点已能从该 Registry 拉镜像。Helm、relok8s 随离线包交付。
 

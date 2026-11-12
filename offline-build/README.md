@@ -2,7 +2,10 @@
 
 **English** · [简体中文](README.zh-CN.md)
 
-Run one builder script with one `build-config.json`. It exports local containerd images, prepares pinned Charts, and builds and verifies the offline delivery. Onsite deployment still runs on the fireseed host.
+The supported workflow uses one `build-config.json` and one `make bundles`
+entry point. It renders the locked PXEye parent Chart, exports exactly that
+closure from the configured Registry, relocates it once, and verifies the
+offline delivery. Onsite deployment still runs on the fireseed host.
 
 ## Build
 
@@ -43,10 +46,12 @@ REGISTRY=127.0.0.1:1027 REGISTRY_INSECURE=true \
   make bundles
 ```
 
-The build verifies the pinned file checksums, creates a content-addressed
-material image, and makes the Core PXE service publish it through the existing
-boot-artifact path. Use the same two variables with `make cache-images` when
-preparing a Registry for an ARM-enabled build.
+The build verifies the pinned file checksums, creates a linux/amd64,
+content-addressed material image, and makes the Core PXE service publish it
+through the existing boot-artifact path. Its identity includes the payload,
+base manifest, initializer and rendered image definition, so a changed image
+contract cannot reuse a previous tag. Use the same two variables with `make
+cache-images` when preparing a Registry for an ARM-enabled build.
 
 ## Image cache
 
@@ -77,22 +82,15 @@ defaults to `outputs_/build-config.json` and creates
 
 Registry OCI exports and bundle staging are cached under `cache/registry-exports/`; final delivery files always go to `output/bundle-<version>/` at the build work-directory root.
 
-Read-only validation of local images, roles, Chart sources and delivery input:
-
-```bash
-python3 ./PXEye/offline-build/delivery.py --config ./build-config.json --plan
-```
-
 | Internal stage | Purpose | Delivery/cache |
 | --- | --- | --- |
-| cache seed (inside `make bundles`) | Render the parent Chart and export its exact local containerd image closure only when it changed | `offline-images/` |
-| package | Verify the cached closure, vendor locked child Charts under the PXEye parent, use the configured Registry, run relok8s once, and produce the delivery | `cache/registry-exports/`, `charts/`, `bundle-staging/`, `output/` |
+| registry input | Render the parent Chart, pull its exact image closure from `REGISTRY`, then create an isolated OCI export | `cache/registry-exports/` |
+| package | Vendor locked child Charts under the PXEye parent, run relok8s once, and verify the final delivery | `bundle-staging/`, `output/` |
 
-| Step | Purpose | Input | Output |
-| --- | --- | --- | --- |
-| [Internal image export](material-prepare/README.md) | Export listed local containerd images | Image list | `offline-images/` |
-| [Internal packaging](helm-bundle/README.md) | Prepare the PXEye parent/dependencies, relocate one image closure and verify | Exported images and Chart sources | Three delivery files |
-| [Onsite deployment](onsite/README.md) | Unpack, import images/Charts, install through Helm in order | Three delivery files and site configuration | PXEye, NICo Core and dependencies |
+The legacy [explicit-image exporter](material-prepare/README.md) and
+[schema-1 packager](helm-bundle/README.md) remain for compatibility only; they
+are not steps in this workflow. The onsite handoff starts at
+[onsite deployment](onsite/README.md).
 
 ## Configuration and state management
 
@@ -103,7 +101,7 @@ python3 ./PXEye/offline-build/delivery.py --config ./build-config.json --plan
 
 ## Requirements and paths
 
-Builder: Linux amd64, Python 3.11+/PyYAML, local Docker, Helm 3 and sufficient space. Fully offline builds require cached locked tools and base images.
+Builder: Linux amd64, Python 3.11+/PyYAML, local Docker, Helm 3 and sufficient space. ARM material construction rejects another host architecture before Docker mutates local or Registry state. Fully offline builds require cached locked tools and base images.
 
 Fireseed: Linux amd64, Python 3.11+/PyYAML, kubectl, an available cluster/Registry and working node image pulls. Helm and relok8s are delivered in the bundle.
 

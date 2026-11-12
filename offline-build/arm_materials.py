@@ -204,17 +204,27 @@ def _validated_source(cache_root: Path, source: Path, rows: list[dict], recipe_s
                               bytes=row['bytes'], sha256=row['sha256']) for row in rows), reused
 
 
-def image_content_id(material: ArmMaterial, base_digest: str, initializer_digest: str) -> str:
-    """Derive a material-image identity from validated payload and implementation inputs."""
+def image_content_id(material: ArmMaterial, base_digest: str, initializer_digest: str,
+                     definition_sha256: str) -> str:
+    """Derive a material-image identity from payload and its exact image definition.
+
+    The material tag is a cache key as well as a delivery reference.  Hash the
+    rendered Dockerfile separately from the initializer so changes such as a
+    different user, COPY target or base repository cannot silently reuse an
+    older image merely because the source payload has not changed.
+    """
     _require(material.enabled and material.content_id and material.files,
              'ARM material is not enabled')
     _require(DIGEST.fullmatch(base_digest) is not None, 'Invalid ARM material base image digest')
     _require(SHA256.fullmatch(initializer_digest) is not None,
              'Invalid ARM material initializer SHA-256')
+    _require(SHA256.fullmatch(definition_sha256) is not None,
+             'Invalid ARM material image definition SHA-256')
     return _stable_hash({
         'source_content_id': material.content_id,
         'base_digest': base_digest,
         'initializer_sha256': initializer_digest,
+        'image_definition_sha256': definition_sha256,
         'layout_version': LAYOUT_VERSION,
     })
 
@@ -288,7 +298,7 @@ def read_image_lock(material: ArmMaterial) -> dict | None:
 
 def write_image_lock(material: ArmMaterial, *, reference: str, digest: str,
                      image_content: str, base_digest: str,
-                     initializer_sha256: str) -> dict:
+                     initializer_sha256: str, definition_sha256: str) -> dict:
     """Persist the Registry result after the caller has built and inspected it."""
     _require(material.enabled and material.lock_path is not None,
              'ARM material is not enabled')
@@ -299,6 +309,8 @@ def write_image_lock(material: ArmMaterial, *, reference: str, digest: str,
     _require(DIGEST.fullmatch(base_digest) is not None, 'Invalid ARM material base image digest')
     _require(SHA256.fullmatch(initializer_sha256) is not None,
              'Invalid ARM material initializer SHA-256')
+    _require(SHA256.fullmatch(definition_sha256) is not None,
+             'Invalid ARM material image definition SHA-256')
     _require(SHA256.fullmatch(str(material.recipe_sha256)) is not None,
              'ARM material lacks a validated recipe SHA-256')
     data = {
@@ -315,6 +327,7 @@ def write_image_lock(material: ArmMaterial, *, reference: str, digest: str,
             'content_id': image_content,
             'base_digest': base_digest,
             'initializer_sha256': initializer_sha256,
+            'definition_sha256': definition_sha256,
         },
     }
     _atomic_json(material.lock_path, data)

@@ -12,6 +12,7 @@ import sys
 import tempfile
 import os
 import hashlib
+import platform
 
 import yaml
 
@@ -138,12 +139,13 @@ def registry_digest(docker, runner_image, reference, insecure):
     return digest
 
 
-def material_record(material, *, reference, digest, image_content, base_digest, initializer_sha256):
+def material_record(material, *, reference, digest, image_content, base_digest, initializer_sha256,
+                    definition_sha256):
     """Return the final delivery record without polluting image identity.
 
     ``source`` and ``runtime`` describe provenance and consumption in the
     delivery manifest only.  The image tag remains solely a function of the
-    immutable payload, recipe, base manifest and initializer implementation.
+    immutable payload, recipe, base manifest, initializer and image definition.
     """
     return material.as_manifest() | {
         'image': reference,
@@ -151,6 +153,7 @@ def material_record(material, *, reference, digest, image_content, base_digest, 
         'image_content_id': image_content,
         'base_digest': base_digest,
         'initializer_sha256': initializer_sha256,
+        'image_definition_sha256': definition_sha256,
         'source': {'directory': str(material.source_dir), 'layout': 'direct-aarch64-file-set'},
         'runtime': {
             'init_container': 'boot-artifacts-aarch64',
@@ -194,6 +197,32 @@ def require_clean_arm_material_sources():
         raise ValueError('Commit ARM material sources before constructing or publishing the material image')
 
 
+def require_local_linux_amd64():
+    """Fail before any Docker mutation when this bundle cannot be built here."""
+    machine = platform.machine().lower()
+    if sys.platform != 'linux' or machine not in ('x86_64', 'amd64'):
+        raise ValueError('ARM material image construction requires a Linux amd64 builder')
+
+
+def material_dockerfile(base_reference, base_digest):
+    """Return the complete, identity-bearing Dockerfile for ARM boot material."""
+    return (
+        'FROM ' + image_repository(base_reference) + '@' + base_digest + '\n'
+        'COPY payload /payload\n'
+        'COPY arm-material-init.py /usr/local/bin/arm-material-init\n'
+        'USER 0:0\n'
+        'ENTRYPOINT ["python3", "/usr/local/bin/arm-material-init"]\n')
+
+
+def docker_platform(docker, reference):
+    """Read a local image platform without depending on Docker's default target."""
+    result = subprocess.run([docker, 'image', 'inspect', '--format', '{{.Os}}/{{.Architecture}}', reference],
+                            capture_output=True, text=True)
+    if result.returncode:
+        raise ValueError('Cannot inspect local ARM material base image ' + reference + ': ' + result.stderr[-1000:].strip())
+    return result.stdout.strip().lower()
+
+
 def arm_material_record(package_value, registry, insecure, *, allow_build=True):
     """Build or reuse the optional immutable ARM boot-material image.
 
@@ -203,6 +232,7 @@ def arm_material_record(package_value, registry, insecure, *, allow_build=True):
     from the pre-populated Registry through the ordinary cache-images flow.
     """
     if allow_build and arm_materials.enabled():
+        require_local_linux_amd64()
         require_clean_arm_material_sources()
     material = arm_materials.prepare(package_value['work_directory'])
     if not material.enabled:
@@ -221,15 +251,20 @@ def arm_material_record(package_value, registry, insecure, *, allow_build=True):
         base_digest = image.get('base_digest')
         if arm_materials.DIGEST.fullmatch(str(base_digest)) is None:
             raise ValueError('ARM material plan lock lacks a valid base image digest; run make bundles again')
-        image_content = arm_materials.image_content_id(material, base_digest, initializer_sha256)
+        definition = material_dockerfile(cache_reference(pxeye_image(), registry), base_digest)
+        definition_sha256 = hashlib.sha256(definition.encode()).hexdigest()
+        image_content = arm_materials.image_content_id(material, base_digest, initializer_sha256,
+                                                       definition_sha256)
         reference = registry + '/pxeye/materials/boot-aarch64:sha-' + image_content
         if (image.get('reference') != reference or image.get('content_id') != image_content or
                 image.get('initializer_sha256') != initializer_sha256 or
+                image.get('definition_sha256') != definition_sha256 or
                 arm_materials.DIGEST.fullmatch(str(image.get('digest'))) is None):
             raise ValueError('ARM material plan lock does not match current inputs; run make bundles without --plan')
         print('REUSE_ARM64_MATERIAL_PLAN', reference, image['digest'], flush=True)
         return [material_record(material, reference=reference, digest=image['digest'], image_content=image_content,
-                                base_digest=base_digest, initializer_sha256=initializer_sha256)]
+                                base_digest=base_digest, initializer_sha256=initializer_sha256,
+                                definition_sha256=definition_sha256)]
 
     docker = package_value['tools']['docker']
     # The parent Chart can name PXEye through another registry host.  Its
@@ -237,20 +272,26 @@ def arm_material_record(package_value, registry, insecure, *, allow_build=True):
     # only safe base for a no-network material image build.
     base_reference = cache_reference(pxeye_image(), registry)
     print('PREPARE_ARM64_MATERIAL_BASE', base_reference, flush=True)
-    pull = subprocess.run([docker, 'pull', base_reference], capture_output=True, text=True)
+    pull = subprocess.run([docker, 'pull', '--platform', 'linux/amd64', base_reference], capture_output=True, text=True)
     if pull.returncode:
         protocol = 'HTTP' if insecure else 'HTTPS'
         raise ValueError('Cannot obtain ARM material base image ' + base_reference +
                          '. Publish PXEye with make images first and make Docker trust the ' + protocol +
                          ' Registry: ' + pull.stderr[-1000:].strip())
     base_digest = registry_digest(docker, base_reference, base_reference, insecure)
-    image_content = arm_materials.image_content_id(material, base_digest, initializer_sha256)
+    if docker_platform(docker, base_reference) != 'linux/amd64':
+        raise ValueError('ARM material base image is not linux/amd64: ' + base_reference)
+    definition = material_dockerfile(base_reference, base_digest)
+    definition_sha256 = hashlib.sha256(definition.encode()).hexdigest()
+    image_content = arm_materials.image_content_id(material, base_digest, initializer_sha256,
+                                                   definition_sha256)
     reference = registry + '/pxeye/materials/boot-aarch64:sha-' + image_content
 
     if lock is not None:
         image = lock['image']
         if (image.get('reference') == reference and image.get('content_id') == image_content and
-                image.get('base_digest') == base_digest and image.get('initializer_sha256') == initializer_sha256):
+                image.get('base_digest') == base_digest and image.get('initializer_sha256') == initializer_sha256 and
+                image.get('definition_sha256') == definition_sha256):
             try:
                 actual = registry_digest(docker, base_reference, reference, insecure)
             except ValueError:
@@ -258,7 +299,8 @@ def arm_material_record(package_value, registry, insecure, *, allow_build=True):
             if actual == image.get('digest'):
                 print('REUSE_ARM64_MATERIAL_IMAGE', reference, actual, flush=True)
                 return [material_record(material, reference=reference, digest=actual, image_content=image_content,
-                                        base_digest=base_digest, initializer_sha256=initializer_sha256)]
+                                        base_digest=base_digest, initializer_sha256=initializer_sha256,
+                                        definition_sha256=definition_sha256)]
 
     # Never build from the network: the precise base has already been pulled
     # from REGISTRY and the Docker build runs without a network namespace.
@@ -273,18 +315,14 @@ def arm_material_record(package_value, registry, insecure, *, allow_build=True):
             target.chmod(0o644)
         manifest = material.as_manifest() | {'image_content_id': image_content,
                                               'base_digest': base_digest,
-                                              'initializer_sha256': initializer_sha256}
+                                              'initializer_sha256': initializer_sha256,
+                                              'image_definition_sha256': definition_sha256}
         (context / 'payload/manifest.json').write_text(json.dumps(manifest, indent=2, sort_keys=True) + '\n')
         shutil.copyfile(initializer, context / 'arm-material-init.py')
         (context / 'arm-material-init.py').chmod(0o644)
-        (context / 'Dockerfile').write_text(
-            'FROM ' + image_repository(base_reference) + '@' + base_digest + '\n'
-            'COPY payload /payload\n'
-            'COPY arm-material-init.py /usr/local/bin/arm-material-init\n'
-            'USER 0:0\n'
-            'ENTRYPOINT ["python3", "/usr/local/bin/arm-material-init"]\n')
+        (context / 'Dockerfile').write_text(definition)
         print('BUILD_ARM64_MATERIAL_IMAGE', reference, flush=True)
-        build = subprocess.run([docker, 'build', '--pull=false', '--network=none',
+        build = subprocess.run([docker, 'build', '--platform', 'linux/amd64', '--pull=false', '--network=none',
                                 '--label', 'io.pxeye.offline-material=' + image_content,
                                 '--tag', reference, str(context)], capture_output=True, text=True)
         if build.returncode:
@@ -302,10 +340,12 @@ def arm_material_record(package_value, registry, insecure, *, allow_build=True):
 
     arm_materials.write_image_lock(material, reference=reference, digest=digest,
                                    image_content=image_content, base_digest=base_digest,
-                                   initializer_sha256=initializer_sha256)
+                                   initializer_sha256=initializer_sha256,
+                                   definition_sha256=definition_sha256)
     print('ARM64_MATERIAL_READY', reference, digest, flush=True)
     return [material_record(material, reference=reference, digest=digest, image_content=image_content,
-                            base_digest=base_digest, initializer_sha256=initializer_sha256)]
+                            base_digest=base_digest, initializer_sha256=initializer_sha256,
+                            definition_sha256=definition_sha256)]
 
 
 def cache_images(path):
