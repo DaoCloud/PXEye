@@ -6,11 +6,11 @@ BUILD_TIME := $(shell TZ=Asia/Shanghai date +%Y%m%d%H%M)
 IMAGE ?= mmzhou-os-install-console:$(VERSION)-$(BUILD_TIME)
 VCS_REF := $(shell git -C "$(REPO_ROOT)" rev-parse HEAD)
 BASE_IMAGE ?= ubuntu:24.04
-OFFLINE_BUILD_CONFIG ?= $(REPO_ROOT)/../build-config.json
-OFFLINE_WORK_DIRECTORY ?= $(REPO_ROOT)/../outputs_
-OFFLINE_BUNDLE_VERSION ?= bundle-$(VERSION)-$(shell TZ=Asia/Shanghai date +%Y%m%d%H%M)
-OFFLINE_DELIVERY := $(REPO_ROOT)/offline-build/delivery.py
-OFFLINE_VERSION_ARG := $(if $(OFFLINE_BUNDLE_VERSION),--version $(OFFLINE_BUNDLE_VERSION),)
+BUILD_CONFIG ?= $(REPO_ROOT)/../build-config.json
+BUILD_WORK_DIRECTORY ?= $(REPO_ROOT)/../outputs_
+BUNDLE_VERSION ?= bundle-$(VERSION)-$(shell TZ=Asia/Shanghai date +%Y%m%d%H%M)
+DELIVERY_SCRIPT := $(REPO_ROOT)/offline-build/delivery.py
+VERSION_ARG := $(if $(BUNDLE_VERSION),--version $(BUNDLE_VERSION),)
 
 .PHONY: syntax lint format-check test wheel image cache-images bundles
 syntax:
@@ -47,14 +47,14 @@ image:
 # and a PXEye-versioned Asia/Shanghai timestamped bundle version. Override only for a separate workspace
 # or a repeatable output version.
 bundles:
-	@if test ! -f "$(OFFLINE_BUILD_CONFIG)"; then \
-		echo "INITIALIZE_OFFLINE_BUILD_CONFIG $(OFFLINE_BUILD_CONFIG)"; \
-		$(PYTHON) "$(OFFLINE_DELIVERY)" --write-config "$(OFFLINE_BUILD_CONFIG)" --work-directory "$(OFFLINE_WORK_DIRECTORY)"; \
+	@if test ! -f "$(BUILD_CONFIG)"; then \
+		echo "INITIALIZE_BUILD_CONFIG $(BUILD_CONFIG)"; \
+		$(PYTHON) "$(DELIVERY_SCRIPT)" --write-config "$(BUILD_CONFIG)" --work-directory "$(BUILD_WORK_DIRECTORY)"; \
 	fi
-	@test -f "$(OFFLINE_BUILD_CONFIG)" || { echo "Missing OFFLINE_BUILD_CONFIG=$(OFFLINE_BUILD_CONFIG)" >&2; exit 1; }
+	@test -f "$(BUILD_CONFIG)" || { echo "Missing BUILD_CONFIG=$(BUILD_CONFIG)" >&2; exit 1; }
 	@test -n "$(REGISTRY)" || { echo "Set REGISTRY=host:port" >&2; exit 1; }
-	REGISTRY="$(REGISTRY)" REGISTRY_INSECURE="$(REGISTRY_INSECURE)" $(PYTHON) "$(OFFLINE_DELIVERY)" --config "$(OFFLINE_BUILD_CONFIG)" $(OFFLINE_VERSION_ARG)
+	REGISTRY="$(REGISTRY)" REGISTRY_INSECURE="$(REGISTRY_INSECURE)" $(PYTHON) "$(DELIVERY_SCRIPT)" --config "$(BUILD_CONFIG)" $(VERSION_ARG)
 
 cache-images:
 	@test -n "$(REGISTRY)" || { echo "Set REGISTRY=host:port" >&2; exit 1; }
-	REGISTRY="$(REGISTRY)" REGISTRY_INSECURE="$(REGISTRY_INSECURE)" $(PYTHON) "$(OFFLINE_DELIVERY)" --config "$(OFFLINE_BUILD_CONFIG)" --cache-images
+	REGISTRY="$(REGISTRY)" REGISTRY_INSECURE="$(REGISTRY_INSECURE)" $(PYTHON) "$(DELIVERY_SCRIPT)" --config "$(BUILD_CONFIG)" --cache-images
