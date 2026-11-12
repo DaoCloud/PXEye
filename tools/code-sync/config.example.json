@@ -1,0 +1,5 @@
+{
+  "host": "user@build-host.example.com",
+  "port": 22,
+  "directory": "/srv/PXEye"
+}
