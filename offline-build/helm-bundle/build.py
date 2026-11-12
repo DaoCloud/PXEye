@@ -92,10 +92,15 @@ def input_plan(config):
     if (source / 'prepared.json').is_file():
         rows = json.loads((source / 'manifests/files.json').read_text())['files']
         records = json.loads((source / 'manifests/images-lock.json').read_text())
-        base = [r for r in records if r['kind'] == 'core']
-        extra = [dict(r, source_image=r['image'], purpose=r['kind']) for r in records if r['kind'] in ('ui', 'bootstrap')]
-        b.require(len(extra) == 2, 'Expected one UI and one bootstrap image')
         descriptor = json.loads((source / 'prepared.json').read_text())
+        base = [r for r in records if r['kind'] == 'core']
+        if descriptor.get('kind') == 'nico-package-input' and 'image_roles' in descriptor:
+            by_reference = {r['image']: r for r in records}
+            extra = [dict(by_reference[ref], source_image=ref, purpose=role)
+                     for role, ref in descriptor['image_roles'].items()]
+        else:
+            extra = [dict(r, source_image=r['image'], purpose=r['kind']) for r in records if r['kind'] in ('ui', 'bootstrap')]
+        b.require(len(extra) == 2, 'Expected one UI and one bootstrap image')
         prefixes = {'aarch64': 'boot/aarch64/', 'bfb': 'http/nico/dpu/', 'apt': 'boot/apt/'}
         groups = {name: [r for r in rows if r['path'].startswith(prefixes[name])]
                   for name in descriptor.get('raw_material_groups', [])}
@@ -510,7 +515,8 @@ def build(config, args, progress=None):
                 layouts = {}
                 prepared_materials = json.loads((source / 'manifests/materials.json').read_text()) if is_prepared else []
                 material_rows = [r for r in json.loads((source / 'manifests/images-lock.json').read_text()) if r['kind'] == 'material'] if is_prepared else []
-                for i, row in enumerate(base + extra + material_rows):
+                staged_images = unique_images(base + extra + material_rows)
+                for i, row in enumerate(staged_images):
                     reference = row.get('source_image') or row['image']
                     destination = registry.address + '/build/' + reference.rsplit('/', 1)[-1]
                     b.require(destination not in mapping.values(), 'Input image basenames collide: ' + reference)
@@ -702,6 +708,20 @@ def build(config, args, progress=None):
         except BaseException:
             print('HELM_BUILD_FAILED; staging retained at', stage, flush=True)
             raise
+
+
+def unique_images(rows):
+    """One image may serve multiple roles; stage its locked content only once."""
+    images = {}
+    for row in rows:
+        reference = row.get('source_image') or row['image']
+        if reference in images:
+            previous = images[reference]
+            b.require((previous.get('amd64_manifest') or previous['digest']) ==
+                      (row.get('amd64_manifest') or row['digest']), 'Conflicting digests for ' + reference)
+        else:
+            images[reference] = row
+    return list(images.values())
 
 
 def registry_has(registry, reference, digest):

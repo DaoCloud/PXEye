@@ -48,8 +48,8 @@ def inputs(value):
     roles.update(overrides)
     rows = json.loads((source / 'manifests/images-lock.json').read_text())
     refs = {r['image'] for r in rows}
-    prepared.require(len(refs) == len(rows) and all(ref in refs for ref in roles.values()) and len(set(roles.values())) == 2,
-                     'Export must contain distinct UI/bootstrap images; set sources.images to their exact references')
+    prepared.require(len(refs) == len(rows) and all(ref in refs for ref in roles.values()),
+                     'Export must contain the configured UI/bootstrap references; set sources.images to their exact references')
     groups = [r for r in recipe['materials'] if r['group'] in value['sources']['materials']]
     for row in groups:
         path = prepared.relative(Path(value['sources']['materials'][row['group']]), row['target'])
@@ -103,7 +103,7 @@ def prepare(value, h):
             b.dump(stage / 'manifests/images-lock.json', images)
             b.dump(stage / 'manifests/materials.json', [])
             b.dump(stage / 'prepared.json', {'schema_version': 1, 'kind': 'nico-package-input', 'complete': True,
-                   'include': include, 'raw_material_groups': sorted(value['sources']['materials']),
+                   'include': include, 'image_roles': roles, 'raw_material_groups': sorted(value['sources']['materials']),
                    'export_identity': descriptor['identity'], 'fingerprint': identity})
             prepared.inventory(stage); prepared.verify(stage, kinds=('nico-package-input',))
             stage.rename(root)

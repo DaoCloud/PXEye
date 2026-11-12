@@ -1,3 +1,9 @@
 {
-  "work_directory": "~/pxeye-build"
+  "work_directory": "~/pxeye-build",
+  "sources": {
+    "images": {
+      "ui": "docker.io/library/mmzhou-os-install-console:0.22.16-2edc182",
+      "bootstrap": "docker.io/library/mmzhou-os-install-console:0.22.16-2edc182"
+    }
+  }
 }

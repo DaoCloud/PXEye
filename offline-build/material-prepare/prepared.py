@@ -81,6 +81,12 @@ def verify(root, kinds=('nico-prepared',)):
     require(len({r['image'] for r in records}) == len(records), 'Duplicate prepared images')
     checked = set()
     for row in records: image(root / 'images/layout', row['image'], row['digest'], checked)
-    require({r['kind'] for r in records} >= {'core', 'ui', 'bootstrap'}, 'Prepared image roles are incomplete')
+    if descriptor.get('kind') == 'nico-package-input' and 'image_roles' in descriptor:
+        roles = descriptor['image_roles']
+        require(set(roles) == {'ui', 'bootstrap'} and
+                all(ref in {r['image'] for r in records if r['kind'] != 'core'} for ref in roles.values()) and
+                any(r['kind'] == 'core' for r in records), 'Prepared image roles are incomplete')
+    else:
+        require({r['kind'] for r in records} >= {'core', 'ui', 'bootstrap'}, 'Prepared image roles are incomplete')
     print('PREPARED_VERIFIED', len(rows), 'files;', len(records), 'images', flush=True)
     return descriptor
