@@ -8,7 +8,7 @@ VCS_REF := $(shell git -C "$(REPO_ROOT)" rev-parse HEAD)
 BASE_IMAGE ?= ubuntu:24.04
 OFFLINE_BUILD_CONFIG ?= $(REPO_ROOT)/../build-config.json
 OFFLINE_WORK_DIRECTORY ?= $(REPO_ROOT)/../outputs_
-OFFLINE_BUNDLE_VERSION ?= bundle-$(shell TZ=UTC date +%Y%m%dT%H%M%SZ)
+OFFLINE_BUNDLE_VERSION ?= bundle-$(VERSION)-$(shell TZ=Asia/Shanghai date +%Y%m%d%H%M)
 OFFLINE_DELIVERY := $(REPO_ROOT)/offline-build/delivery.py
 OFFLINE_VERSION_ARG := $(if $(OFFLINE_BUNDLE_VERSION),--version $(OFFLINE_BUNDLE_VERSION),)
 
@@ -44,7 +44,7 @@ image:
 # The cache-seed command is idempotent: it exports local containerd images only
 # when the Chart-derived closure changes; otherwise it returns immediately.
 # Defaults: a build-config.json and outputs_ directory beside this checkout,
-# and a UTC timestamped bundle version. Override only for a separate workspace
+# and a PXEye-versioned Asia/Shanghai timestamped bundle version. Override only for a separate workspace
 # or a repeatable output version.
 bundles:
 	@if test ! -f "$(OFFLINE_BUILD_CONFIG)"; then \
