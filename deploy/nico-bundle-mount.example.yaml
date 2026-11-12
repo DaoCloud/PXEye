@@ -3,8 +3,8 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: pxeye
-  namespace: mmzhou
+  name: nico-system-pxeye
+  namespace: nico-system
 spec:
   template:
     spec:

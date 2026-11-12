@@ -1,0 +1,14 @@
+{
+  "site": {
+    "name": "PXEye",
+    "namespace": "nico-system",
+    "deployment": "nico-system-pxeye"
+  },
+  "core_url": "",
+  "nico_deployment": {
+    "enabled": true,
+    "namespace": "nico-system",
+    "allow_cluster_resources": true,
+    "bundles_directory": "/nico-bundles"
+  }
+}

@@ -13,7 +13,7 @@ PXEye can start independently in an existing Kubernetes/Kind cluster. Use the [N
 - A field bundle can be mounted read-only at `/nico-bundles`. PXEye reads its manifests and small `deployment/` recipe without copying the 17GiB OCI archive into `/data`.
 - PXEye and PXE share the material storage. Single-node/RWO storage requires a node selector to schedule PXE on the PXEye node; multi-node deployments can use RWX storage.
 
-Use [bootstrap-site.example.json](../examples/bootstrap-site.example.json). Leave `core_url` empty, enable `nico_deployment.enabled` and set the namespace consistently with the Pod.
+Use [bootstrap-site.example.json](../examples/bootstrap-site.example.json). Leave `core_url` empty and enable `nico_deployment.enabled`; in this fireseed layout PXEye and NICo Helm both use `nico-system`.
 
 ## 2. Online and offline deployment
 
@@ -62,11 +62,11 @@ and values are available.
 After checks, inspect the command in the confirmation dialog:
 
 ```bash
-helm upgrade --install mmzhou ./chart.tgz \
-  -n mmzhou -f values.yaml --wait --wait-for-jobs --timeout 900s
+helm upgrade --install nico-system ./chart.tgz \
+  -n nico-system -f values.yaml --wait --wait-for-jobs --timeout 900s
 ```
 
-Actual commands use the current Pod identity and the PXEye naming/mount renderer, and appear in deployment progress. The Core Chart receives `mmzhou` workload names and the shared materials PVC; set `nico_deployment.materials_claim` for another PVC. A successful individual Chart means Helm completed, while full services, Boot and site connection are checked separately.
+Actual commands use the current Pod identity and the PXEye naming/mount renderer, and appear in deployment progress. In this fireseed rehearsal PXEye and NICo Helm workloads both run in `nico-system`. The Core Chart receives the shared materials PVC; set `nico_deployment.materials_claim` for another PVC. A successful individual Chart means Helm completed, while full services, Boot and site connection are checked separately.
 
 ## 3. Complete Helm recipe (optional)
 
@@ -126,7 +126,7 @@ tar -C /srv/nico-packages -czf /srv/site-v1.tar.gz site-v1
 
 Existing read-only `/nico-packages` mounts remain supported. Offline material must already contain Chart dependencies.
 
-Helm does not consume an OCI tar directly. The PXEye image includes `skopeo` and `/usr/local/bin/pxeye-import-oci-bundle`, which can push the archive from the PXEye Pod using a read-only auth Secret; no host Docker/containerd socket is required. All Kubernetes nodes must still reach the Harbor registry.
+Helm does not consume an OCI tar directly. The PXEye image includes `skopeo` and `/usr/local/bin/pxeye-import-oci-bundle`, which can push the archive from the PXEye Pod using a read-only auth Secret; no host Docker/containerd socket is required. All Kubernetes nodes must still reach the target OCI registry. If the site Registry is HTTP (even on port 443), use its explicit `http://` address and `--insecure`; do not use `kind load image-archive` for the multi-image NICo OCI tar.
 
 ## 4. Recipe fields and shared materials
 
@@ -145,7 +145,7 @@ Values support `@{site_name}`, `@{release_prefix}`, `@{namespace}`, `@{core_url}
 
 Helm hooks bypass post-renderers: configure their Pod instance labels and bounded Job deadlines in the Chart itself. Preflight checks the actual hook output. Service selectors are aligned with workload identity labels; a selector spanning several workloads must be configured explicitly.
 
-`phases[].pod_overrides` adds node selection, volumes and mounts to exact workloads. The example mounts `mmzhou-pxeye-materials` read-only in PXE at `/forge-boot-artifacts/blobs/internal/nico/os-library`, using shared `fsGroup: 1000`. Uploaded files map as follows:
+`phases[].pod_overrides` adds node selection, volumes and mounts to exact workloads. The example mounts `nico-system-pxeye-materials` read-only in PXE at `/forge-boot-artifacts/blobs/internal/nico/os-library`, using shared `fsGroup: 1000`. Uploaded files map as follows:
 
 ```text
 PXEye: /materials/<os-id>/install.iso
@@ -178,21 +178,21 @@ Use the confirmed target context, replacing `SITE_CONTEXT`. Replace `image: pxey
 
 ```bash
 SITE_CONTEXT=your-cluster
-kubectl --context "$SITE_CONTEXT" create namespace mmzhou --dry-run=client -o yaml \
+kubectl --context "$SITE_CONTEXT" create namespace nico-system --dry-run=client -o yaml \
   | kubectl --context "$SITE_CONTEXT" apply -f -
-kubectl --context "$SITE_CONTEXT" -n mmzhou create configmap mmzhou-pxeye \
+kubectl --context "$SITE_CONTEXT" -n nico-system create configmap nico-system-pxeye \
   --from-file=site.json=deploy/local/bootstrap/site.json --dry-run=client -o yaml \
   | kubectl --context "$SITE_CONTEXT" apply -f -
-kubectl --context "$SITE_CONTEXT" -n mmzhou create secret generic mmzhou-pxeye \
+kubectl --context "$SITE_CONTEXT" -n nico-system create secret generic nico-system-pxeye \
   --from-file=auth.json=deploy/local/bootstrap/auth.json --dry-run=client -o yaml \
   | kubectl --context "$SITE_CONTEXT" apply -f -
 kubectl --context "$SITE_CONTEXT" apply -f deploy/bootstrap-kubernetes.yaml
-kubectl --context "$SITE_CONTEXT" -n mmzhou rollout status deployment/mmzhou-pxeye --timeout=180s
+kubectl --context "$SITE_CONTEXT" -n nico-system rollout status deployment/nico-system-pxeye --timeout=180s
 ```
 
 The example exposes TCP `31808`. Open that port on the actual node and log in. Kind needs existing port mappings or another platform-provided access route.
 
-The base manifest grants application installation permissions in the current namespace. Installing cert-manager CRDs/cluster RBAC or the platform Chart's Vault TokenReview binding additionally requires an administrator to apply [cluster installation permissions](../deploy/nico-cluster-permissions.yaml) and set `allow_cluster_resources: true`. Without these permissions, use a package with prepared dependencies. After deployment, installation rights can be withdrawn while retaining observation and access to the designated identity Secrets.
+The base manifest grants application installation permissions in the current namespace. Installing cert-manager CRDs/cluster RBAC or the platform Chart's Vault TokenReview binding additionally requires an administrator to apply [cluster installation permissions](../deploy/nico-cluster-permissions.yaml) and set `allow_cluster_resources: true`. Without these permissions, use a package with prepared dependencies. After deployment, installation rights can be withdrawn while retaining observation and access to the designated identity Secrets. The fireseed PXEye and NICo workloads both use `nico-system`; apply the namespaced Role/RoleBinding example [`nico-target-namespace-rbac.example.yaml`](../deploy/nico-target-namespace-rbac.example.yaml).
 
 ## 6. Deploy and verify in the page
 

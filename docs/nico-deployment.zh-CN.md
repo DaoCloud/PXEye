@@ -13,7 +13,7 @@ PXEye 可独立启动在已有 Kubernetes/Kind 中。登录后使用 [NICo 集�
 - 现场离线包通过只读 `/nico-bundles` 挂载提供。PXEye 只读取清单和小型 `deployment/` recipe，不会把 17GiB OCI 归档复制到 `/data`。
 - PXEye 与 PXE 使用同一份材料存储。单节点/RWO 存储须通过节点选择器将 PXE 调度到 PXEye 节点；多节点可使用 RWX 存储。
 
-启动配置使用 [bootstrap-site.example.json](../examples/bootstrap-site.example.json)。保持 `core_url` 为空，启用 `nico_deployment.enabled`，命名空间与 Pod 所在命名空间一致。
+启动配置使用 [bootstrap-site.example.json](../examples/bootstrap-site.example.json)。保持 `core_url` 为空，启用 `nico_deployment.enabled`；本火种机 PXEye 与 NICo Helm 统一使用 `nico-system`。
 
 ## 2. 在线与离线部署
 
@@ -70,11 +70,11 @@ python3 tools/build-nico-core-recipe.py \
 检查通过后在确认窗口查看将执行的命令：
 
 ```bash
-helm upgrade --install mmzhou ./chart.tgz \
-  -n mmzhou -f values.yaml --wait --wait-for-jobs --timeout 900s
+helm upgrade --install nico-system ./chart.tgz \
+  -n nico-system -f values.yaml --wait --wait-for-jobs --timeout 900s
 ```
 
-实际命令还使用当前 Pod 的 Kubernetes 身份和 PXEye 的命名/挂载适配器，在部署流程中展示。NICo Core Chart 自动使用 `mmzhou` 工作负载命名和共享材料 PVC；自定义材料 PVC 名称可在 `nico_deployment.materials_claim` 中指定。单个 Chart 成功表示本次 Helm 完成；完整服务、Boot、站点连接仍分别核对。
+实际命令还使用当前 Pod 的 Kubernetes 身份和 PXEye 的命名/挂载适配器，在部署流程中展示。本火种机 PXEye 与 NICo Helm 工作负载均运行在 `nico-system`。自定义材料 PVC 名称可在 `nico_deployment.materials_claim` 中指定。单个 Chart 成功表示本次 Helm 完成；完整服务、Boot、站点连接仍分别核对。
 
 ## 3. 完整 Helm 部署包（可选）
 
@@ -134,21 +134,21 @@ tar -C /srv/nico-packages -czf /srv/site-v1.tar.gz site-v1
 
 也可继续使用已有 `/nico-packages` 只读挂载。离线材料必须已包含子 Chart 依赖。
 
-### 2.2 Harbor 镜像导入
+### 2.2 Registry 镜像导入
 
-Helm 不会读取 OCI tar；Kubernetes 节点需要从 Harbor（或其它 OCI registry）拉取镜像。PXEye 镜像包含 `skopeo` 和 `/usr/local/bin/pxeye-import-oci-bundle`，可在 PXEye Pod 内执行一次性导入，不挂载宿主机 Docker/containerd socket：
+Helm 不会读取 OCI tar；Kubernetes 节点需要从 OCI Registry 拉取镜像。PXEye 镜像包含 `skopeo` 和 `/usr/local/bin/pxeye-import-oci-bundle`，可在 PXEye Pod 内执行一次性导入，不挂载宿主机 Docker/containerd socket。若现场 Registry 是 HTTP（即使端口为 443），必须显式使用 `http://` 与 `--insecure`：
 
 ```bash
-kubectl -n mmzhou exec deploy/mmzhou-os-install-console -- \
+kubectl -n nico-system exec deploy/nico-system-pxeye -- \
   pxeye-import-oci-bundle \
   --archive /nico-bundles/nico-x86-field-<version>/images/nico-amd64.oci.tar \
   --lock /nico-bundles/nico-x86-field-<version>/manifests/images-lock.json \
-  --registry https://harbor.example.com \
+  --registry http://registry.example.internal:5000 \
   --repository-prefix nico-offline \
-  --authfile /secrets/harbor-auth.json
+  --insecure
 ```
 
-认证文件由平台以只读 Secret 挂载，权限必须为 `0600`；命令不会把认证信息写入部署事件。导入结果的目标引用应写入部署 recipe 的 values（或在 recipe 构建时使用同一映射），再执行页面的预检和 Helm。一个节点完成“推送”即可，但所有 Kubernetes 节点仍必须能访问 Harbor；只 `docker load` 到火种机不能替代 registry。
+如果 Registry 启用认证，认证文件由平台以只读 Secret 挂载，权限必须为 `0600`；命令不会把认证信息写入部署事件。导入结果的目标引用应写入部署 recipe 的 values（或在 recipe 构建时使用同一映射），再执行页面的预检和 Helm。一个节点完成“推送”即可，但所有 Kubernetes 节点仍必须能通过 HTTP 访问 Registry；只 `docker load` 到火种机不能替代 Registry。NICo 多镜像 OCI 归档禁止使用 `kind load image-archive`。
 
 ## 4. 配方字段与材料共享
 
@@ -167,7 +167,7 @@ values 支持 `@{site_name}`、`@{release_prefix}`、`@{namespace}`、`@{core_ur
 
 Helm hook 不经过 post-renderer，其 Pod 的 instance 标签和 Job 超时必须直接在 Chart 中配置，预检会检查实际 hook 输出。普通服务选择器随工作负载标签同步；跨多个工作负载的 Service 选择器需要在 Chart 中明确配置。
 
-`phases[].pod_overrides` 为指定工作负载补充节点选择、文件卷和挂载。默认配方将 `mmzhou-pxeye-materials` 的内容只读挂到 PXE 的 `/forge-boot-artifacts/blobs/internal/nico/os-library`，使用共享 `fsGroup: 1000`。因此上传文件对应：
+`phases[].pod_overrides` 为指定工作负载补充节点选择、文件卷和挂载。默认配方将 `nico-system-pxeye-materials` 的内容只读挂到 PXE 的 `/forge-boot-artifacts/blobs/internal/nico/os-library`，使用共享 `fsGroup: 1000`。因此上传文件对应：
 
 ```text
 PXEye：/materials/<os-id>/install.iso
@@ -200,21 +200,23 @@ PY
 
 ```bash
 SITE_CONTEXT=your-cluster
-kubectl --context "$SITE_CONTEXT" create namespace mmzhou --dry-run=client -o yaml \
+kubectl --context "$SITE_CONTEXT" create namespace nico-system --dry-run=client -o yaml \
   | kubectl --context "$SITE_CONTEXT" apply -f -
-kubectl --context "$SITE_CONTEXT" -n mmzhou create configmap mmzhou-pxeye \
+kubectl --context "$SITE_CONTEXT" -n nico-system create configmap nico-system-pxeye \
   --from-file=site.json=deploy/local/bootstrap/site.json --dry-run=client -o yaml \
   | kubectl --context "$SITE_CONTEXT" apply -f -
-kubectl --context "$SITE_CONTEXT" -n mmzhou create secret generic mmzhou-pxeye \
+kubectl --context "$SITE_CONTEXT" -n nico-system create secret generic nico-system-pxeye \
   --from-file=auth.json=deploy/local/bootstrap/auth.json --dry-run=client -o yaml \
   | kubectl --context "$SITE_CONTEXT" apply -f -
 kubectl --context "$SITE_CONTEXT" apply -f deploy/bootstrap-kubernetes.yaml
-kubectl --context "$SITE_CONTEXT" -n mmzhou rollout status deployment/mmzhou-pxeye --timeout=180s
+kubectl --context "$SITE_CONTEXT" -n nico-system rollout status deployment/nico-system-pxeye --timeout=180s
 ```
 
 示例暴露 `31808/TCP`。打开实际节点的该端口登录；Kind 需要已配置节点端口映射，或使用平台提供的访问入口。
 
 基础清单授予当前命名空间的应用安装权限。安装 cert-manager CRD/集群 RBAC 或本仓库平台 Chart 的 Vault TokenReview 绑定时，管理员需另行应用 [集群安装权限](../deploy/nico-cluster-permissions.yaml)，并在启动配置设置 `allow_cluster_resources: true`。权限不允许时，使用已准备依赖的部署包。完成部署后可撤销安装权限，保留状态观察和指定身份 Secret 的读取权限。
+
+火种机 PXEye 与 NICo Helm 均使用 `nico-system`；目标命名空间 Role/RoleBinding 示例见 [`nico-target-namespace-rbac.example.yaml`](../deploy/nico-target-namespace-rbac.example.yaml)。
 
 ## 6. 在页面部署和确认
 
