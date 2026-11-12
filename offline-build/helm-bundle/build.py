@@ -274,12 +274,10 @@ def image_view(layout, reference, target):
 
 
 class BuildRegistry:
-    """A loopback-only persistent OCI cache shared by delivery builds."""
-    def __init__(self, docker, work, run_id, cache_root, resumable=False):
+    """Use the caller-provided Registry; never create or own Registry storage."""
+    def __init__(self, docker, work, run_id, resumable=False):
         self.docker, self.work, self.run_id = docker, work, run_id
         self.resumable = resumable
-        self.cache_root = Path(cache_root)
-        self.name = 'pxeye-build-registry'
         self.container = None
         self.tool_image = 'mmzhou-offline-tools:' + run_id
         self.owned_tags = []
@@ -287,45 +285,23 @@ class BuildRegistry:
     def __enter__(self):
         self.work.mkdir(parents=True, exist_ok=self.resumable)
         try:
-            if command([self.docker, 'image', 'inspect', LOCK['registry_image']], check=False).returncode:
-                command([self.docker, 'pull', LOCK['registry_image']], self.work / 'registry-pull.log')
-            storage = self.cache_root / 'data'; storage.mkdir(parents=True, exist_ok=True)
-            port = '1027'
-            previous = command([self.docker, 'inspect', self.name], check=False)
-            if previous.returncode == 0:
-                info = json.loads(previous.stdout)[0]
-                labels = info['Config'].get('Labels', {})
-                b.require(labels.get('io.pxeye.offline-build-cache') == 'v1', 'Registry name belongs to another workload')
-                mounts = info.get('Mounts', [])
-                b.require(any(m.get('Source') == str(storage) and m.get('Destination') == '/var/lib/registry' for m in mounts),
-                          'Persistent registry storage path differs; inspect before reuse')
-                if not info['State']['Running']:
-                    command([self.docker, 'start', self.name], self.work / 'registry-start.log')
-                self.container = info['Id']
-            else:
-                self.container = command([self.docker, 'run', '-d', '--restart', 'unless-stopped', '--name', self.name,
-                    '--label', 'io.pxeye.offline-build-cache=v1', '-p', '127.0.0.1:' + port + ':5000',
-                    '--mount', f'type=bind,src={storage},dst=/var/lib/registry', LOCK['registry_image']],
-                    self.work / 'registry-start.log').stdout.strip()
-            endpoint = command([self.docker, 'port', self.container, '5000/tcp']).stdout.strip()
-            b.require(endpoint == '127.0.0.1:1027', 'Registry must listen on loopback port 1027')
-            self.address = 'localhost:' + endpoint.rsplit(':', 1)[1]
+            self.address = os.environ.get('REGISTRY', '').strip().removeprefix('http://').removeprefix('https://').rstrip('/')
+            b.require(self.address and '/' not in self.address, 'Set REGISTRY to a registry host[:port]')
+            scheme = 'http' if os.environ.get('REGISTRY_INSECURE', 'true').lower() in ('1', 'true', 'yes') else 'https'
             for _ in range(30):
                 try:
-                    with urllib.request.urlopen('http://' + endpoint + '/v2/', timeout=1) as response:
+                    with urllib.request.urlopen(scheme + '://' + self.address + '/v2/', timeout=1) as response:
                         if response.status == 200:
                             return self
                 except OSError:
                     time.sleep(0.2)
-            raise ValueError('Build registry did not become ready')
+            raise ValueError('Configured Registry did not become ready: ' + self.address)
         except BaseException:
             self.__exit__(*sys.exc_info())
             raise
 
     def __exit__(self, *_):
         failures = []
-        if self.container:
-            command([self.docker, 'logs', self.container], self.work / 'registry.log', check=False)
         for tag in self.owned_tags:
             if command([self.docker, 'image', 'rm', tag], check=False).returncode:
                 failures.append('Could not remove per-run tag: ' + tag)
@@ -533,8 +509,7 @@ def build(config, args, progress=None):
             run_id = hashlib.sha256(str(stage).encode()).hexdigest()[:12]
             material_records = []
             packages = []
-            with BuildRegistry(config['tools']['docker'], stage / '.work', run_id,
-                               output.parent / 'registry-cache', resumable=True) as registry:
+            with BuildRegistry(config['tools']['docker'], stage / '.work', run_id, resumable=True) as registry:
                 bootstrap = next(row for row in extra if row['purpose'] == 'bootstrap')
                 loaded = registry.work / 'build-tools.tar'
                 if is_prepared:
