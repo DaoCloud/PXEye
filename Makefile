@@ -12,7 +12,7 @@ OFFLINE_BUNDLE_VERSION ?= bundle-$(VERSION)-$(shell TZ=Asia/Shanghai date +%Y%m%
 OFFLINE_DELIVERY := $(REPO_ROOT)/offline-build/delivery.py
 OFFLINE_VERSION_ARG := $(if $(OFFLINE_BUNDLE_VERSION),--version $(OFFLINE_BUNDLE_VERSION),)
 
-.PHONY: syntax lint format-check test wheel image bundles
+.PHONY: syntax lint format-check test wheel image cache-images bundles
 syntax:
 	$(PYTHON) -m compileall -q src tests/unit
 	@find src/pxeye/web -name '*.js' -exec $(NODE) --check {} \;
@@ -54,3 +54,7 @@ bundles:
 	@test -f "$(OFFLINE_BUILD_CONFIG)" || { echo "Missing OFFLINE_BUILD_CONFIG=$(OFFLINE_BUILD_CONFIG)" >&2; exit 1; }
 	$(PYTHON) "$(OFFLINE_DELIVERY)" --config "$(OFFLINE_BUILD_CONFIG)" --seed-cache
 	$(PYTHON) "$(OFFLINE_DELIVERY)" --config "$(OFFLINE_BUILD_CONFIG)" $(OFFLINE_VERSION_ARG)
+
+cache-images:
+	@test -n "$(REGISTRY)" || { echo "Set REGISTRY=host:port" >&2; exit 1; }
+	REGISTRY="$(REGISTRY)" REGISTRY_INSECURE="$(REGISTRY_INSECURE)" $(PYTHON) "$(OFFLINE_DELIVERY)" --config "$(OFFLINE_BUILD_CONFIG)" --cache-images

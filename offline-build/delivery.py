@@ -10,6 +10,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import os
+import re
 
 import yaml
 
@@ -97,6 +99,41 @@ def require_seed_matches(source, generated):
                          ', '.join(missing) + '; extra: ' + ', '.join(extra))
 
 
+def cache_reference(reference, registry):
+    """Replace only the registry hostname; PXEye itself is published as pxeye."""
+    parts = reference.split('/')
+    repository = '/'.join(parts[1:]) if len(parts) > 1 and ('.' in parts[0] or ':' in parts[0] or parts[0] == 'localhost') else reference
+    if 'mmzhou-os-install-console' in repository:
+        tag = reference.rsplit(':', 1)[-1] if ':' in reference.rsplit('/', 1)[-1] else 'latest'
+        return registry + '/pxeye:' + tag
+    return registry + '/' + repository
+
+
+def cache_images(path):
+    """Populate REGISTRY from Chart-derived image references; no handwritten image list."""
+    registry = os.environ.get('REGISTRY', '').strip().removeprefix('http://').removeprefix('https://').rstrip('/')
+    if not registry or '/' in registry:
+        raise ValueError('Set REGISTRY to a registry host[:port], for example REGISTRY=127.0.0.1:1027')
+    insecure = os.environ.get('REGISTRY_INSECURE', 'true').lower() in ('1', 'true', 'yes')
+    raw = build_config.read(path)
+    options = containerd_export.DEFAULTS | raw.get('image_export', {})
+    packager = load_packager(); package_value = assembly.configuration(path)
+    print('DELIVERY_STAGE [cache-images-chart-closure]', flush=True)
+    image_list = chart_images(path, package_value, packager)
+    known = set(subprocess.run([options['ctr'], '--address', options['containerd_address'], '--namespace', options['containerd_namespace'], 'images', 'list', '-q'], capture_output=True, text=True, check=True).stdout.splitlines())
+    for source in [line.strip() for line in image_list.read_text().splitlines() if line.strip()]:
+        if source not in known:
+            print('PULL_SOURCE_IMAGE', source, flush=True)
+            subprocess.run([options['ctr'], '--address', options['containerd_address'], '--namespace', options['containerd_namespace'], 'images', 'pull', '--platform', 'linux/amd64', source], check=True)
+        target = cache_reference(source, registry)
+        print('PUSH_CACHE_IMAGE', source, '->', target, flush=True)
+        subprocess.run([options['ctr'], '--address', options['containerd_address'], '--namespace', options['containerd_namespace'], 'images', 'tag', source, target], check=True)
+        command = [options['ctr'], '--address', options['containerd_address'], '--namespace', options['containerd_namespace'], 'images', 'push', '--platform', 'linux/amd64']
+        if insecure: command.append('--plain-http')
+        subprocess.run(command + [target], check=True)
+    print('CACHE_IMAGES_COMPLETE', registry, flush=True)
+
+
 def run(path, plan, version, seed_cache=False):
     path = path.expanduser().resolve()
     value = json.loads(path.read_text())
@@ -142,7 +179,8 @@ def main():
     parser.add_argument('--work-directory', type=Path, help='Used only with --write-config')
     parser.add_argument('--plan', action='store_true', help='Read local images and package inputs without creating outputs')
     parser.add_argument('--version', help='Optional delivery version')
-    parser.add_argument('--seed-cache', action='store_true', help='One-time or version-change action: derive the parent closure and export it from local containerd')
+    parser.add_argument('--seed-cache', action='store_true', help='Legacy containerd OCI export action')
+    parser.add_argument('--cache-images', action='store_true', help='Render Charts, pull missing source images, and push them to REGISTRY')
     args = parser.parse_args()
     if args.write_config:
         if args.config or args.plan or args.version:
@@ -152,7 +190,11 @@ def main():
         return
     if not args.config:
         raise SystemExit('Pass --config or --write-config')
-    run(args.config, args.plan, args.version, args.seed_cache)
+    if args.cache_images:
+        if args.plan or args.version or args.seed_cache: raise SystemExit('--cache-images cannot be combined with build options')
+        cache_images(args.config)
+    else:
+        run(args.config, args.plan, args.version, args.seed_cache)
 
 
 if __name__ == '__main__':
