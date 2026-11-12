@@ -32,32 +32,20 @@ def load_packager():
     return module
 
 
-def pxeye_image(path):
-    """Find the one locally-built PXEye image without a user-maintained list."""
-    raw = build_config.read(path)
-    options = containerd_export.DEFAULTS | raw.get('image_export', {})
-    result = subprocess.run([options['ctr'], '--address', options['containerd_address'], '--namespace',
-                             options['containerd_namespace'], 'images', 'list'], capture_output=True, text=True, timeout=60)
-    if result.returncode:
-        raise ValueError('Cannot read local containerd image list: ' + result.stderr[-2000:])
-    refs = [line.split()[0] for line in result.stdout.splitlines() if len(line.split()) >= 3 and 'mmzhou-os-install-console' in line.split()[0]]
-    if not refs:
-        raise ValueError('No local PXEye image reference contains mmzhou-os-install-console')
-    rows = containerd_export.resolve_images(options, refs)
-    candidates = []
-    for row in rows:
-        labels = (containerd_export.metadata(Path(options['containerd_content']), row['config']).get('config') or {}).get('Labels') or {}
-        if labels.get('org.opencontainers.image.title') == 'PXEye': candidates.append(row['image'])
-    if len(candidates) != 1:
-        raise ValueError('Expected exactly one local PXEye image identified by org.opencontainers.image.title=PXEye; found: ' + ', '.join(candidates))
-    return candidates[0]
+def pxeye_image():
+    """The parent Chart owns the explicit PXEye image reference."""
+    values = yaml.safe_load((HOME.parent / 'charts/pxeye/values.yaml').read_text())
+    image = values.get('image') if isinstance(values, dict) else None
+    if not isinstance(image, str) or not image:
+        raise ValueError('Set charts/pxeye/values.yaml image to the complete PXEye registry reference')
+    return image
 
 
 def chart_images(path, package_value, packager, ui=None):
     """Render the locked parent Chart and write its exact containerd requirements."""
     work = package_value['work_directory']
     charts = packager.chart_sources.prepare(work, package_value['sources'].get('charts'), packager.b, helm=package_value['tools']['helm'])
-    ui = ui or pxeye_image(path)
+    ui = ui or pxeye_image()
     with tempfile.TemporaryDirectory(prefix='.parent-discovery-', dir=work) as temporary:
         temporary = Path(temporary)
         root = packager.stage_charts(temporary / 'bundle', temporary, {'__ui__': ui, ui: ui}, {}, ui, [],
