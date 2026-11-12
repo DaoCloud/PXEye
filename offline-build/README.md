@@ -9,11 +9,12 @@ Run one builder script with one `build-config.json`. It exports local containerd
 ```bash
 cd ~/pxeye-build
 python3 ./PXEye/offline-build/delivery.py --write-config ./build-config.json --work-directory "$PWD"
-python3 ./PXEye/offline-build/delivery.py --seed-cache --config ./build-config.json
-python3 ./PXEye/offline-build/delivery.py --config ./build-config.json
+make -f ./PXEye/Makefile bundles \
+  OFFLINE_BUILD_CONFIG=./build-config.json \
+  OFFLINE_BUNDLE_VERSION="$(date -u +%Y%m%dT%H%M%SZ)"
 ```
 
-The first command is only needed once to initialize the shared configuration and default source files. The second command is a separate cache-seed action: it renders the parent Chart, derives its image closure, and exports those images from local containerd. Run it only for the initial cache or after a Chart/image version change. The final command is the normal delivery build; it never reads containerd and reuses the persistent loopback Registry at `localhost:1027`.
+The first command is only needed once to initialize the shared configuration and default source files. `make bundles` is the complete build command: it first renders the parent Chart and derives its image closure, then updates the local OCI cache only if that closure changed, then packages and verifies the delivery. With an unchanged closure, the cache-seed phase returns without exporting from containerd. The package phase reuses the persistent loopback Registry at `localhost:1027`.
 
 Read-only validation of local images, roles, Chart sources and delivery input:
 
@@ -23,7 +24,7 @@ python3 ./PXEye/offline-build/delivery.py --config ./build-config.json --plan
 
 | Internal stage | Purpose | Delivery/cache |
 | --- | --- | --- |
-| cache seed (explicit) | Render the parent Chart and export its exact local containerd image closure | `offline-images/` |
+| cache seed (inside `make bundles`) | Render the parent Chart and export its exact local containerd image closure only when it changed | `offline-images/` |
 | package | Verify the cached closure, vendor locked child Charts under the PXEye parent, use `localhost:1027`, run relok8s once, and produce the delivery | `registry-cache/`, `charts/`, `package-input/`, `output/` |
 
 | Step | Purpose | Input | Output |

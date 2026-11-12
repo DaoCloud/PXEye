@@ -9,11 +9,12 @@
 ```bash
 cd ~/pxeye-build
 python3 ./PXEye/offline-build/delivery.py --write-config ./build-config.json --work-directory "$PWD"
-python3 ./PXEye/offline-build/delivery.py --seed-cache --config ./build-config.json
-python3 ./PXEye/offline-build/delivery.py --config ./build-config.json
+make -f ./PXEye/Makefile bundles \
+  OFFLINE_BUILD_CONFIG=./build-config.json \
+  OFFLINE_BUNDLE_VERSION="$(date -u +%Y%m%dT%H%M%SZ)"
 ```
 
-第一条仅在首次创建共用配置和默认来源文件时执行。第二条是独立的缓存初始化：渲染父 Chart、自动得出镜像闭包并从本地 containerd 导出；只在首次缓存或 Chart/镜像版本变化后执行。最后一条才是标准交付构建：不会读取 containerd，复用 `localhost:1027` 的持久 Registry。
+第一条仅在首次创建共用配置和默认来源文件时执行。`make bundles` 是完整构建入口：先渲染父 Chart 自动得出镜像闭包；只有闭包变化时才从本地 containerd 更新 OCI 缓存；随后完成打包与校验。闭包未变化时缓存初始化会直接返回，不会导出镜像。打包阶段复用 `localhost:1027` 的持久 Registry。
 
 只读检查本地镜像、用途、Chart 来源和交付输入：
 
@@ -23,7 +24,7 @@ python3 ./PXEye/offline-build/delivery.py --config ./build-config.json --plan
 
 | 内部阶段 | 作用 | 交付/缓存 |
 | --- | --- | --- |
-| 缓存初始化（显式） | 渲染父 Chart 并从本地 containerd 导出精确镜像闭包 | `offline-images/` |
+| 缓存初始化（`make bundles` 内部） | 渲染父 Chart；仅闭包变化时才从本地 containerd 导出精确镜像闭包 | `offline-images/` |
 | package | 核对缓存闭包、将锁定子 Chart 引入 PXEye 父 Chart、使用 `localhost:1027`、只执行一次 relok8s 并交付 | `registry-cache/`、`charts/`、`package-input/`、`output/` |
 
 | 步骤 | 做什么 | 关键输入 | 输出与交接 |

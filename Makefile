@@ -5,8 +5,12 @@ BUILD_TIME := $(shell TZ=Asia/Shanghai date +%Y%m%d%H%M)
 IMAGE ?= mmzhou-os-install-console:$(VERSION)-$(BUILD_TIME)
 VCS_REF := $(shell git rev-parse HEAD)
 BASE_IMAGE ?= ubuntu:24.04
+OFFLINE_BUILD_CONFIG ?= build-config.json
+OFFLINE_BUNDLE_VERSION ?=
+OFFLINE_DELIVERY := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))offline-build/delivery.py)
+OFFLINE_VERSION_ARG := $(if $(OFFLINE_BUNDLE_VERSION),--version $(OFFLINE_BUNDLE_VERSION),)
 
-.PHONY: syntax lint format-check test wheel image
+.PHONY: syntax lint format-check test wheel image bundles
 syntax:
 	$(PYTHON) -m compileall -q src tests/unit
 	@find src/pxeye/web -name '*.js' -exec $(NODE) --check {} \;
@@ -33,3 +37,11 @@ image:
 	test -x bin/helm
 	docker build --build-arg BASE_IMAGE="$(BASE_IMAGE)" --build-arg VCS_REF="$(VCS_REF)" --build-arg VERSION="$(VERSION)" -t "$(IMAGE)" .
 	@echo "BUILT_IMAGE=$(IMAGE)"
+
+# Build a complete offline delivery from the locked PXEye parent Chart.
+# The cache-seed command is idempotent: it exports local containerd images only
+# when the Chart-derived closure changes; otherwise it returns immediately.
+bundles:
+	@test -f "$(OFFLINE_BUILD_CONFIG)" || { echo "Missing OFFLINE_BUILD_CONFIG=$(OFFLINE_BUILD_CONFIG)" >&2; exit 1; }
+	$(PYTHON) "$(OFFLINE_DELIVERY)" --config "$(OFFLINE_BUILD_CONFIG)" --seed-cache
+	$(PYTHON) "$(OFFLINE_DELIVERY)" --config "$(OFFLINE_BUILD_CONFIG)" $(OFFLINE_VERSION_ARG)
