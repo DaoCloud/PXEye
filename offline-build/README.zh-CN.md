@@ -7,13 +7,13 @@
 ## 构建
 
 ```bash
-cd ~/pxeye-build
-make -f ./PXEye/Makefile bundles
+cd ~/pxeye-build/PXEye
+REGISTRY=127.0.0.1:1027 REGISTRY_INSECURE=true make bundles
 ```
 
-`make bundles` 是完整构建入口。首次运行时会在 PXEye 检出目录的同级位置创建 `build-config.json` 和默认 Chart 来源文件，并将可恢复的构建状态统一放入 `outputs_/`。随后渲染父 Chart 自动得出镜像闭包；只有闭包变化时才从本地 containerd 更新 OCI 缓存；随后完成打包与校验。闭包未变化时缓存初始化会直接返回，不会导出镜像。打包阶段复用 `localhost:1027` 的持久 Registry。
+`make bundles` 是完整构建入口。首次运行时会在仓库已忽略的 `outputs_/` 下创建配置和可恢复构建状态；随后渲染父 Chart、读取配置的 Registry，并完成打包与校验。
 
-`make bundles` 默认读取 PXEye 检出目录同级的 `../build-config.json`，使用同级 `../outputs_/`，并生成 `outputs_/output/bundle-<PXEye版本>-<Asia/Shanghai时间戳>/`，例如 `bundle-0.22.16-202611121650`。已有配置不会被覆盖。只有需要固定版本（例如 `BUNDLE_VERSION=release-1`）或独立工作区时才覆盖。现场 Registry、namespace 和网络属于部署阶段配置，不是构建参数。
+`make bundles` 默认使用 `outputs_/build-config.json`，并生成 `outputs_/output/bundle-<PXEye版本>-<Asia/Shanghai时间戳>/`，例如 `bundle-0.22.16-202611121650`。只有需要固定版本（例如 `BUNDLE_VERSION=release-1`）时才覆盖。
 
 ## 镜像缓存
 

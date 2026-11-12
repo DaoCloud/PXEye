@@ -7,13 +7,13 @@ Run one builder script with one `build-config.json`. It exports local containerd
 ## Build
 
 ```bash
-cd ~/pxeye-build
-make -f ./PXEye/Makefile bundles
+cd ~/pxeye-build/PXEye
+REGISTRY=127.0.0.1:1027 REGISTRY_INSECURE=true make bundles
 ```
 
-`make bundles` is the complete build command. On its first run it creates `build-config.json` and the default Chart-source file beside the PXEye checkout, with resumable build state under `outputs_/`. It then renders the parent Chart and derives its image closure, updates the local OCI cache only if that closure changed, then packages and verifies the delivery. With an unchanged closure, the cache-seed phase returns without exporting from containerd. The package phase reuses the persistent loopback Registry at `localhost:1027`.
+`make bundles` is the complete build command. On its first run it creates configuration and resumable build state under the repository's ignored `outputs_/` directory. It renders the parent Chart, reads the configured Registry, then packages and verifies the delivery.
 
-`make bundles` defaults to `../build-config.json` and `../outputs_/` relative to the PXEye checkout, and creates `outputs_/output/bundle-<PXEye version>-<Asia/Shanghai timestamp>/`, such as `bundle-0.22.16-202611121650`. Existing configuration is preserved. Override only when needed, for example `BUNDLE_VERSION=release-1`; the target-site Registry, namespace and networking remain onsite deployment configuration, not build arguments.
+`make bundles` defaults to `outputs_/build-config.json` and creates `outputs_/output/bundle-<PXEye version>-<Asia/Shanghai timestamp>/`, such as `bundle-0.22.16-202611121650`. Override only when needed, for example `BUNDLE_VERSION=release-1`.
 
 ## Image cache
 

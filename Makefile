@@ -6,15 +6,15 @@ BUILD_TIME := $(shell TZ=Asia/Shanghai date +%Y%m%d%H%M)
 IMAGE ?= mmzhou-os-install-console:$(VERSION)-$(BUILD_TIME)
 VCS_REF := $(shell git -C "$(REPO_ROOT)" rev-parse HEAD)
 BASE_IMAGE ?= ubuntu:24.04
-BUILD_CONFIG ?= $(REPO_ROOT)/../build-config.json
-BUILD_WORK_DIRECTORY ?= $(REPO_ROOT)/../outputs_
+BUILD_CONFIG ?= $(REPO_ROOT)/outputs_/build-config.json
+BUILD_WORK_DIRECTORY ?= $(REPO_ROOT)/outputs_
 BUNDLE_VERSION ?= bundle-$(VERSION)-$(shell TZ=Asia/Shanghai date +%Y%m%d%H%M)
 DELIVERY_SCRIPT := $(REPO_ROOT)/offline-build/delivery.py
 VERSION_ARG := $(if $(BUNDLE_VERSION),--version $(BUNDLE_VERSION),)
 DHCP_TIMEOUT ?= 15
 DHCP_ATTEMPTS ?= 3
 
-.PHONY: syntax lint format-check test wheel image cache-images bundles dhcp-check
+.PHONY: syntax lint format-check test wheel image ensure-build-config cache-images bundles dhcp-check
 syntax:
 	$(PYTHON) -m compileall -q src tests/unit
 	@find src/pxeye/web -name '*.js' -exec $(NODE) --check {} \;
@@ -48,16 +48,18 @@ image:
 # Defaults: a build-config.json and outputs_ directory beside this checkout,
 # and a PXEye-versioned Asia/Shanghai timestamped bundle version. Override only for a separate workspace
 # or a repeatable output version.
-bundles:
+ensure-build-config:
 	@if test ! -f "$(BUILD_CONFIG)"; then \
 		echo "INITIALIZE_BUILD_CONFIG $(BUILD_CONFIG)"; \
 		$(PYTHON) "$(DELIVERY_SCRIPT)" --write-config "$(BUILD_CONFIG)" --work-directory "$(BUILD_WORK_DIRECTORY)"; \
 	fi
 	@test -f "$(BUILD_CONFIG)" || { echo "Missing BUILD_CONFIG=$(BUILD_CONFIG)" >&2; exit 1; }
+
+bundles: ensure-build-config
 	@test -n "$(REGISTRY)" || { echo "Set REGISTRY=host:port" >&2; exit 1; }
 	REGISTRY="$(REGISTRY)" REGISTRY_INSECURE="$(REGISTRY_INSECURE)" $(PYTHON) "$(DELIVERY_SCRIPT)" --config "$(BUILD_CONFIG)" $(VERSION_ARG)
 
-cache-images:
+cache-images: ensure-build-config
 	@test -n "$(REGISTRY)" || { echo "Set REGISTRY=host:port" >&2; exit 1; }
 	REGISTRY="$(REGISTRY)" REGISTRY_INSECURE="$(REGISTRY_INSECURE)" $(PYTHON) "$(DELIVERY_SCRIPT)" --config "$(BUILD_CONFIG)" --cache-images
 

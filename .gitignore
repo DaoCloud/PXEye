@@ -21,3 +21,4 @@ node_modules/
 build/
 dist/
 .ruff_cache/
+outputs_/
