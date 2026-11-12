@@ -75,6 +75,9 @@ REGISTRY=127.0.0.1:1027 REGISTRY_INSECURE=true make bundles
 每次从 Registry 拉取后，构建器都会校验 containerd 内对应 amd64 内容图。如果本地旧镜像记录
 指向缺失内容，它只会从同一 Registry 补拉该镜像内容一次并再次校验；不会删除镜像 tag 或
 Kubernetes 资源。
+Registry 输入镜像使用确定性的构建私有 containerd namespace
+`pxeye-offline-<closure-id>`，而不是 `k8s.io`；缓存为失败重试保留，且不会参与运行工作负载的
+镜像状态。
 
 Registry OCI 导出和 bundle staging 缓存在 `cache/registry-exports/`；最终交付文件始终写入构建工作目录根部的 `output/bundle-<version>/`。
 

@@ -84,6 +84,9 @@ After each Registry pull, the builder verifies the selected amd64 content graph
 in containerd. If an old local image record has dangling content, it fetches
 that image's content once from the same Registry and validates again; it never
 deletes image tags or Kubernetes resources.
+Registry-input images live in a deterministic, build-private containerd
+namespace named `pxeye-offline-<closure-id>`, rather than `k8s.io`; the cache
+is retained for retry and never participates in runtime workload image state.
 
 Registry OCI exports and bundle staging are cached under `cache/registry-exports/`; final delivery files always go to `output/bundle-<version>/` at the build work-directory root.
 
