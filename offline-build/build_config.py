@@ -54,7 +54,25 @@ def initialize(path, section, work_directory=None):
             raise ValueError(section + ' must contain an object')
         for key, item in defaults[section].items():
             owned.setdefault(key, item)
-        key, source = ('image_list', HOME / 'material-prepare/images.txt') if section == 'image_export' else ('chart_sources', HOME / 'helm-bundle/chart-sources.json')
+        if section == 'image_export':
+            key, source = None, None
+        else:
+            key, source = 'chart_sources', HOME / 'helm-bundle/chart-sources.json'
+        if key is None:
+            with tempfile.NamedTemporaryFile(mode='w', dir=path.parent, prefix='.build-config-', delete=False) as stream:
+                temporary = Path(stream.name)
+                try:
+                    json.dump(value, stream, indent=2, ensure_ascii=False)
+                    stream.write('\n'); stream.flush(); os.fsync(stream.fileno())
+                except BaseException:
+                    temporary.unlink(missing_ok=True)
+                    raise
+            try:
+                temporary.replace(path)
+            finally:
+                temporary.unlink(missing_ok=True)
+            print('BUILD_CONFIG_READY', path, 'section=' + section, flush=True)
+            return
         target = relative(path, owned[key])
         # Custom paths belong to the user. Only provision the stage's default filename.
         if owned[key] == defaults[section][key] and not target.exists():

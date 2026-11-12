@@ -9,10 +9,11 @@
 ```bash
 cd ~/pxeye-build
 python3 ./PXEye/offline-build/delivery.py --write-config ./build-config.json --work-directory "$PWD"
+python3 ./PXEye/offline-build/delivery.py --seed-cache --config ./build-config.json
 python3 ./PXEye/offline-build/delivery.py --config ./build-config.json
 ```
 
-第一条仅在首次创建共用配置和默认来源文件时执行，并且只补齐镜像导出和 Helm 配置区域。之后只运行最后一条。失败后重复最后一条，已完成的镜像导出、Chart 下载、输入适配和打包阶段按原有摘要与进度记录复用。
+第一条仅在首次创建共用配置和默认来源文件时执行。第二条是独立的缓存初始化：渲染父 Chart、自动得出镜像闭包并从本地 containerd 导出；只在首次缓存或 Chart/镜像版本变化后执行。最后一条才是标准交付构建：不会读取 containerd，复用 `localhost:1027` 的持久 Registry。
 
 只读检查本地镜像、用途、Chart 来源和交付输入：
 
@@ -22,8 +23,8 @@ python3 ./PXEye/offline-build/delivery.py --config ./build-config.json --plan
 
 | 内部阶段 | 作用 | 交付/缓存 |
 | --- | --- | --- |
-| image-export | 按 `image_export.image_list` 导出本地镜像 | `offline-images/` |
-| package | 将锁定子 Chart 引入 PXEye 父 Chart、渲染完整依赖树、只执行一次 relok8s 并交付 | `cache/`、`charts/`、`package-input/`、`output/` |
+| 缓存初始化（显式） | 渲染父 Chart 并从本地 containerd 导出精确镜像闭包 | `offline-images/` |
+| package | 核对缓存闭包、将锁定子 Chart 引入 PXEye 父 Chart、使用 `localhost:1027`、只执行一次 relok8s 并交付 | `registry-cache/`、`charts/`、`package-input/`、`output/` |
 
 | 步骤 | 做什么 | 关键输入 | 输出与交接 |
 | --- | --- | --- | --- |
@@ -50,7 +51,7 @@ python3 ./PXEye/offline-build/delivery.py --config ./build-config.json --plan
 /srv/PXEye/offline-build/
   build-config.example.json  # 共用构建配置
   delivery.py           # 统一构建入口
-  material-prepare/     # images.txt
+  material-prepare/     # 兼容的显式镜像导出器
   helm-bundle/          # chart-sources.json
   onsite/               # 第三步：run.py + run-config.example.json
 

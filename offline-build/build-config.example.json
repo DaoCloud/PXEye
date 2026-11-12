@@ -1,8 +1,6 @@
 {
   "work_directory": "~/pxeye-build",
-  "image_export": {
-    "image_list": "images.txt"
-  },
+  "image_export": {},
   "helm_bundle": {
     "chart_sources": "chart-sources.json"
   }

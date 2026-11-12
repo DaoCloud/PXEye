@@ -11,9 +11,7 @@ Continue using the same `build-config.json`. Step two owns only `helm_bundle`:
 ```json
 {
   "work_directory": "~/pxeye-build",
-  "image_export": {
-    "image_list": "images.txt"
-  },
+  "image_export": {},
   "helm_bundle": {
     "chart_sources": "chart-sources.json"
   }
@@ -32,7 +30,7 @@ python3 ./PXEye/offline-build/helm-bundle/build.py --write-config ./build-config
 python3 ./PXEye/offline-build/helm-bundle/build.py --config ./build-config.json
 ```
 
-Initialization fills only missing step-two settings and `chart-sources.json`, preserving existing values, sources and step-one settings. Images and roles come from the export. Repeat the final command to resume.
+Initialization fills only missing step-two settings and `chart-sources.json`, preserving existing values and sources. In the unified workflow the parent Chart generates the image closure; images and roles come from the explicit cache-seed artifact. Repeat the final command to resume.
 
 ## Output
 

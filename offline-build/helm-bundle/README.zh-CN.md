@@ -11,9 +11,7 @@
 ```json
 {
   "work_directory": "~/pxeye-build",
-  "image_export": {
-    "image_list": "images.txt"
-  },
+  "image_export": {},
   "helm_bundle": {
     "chart_sources": "chart-sources.json"
   }
@@ -32,7 +30,7 @@ python3 ./PXEye/offline-build/helm-bundle/build.py --write-config ./build-config
 python3 ./PXEye/offline-build/helm-bundle/build.py --config ./build-config.json
 ```
 
-初始化只补齐本步骤缺少的配置和 `chart-sources.json`，保留已有值、来源文件及第一步配置。镜像和用途从第一步产物读取，无需再次填写。失败后重复最后一条命令续跑。
+初始化只补齐本步骤缺少的配置和 `chart-sources.json`，保留已有值和来源文件。统一流程由父 Chart 自动得出镜像闭包，镜像和用途来自显式缓存初始化产物，无需再次填写。失败后重复最后一条命令续跑。
 
 ## 结果
 

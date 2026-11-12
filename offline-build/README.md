@@ -9,10 +9,11 @@ Run one builder script with one `build-config.json`. It exports local containerd
 ```bash
 cd ~/pxeye-build
 python3 ./PXEye/offline-build/delivery.py --write-config ./build-config.json --work-directory "$PWD"
+python3 ./PXEye/offline-build/delivery.py --seed-cache --config ./build-config.json
 python3 ./PXEye/offline-build/delivery.py --config ./build-config.json
 ```
 
-The first command is only needed once to initialize the shared configuration and default source files. It fills the image-export and Helm sections without overwriting existing values. Afterwards run only the final command. Repeating it resumes verified image export, Chart preparation, input adaptation and packaging stages.
+The first command is only needed once to initialize the shared configuration and default source files. The second command is a separate cache-seed action: it renders the parent Chart, derives its image closure, and exports those images from local containerd. Run it only for the initial cache or after a Chart/image version change. The final command is the normal delivery build; it never reads containerd and reuses the persistent loopback Registry at `localhost:1027`.
 
 Read-only validation of local images, roles, Chart sources and delivery input:
 
@@ -22,8 +23,8 @@ python3 ./PXEye/offline-build/delivery.py --config ./build-config.json --plan
 
 | Internal stage | Purpose | Delivery/cache |
 | --- | --- | --- |
-| image-export | Export local images selected by `image_export.image_list` | `offline-images/` |
-| package | Vendor locked child Charts under the PXEye parent, render the complete dependency tree, run relok8s once, and produce the delivery | `cache/`, `charts/`, `package-input/`, `output/` |
+| cache seed (explicit) | Render the parent Chart and export its exact local containerd image closure | `offline-images/` |
+| package | Verify the cached closure, vendor locked child Charts under the PXEye parent, use `localhost:1027`, run relok8s once, and produce the delivery | `registry-cache/`, `charts/`, `package-input/`, `output/` |
 
 | Step | Purpose | Input | Output |
 | --- | --- | --- | --- |
@@ -48,7 +49,7 @@ Fireseed: Linux amd64, Python 3.11+/PyYAML, kubectl, an available cluster/Regist
 /srv/PXEye/offline-build/
   build-config.example.json  # shared build configuration
   delivery.py           # unified builder entry
-  material-prepare/     # images.txt
+  material-prepare/     # legacy explicit-image exporter
   helm-bundle/          # chart-sources.json
   onsite/               # run.py + run-config.example.json
 

@@ -274,10 +274,12 @@ def image_view(layout, reference, target):
 
 
 class BuildRegistry:
-    def __init__(self, docker, work, run_id, resumable=False):
+    """A loopback-only persistent OCI cache shared by delivery builds."""
+    def __init__(self, docker, work, run_id, cache_root, resumable=False):
         self.docker, self.work, self.run_id = docker, work, run_id
         self.resumable = resumable
-        self.name = 'mmzhou-offline-' + run_id
+        self.cache_root = Path(cache_root)
+        self.name = 'pxeye-build-registry'
         self.container = None
         self.tool_image = 'mmzhou-offline-tools:' + run_id
         self.owned_tags = []
@@ -287,29 +289,27 @@ class BuildRegistry:
         try:
             if command([self.docker, 'image', 'inspect', LOCK['registry_image']], check=False).returncode:
                 command([self.docker, 'pull', LOCK['registry_image']], self.work / 'registry-pull.log')
-            storage = self.work / 'registry-data'; storage.mkdir(exist_ok=self.resumable)
-            port_file = self.work / 'registry-port.json'
-            port = json.loads(port_file.read_text())['port'] if self.resumable and port_file.exists() else ''
+            storage = self.cache_root / 'data'; storage.mkdir(parents=True, exist_ok=True)
+            port = '1027'
             previous = command([self.docker, 'inspect', self.name], check=False)
             if previous.returncode == 0:
                 info = json.loads(previous.stdout)[0]
-                b.require(info['Config'].get('Labels', {}).get('io.pxeye.offline-build') == self.run_id,
-                          'Registry name belongs to another run')
-                b.require(self.resumable and port, 'Existing Registry needs inspection')
-                command([self.docker, 'stop', '--time', '5', self.name], check=False)
-                remaining = command([self.docker, 'inspect', self.name], check=False)
-                if remaining.returncode == 0:
-                    b.require(not json.loads(remaining.stdout)[0]['State']['Running'], 'Registry is still running')
-                    command([self.docker, 'rm', self.name])
-            self.container = command([self.docker, 'run', '--rm', '-d', '--name', self.name,
-                '--label', 'io.pxeye.offline-build=' + self.run_id,
-                '-p', '127.0.0.1:' + str(port) + ':5000', '--mount', f'type=bind,src={storage},dst=/var/lib/registry', LOCK['registry_image']],
-                self.work / 'registry-start.log').stdout.strip()
+                labels = info['Config'].get('Labels', {})
+                b.require(labels.get('io.pxeye.offline-build-cache') == 'v1', 'Registry name belongs to another workload')
+                mounts = info.get('Mounts', [])
+                b.require(any(m.get('Source') == str(storage) and m.get('Destination') == '/var/lib/registry' for m in mounts),
+                          'Persistent registry storage path differs; inspect before reuse')
+                if not info['State']['Running']:
+                    command([self.docker, 'start', self.name], self.work / 'registry-start.log')
+                self.container = info['Id']
+            else:
+                self.container = command([self.docker, 'run', '-d', '--restart', 'unless-stopped', '--name', self.name,
+                    '--label', 'io.pxeye.offline-build-cache=v1', '-p', '127.0.0.1:' + port + ':5000',
+                    '--mount', f'type=bind,src={storage},dst=/var/lib/registry', LOCK['registry_image']],
+                    self.work / 'registry-start.log').stdout.strip()
             endpoint = command([self.docker, 'port', self.container, '5000/tcp']).stdout.strip()
-            b.require(re.fullmatch(r'127\.0\.0\.1:[0-9]+', endpoint), 'Registry must listen on loopback only')
+            b.require(endpoint == '127.0.0.1:1027', 'Registry must listen on loopback port 1027')
             self.address = 'localhost:' + endpoint.rsplit(':', 1)[1]
-            if self.resumable:
-                atomic_json(port_file, {'port': int(endpoint.rsplit(':', 1)[1])})
             for _ in range(30):
                 try:
                     with urllib.request.urlopen('http://' + endpoint + '/v2/', timeout=1) as response:
@@ -326,10 +326,6 @@ class BuildRegistry:
         failures = []
         if self.container:
             command([self.docker, 'logs', self.container], self.work / 'registry.log', check=False)
-            command([self.docker, 'stop', '--time', '5', self.container], self.work / 'registry-stop.log', check=False)
-            state = command([self.docker, 'inspect', '--format', '{{.State.Running}}', self.container], check=False)
-            if not state.returncode and state.stdout.strip() == 'true':
-                failures.append('Registry still running: ' + self.container)
         for tag in self.owned_tags:
             if command([self.docker, 'image', 'rm', tag], check=False).returncode:
                 failures.append('Could not remove per-run tag: ' + tag)
@@ -537,7 +533,8 @@ def build(config, args, progress=None):
             run_id = hashlib.sha256(str(stage).encode()).hexdigest()[:12]
             material_records = []
             packages = []
-            with BuildRegistry(config['tools']['docker'], stage / '.work', run_id, resumable=True) as registry:
+            with BuildRegistry(config['tools']['docker'], stage / '.work', run_id,
+                               output.parent / 'registry-cache', resumable=True) as registry:
                 bootstrap = next(row for row in extra if row['purpose'] == 'bootstrap')
                 loaded = registry.work / 'build-tools.tar'
                 if is_prepared:

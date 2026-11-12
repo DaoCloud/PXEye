@@ -19,7 +19,6 @@ sys.path.insert(0, str(HOME.parent / 'onsite'))
 from progress import Progress, transcript, install_signal_handlers
 
 DEFAULTS = {
-    'image_list': str(HOME / 'images.txt'),
     'containerd_content': '/var/lib/containerd/io.containerd.content.v1.content/blobs/sha256',
     'containerd_address': '/run/containerd/containerd.sock',
     'containerd_namespace': 'k8s.io',
@@ -27,11 +26,11 @@ DEFAULTS = {
 }
 
 
-def configuration(path):
+def configuration(path, image_list=None):
     raw = build_config.read(path)
     contract.require('work_directory' in raw, 'Missing work_directory in build-config.json')
     overrides = raw.get('image_export', raw.get('sources', {}))
-    contract.require(isinstance(overrides, dict) and set(overrides) <= set(DEFAULTS), 'Unknown source settings')
+    contract.require(isinstance(overrides, dict) and set(overrides) <= set(DEFAULTS) | {'image_list'}, 'Unknown source settings')
     options = DEFAULTS | overrides
     contract.require(all(isinstance(v, str) and v and not any(c in v for c in '\n\r\0') for v in options.values()),
                      'Source settings must be nonempty strings')
@@ -40,12 +39,17 @@ def configuration(path):
     contract.require(work.is_absolute(), 'work_directory must be absolute or start with ~/')
     work = work.resolve()
     contract.require(not work.is_relative_to(REPO), 'Keep work_directory outside the Git checkout')
-    for key in ('image_list', 'containerd_content', 'containerd_address'):
+    selected_list = image_list or options.get('image_list')
+    contract.require(selected_list, 'No image list supplied; use the unified delivery entry or provide image_export.image_list for the legacy exporter')
+    for key in ('containerd_content', 'containerd_address'):
         value = Path(options[key]).expanduser()
         if not value.is_absolute():
             value = path.parent / value
         options[key] = str(value.resolve())
-    image_list = Path(options['image_list'])
+    image_list = Path(selected_list).expanduser()
+    if not image_list.is_absolute(): image_list = path.parent / image_list
+    image_list = image_list.resolve()
+    options['image_list'] = str(image_list)
     content = Path(options['containerd_content'])
     # Export staging and logs are fixed children of work; original sources stay separate.
     for target in (work / 'offline-images', work / '.offline-images.building', work / 'logs'):
@@ -158,8 +162,8 @@ def verify_output(output, identity):
     contract.require((output / 'SHA256SUMS').read_text() == expected_sums, 'Export checksum file differs')
 
 
-def run(path, plan=False):
-    work, options, refs = configuration(path)
+def run(path, plan=False, image_list=None):
+    work, options, refs = configuration(path, image_list=image_list)
     if plan:
         rows = resolve_images(options, refs)
         print('IMAGE_EXPORT_PLAN', json.dumps({'images': len(rows), 'image_roles': image_roles(rows, options), 'output': str(work / 'offline-images')}), flush=True)
