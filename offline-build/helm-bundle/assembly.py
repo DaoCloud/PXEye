@@ -125,7 +125,7 @@ def prepare(value, h):
     identity = hashlib.sha256(json.dumps({'export': b.sha(source / 'export.json'),
                   'charts': b.sha(charts / 'sources.json'), 'roles': roles, 'groups': groups,
                   'helm': b.sha(helm), 'adapter': b.sha(Path(__file__))}, sort_keys=True).encode()).hexdigest()
-    root = work / 'package-input' / identity[:24]
+    root = work / 'bundle-staging' / identity[:24]
     include = {key: key in value['sources']['materials'] for key in ('aarch64', 'apt', 'bfb')}
     if root.exists():
         prepared.verify(root, kinds=('nico-package-input',))

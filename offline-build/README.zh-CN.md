@@ -35,7 +35,7 @@ python3 ./PXEye/offline-build/delivery.py --config ./build-config.json --plan
 | 内部阶段 | 作用 | 交付/缓存 |
 | --- | --- | --- |
 | 缓存初始化（`make bundles` 内部） | 渲染父 Chart；仅闭包变化时才从本地 containerd 导出精确镜像闭包 | `offline-images/` |
-| package | 核对缓存闭包、将锁定子 Chart 引入 PXEye 父 Chart、使用 `localhost:1027`、只执行一次 relok8s 并交付 | `registry-cache/`、`charts/`、`package-input/`、`output/` |
+| package | 核对缓存闭包、将锁定子 Chart 引入 PXEye 父 Chart、使用配置的 Registry、只执行一次 relok8s 并交付 | `cache/registry-exports/`、`charts/`、`bundle-staging/`、`output/` |
 
 | 步骤 | 做什么 | 关键输入 | 输出与交接 |
 | --- | --- | --- | --- |

@@ -137,7 +137,7 @@ def registry_input(path, package_value, packager):
     image_list = chart_images(path, package_value, packager)
     references = [line.strip() for line in image_list.read_text().splitlines() if line.strip()]
     identity = hashlib.sha256(json.dumps({'registry': registry, 'images': references}, sort_keys=True).encode()).hexdigest()[:24]
-    work = package_value['work_directory'] / 'registry-inputs' / identity
+    work = package_value['work_directory'] / 'cache' / 'registry-exports' / identity
     config = work / 'build-config.json'
     raw = build_config.read(path)
     chart_source = str(package_value['sources']['charts'])

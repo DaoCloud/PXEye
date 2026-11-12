@@ -35,7 +35,7 @@ python3 ./PXEye/offline-build/delivery.py --config ./build-config.json --plan
 | Internal stage | Purpose | Delivery/cache |
 | --- | --- | --- |
 | cache seed (inside `make bundles`) | Render the parent Chart and export its exact local containerd image closure only when it changed | `offline-images/` |
-| package | Verify the cached closure, vendor locked child Charts under the PXEye parent, use `localhost:1027`, run relok8s once, and produce the delivery | `registry-cache/`, `charts/`, `package-input/`, `output/` |
+| package | Verify the cached closure, vendor locked child Charts under the PXEye parent, use the configured Registry, run relok8s once, and produce the delivery | `cache/registry-exports/`, `charts/`, `bundle-staging/`, `output/` |
 
 | Step | Purpose | Input | Output |
 | --- | --- | --- | --- |
