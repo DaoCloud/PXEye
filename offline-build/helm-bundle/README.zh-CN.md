@@ -17,9 +17,9 @@
 
 ## 构建命令
 
-构建使用第一步生成的配置，沿用 prepared 中的镜像清单与版本。环境要求见[总览](../README.zh-CN.md#执行条件与路径)。
+构建读取完整 prepared 或兼容 nico-materials 输入及其镜像清单。第一步镜像导出目录不包含完整的 Chart、材料描述和工具，不能直接作为本入口的 materials_bundle。环境要求见[总览](../README.zh-CN.md#执行条件与路径)。
 
-第一步的 `NEXT_COMMAND` 输出完整构建命令，`HELM_BUILD_CONFIG` 输出配置文件路径。以下示例通过交互输入指定该配置：
+完整材料准备流程生成的配置可继续使用。以下示例指定符合本入口 schema 1 的配置文件路径：
 
 ```bash
 read -r -p '粘贴 HELM_BUILD_CONFIG 的绝对路径: ' HELM_CONFIG
@@ -28,7 +28,7 @@ python3 /srv/PXEye/offline-build/helm-bundle/build.py --config "$HELM_CONFIG"
 
 确认：出现 `HELM_BUILD_COMPLETE`；`DELIVERY_FILES` 会列出要复制到火种机的三个文件。
 
-配置由第一步生成，只包含 prepared 路径、输出父目录、包名、材料开关和工具路径。换构建机时修改本地路径即可。首次缺少工具时会准备锁定版本；完全断网需提前缓存工具及 Registry 镜像。
+配置包含 prepared 路径、输出父目录、包名、材料开关和工具路径。换构建机时修改本地路径即可。首次缺少工具时会准备锁定版本；完全断网需提前缓存工具及 Registry 镜像。
 
 ## 交付产物
 
@@ -60,4 +60,4 @@ output_root/<version>/
 
 恢复粒度为阶段，不是文件字节偏移。输入、配置或源码版本改变时使用新版本，不能混用旧断点。Registry 容器退出时停止，失败保留其数据和端口；成功后清理本次临时数据。
 
-兼容 `nico-materials` 输入及其内置材料构建逻辑；prepared 输入使用第一步生成的材料镜像。依据：[relok8s 0.5.4](https://github.com/vmware-tanzu/asset-relocation-tool-for-kubernetes/tree/v0.5.4)、[Helm OCI](https://helm.sh/docs/v3/topics/registries/)。
+兼容 `nico-materials` 输入及其内置材料构建逻辑；prepared 输入使用其中已准备的材料镜像。依据：[relok8s 0.5.4](https://github.com/vmware-tanzu/asset-relocation-tool-for-kubernetes/tree/v0.5.4)、[Helm OCI](https://helm.sh/docs/v3/topics/registries/)。

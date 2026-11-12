@@ -2,11 +2,11 @@
 
 **English** · [简体中文](README.zh-CN.md)
 
-Each step has one script and one configuration. Run steps 1–2 on the builder and step 3 on the fireseed host.
+Each step has one script and one configuration. Run steps 1–2 on the builder and step 3 on the fireseed host. Image export is independent; step two still requires complete prepared inputs containing Charts, materials and tools. An image-only export does not replace that format.
 
 | Step | Purpose | Input | Output |
 | --- | --- | --- | --- |
-| [1. Prepare](material-prepare/README.md) | Generate raw inputs, export locked images, build material images, prepare Charts | Containerd content, upstream Charts/payloads; one build configuration | Independent prepared directory, packaging configuration and copyable `NEXT_COMMAND` |
+| [1. Export images](material-prepare/README.md) | Export listed local containerd images | Work directory and image list | Compatible OCI archive and image lock file |
 | [2. Package](helm-bundle/README.md) | Render Charts, package images with relok8s, compress and verify | Generated configuration and prepared directory | `bundle.tar.gz`, `onsite-tools.tar.gz`, `SHA256SUMS` |
 | [3. Deploy](onsite/README.md) | Unpack, import images/Charts, install through Helm in order | Those three files and one site configuration | Optional PXEye, NICo Core/dependencies, progress and logs |
 
@@ -33,6 +33,6 @@ Fireseed: Linux amd64, Python 3.11+/PyYAML, kubectl, an available cluster/Regist
 /srv/nico/              # onsite delivery files, tools, configuration and records
 ```
 
-The pinned e703 profile covers single-node Core/PXEye, without REST/Temporal/Keycloak, DPF services or Ubuntu ISOs. It does not discover current running images. Material images are built in step 1; the preferred step-2 path only packages them. Material HTTP readiness does not establish consumer URLs or physical connectivity.
+The pinned e703 profile covers single-node Core/PXEye, without REST/Temporal/Keycloak, DPF services or Ubuntu ISOs. It does not discover current running images. Step one only exports images. The prepared path in step two only packages existing images; the compatible nico-materials path also builds material images. Material HTTP readiness does not establish consumer URLs or physical connectivity.
 
 Compatibility-format maintenance is documented in [legacy material preparation](legacy-materials.md) and [legacy deployment configuration](CONFIGURE.md). Those input formats and entry points are separate from this workflow.

@@ -1,27 +1,3 @@
 {
-  "schema_version": 2,
-  "recipe": "recipe-e703.json",
-  "input_root": "/srv/nico-build/input",
-  "output_root": "/srv/nico-build/prepared",
-  "cache_directory": "/srv/nico-build/cache",
-  "package_output_root": "/srv/nico-build/output",
-  "include": {
-    "aarch64": true,
-    "apt": true,
-    "bfb": true
-  },
-  "tools": {
-    "docker": "docker",
-    "helm": "helm",
-    "relok8s": null
-  },
-  "sources": {
-    "containerd_content": "/var/lib/containerd/io.containerd.content.v1.content/blobs/sha256",
-    "charts": "/srv/nico-sources/charts",
-    "materials": {
-      "aarch64": "/srv/nico-sources/scout-aarch64",
-      "apt": "/srv/nico-sources/apt",
-      "bfb": "/srv/nico-sources/dpu"
-    }
-  }
+  "work_directory": "~/pxeye-build"
 }

@@ -40,7 +40,9 @@ def graph(root, row):
                      'Wrong source image platform: ' + row['id'])
     descriptor = {'digest': row['digest'], 'size': path.stat().st_size,
                   'mediaType': manifest['mediaType'],
-                  'annotations': {'org.opencontainers.image.ref.name': row['reference']}}
+                  'platform': {'architecture': 'amd64', 'os': 'linux'},
+                  'annotations': {'io.containerd.image.name': row['reference'],
+                                  'org.opencontainers.image.ref.name': row['reference']}}
     records = [descriptor, manifest['config']] + manifest['layers']
     for record in records:
         blob_path(root, record)

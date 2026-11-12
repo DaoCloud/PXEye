@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare locked images, patched Charts and material images with one configuration."""
+"""Export listed local containerd images into a fixed work-directory structure."""
 from __future__ import annotations
 
 import argparse
@@ -29,10 +29,16 @@ sys.path.insert(0, str(HOME))
 import prepared as contract
 import sources
 sys.path.insert(0, str(HOME.parent / 'helm-bundle'))
-spec = importlib.util.spec_from_file_location('helm_packager', HOME.parent / 'helm-bundle/build.py')
-h = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(h)
-b = h.b
+h = b = None
+
+
+def load_legacy_tools():
+    global h, b
+    if h is None:
+        spec = importlib.util.spec_from_file_location('helm_packager', HOME.parent / 'helm-bundle/build.py')
+        h = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(h)
+        b = h.b
 
 
 def identity(value):
@@ -40,6 +46,7 @@ def identity(value):
 
 
 def read_config(path):
+    load_legacy_tools()
     c = json.loads(path.read_text())
     version = c.get('schema_version')
     keys = {'schema_version', 'recipe', 'input_root', 'output_root', 'cache_directory', 'package_output_root', 'include', 'tools'}
@@ -301,8 +308,16 @@ def write_result(c, output, fingerprint, action):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', required=True, type=Path)
-    parser.add_argument('--plan', action='store_true', help='Check source presence, image graph and sizes; no hashes, exports or builds')
-    args = parser.parse_args();c, recipe = read_config(args.config.resolve());build(c, recipe, args.plan)
+    parser.add_argument('--plan', action='store_true', help='Check image references, metadata and content presence without exporting or building')
+    args = parser.parse_args()
+    path = args.config.expanduser().resolve()
+    raw = json.loads(path.read_text())
+    if 'work_directory' in raw:
+        import containerd_export
+        containerd_export.run(path, plan=args.plan)
+    else:
+        c, recipe = read_config(path)
+        build(c, recipe, args.plan)
 
 
 if __name__ == '__main__':
