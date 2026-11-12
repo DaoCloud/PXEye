@@ -144,6 +144,17 @@ def registry_input(path, package_value, packager):
     generated = {'work_directory': str(work), 'image_export': raw.get('image_export', {}),
                  'helm_bundle': raw['helm_bundle'] | {'chart_sources': chart_source}}
     work.mkdir(parents=True, exist_ok=True)
+    # Registry inputs are isolated from old OCI exports, but upstream Chart
+    # archives remain a shared download cache.  Copy only absent complete files;
+    # chart_sources.py treats their checksum-named paths as immutable cache hits.
+    parent_cache = package_value['work_directory'] / 'cache/charts'
+    child_cache = work / 'cache/charts'
+    if parent_cache.is_dir():
+        child_cache.mkdir(parents=True, exist_ok=True)
+        for archive in parent_cache.glob('*.tar.gz'):
+            target_archive = child_cache / archive.name
+            if not target_archive.exists():
+                shutil.copy2(archive, target_archive)
     config.write_text(json.dumps(generated, indent=2) + '\n')
     options = containerd_export.DEFAULTS | generated['image_export']
     for source in references:
