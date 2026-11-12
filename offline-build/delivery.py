@@ -461,8 +461,13 @@ def registry_input(path, package_value, packager, material_records=None):
     # graph for this closure and is distinct for changed inputs.
     image_export = dict(raw.get('image_export', {}))
     image_export['containerd_namespace'] = 'pxeye-offline-' + identity
+    # The ARM material image deliberately inherits the PXEye base labels. Do
+    # not let the compatibility label fallback mistake it for the UI image:
+    # this generated registry export has an explicit, Chart-owned UI/bootstrap
+    # role mapping instead.
+    roles = {'ui': pxeye_image(), 'bootstrap': pxeye_image()}
     generated = {'work_directory': str(work), 'image_export': image_export,
-                 'helm_bundle': raw['helm_bundle'] | {'chart_sources': chart_source}}
+                 'helm_bundle': raw['helm_bundle'] | {'chart_sources': chart_source, 'images': roles}}
     work.mkdir(parents=True, exist_ok=True)
     # Registry inputs are isolated from old OCI exports, but upstream Chart
     # archives remain a shared download cache.  Copy only absent complete files;

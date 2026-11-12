@@ -21,12 +21,13 @@ def configuration(path):
     raw = build_config.read(path)
     if 'helm_bundle' in raw:
         options = raw['helm_bundle']
-        prepared.require(isinstance(options, dict) and set(options) <= {'chart_sources', 'materials', 'tools'},
-                         'Use helm_bundle.chart_sources, optional materials and tools')
+        prepared.require(isinstance(options, dict) and set(options) <= {'chart_sources', 'images', 'materials', 'tools'},
+                         'Use helm_bundle.chart_sources, optional images, materials and tools')
         prepared.require(isinstance(options.get('chart_sources'), str) and options['chart_sources'],
                          'Set helm_bundle.chart_sources to the Chart source file')
         value = {'work_directory': raw['work_directory'],
                  'sources': {'charts': build_config.relative(path, options['chart_sources']),
+                             'images': options.get('images', {}),
                              'materials': options.get('materials', {})},
                  'tools': options.get('tools', {})}
     else:
@@ -48,6 +49,11 @@ def configuration(path):
     for key, raw in list(materials.items()):
         root = Path(raw).expanduser()
         materials[key] = str((path.parent / root).resolve() if not root.is_absolute() else root.resolve())
+    images = source.setdefault('images', {})
+    prepared.require(isinstance(images, dict) and set(images) in (set(), {'ui', 'bootstrap'}),
+                     'Set both sources.images.ui and sources.images.bootstrap, or neither')
+    prepared.require(all(isinstance(reference, str) and reference and not any(char.isspace() for char in reference)
+                         for reference in images.values()), 'Invalid explicit image role reference')
     tools = {'docker': 'docker', 'helm': 'helm', 'relok8s': None} | value.get('tools', {})
     prepared.require(set(tools) == {'docker', 'helm', 'relok8s'}, 'Unknown packaging tools')
     value['tools'] = tools
