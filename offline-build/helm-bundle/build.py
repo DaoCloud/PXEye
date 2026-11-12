@@ -524,35 +524,19 @@ def build(config, args, progress=None):
                 loaded.unlink()
                 mapping = {}
                 image_records = []
-                layouts = {}
                 prepared_materials = json.loads((source / 'manifests/materials.json').read_text()) if is_prepared else []
                 material_rows = [r for r in json.loads((source / 'manifests/images-lock.json').read_text()) if r['kind'] == 'material'] if is_prepared else []
                 staged_images = unique_images(base + extra + material_rows)
                 for i, row in enumerate(staged_images):
                     reference = row.get('source_image') or row['image']
-                    destination = registry.address + '/build/' + reference.rsplit('/', 1)[-1]
-                    b.require(destination not in mapping.values(), 'Input image basenames collide: ' + reference)
-                    if is_prepared:
-                        layout = source / 'images/layout'
-                    else:
-                        archive = source / row.get('archive', 'images/nico-amd64.oci.tar')
-                        if archive not in layouts:
-                            target = registry.work / ('oci-' + str(len(layouts)))
-                            if target.exists(): shutil.rmtree(target)
-                            layouts[archive] = unpack_oci(archive, target)
-                        layout = layouts[archive]
-                    with progress.stage(f'02-image-{i:02}', 'Stage image ' + reference):
-                        view_path = registry.work / f'view-{i:02}'
-                        if view_path.exists(): shutil.rmtree(view_path)
-                        view = image_view(layout, reference, view_path)
-                        digest = row.get('amd64_manifest') or row['digest']
-                        if registry_has(registry, destination, digest):
-                            print('REUSE_IMAGE', reference, flush=True)
-                        else:
-                            registry.seed(view, destination, f'image-{i:02}.log')
+                    destination = registry_reference(registry.address, reference)
+                    digest = row.get('amd64_manifest') or row['digest']
+                    with progress.stage(f'02-image-{i:02}', 'Verify Registry image ' + destination):
+                        b.require(registry_has(registry, destination, digest),
+                                  'Configured Registry lacks the Chart image or digest differs: ' + destination)
                     mapping[reference] = destination
                     image_records.append({'source': reference, 'build_reference': destination,
-                        'digest': row.get('amd64_manifest') or row['digest'], 'kind': row.get('kind', row.get('purpose', 'core'))})
+                        'digest': digest, 'kind': row.get('kind', row.get('purpose', 'core'))})
                 mapping['__ui__'] = mapping[next(r['source_image'] for r in extra if r['purpose'] == 'ui')]
                 bootstrap_ref = mapping[bootstrap['source_image']]
                 material_images = {r['id']: mapping[r['image']] for r in prepared_materials}
@@ -752,6 +736,14 @@ def registry_has(registry, reference, digest):
     except urllib.error.HTTPError as error:
         if error.code == 404: return False
         raise
+
+
+def registry_reference(address, reference):
+    """Change only the registry hostname, retaining the repository and tag."""
+    parts = reference.split('/')
+    if len(parts) > 1 and ('.' in parts[0] or ':' in parts[0] or parts[0] == 'localhost'):
+        return reference if parts[0] == address else address + '/' + '/'.join(parts[1:])
+    return address + '/' + reference
 
 
 def run_build(config, args):
