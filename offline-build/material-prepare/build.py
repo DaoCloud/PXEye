@@ -154,7 +154,7 @@ def verify_payload(layout, reference, manifest):
 def build(c, recipe, plan=False):
     run_started = time.monotonic()
     run_started_at = datetime.now(timezone.utc).isoformat()
-    tracked = ['offline-build/material-prepare', 'offline-build/helm-bundle', 'offline-build/build.py', 'offline-build/onsite', 'deploy/offline-core', 'deploy/nico-platform', 'deploy/bootstrap-kubernetes.yaml', 'deploy/nico-cluster-permissions.yaml', 'charts/pxeye']
+    tracked = ['offline-build/material-prepare', 'offline-build/helm-bundle', 'offline-build/build.py', 'offline-build/onsite', 'deploy/offline-core', 'deploy/nico-platform', 'deploy/bootstrap-kubernetes.yaml', 'deploy/nico-cluster-permissions.yaml', 'charts/pxeye', 'offline-build/build_config.py', 'offline-build/build-config.example.json']
     if not plan:
         b.require(sys.platform == 'linux' and platform.machine() in ('x86_64', 'amd64'), 'Run preparation on Linux x86_64')
         b.require(not h.command(['git', '-C', REPO, 'status', '--porcelain', '--untracked-files=all', '--'] + tracked).stdout, 'Commit build sources before preparation')
@@ -307,9 +307,17 @@ def write_result(c, output, fingerprint, action):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--config', required=True, type=Path)
+    parser.add_argument('--config', type=Path)
+    parser.add_argument('--write-config', type=Path)
+    parser.add_argument('--work-directory', type=Path)
     parser.add_argument('--plan', action='store_true', help='Check image references, metadata and content presence without exporting or building')
     args = parser.parse_args()
+    if args.write_config:
+        sys.path.insert(0, str(HOME.parent))
+        import build_config
+        build_config.initialize(args.write_config, 'image_export', args.work_directory)
+        return
+    contract.require(args.config, 'Pass --config build-config.json or --write-config build-config.json')
     path = args.config.expanduser().resolve()
     raw = json.loads(path.read_text())
     if 'work_directory' in raw:

@@ -2,25 +2,25 @@
 
 [English](README.md) · **简体中文**
 
-执行环境：Linux amd64 构建机；已安装 Python 3.11+、PyYAML、Docker、Helm 3，并完成第一步导出。
+在 Linux amd64 构建机执行，需要 Python 3.11+、PyYAML、Docker、Helm 3，以及第一步导出。
 
-## 示例配置
+## 共用配置
 
-[build-config.example.json](build-config.example.json)：
+继续使用同一个 `build-config.json`。第二步只管理 `helm_bundle`：
 
 ```json
 {
   "work_directory": "~/pxeye-build",
-  "sources": {
-    "images": {
-      "ui": "docker.io/library/mmzhou-os-install-console:0.22.16-2edc182",
-      "bootstrap": "docker.io/library/mmzhou-os-install-console:0.22.16-2edc182"
-    }
+  "image_export": {
+    "image_list": "images.txt"
+  },
+  "helm_bundle": {
+    "chart_sources": "chart-sources.json"
   }
 }
 ```
 
-示例中的 PXEye 镜像同时提供控制台和构建工具，第一步导出清单需包含该引用。
+Chart 来源文件默认使用仓库 [chart-sources.json](chart-sources.json)，包含 NICo 固定提交 `e703126e4` 的下载地址、Chart `0.1.1` 及摘要，和 cert-manager `v1.17.1` 的 OCI 地址及摘要。`chart_sources` 相对配置文件目录解析。
 
 ## 执行命令
 
@@ -28,15 +28,15 @@
 
 ```bash
 cd ~/pxeye-build
-python3 ./PXEye/offline-build/helm-bundle/build.py --write-config ./helm-build.json --work-directory "$PWD"
-python3 ./PXEye/offline-build/helm-bundle/build.py --config ./helm-build.json
+python3 ./PXEye/offline-build/helm-bundle/build.py --write-config ./build-config.json
+python3 ./PXEye/offline-build/helm-bundle/build.py --config ./build-config.json
 ```
 
-配置已存在时，省略创建配置的命令。失败后重复最后一条命令续跑。
+初始化只补齐本步骤缺少的配置和 `chart-sources.json`，保留已有值、来源文件及第一步配置。镜像和用途从第一步产物读取，无需再次填写。失败后重复最后一条命令续跑。
 
 ## 结果
 
-成功打印 `HELM_BUILD_COMPLETE`。`DELIVERY_FILES` 列出：
+成功打印 `HELM_BUILD_COMPLETE`；`DELIVERY_FILES` 列出：
 
 ```text
 output/<version>/bundle.tar.gz
@@ -44,6 +44,6 @@ output/<version>/onsite-tools.tar.gz
 output/<version>/SHA256SUMS
 ```
 
-当前阶段和日志：`output/.<version>.building/progress.json`、`run.log`；成功后移入 `output/<version>/`。
+进度和日志位于 `output/.<version>.building/`，成功后移入版本目录。
 
-[Chart 来源与可选配置](REFERENCE.zh-CN.md) · [第三步部署](../onsite/README.zh-CN.md)
+[可选配置](REFERENCE.zh-CN.md) · [第三步部署](../onsite/README.zh-CN.md)

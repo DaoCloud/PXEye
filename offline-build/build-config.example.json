@@ -1,16 +1,9 @@
 {
-  "schema_version": 4,
-  "build": {
-    "source_bundle": "/srv/nico-input/base-bundle",
-    "output_root": "/srv/nico-output"
+  "work_directory": "~/pxeye-build",
+  "image_export": {
+    "image_list": "images.txt"
   },
-  "package": {
-    "bundle_id": "nico-core-materials",
-    "ui_archive": "/srv/nico-input/pxeye-ui.oci.tar",
-    "bootstrap_archive": "/srv/nico-input/pxeye-bootstrap.oci.tar"
-  },
-  "include": {
-    "dpu": true,
-    "history": false
+  "helm_bundle": {
+    "chart_sources": "chart-sources.json"
   }
 }

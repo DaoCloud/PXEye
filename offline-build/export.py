@@ -29,7 +29,7 @@ a = p.parse_args()
 rev = a.revision or git('rev-parse', 'HEAD').decode().strip()
 if not re.fullmatch('[0-9a-f]{40}', rev):
     raise SystemExit('A full committed source revision is required')
-config = json.loads(a.config.read_text() if a.config else git('show', rev + ':offline-build/build-config.example.json'))
+config = json.loads(a.config.read_text() if a.config else git('show', rev + ':offline-build/legacy-build-config.example.json'))
 if a.site_config and config.get('schema_version') in (3, 4):
     raise SystemExit('Reusable materials have no site inputs; initialize site-config.example.json at the deployment site')
 if a.site_config:

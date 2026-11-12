@@ -2,25 +2,25 @@
 
 **English** · [简体中文](README.zh-CN.md)
 
-Run on a Linux amd64 builder with Python 3.11+, PyYAML, Docker, Helm 3 and a completed step-one image export.
+Run on a Linux amd64 builder with Python 3.11+, PyYAML, Docker, Helm 3 and the step-one export.
 
-## Example configuration
+## Shared configuration
 
-[build-config.example.json](build-config.example.json):
+Continue using the same `build-config.json`. Step two owns only `helm_bundle`:
 
 ```json
 {
   "work_directory": "~/pxeye-build",
-  "sources": {
-    "images": {
-      "ui": "docker.io/library/mmzhou-os-install-console:0.22.16-2edc182",
-      "bootstrap": "docker.io/library/mmzhou-os-install-console:0.22.16-2edc182"
-    }
+  "image_export": {
+    "image_list": "images.txt"
+  },
+  "helm_bundle": {
+    "chart_sources": "chart-sources.json"
   }
 }
 ```
 
-This PXEye image serves both application and build-tool roles. The step-one export must include this reference.
+The default [chart-sources.json](chart-sources.json) lists the NICo e703126e4 download URL, Chart 0.1.1 and checksum, plus the cert-manager v1.17.1 OCI source and checksum. `chart_sources` resolves relative to the configuration file.
 
 ## Commands
 
@@ -28,15 +28,15 @@ Run in the build work directory with the checkout under `PXEye/`:
 
 ```bash
 cd ~/pxeye-build
-python3 ./PXEye/offline-build/helm-bundle/build.py --write-config ./helm-build.json --work-directory "$PWD"
-python3 ./PXEye/offline-build/helm-bundle/build.py --config ./helm-build.json
+python3 ./PXEye/offline-build/helm-bundle/build.py --write-config ./build-config.json
+python3 ./PXEye/offline-build/helm-bundle/build.py --config ./build-config.json
 ```
 
-Skip configuration creation when the file already exists. Repeat the final command to resume a failed build.
+Initialization fills only missing step-two settings and `chart-sources.json`, preserving existing values, sources and step-one settings. Images and roles come from the export. Repeat the final command to resume.
 
 ## Output
 
-Success prints `HELM_BUILD_COMPLETE`. `DELIVERY_FILES` lists:
+Success prints `HELM_BUILD_COMPLETE`; `DELIVERY_FILES` lists:
 
 ```text
 output/<version>/bundle.tar.gz
@@ -44,6 +44,6 @@ output/<version>/onsite-tools.tar.gz
 output/<version>/SHA256SUMS
 ```
 
-Progress and logs: `output/.<version>.building/progress.json` and `run.log`, moved to `output/<version>/` on success.
+Progress and logs reside under `output/.<version>.building/`, moved into the version directory on success.
 
-[Chart sources and optional settings](REFERENCE.md) · [Step 3](../onsite/README.md)
+[Optional configuration](REFERENCE.md) · [Step three](../onsite/README.md)

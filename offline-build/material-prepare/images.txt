@@ -1,5 +1,5 @@
 # Core/PXEye e703 profile. One exact local containerd reference per line.
-# Edit this list or set sources.image_list to select a different image set.
+# Edit this list or set image_export.image_list to select a different image set.
 docker.io/library/boot-artifacts-x86_64:mmzhou-e703126e4
 docker.io/library/nico-api:mmzhou-e703126e4
 docker.io/library/nico-bmc-proxy:mmzhou-e703126e4
@@ -11,5 +11,4 @@ m.daocloud.io/quay.io/jetstack/cert-manager-cainjector:v1.17.1
 m.daocloud.io/quay.io/jetstack/cert-manager-controller:v1.17.1
 m.daocloud.io/quay.io/jetstack/cert-manager-startupapicheck:v1.17.1
 m.daocloud.io/quay.io/jetstack/cert-manager-webhook:v1.17.1
-docker.io/library/mmzhou-os-install-console:0.22.16-73b8236
-docker.io/library/mmzhou-os-install-console:0.22.13-9dbcff8
+docker.io/library/mmzhou-os-install-console:0.22.16-2edc182 # roles=ui,bootstrap

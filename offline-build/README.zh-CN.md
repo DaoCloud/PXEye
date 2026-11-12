@@ -2,7 +2,7 @@
 
 [English](README.md) · **简体中文**
 
-每个大步骤使用一个脚本和一份配置。前两步在构建机执行，第三步在火种机执行。第一步只导出镜像；第二步从同一工作目录读取镜像，下载固定版本 Chart 并生成交付包。
+构建两步共用唯一的 `build-config.json`，各脚本只管理自己的配置区域。前两步在构建机执行；第三步在火种机使用独立的现场部署配置。第一步只导出镜像；第二步从同一工作目录读取镜像，下载固定版本 Chart 并生成交付包。
 
 | 步骤 | 做什么 | 关键输入 | 输出与交接 |
 | --- | --- | --- | --- |
@@ -27,8 +27,9 @@
 
 ```text
 /srv/PXEye/offline-build/
-  material-prepare/     # 第一步：build.py + build-config.example.json
-  helm-bundle/          # 第二步：build.py + build-config.example.json
+  build-config.example.json  # 共用构建配置
+  material-prepare/     # 第一步：build.py + images.txt
+  helm-bundle/          # 第二步：build.py + chart-sources.json
   onsite/               # 第三步：run.py + run-config.example.json
 
 /srv/nico-build/        # 构建机配置、镜像导出、缓存和交付包

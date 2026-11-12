@@ -17,6 +17,17 @@ HOME = Path(__file__).resolve().parent
 
 def settings(overrides=None):
     defaults = json.loads((HOME / 'chart-sources.json').read_text())
+    if isinstance(overrides, Path):
+        supplied = json.loads(overrides.read_text())
+        if not isinstance(supplied, dict) or set(supplied) != set(defaults):
+            raise ValueError('Chart source file must define core and cert-manager')
+        for key, row in supplied.items():
+            if not isinstance(row, dict) or set(row) != set(defaults[key]):
+                raise ValueError('Use the complete Chart source example fields: ' + key)
+            if any(row[field] != defaults[key][field] for field in ('name', 'version')):
+                raise ValueError('Chart version must match the pinned image/compatibility profile: ' + key)
+        defaults = supplied
+        overrides = None
     overrides = overrides or {}
     if set(overrides) - set(defaults):
         raise ValueError('Only core and cert-manager download sources are supported')

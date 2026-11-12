@@ -2,7 +2,7 @@
 
 **English** · [简体中文](README.zh-CN.md)
 
-Each step has one script and one configuration. Run steps 1–2 on the builder and step 3 on the fireseed host. Step one exports images; step two consumes them from the same work directory, downloads pinned Charts and builds the delivery.
+Steps 1–2 share one `build-config.json` on the builder; each script owns only its section. Step 3 uses a separate site configuration on the fireseed host. Step one exports images; step two consumes them from the same work directory, downloads pinned Charts and builds the delivery.
 
 | Step | Purpose | Input | Output |
 | --- | --- | --- | --- |
@@ -25,8 +25,9 @@ Fireseed: Linux amd64, Python 3.11+/PyYAML, kubectl, an available cluster/Regist
 
 ```text
 /srv/PXEye/offline-build/
-  material-prepare/     # build.py + build-config.example.json
-  helm-bundle/          # build.py + build-config.example.json
+  build-config.example.json  # shared build configuration
+  material-prepare/     # build.py + images.txt
+  helm-bundle/          # build.py + chart-sources.json
   onsite/               # run.py + run-config.example.json
 
 /srv/nico-build/        # builder configuration, prepared data, caches and delivery

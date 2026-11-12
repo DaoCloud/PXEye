@@ -5,6 +5,7 @@ from pathlib import Path
 import shutil
 import sys
 import tempfile
+import tarfile
 
 import chart_sources
 
@@ -12,11 +13,27 @@ HOME = Path(__file__).resolve().parent
 sys.path.insert(0, str(HOME.parent / 'material-prepare'))
 import containerd_export
 import prepared
+sys.path.insert(0, str(HOME.parent))
+import build_config
 
 
 def configuration(path):
-    value = json.loads(path.read_text())
-    prepared.require({'work_directory'} <= set(value) <= {'work_directory', 'sources', 'tools'}, 'Use work_directory, optional sources and tools')
+    raw = build_config.read(path)
+    if 'helm_bundle' in raw:
+        options = raw['helm_bundle']
+        prepared.require(isinstance(options, dict) and set(options) <= {'chart_sources', 'materials', 'tools'},
+                         'Use helm_bundle.chart_sources, optional materials and tools')
+        prepared.require(isinstance(options.get('chart_sources'), str) and options['chart_sources'],
+                         'Set helm_bundle.chart_sources to the Chart source file')
+        value = {'work_directory': raw['work_directory'],
+                 'sources': {'charts': build_config.relative(path, options['chart_sources']),
+                             'materials': options.get('materials', {})},
+                 'tools': options.get('tools', {})}
+    else:
+        prepared.require('image_export' not in raw and 'image_list' not in raw.get('sources', {}),
+                         'Initialize helm_bundle in build-config.json with --write-config')
+        value = raw
+        prepared.require({'work_directory'} <= set(value) <= {'work_directory', 'sources', 'tools'}, 'Use the shared build-config.json')
     work = Path(value['work_directory']).expanduser()
     prepared.require(work.is_absolute(), 'work_directory must be absolute or start with ~/')
     value['work_directory'] = work.resolve()
@@ -36,20 +53,47 @@ def configuration(path):
     return value
 
 
+def exported_roles(source, descriptor, rows):
+    """Consume first-step roles; read OCI identity labels for older exports."""
+    roles = dict(descriptor.get('image_roles') or {})
+    if not roles:
+        candidates = []
+        with tarfile.open(source / 'images/nico-amd64.oci.tar', 'r:') as archive:
+            for row in rows:
+                digest = row['config']
+                prepared.require(isinstance(digest, str) and len(digest) == 71 and digest.startswith('sha256:') and
+                                 all(c in '0123456789abcdef' for c in digest[7:]), 'Invalid exported config digest')
+                member = archive.getmember('blobs/sha256/' + digest[7:])
+                prepared.require(member.isfile() and member.size < 8 * 1024**2, 'Invalid exported image configuration')
+                data = archive.extractfile(member).read()
+                prepared.require(hashlib.sha256(data).hexdigest() == digest[7:], 'Exported image configuration checksum differs')
+                labels = (json.loads(data).get('config') or {}).get('Labels') or {}
+                if labels.get('org.opencontainers.image.title') == 'PXEye':
+                    candidates.append(row['image'])
+        if len(candidates) == 1:
+            roles = {'ui': candidates[0], 'bootstrap': candidates[0]}
+        else:
+            # Retained releases have two explicitly pinned role references.
+            recipe = json.loads((HOME.parent / 'material-prepare/recipe-e703.json').read_text())
+            pinned = {r['kind']: r['reference'] for r in recipe['images'] if r['kind'] in ('ui', 'bootstrap')}
+            if all(ref in {r['image'] for r in rows} for ref in pinned.values()):
+                roles = pinned
+    prepared.require(set(roles) == {'ui', 'bootstrap'},
+                     'Image roles are ambiguous or missing; annotate the first-step image list with # roles=ui,bootstrap')
+    return roles
+
+
 def inputs(value):
     work = value['work_directory']
     source = work / 'offline-images'
     descriptor = json.loads((source / 'export.json').read_text())
     prepared.require(descriptor.get('kind') == 'containerd-image-export' and descriptor.get('complete'), 'Complete step-one export required')
     recipe = json.loads((HOME.parent / 'material-prepare/recipe-e703.json').read_text())
-    roles = {r['kind']: r['reference'] for r in recipe['images'] if r['kind'] in ('ui', 'bootstrap')}
-    overrides = value['sources'].get('images', {})
-    prepared.require(set(overrides) <= set(roles), 'Only ui and bootstrap image role overrides are supported')
-    roles.update(overrides)
     rows = json.loads((source / 'manifests/images-lock.json').read_text())
+    roles = value['sources'].get('images') or exported_roles(source, descriptor, rows)
     refs = {r['image'] for r in rows}
     prepared.require(len(refs) == len(rows) and all(ref in refs for ref in roles.values()),
-                     'Export must contain the configured UI/bootstrap references; set sources.images to their exact references')
+                     'Export must contain the UI/bootstrap references declared by the first step')
     groups = [r for r in recipe['materials'] if r['group'] in value['sources']['materials']]
     for row in groups:
         path = prepared.relative(Path(value['sources']['materials'][row['group']]), row['target'])

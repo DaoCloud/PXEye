@@ -13,6 +13,8 @@ import sources
 
 HOME = Path(__file__).resolve().parent
 REPO = HOME.parents[1]
+sys.path.insert(0, str(HOME.parent))
+import build_config
 sys.path.insert(0, str(HOME.parent / 'onsite'))
 from progress import Progress, transcript, install_signal_handlers
 
@@ -26,10 +28,9 @@ DEFAULTS = {
 
 
 def configuration(path):
-    raw = json.loads(path.read_text())
-    contract.require({'work_directory'} <= set(raw) <= {'work_directory', 'sources'},
-                     'Use work_directory and optional sources only')
-    overrides = raw.get('sources', {})
+    raw = build_config.read(path)
+    contract.require('work_directory' in raw, 'Missing work_directory in build-config.json')
+    overrides = raw.get('image_export', raw.get('sources', {}))
     contract.require(isinstance(overrides, dict) and set(overrides) <= set(DEFAULTS), 'Unknown source settings')
     options = DEFAULTS | overrides
     contract.require(all(isinstance(v, str) and v and not any(c in v for c in '\n\r\0') for v in options.values()),
@@ -63,6 +64,31 @@ def configuration(path):
         refs.append(ref)
     contract.require(refs, 'The image list is empty')
     return work, options, refs
+
+
+def image_roles(rows, options):
+    """Record explicit list annotations, or the unique PXEye product identity."""
+    refs = {row['image'] for row in rows}
+    roles = {}
+    for line in Path(options['image_list']).read_text().splitlines():
+        reference, _, comment = line.partition('#')
+        if comment.strip().startswith('roles='):
+            for role in comment.strip()[6:].split(','):
+                role = role.strip()
+                contract.require(role in ('ui', 'bootstrap') and role not in roles and reference.strip() in refs,
+                                 'Invalid or duplicate image role annotation: ' + line)
+                roles[role] = reference.strip()
+    candidates = []
+    for row in rows:
+        config = metadata(Path(options['containerd_content']), row['config'])
+        labels = (config.get('config') or {}).get('Labels') or {}
+        if labels.get('org.opencontainers.image.title') == 'PXEye':
+            candidates.append(row['image'])
+    if 'ui' not in roles and len(candidates) == 1:
+        roles['ui'] = candidates[0]
+    if 'ui' in roles:
+        roles.setdefault('bootstrap', roles['ui'])
+    return roles
 
 
 def metadata(root, digest):
@@ -136,7 +162,7 @@ def run(path, plan=False):
     work, options, refs = configuration(path)
     if plan:
         rows = resolve_images(options, refs)
-        print('IMAGE_EXPORT_PLAN', json.dumps({'images': len(rows), 'output': str(work / 'offline-images')}), flush=True)
+        print('IMAGE_EXPORT_PLAN', json.dumps({'images': len(rows), 'image_roles': image_roles(rows, options), 'output': str(work / 'offline-images')}), flush=True)
         return
     contract.require(sys.platform == 'linux', 'Run image export on the local Linux containerd host')
     work.mkdir(parents=True, exist_ok=True)
@@ -146,13 +172,15 @@ def run(path, plan=False):
         logs = work / 'logs/image-export'
         logs.mkdir(parents=True, exist_ok=True)
         implementation = {p.name: contract.sha(p) for p in [Path(__file__), HOME / 'sources.py', HOME / 'prepared.py', HOME / 'build.py']}
-        identity = sources.fingerprint({'sources': options, 'images': refs, 'implementation': implementation})
+        implementation['build_config.py'] = contract.sha(HOME.parent / 'build_config.py')
+        identity = sources.fingerprint({'sources': options, 'images': refs, 'image_list_sha256': contract.sha(options['image_list']), 'implementation': implementation})
         with transcript(logs):
             had_progress = (logs / 'progress.json').exists()
             progress = Progress(logs, identity)
             try:
                 with progress.stage('resolve', 'Read listed containerd images and validate amd64 content'):
                     rows = resolve_images(options, refs)
+                    roles = image_roles(rows, options)
                     previous = progress.state.get('images')
                     contract.require(previous is None or previous == rows,
                                      'Listed image tags changed; use another work_directory to export the new versions')
@@ -203,7 +231,7 @@ def run(path, plan=False):
                              if p.is_file() and p.name not in ('export.json', 'SHA256SUMS')]
                     contract.dump(stage / 'export.json', {'kind': 'containerd-image-export', 'schema_version': 1,
                                   'complete': True, 'identity': identity, 'sources': options,
-                                  'images': len(rows), 'files': files})
+                                  'images': len(rows), 'image_roles': roles, 'files': files})
                     checksum_rows = files + [{'path': 'export.json', 'sha256': contract.sha(stage / 'export.json')}]
                     (stage / 'SHA256SUMS').write_text(''.join(r['sha256'] + '  ' + r['path'] + '\n' for r in checksum_rows))
                     verify_output(stage, identity)

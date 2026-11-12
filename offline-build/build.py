@@ -471,7 +471,7 @@ def load_plan(document, config):
         {'source': 'offline-build/build.py', 'target': 'build.py'},
         {'source': 'offline-build/README.md', 'target': 'README.md'},
         {'source': 'offline-build/README.zh-CN.md', 'target': 'README.zh-CN.md'},
-        {'source': 'offline-build/build-config.example.json', 'target': 'build-config.example.json'}]
+        {'source': 'offline-build/legacy-build-config.example.json', 'target': 'build-config.example.json'}]
     if generic:
         toolkit += [{'source': 'offline-build/' + name, 'target': name} for name in ('generic.py', 'configure.py', 'site-config.example.json', 'CONFIGURE.md', 'CONFIGURE.zh-CN.md')]
         for name in ('materials-lock.json', 'refresh-lock.py'):
@@ -569,7 +569,10 @@ def main():
     if a.write_config:
         require(not a.write_config.exists(), 'Configuration already exists; choose a new path')
         require(all((a.source_bundle, a.output_root, a.ui_archive, a.bootstrap_archive)), 'Provide --source-bundle/--output-root/--ui-archive/--bootstrap-archive')
-        document = json.loads((BUILD_HOME / 'build-config.example.json').read_text())
+        template = BUILD_HOME / 'legacy-build-config.example.json'
+        if not template.is_file():
+            template = BUILD_HOME / 'build-config.example.json'  # Existing exported legacy kits.
+        document = json.loads(template.read_text())
         require(document['schema_version'] == 4, 'Use the current small configuration template')
         document['build'] = {'source_bundle': str(a.source_bundle.resolve()), 'output_root': str(a.output_root.resolve())}
         document['package'].update(ui_archive=str(a.ui_archive.resolve()), bootstrap_archive=str(a.bootstrap_archive.resolve()))
@@ -604,7 +607,7 @@ def main():
         source_inventory = {'files': [{'path': r['source'], 'bytes': r['bytes'], 'sha256': r['sha256']} for r in plan['inputs'] if r['root'] == 'bundle']}
     else:
         require(not a.plan, '--plan requires the explicit schema_version=2 build configuration')
-        print('LEGACY_CONFIG: use offline-build/build-config.example.json for an explicit file list', file=sys.stderr)
+        print('LEGACY_CONFIG: use offline-build/legacy-build-config.example.json for an explicit file list', file=sys.stderr)
         config = parse_config(a.config.resolve());plan = None
         require(a.source_bundle, 'Legacy config requires --source-bundle')
         source_inventory = json.loads((a.source_bundle / 'manifests/file-inventory.json').read_text())

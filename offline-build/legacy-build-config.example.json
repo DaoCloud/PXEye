@@ -1,0 +1,16 @@
+{
+  "schema_version": 4,
+  "build": {
+    "source_bundle": "/srv/nico-input/base-bundle",
+    "output_root": "/srv/nico-output"
+  },
+  "package": {
+    "bundle_id": "nico-core-materials",
+    "ui_archive": "/srv/nico-input/pxeye-ui.oci.tar",
+    "bootstrap_archive": "/srv/nico-input/pxeye-bootstrap.oci.tar"
+  },
+  "include": {
+    "dpu": true,
+    "history": false
+  }
+}

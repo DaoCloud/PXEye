@@ -477,7 +477,7 @@ def build(config, args, progress=None):
         return
     revision = command(['git', '-C', REPO, 'rev-parse', 'HEAD']).stdout.strip()
     tracked = ['offline-build/material-prepare', 'offline-build/onsite', 'offline-build/helm-bundle', 'offline-build/build.py', 'deploy/bootstrap-kubernetes.yaml',
-               'deploy/nico-platform', 'deploy/offline-core', 'deploy/nico-cluster-permissions.yaml', 'charts/pxeye']
+               'deploy/nico-platform', 'deploy/offline-core', 'deploy/nico-cluster-permissions.yaml', 'charts/pxeye', 'offline-build/build_config.py', 'offline-build/build-config.example.json']
     dirty = command(['git', '-C', REPO, 'status', '--porcelain', '--untracked-files=all', '--'] + tracked).stdout
     b.require(not dirty, 'Commit build sources before constructing images; unrelated changes are preserved')
     with (output.parent / ('.' + version + '.lock')).open('a') as lock:
@@ -788,22 +788,10 @@ def main():
     args = parser.parse_args()
     install_signal_handlers()
     if args.write_config:
-        b.require(not args.write_config.exists(), 'Configuration exists; not overwriting')
-        config = json.loads((HOME / 'build-config.example.json').read_text())
-        if args.work_directory:
-            config['work_directory'] = str(args.work_directory.expanduser().resolve())
-        if args.materials_bundle or args.output_root:
-            config = {'schema_version': 1, 'materials_bundle': '/srv/nico-input/materials-bundle',
-                      'output_root': '/srv/nico-output/helm-bundles', 'bundle_id': 'pxeye-nico-offline',
-                      'include': {'aarch64': True, 'apt': True, 'bfb': True},
-                      'tools': {'docker': 'docker', 'helm': 'helm', 'relok8s': None}}
-        for key in ('materials_bundle', 'output_root'):
-            value = getattr(args, key)
-            if value: config[key] = str(value.resolve())
-        args.write_config.parent.mkdir(parents=True, exist_ok=True)
-        with args.write_config.open('x') as stream:
-            json.dump(config, stream, indent=2); stream.write('\n')
-        print('HELM_CONFIG_CREATED', args.write_config)
+        b.require(not args.materials_bundle and not args.output_root, 'Use the shared build-config.json and its stage sections')
+        sys.path.insert(0, str(HOME.parent))
+        import build_config
+        build_config.initialize(args.write_config, 'helm_bundle', args.work_directory)
         return
     b.require(args.config, 'Pass --config or --write-config')
     path = args.config.expanduser().resolve()
