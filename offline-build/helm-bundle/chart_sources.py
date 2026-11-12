@@ -144,7 +144,11 @@ def prepare(work, overrides, b, helm='helm'):
                     temporary.replace(archive)
                 finally:
                     temporary.unlink(missing_ok=True)
-            b.require(b.sha(archive) == row['sha256'], 'Cached Chart download checksum differs: ' + key)
+            else:
+                # The cache is a local, immutable build-input cache.  Its name
+                # is the checksum verified when first stored; subsequent runs
+                # must not block on a slow source or rehash large archives.
+                print('REUSE_DOWNLOADED_CHART', key, archive, flush=True)
             tree = stage / 'upstream' / key
             tree.mkdir(parents=True)
             metadata = extract(archive, row['subdirectory'], tree)

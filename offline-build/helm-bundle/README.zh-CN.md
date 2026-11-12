@@ -18,7 +18,7 @@
 }
 ```
 
-Chart 来源文件默认使用仓库 [chart-sources.json](chart-sources.json)，包含 NICo 固定提交 `e703126e4` 的下载地址、Chart `0.1.1` 及摘要，和 cert-manager `v1.17.1` 的 OCI 地址及摘要。构建器将两者引入 PXEye 父 Chart，再加入仓库内的平台和可选材料 Chart，生成 `Chart.lock`、渲染完整依赖闭包，最后只执行一次 relok8s。`chart_sources` 相对配置文件目录解析。
+Chart 来源文件默认使用仓库 [chart-sources.json](chart-sources.json)，包含 NICo 固定提交 `e703126e4` 的下载地址、Chart `0.1.1` 及摘要，和 cert-manager `v1.17.1` 的 OCI 地址及摘要。来源只在首次下载时校验；随后使用 `cache/charts/` 中以摘要命名的文件，不再联网或重复计算 SHA。构建器将两者引入 PXEye 父 Chart，再加入仓库内的平台和可选材料 Chart，生成 `Chart.lock`、渲染完整依赖闭包，最后只执行一次 relok8s。`chart_sources` 相对配置文件目录解析。
 
 ## 执行命令
 
