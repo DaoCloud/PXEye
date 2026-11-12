@@ -11,7 +11,6 @@ import subprocess
 import sys
 import tempfile
 import os
-import re
 import hashlib
 
 import yaml
@@ -22,6 +21,7 @@ sys.path.insert(0, str(HOME / 'material-prepare'))
 import containerd_export
 sys.path.insert(0, str(HOME))
 import build_config
+import arm_materials
 sys.path.insert(0, str(HOME / 'helm-bundle'))
 import assembly
 
@@ -42,15 +42,18 @@ def pxeye_image():
     return image
 
 
-def chart_images(path, package_value, packager, ui=None):
+def chart_images(path, package_value, packager, ui=None, material_records=None):
     """Render the locked parent Chart and write its exact containerd requirements."""
     work = package_value['work_directory']
     charts = packager.chart_sources.prepare(work, package_value['sources'].get('charts'), packager.b, helm=package_value['tools']['helm'])
     ui = ui or pxeye_image()
     with tempfile.TemporaryDirectory(prefix='.parent-discovery-', dir=work) as temporary:
         temporary = Path(temporary)
-        root = packager.stage_charts(temporary / 'bundle', temporary, {'__ui__': ui, ui: ui}, {}, ui, [],
-                                     charts / 'deployment/charts', package_value['tools']['helm'])['pxeye']
+        root = packager.stage_charts(
+            temporary / 'bundle', temporary, {'__ui__': ui, ui: ui}, {}, ui, [],
+            charts / 'deployment/charts', package_value['tools']['helm'],
+            material_records=material_records,
+        )['pxeye']
         settings = {'release_prefix': 'nico', 'namespace': 'nico-system', 'site_name': 'Build validation',
                     'dns_ip': '10.96.40.10', 'pxe_ip': '10.96.40.11', 'ntp_ip': '10.96.40.12'}
         values = packager.b.substitute((root / 'values.yaml').read_text(), settings)
@@ -98,45 +101,227 @@ def cache_reference(reference, registry):
     return registry + '/' + repository
 
 
-def cache_images(path):
-    """Populate REGISTRY from Chart-derived image references; no handwritten image list."""
+def registry_settings():
+    """Return the configured cache Registry address and its TLS mode."""
     registry = os.environ.get('REGISTRY', '').strip().removeprefix('http://').removeprefix('https://').rstrip('/')
     if not registry or '/' in registry:
         raise ValueError('Set REGISTRY to a registry host[:port], for example REGISTRY=127.0.0.1:1027')
     insecure = os.environ.get('REGISTRY_INSECURE', 'true').lower() in ('1', 'true', 'yes')
+    return registry, insecure
+
+
+def image_repository(reference):
+    """Return a Docker repository without a mutable tag or digest."""
+    value = reference.split('@', 1)[0]
+    prefix, slash, tail = value.rpartition('/')
+    if ':' in tail:
+        tail = tail.rsplit(':', 1)[0]
+    return (prefix + slash if slash else '') + tail
+
+
+def registry_digest(docker, runner_image, reference, insecure):
+    """Read a Registry manifest digest using the pinned PXEye tool image.
+
+    The build host is intentionally not required to have skopeo installed.
+    PXEye contains skopeo, and Docker has already obtained ``runner_image``
+    from the same configured Registry before this helper is used.
+    """
+    command = [docker, 'run', '--rm', '--network', 'host', '--user', '0:0', '--entrypoint', 'skopeo', runner_image,
+               'inspect', '--tls-verify=' + ('false' if insecure else 'true'), '--format', '{{.Digest}}',
+               'docker://' + reference]
+    result = subprocess.run(command, capture_output=True, text=True)
+    if result.returncode:
+        raise ValueError('Cannot read Registry digest for ' + reference + ': ' + result.stderr[-1000:].strip())
+    digest = result.stdout.strip()
+    if arm_materials.DIGEST.fullmatch(digest) is None:
+        raise ValueError('Registry returned an invalid image digest for ' + reference + ': ' + digest)
+    return digest
+
+
+def material_record(material, *, reference, digest, image_content, base_digest, initializer_sha256):
+    """Return the final delivery record without polluting image identity.
+
+    ``source`` and ``runtime`` describe provenance and consumption in the
+    delivery manifest only.  The image tag remains solely a function of the
+    immutable payload, recipe, base manifest and initializer implementation.
+    """
+    return material.as_manifest() | {
+        'image': reference,
+        'digest': digest,
+        'image_content_id': image_content,
+        'base_digest': base_digest,
+        'initializer_sha256': initializer_sha256,
+        'source': {'directory': str(material.source_dir), 'layout': 'direct-aarch64-file-set'},
+        'runtime': {
+            'init_container': 'boot-artifacts-aarch64',
+            'destination': '/forge-boot-artifacts/blobs/internal/aarch64',
+            'http_path': '/public/blobs/internal/aarch64/',
+            'chart_value': 'nicoCore.nico-pxe.bootArtifactContainers',
+            'consumer': 'nico-pxe',
+        },
+    }
+
+
+def arm_material_record(package_value, registry, insecure, *, allow_build=True):
+    """Build or reuse the optional immutable ARM boot-material image.
+
+    This is the one deliberate build/push operation performed by ``bundles``.
+    Its reference is content-addressed by the validated payload, initializer and
+    immutable PXEye base manifest.  All normal workload images still arrive
+    from the pre-populated Registry through the ordinary cache-images flow.
+    """
+    material = arm_materials.prepare(package_value['work_directory'])
+    if not material.enabled:
+        return []
+
+    initializer = HOME / 'arm-material-init.py'
+    if not initializer.is_file() or initializer.is_symlink():
+        raise ValueError('Missing or unsafe ARM material initializer: ' + str(initializer))
+    initializer_sha256 = hashlib.sha256(initializer.read_bytes()).hexdigest()
+
+    lock = arm_materials.read_image_lock(material)
+    if not allow_build:
+        if lock is None:
+            raise ValueError('ARM material plan requires a complete materials-lock.json; run make bundles once without --plan')
+        image = lock['image']
+        base_digest = image.get('base_digest')
+        if arm_materials.DIGEST.fullmatch(str(base_digest)) is None:
+            raise ValueError('ARM material plan lock lacks a valid base image digest; run make bundles again')
+        image_content = arm_materials.image_content_id(material, base_digest, initializer_sha256)
+        reference = registry + '/pxeye/materials/boot-aarch64:sha-' + image_content
+        if (image.get('reference') != reference or image.get('content_id') != image_content or
+                image.get('initializer_sha256') != initializer_sha256 or
+                arm_materials.DIGEST.fullmatch(str(image.get('digest'))) is None):
+            raise ValueError('ARM material plan lock does not match current inputs; run make bundles without --plan')
+        print('REUSE_ARM64_MATERIAL_PLAN', reference, image['digest'], flush=True)
+        return [material_record(material, reference=reference, digest=image['digest'], image_content=image_content,
+                                base_digest=base_digest, initializer_sha256=initializer_sha256)]
+
+    docker = package_value['tools']['docker']
+    # The parent Chart can name PXEye through another registry host.  Its
+    # cache-images target is always the configured build Registry, which is the
+    # only safe base for a no-network material image build.
+    base_reference = cache_reference(pxeye_image(), registry)
+    print('PREPARE_ARM64_MATERIAL_BASE', base_reference, flush=True)
+    pull = subprocess.run([docker, 'pull', base_reference], capture_output=True, text=True)
+    if pull.returncode:
+        protocol = 'HTTP' if insecure else 'HTTPS'
+        raise ValueError('Cannot obtain ARM material base image ' + base_reference +
+                         '. Publish PXEye with make images first and make Docker trust the ' + protocol +
+                         ' Registry: ' + pull.stderr[-1000:].strip())
+    base_digest = registry_digest(docker, base_reference, base_reference, insecure)
+    image_content = arm_materials.image_content_id(material, base_digest, initializer_sha256)
+    reference = registry + '/pxeye/materials/boot-aarch64:sha-' + image_content
+
+    if lock is not None:
+        image = lock['image']
+        if (image.get('reference') == reference and image.get('content_id') == image_content and
+                image.get('base_digest') == base_digest and image.get('initializer_sha256') == initializer_sha256):
+            try:
+                actual = registry_digest(docker, base_reference, reference, insecure)
+            except ValueError:
+                actual = None
+            if actual == image.get('digest'):
+                print('REUSE_ARM64_MATERIAL_IMAGE', reference, actual, flush=True)
+                return [material_record(material, reference=reference, digest=actual, image_content=image_content,
+                                        base_digest=base_digest, initializer_sha256=initializer_sha256)]
+
+    # Never build from the network: the precise base has already been pulled
+    # from REGISTRY and the Docker build runs without a network namespace.
+    material.cache_dir.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='.image-', dir=material.cache_dir) as temporary:
+        context = Path(temporary)
+        payload = context / 'payload/aarch64'
+        payload.mkdir(parents=True)
+        for item in material.files:
+            target = payload / item.target
+            shutil.copyfile(item.source, target)
+            target.chmod(0o644)
+        manifest = material.as_manifest() | {'image_content_id': image_content,
+                                              'base_digest': base_digest,
+                                              'initializer_sha256': initializer_sha256}
+        (context / 'payload/manifest.json').write_text(json.dumps(manifest, indent=2, sort_keys=True) + '\n')
+        shutil.copyfile(initializer, context / 'arm-material-init.py')
+        (context / 'arm-material-init.py').chmod(0o644)
+        (context / 'Dockerfile').write_text(
+            'FROM ' + image_repository(base_reference) + '@' + base_digest + '\n'
+            'COPY payload /payload\n'
+            'COPY arm-material-init.py /usr/local/bin/arm-material-init\n'
+            'USER 0:0\n'
+            'ENTRYPOINT ["python3", "/usr/local/bin/arm-material-init"]\n')
+        print('BUILD_ARM64_MATERIAL_IMAGE', reference, flush=True)
+        build = subprocess.run([docker, 'build', '--pull=false', '--network=none',
+                                '--label', 'io.pxeye.offline-material=' + image_content,
+                                '--tag', reference, str(context)], capture_output=True, text=True)
+        if build.returncode:
+            raise ValueError('ARM material image build failed for ' + reference + ': ' + build.stderr[-2000:].strip())
+
+    # Keep the content-addressed Docker tag as a local build cache.  It is safe
+    # to retain because the tag is derived from immutable input content, and it
+    # avoids repeating the multi-gigabyte material build after an interrupted
+    # packaging run.
+    print('PUSH_ARM64_MATERIAL_IMAGE', reference, flush=True)
+    push = subprocess.run([docker, 'push', reference], capture_output=True, text=True)
+    if push.returncode:
+        raise ValueError('ARM material image push failed for ' + reference + ': ' + push.stderr[-2000:].strip())
+    digest = registry_digest(docker, base_reference, reference, insecure)
+
+    arm_materials.write_image_lock(material, reference=reference, digest=digest,
+                                   image_content=image_content, base_digest=base_digest,
+                                   initializer_sha256=initializer_sha256)
+    print('ARM64_MATERIAL_READY', reference, digest, flush=True)
+    return [material_record(material, reference=reference, digest=digest, image_content=image_content,
+                            base_digest=base_digest, initializer_sha256=initializer_sha256)]
+
+
+def cache_images(path):
+    """Populate REGISTRY from Chart-derived image references; no handwritten image list."""
+    registry, insecure = registry_settings()
     raw = build_config.read(path)
     options = containerd_export.DEFAULTS | raw.get('image_export', {})
     packager = load_packager(); package_value = assembly.configuration(path)
     print('DELIVERY_STAGE [cache-images-chart-closure]', flush=True)
-    image_list = chart_images(path, package_value, packager)
+    # The material must exist before the first parent Chart render; otherwise
+    # the generated closure would omit the initContainer image. PXEye itself is
+    # deliberately published by the preceding ``make images`` step.
+    material_records = arm_material_record(package_value, registry, insecure)
+    image_list = chart_images(path, package_value, packager, material_records=material_records)
     known = set(subprocess.run([options['ctr'], '--address', options['containerd_address'], '--namespace', options['containerd_namespace'], 'images', 'list', '-q'], capture_output=True, text=True, check=True).stdout.splitlines())
+    material_images = {record['image'] for record in material_records}
     for source in [line.strip() for line in image_list.read_text().splitlines() if line.strip()]:
+        if source in material_images:
+            # arm_material_record has just built, pushed and digest-checked it.
+            print('REUSE_ARM64_MATERIAL_CACHE', source, flush=True)
+            continue
         if source not in known:
             print('PULL_SOURCE_IMAGE', source, flush=True)
-            subprocess.run([options['ctr'], '--address', options['containerd_address'], '--namespace', options['containerd_namespace'], 'images', 'pull', '--platform', 'linux/amd64', source], check=True)
+            pull = [options['ctr'], '--address', options['containerd_address'], '--namespace', options['containerd_namespace'], 'images', 'pull', '--platform', 'linux/amd64']
+            if insecure and cache_reference(source, registry) == source:
+                pull.append('--plain-http')
+            subprocess.run(pull + [source], check=True)
         target = cache_reference(source, registry)
         print('PUSH_CACHE_IMAGE', source, '->', target, flush=True)
-        subprocess.run([options['ctr'], '--address', options['containerd_address'], '--namespace', options['containerd_namespace'], 'images', 'tag', source, target], check=True)
+        if source != target:
+            subprocess.run([options['ctr'], '--address', options['containerd_address'], '--namespace', options['containerd_namespace'], 'images', 'tag', source, target], check=True)
         command = [options['ctr'], '--address', options['containerd_address'], '--namespace', options['containerd_namespace'], 'images', 'push', '--platform', 'linux/amd64']
         if insecure: command.append('--plain-http')
         subprocess.run(command + [target], check=True)
     print('CACHE_IMAGES_COMPLETE', registry, flush=True)
 
 
-def registry_input(path, package_value, packager):
+def registry_input(path, package_value, packager, material_records=None):
     """Materialize the Chart closure from REGISTRY into an isolated OCI input.
 
     containerd is only an export transport here: every image is first pulled from
     REGISTRY and retagged to its Chart reference before the existing OCI exporter
     reads it.  No old offline-images directory or handwritten image list is used.
     """
-    registry = os.environ.get('REGISTRY', '').strip().removeprefix('http://').removeprefix('https://').rstrip('/')
-    if not registry or '/' in registry:
-        raise ValueError('Set REGISTRY to a registry host[:port], for example REGISTRY=127.0.0.1:1027')
-    insecure = os.environ.get('REGISTRY_INSECURE', 'true').lower() in ('1', 'true', 'yes')
-    image_list = chart_images(path, package_value, packager)
+    registry, insecure = registry_settings()
+    material_records = list(material_records or [])
+    image_list = chart_images(path, package_value, packager, material_records=material_records)
     references = [line.strip() for line in image_list.read_text().splitlines() if line.strip()]
-    identity = hashlib.sha256(json.dumps({'registry': registry, 'images': references}, sort_keys=True).encode()).hexdigest()[:24]
+    identity = hashlib.sha256(json.dumps({'registry': registry, 'images': references,
+                                          'materials': material_records}, sort_keys=True).encode()).hexdigest()[:24]
     work = package_value['work_directory'] / 'cache' / 'registry-exports' / identity
     config = work / 'build-config.json'
     raw = build_config.read(path)
@@ -163,7 +348,8 @@ def registry_input(path, package_value, packager):
         pull = [options['ctr'], '--address', options['containerd_address'], '--namespace', options['containerd_namespace'], 'images', 'pull']
         if insecure: pull.append('--plain-http')
         subprocess.run(pull + ['--platform', 'linux/amd64', target], check=True)
-        subprocess.run([options['ctr'], '--address', options['containerd_address'], '--namespace', options['containerd_namespace'], 'images', 'tag', target, source], check=True)
+        if target != source:
+            subprocess.run([options['ctr'], '--address', options['containerd_address'], '--namespace', options['containerd_namespace'], 'images', 'tag', target, source], check=True)
     print('DELIVERY_STAGE [registry-oci-export]', flush=True)
     containerd_export.run(config, image_list=image_list)
     return config, assembly.configuration(config)
@@ -176,9 +362,17 @@ def run(path, plan, version, seed_cache=False):
         raise ValueError('Use the shared build-config.json with work_directory')
     packager = load_packager()
     package_value = assembly.configuration(path)
+    # ARM payloads are intentionally opt-in.  When enabled, validate/build the
+    # content-addressed image before rendering so its initContainer is part of
+    # the exact image closure exported and relocated into the final delivery.
+    if seed_cache and not arm_materials.enabled():
+        material_records = []
+    else:
+        registry, insecure = registry_settings()
+        material_records = arm_material_record(package_value, registry, insecure, allow_build=not plan)
     if seed_cache:
         print('DELIVERY_STAGE [cache-seed-image-closure]', flush=True)
-        image_list = chart_images(path, package_value, packager)
+        image_list = chart_images(path, package_value, packager, material_records=material_records)
         existing = package_value['work_directory'] / 'offline-images' / 'manifests' / 'images.txt'
         if existing.is_file():
             expected = {line.strip() for line in image_list.read_text().splitlines() if line.strip()}
@@ -192,7 +386,7 @@ def run(path, plan, version, seed_cache=False):
         return
     print('DELIVERY_STAGE [registry-input]', flush=True)
     original_work = package_value['work_directory']
-    registry_config, package_value = registry_input(path, package_value, packager)
+    registry_config, package_value = registry_input(path, package_value, packager, material_records=material_records)
     if plan:
         print('DELIVERY_STAGE [package-plan]', flush=True)
         assembly.plan(package_value)
@@ -201,7 +395,7 @@ def run(path, plan, version, seed_cache=False):
     work = package_value['work_directory']
     work.mkdir(parents=True, exist_ok=True)
     print('DELIVERY_STAGE [package]', flush=True)
-    config = assembly.prepare(package_value, packager)
+    config = assembly.prepare(package_value, packager, material_records=material_records)
     # Registry closure exports and bundle staging are cache entries.  Final
     # deliverables belong to the stable top-level output directory instead.
     config['output_root'] = original_work / 'output'

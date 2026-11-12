@@ -6,25 +6,67 @@
 
 ## 构建
 
+按以下章节顺序执行：发布 PXEye、缓存锁定 Chart 的镜像闭包、再构建离线交付物。所有
+命令均在 PXEye 源码目录执行：
+
 ```bash
 cd ~/pxeye-build/PXEye
-REGISTRY=127.0.0.1:1027 REGISTRY_INSECURE=true make bundles
 ```
 
-`make bundles` 是完整构建入口。首次运行时会在仓库已忽略的 `outputs_/` 下创建配置和可恢复构建状态；随后渲染父 Chart、读取配置的 Registry，并完成打包与校验。
+## 发布 PXEye
 
-`make bundles` 默认使用 `outputs_/build-config.json`，并生成 `outputs_/output/bundle-<PXEye版本>-<Asia/Shanghai时间戳>/`，例如 `bundle-0.22.16-202611121650`。只有需要固定版本（例如 `BUNDLE_VERSION=release-1`）时才覆盖。
+缓存 Chart 镜像或构建交付包之前，先发布 `charts/pxeye/values.yaml` 中声明的精确
+PXEye 镜像引用：
 
-## 镜像缓存
+```bash
+REGISTRY=127.0.0.1:1027 REGISTRY_INSECURE=true make images
+```
 
-首次构建或 Chart 镜像版本变化后，先将父 Chart 渲染出的镜像缓存到 Registry：
+`make images` 要求 Chart 镜像主机与 `REGISTRY` 一致，并使用 Chart 中明确的 tag。若本地
+已有该 tag，则复用并输出其 OCI revision；否则按普通的干净工作树规则构建镜像。它不会
+改写 Chart values。HTTP Registry 需要由 Docker daemon 配置为不安全仓库；Docker 的单次
+push 没有 TLS 跳过参数。
+
+## 可选 ARM64 引导材料
+
+ARM64 引导材料默认关闭；默认构建不会读取 ARM 源目录。如需将锁定的 Grace/ARM64
+引导文件加入交付包，必须显式启用，并指定直接包含
+`BUILD-INFO.json`、`ROOTFS-PACKAGES.json`、`golan.efi`、`ipxe.efi`、
+`scout.efi` 和 `scout.squashfs` 的目录：
 
 ```bash
 REGISTRY=127.0.0.1:1027 REGISTRY_INSECURE=true \
-  make -f ./PXEye/Makefile cache-images
+  INCLUDE_ARM64_MATERIALS=1 \
+  ARM64_MATERIALS_DIR=/absolute/path/to/boot/aarch64 \
+  make bundles
+```
+
+构建会校验固定校验和、生成按内容寻址的材料镜像，并由 Core PXE 服务通过既有的
+引导材料路径发布。为 ARM 构建预热 Registry 时，`make cache-images` 也使用同样的两个变量。
+
+## 镜像缓存
+
+PXEye 发布后，将父 Chart 渲染出的镜像缓存到同一个 Registry：
+
+```bash
+REGISTRY=127.0.0.1:1027 REGISTRY_INSECURE=true \
+  make cache-images
 ```
 
 该命令不读取 `images.txt`：它从 PXEye 父 Chart 及锁定子 Chart 自动得到镜像闭包，缺失镜像才从其原始公网引用拉取，再推送到 `REGISTRY`。第三方和 NICo 镜像仅替换 Registry 主机名，保留 repository 路径和 tag；PXEye 自建镜像使用 `REGISTRY/pxeye:<tag>`。该步骤不制作 bundle、不部署 Kubernetes。
+
+## 构建离线交付物
+
+Registry 就绪后，制作离线交付物：
+
+```bash
+REGISTRY=127.0.0.1:1027 REGISTRY_INSECURE=true make bundles
+```
+
+`make bundles` 会在仓库忽略的 `outputs_/` 下创建配置和可恢复构建状态；它渲染父 Chart、
+只读取指定 Registry，然后打包并验证交付物。默认使用 `outputs_/build-config.json`，并生成
+`outputs_/output/bundle-<PXEye版本>-<Asia/Shanghai时间戳>/`，例如
+`bundle-0.22.16-202611121650`。只有需要固定版本（例如 `BUNDLE_VERSION=release-1`）时才覆盖。
 
 Registry OCI 导出和 bundle staging 缓存在 `cache/registry-exports/`；最终交付文件始终写入构建工作目录根部的 `output/bundle-<version>/`。
 

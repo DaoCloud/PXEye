@@ -318,13 +318,56 @@ class BuildRegistry:
             '--dest-oci-accept-uncompressed-layers', 'dir:/input', 'docker://' + dest], log, view)
 
 
-def stage_charts(bundle, source, mapping, material_images, bootstrap, core_references, chart_directory=None, helm='helm'):
+def boot_aarch64_material(material_records):
+    """Return the one optional ARM boot-artifact record, if selected.
+
+    Delivery prepares and locks the material image before the first parent Chart
+    render.  This layer deliberately knows only the small Chart-facing contract:
+    a uniquely named record supplies an immutable image reference.  File hashes,
+    image construction and Registry digest verification remain delivery concerns.
+    """
+    if material_records is None:
+        return None
+    b.require(isinstance(material_records, list), 'Material records must be a list')
+    selected = [record for record in material_records
+                if isinstance(record, dict) and record.get('id') == 'boot-aarch64']
+    b.require(len(selected) <= 1, 'Multiple boot-aarch64 material records are not allowed')
+    if not selected:
+        return None
+    record = selected[0]
+    image = record.get('image')
+    b.require(isinstance(image, str) and image and not any(char.isspace() for char in image),
+              'boot-aarch64 material needs a complete image reference')
+    return record
+
+
+def material_image_mapping(material_records):
+    """Make explicitly selected material images visible to relok8s hints."""
+    records = material_records or []
+    b.require(isinstance(records, list), 'Material records must be a list')
+    mapping = {}
+    for record in records:
+        b.require(isinstance(record, dict), 'Material record must be an object')
+        image = record.get('image')
+        if image is None:
+            continue
+        b.require(isinstance(image, str) and image and not any(char.isspace() for char in image),
+                  'Material record image must be a complete image reference')
+        mapping[image] = image
+    return mapping
+
+
+def stage_charts(bundle, source, mapping, material_images, bootstrap, core_references, chart_directory=None, helm='helm', material_records=None):
     """Compose one PXEye umbrella Chart with all locked runtime dependencies.
 
     The child Charts remain separate Helm dependencies so the onsite runner can
     enable them in readiness-aware phases.  relok8s sees one root Chart and
     therefore creates one image closure rather than five unrelated archives.
     """
+    material_records = list(material_records or [])
+    arm_material = boot_aarch64_material(material_records)
+    material_mapping = material_image_mapping(material_records)
+    chart_mapping = mapping | material_mapping | {v: v for v in mapping.values()}
     trees = bundle.parent / '.charts'
     trees.mkdir()
     prepared = {}
@@ -349,7 +392,19 @@ def stage_charts(bundle, source, mapping, material_images, bootstrap, core_refer
                 values['offlineDependencies'] = {'image' + str(i): r for i, r in enumerate(core_references)}
             else:
                 values.pop('offlineDependencies', None)
-        hints = charts.bind_images(values, mapping | {v: v for v in mapping.values()})
+            if arm_material:
+                pxe = values.setdefault('nico-pxe', {})
+                containers = pxe.setdefault('bootArtifactContainers', [])
+                b.require(isinstance(containers, list), 'nico-pxe.bootArtifactContainers must be a list before material injection')
+                b.require(not any(isinstance(item, dict) and item.get('name') == 'boot-artifacts-aarch64'
+                                  for item in containers),
+                          'Core values already define boot-artifacts-aarch64')
+                # The material image ENTRYPOINT verifies its immutable payload
+                # then copies /payload/aarch64 into the Chart-provided shared
+                # boot-artifact mount.  Do not set command: that would bypass
+                # the material image verification contract.
+                containers.append({'name': 'boot-artifacts-aarch64', 'image': arm_material['image']})
+        hints = charts.bind_images(values, chart_mapping)
         # Match the dependency default's collection type to the root override.
         # Without this Helm silently discards defaults with a coalesce warning.
         if key == 'core':
@@ -367,7 +422,7 @@ def stage_charts(bundle, source, mapping, material_images, bootstrap, core_refer
     vault_values = charts.merge(vault_values, yaml.safe_load((REPO / 'deploy/offline-core/values/vault.yaml').read_text()))
     vault_values['bootstrapImage'] = bootstrap
     vault_values['coreServiceAccount'] = '@{release_prefix}-nico-api'
-    vault_hints = charts.bind_images(vault_values, mapping | {v: v for v in mapping.values()})
+    vault_hints = charts.bind_images(vault_values, chart_mapping)
     b.write(vault / 'values.yaml', yaml.safe_dump(vault_values, sort_keys=False))
     b.write(vault / '.relok8s-images.yaml', yaml.safe_dump(vault_hints))
     prepared['vault-bootstrap'] = vault
@@ -402,15 +457,30 @@ def stage_charts(bundle, source, mapping, material_images, bootstrap, core_refer
     # carries its deterministic packaged children and generated Chart.lock.
     shutil.rmtree(root / 'dependencies')
     values = yaml.safe_load((root / 'values.yaml').read_text()) or {}
-    identity = {v: v for v in mapping.values()} | {v: v for v in material_images.values()}
+    identity = chart_mapping | {v: v for v in material_images.values()}
     hints = charts.bind_images(values, identity)
     b.write(root / 'values.yaml', yaml.safe_dump(values, sort_keys=False))
     b.write(root / '.relok8s-images.yaml', yaml.safe_dump(hints))
     return {'pxeye': root}
 
 
-def validate_charts(roots, helm, mapping, material_images, directory):
-    known = set(mapping.values()) | set(material_images.values())
+def _named_init_containers(objects, name):
+    """Return rendered init containers with a particular name."""
+    found = []
+    for value in objects:
+        if not isinstance(value, dict):
+            continue
+        spec = ((value.get('spec') or {}).get('template') or {}).get('spec') or {}
+        for container in spec.get('initContainers') or []:
+            if isinstance(container, dict) and container.get('name') == name:
+                found.append(container)
+    return found
+
+
+def validate_charts(roots, helm, mapping, material_images, directory, material_records=None):
+    material_records = list(material_records or [])
+    arm_material = boot_aarch64_material(material_records)
+    known = set(mapping.values()) | set(material_images.values()) | set(material_image_mapping(material_records).values())
     settings = {'release_prefix': 'nico', 'namespace': 'nico-system', 'site_name': 'Build validation',
                 'dns_ip': '10.96.40.10', 'pxe_ip': '10.96.40.11', 'ntp_ip': '10.96.40.12'}
     report = []
@@ -436,6 +506,12 @@ def validate_charts(roots, helm, mapping, material_images, directory):
             b.require(images <= expected, 'Rendered image is absent from this Chart hints: ' + ', '.join(sorted(images - expected)))
             native_boot = [v for k, v in mapping.items() if 'boot-artifacts-x86' in k]
             b.require(native_boot and set(native_boot) <= images, 'Native x86_64 boot-artifacts initContainer was lost during Chart composition')
+            if arm_material:
+                containers = _named_init_containers(objects, 'boot-artifacts-aarch64')
+                b.require(len(containers) == 1 and containers[0].get('image') == arm_material['image'],
+                          'ARM boot-artifact initContainer was lost during Chart composition')
+                b.require('command' not in containers[0],
+                          'ARM boot-artifact image ENTRYPOINT must not be overridden')
             b.require('@{' not in yaml.safe_dump(objects), 'Unresolved validation token in ' + key)
             report.append({'chart': key, 'mode': mode, 'resources': len(objects), 'images': sorted(images)})
     return report
@@ -488,7 +564,9 @@ def build(config, args, progress=None):
         print('HELM_INPUTS_READY; relok8s and pinned registry image will be prepared during build', flush=True)
         return
     revision = command(['git', '-C', REPO, 'rev-parse', 'HEAD']).stdout.strip()
-    tracked = ['offline-build/material-prepare', 'offline-build/onsite', 'offline-build/helm-bundle', 'offline-build/build.py', 'deploy/bootstrap-kubernetes.yaml',
+    tracked = ['Makefile', 'offline-build/delivery.py', 'offline-build/material-prepare', 'offline-build/onsite',
+               'offline-build/helm-bundle', 'offline-build/build.py', 'offline-build/arm_materials.py',
+               'offline-build/arm-material-init.py', 'deploy/bootstrap-kubernetes.yaml',
                'deploy/nico-platform', 'deploy/offline-core', 'deploy/nico-cluster-permissions.yaml', 'charts/pxeye', 'offline-build/build_config.py', 'offline-build/build-config.example.json']
     dirty = command(['git', '-C', REPO, 'status', '--porcelain', '--untracked-files=all', '--'] + tracked).stdout
     b.require(not dirty, 'Commit build sources before constructing images; unrelated changes are preserved')
@@ -526,6 +604,7 @@ def build(config, args, progress=None):
                 image_records = []
                 prepared_materials = json.loads((source / 'manifests/materials.json').read_text()) if is_prepared else []
                 material_rows = [r for r in json.loads((source / 'manifests/images-lock.json').read_text()) if r['kind'] == 'material'] if is_prepared else []
+                material_ids_by_image = {row['image']: row.get('material_id') for row in material_rows}
                 staged_images = unique_images(base + extra + material_rows)
                 for i, row in enumerate(staged_images):
                     reference = row.get('source_image') or row['image']
@@ -535,12 +614,25 @@ def build(config, args, progress=None):
                         b.require(registry_has(registry, destination, digest),
                                   'Configured Registry lacks the Chart image or digest differs: ' + destination)
                     mapping[reference] = destination
-                    image_records.append({'source': reference, 'build_reference': destination,
-                        'digest': digest, 'kind': row.get('kind', row.get('purpose', 'core'))})
+                    image_record = {'source': reference, 'build_reference': destination,
+                                    'digest': digest, 'kind': row.get('kind', row.get('purpose', 'core'))}
+                    if image_record['kind'] == 'material':
+                        material_id = row.get('material_id') or material_ids_by_image.get(reference)
+                        b.require(isinstance(material_id, str) and material_id,
+                                  'Prepared material image lacks material_id: ' + reference)
+                        image_record['material_id'] = material_id
+                    image_records.append(image_record)
                 mapping['__ui__'] = mapping[next(r['source_image'] for r in extra if r['purpose'] == 'ui')]
                 bootstrap_ref = mapping[bootstrap['source_image']]
                 material_images = {r['id']: mapping[r['image']] for r in prepared_materials}
+                # Final manifests retain the source reference and add the build
+                # Registry reference.  The Chart-facing copy must use the
+                # latter: relok8s moves exactly the images that it sees in the
+                # rendered parent Chart.
                 material_records.extend(r | {'build_reference': mapping[r['image']]} for r in prepared_materials)
+                chart_material_records = [r | {'source_image': r['image'], 'image': mapping[r['image']],
+                                                'build_reference': mapping[r['image']]}
+                                          for r in prepared_materials]
                 for name, group in groups.items():
                     context = registry.work / ('material-' + name)
                     if context.exists(): shutil.rmtree(context)
@@ -572,9 +664,9 @@ def build(config, args, progress=None):
                     image_records.append({'build_reference': ref, 'digest': digest, 'kind': 'material'})
                 if (stage / '.charts').exists(): shutil.rmtree(stage / '.charts')
                 with progress.stage('03-charts', 'Compose and render Charts'):
-                    roots = stage_charts(bundle, source, mapping, material_images, bootstrap_ref, [r['image'] for r in base], config.get('chart_directory'), config['tools']['helm'])
+                    roots = stage_charts(bundle, source, mapping, material_images, bootstrap_ref, [r['image'] for r in base], config.get('chart_directory'), config['tools']['helm'], material_records=chart_material_records)
                     render_dir = stage / 'render'; render_dir.mkdir(exist_ok=True)
-                    render = validate_charts(roots, config['tools']['helm'], mapping, material_images, render_dir)
+                    render = validate_charts(roots, config['tools']['helm'], mapping, material_images, render_dir, material_records=chart_material_records)
                 image_usage = [{'image': r['build_reference'], 'source': r.get('source'), 'used_by': [v['chart'] + '/' + v['mode'] for v in render if r['build_reference'] in v['images']]} for r in image_records]
                 if is_prepared:
                     b.require(all(r['used_by'] for r in image_usage), 'Prepared images include entries unused by the selected Charts')
@@ -728,7 +820,8 @@ def unique_images(rows):
 
 def registry_has(registry, reference, digest):
     path, tag = reference.partition('/')[2].rsplit(':', 1)
-    request = urllib.request.Request('http://' + registry.address + '/v2/' + path + '/manifests/' + tag,
+    scheme = 'http' if os.environ.get('REGISTRY_INSECURE', 'true').lower() in ('1', 'true', 'yes') else 'https'
+    request = urllib.request.Request(scheme + '://' + registry.address + '/v2/' + path + '/manifests/' + tag,
         method='HEAD', headers={'Accept': 'application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json'})
     try:
         with urllib.request.urlopen(request, timeout=10) as response:

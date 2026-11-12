@@ -6,25 +6,74 @@ Run one builder script with one `build-config.json`. It exports local containerd
 
 ## Build
 
+Run the following sections in order: publish PXEye, cache the locked Chart image
+closure, then build the delivery. All commands run from the PXEye checkout:
+
 ```bash
 cd ~/pxeye-build/PXEye
-REGISTRY=127.0.0.1:1027 REGISTRY_INSECURE=true make bundles
 ```
 
-`make bundles` is the complete build command. On its first run it creates configuration and resumable build state under the repository's ignored `outputs_/` directory. It renders the parent Chart, reads the configured Registry, then packages and verifies the delivery.
+## Publish PXEye
 
-`make bundles` defaults to `outputs_/build-config.json` and creates `outputs_/output/bundle-<PXEye version>-<Asia/Shanghai timestamp>/`, such as `bundle-0.22.16-202611121650`. Override only when needed, for example `BUNDLE_VERSION=release-1`.
+Before caching Chart images or building a delivery, publish the exact PXEye
+reference declared by `charts/pxeye/values.yaml`:
 
-## Image cache
+```bash
+REGISTRY=127.0.0.1:1027 REGISTRY_INSECURE=true make images
+```
 
-Before the first build, or after a Chart image version changes, cache the parent-Chart closure in a Registry:
+`make images` requires the Chart image host to equal `REGISTRY` and uses the
+Chart's explicit tag. If that local tag already exists, it is reused and its
+OCI revision is reported; otherwise the normal clean-tree image build runs.
+It never rewrites Chart values. For an HTTP Registry, configure the Docker
+daemon to trust that Registry as insecure; Docker has no per-push TLS override.
+
+## Optional ARM64 boot materials
+
+ARM64 boot files are disabled by default; the default build does not inspect an
+ARM source directory. To package the locked Grace/ARM64 boot files, explicitly
+enable them and point at the directory that directly contains
+`BUILD-INFO.json`, `ROOTFS-PACKAGES.json`, `golan.efi`, `ipxe.efi`,
+`scout.efi`, and `scout.squashfs`:
 
 ```bash
 REGISTRY=127.0.0.1:1027 REGISTRY_INSECURE=true \
-  make -f ./PXEye/Makefile cache-images
+  INCLUDE_ARM64_MATERIALS=1 \
+  ARM64_MATERIALS_DIR=/absolute/path/to/boot/aarch64 \
+  make bundles
+```
+
+The build verifies the pinned file checksums, creates a content-addressed
+material image, and makes the Core PXE service publish it through the existing
+boot-artifact path. Use the same two variables with `make cache-images` when
+preparing a Registry for an ARM-enabled build.
+
+## Image cache
+
+After PXEye is published, cache the parent-Chart closure in the same Registry:
+
+```bash
+REGISTRY=127.0.0.1:1027 REGISTRY_INSECURE=true \
+  make cache-images
 ```
 
 The command does not read `images.txt`. It renders the PXEye parent and locked child Charts, pulls only missing images from their original public references, and pushes them to `REGISTRY`. Third-party and NICo images retain their repository path and tag while their registry host changes; the PXEye image becomes `REGISTRY/pxeye:<tag>`. It does not create a bundle or deploy Kubernetes.
+
+## Build delivery
+
+After the Registry is ready, create the offline delivery:
+
+```bash
+REGISTRY=127.0.0.1:1027 REGISTRY_INSECURE=true make bundles
+```
+
+`make bundles` creates configuration and resumable build state under the
+repository's ignored `outputs_/` directory. It renders the parent Chart, reads
+only the configured Registry, then packages and verifies the delivery. It
+defaults to `outputs_/build-config.json` and creates
+`outputs_/output/bundle-<PXEye version>-<Asia/Shanghai timestamp>/`, such as
+`bundle-0.22.16-202611121650`. Override only when needed, for example
+`BUNDLE_VERSION=release-1`.
 
 Registry OCI exports and bundle staging are cached under `cache/registry-exports/`; final delivery files always go to `output/bundle-<version>/` at the build work-directory root.
 

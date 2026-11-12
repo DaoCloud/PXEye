@@ -104,19 +104,49 @@ def inputs(value):
 
 def plan(value):
     source, _, rows, _, groups = inputs(value)
+    records_path = source / 'manifests/materials.json'
+    records = json.loads(records_path.read_text()) if records_path.is_file() else []
     print('PACKAGE_PLAN', json.dumps({'image_export': str(source), 'images': len(rows),
           'chart_sources': chart_sources.settings(value['sources'].get('charts')),
           'repository_charts': ['charts/pxeye', 'deploy/nico-platform'],
           'build_material_images': sorted({r['group'] for r in groups}),
+          'prebuilt_material_images': [r.get('id') for r in records if isinstance(r, dict)],
           'output': str(value['work_directory'] / 'output')}, ensure_ascii=False), flush=True)
 
 
-def prepare(value, h):
+def selected_materials(material_records):
+    """Validate the small generated material lock passed from delivery.
+
+    Raw material files never enter this adapter.  The caller has already
+    validated them, built an image and read its Registry digest; this stage
+    only ensures that the selected image can be carried through the OCI input
+    and final manifests without being mistaken for a Core image.
+    """
+    records = list(material_records or [])
+    b = prepared
+    b.require(all(isinstance(record, dict) for record in records), 'Material records must be objects')
+    ids = [record.get('id') for record in records]
+    b.require(all(isinstance(value, str) and value for value in ids) and len(ids) == len(set(ids)),
+              'Material records need unique ids')
+    images = [record.get('image') for record in records]
+    b.require(all(isinstance(value, str) and value for value in images) and len(images) == len(set(images)),
+              'Material records need unique complete image references')
+    for record in records:
+        digest = record.get('digest')
+        b.require(isinstance(digest, str) and digest.startswith('sha256:') and len(digest) == 71,
+                  'Material record needs an image digest: ' + record['id'])
+        b.require(isinstance(record.get('files'), list) and record['files'],
+                  'Material record needs its file manifest: ' + record['id'])
+    return records
+
+
+def prepare(value, h, material_records=None):
     b = h.b
     work = value['work_directory']
     b.require(not work.is_relative_to(h.REPO) or work.is_relative_to(h.REPO / 'outputs_'),
               'Use repository outputs_ or a location outside the checkout')
     source, descriptor, rows, roles, groups = inputs(value)
+    material_records = selected_materials(material_records)
     containerd_export.verify_output(source, descriptor['identity'])
     charts = chart_sources.prepare(work, value['sources'].get('charts'), b, helm=value['tools']['helm'])
     helm = shutil.which(value['tools']['helm'])
@@ -126,9 +156,15 @@ def prepare(value, h):
         b.require(b.sha(material) == row['sha256'], 'Material source checksum differs: ' + str(material))
     identity = hashlib.sha256(json.dumps({'export': b.sha(source / 'export.json'),
                   'charts': b.sha(charts / 'sources.json'), 'roles': roles, 'groups': groups,
+                  'materials': material_records,
                   'helm': b.sha(helm), 'adapter': b.sha(Path(__file__))}, sort_keys=True).encode()).hexdigest()
     root = work / 'bundle-staging' / identity[:24]
+    # ``include`` describes material capabilities in the prepared input, not
+    # merely legacy raw-file groups.  ARM64 now arrives as an already locked
+    # material image, so retain that fact for downstream validation and reports.
     include = {key: key in value['sources']['materials'] for key in ('aarch64', 'apt', 'bfb')}
+    include['aarch64'] = include['aarch64'] or any(record['id'] == 'boot-aarch64'
+                                                   for record in material_records)
     if root.exists():
         prepared.verify(root, kinds=('nico-package-input',))
     else:
@@ -136,10 +172,21 @@ def prepare(value, h):
         stage = Path(tempfile.mkdtemp(prefix='.input-', dir=root.parent))
         try:
             h.unpack_oci(source / 'images/nico-amd64.oci.tar', stage / 'images/layout')
+            materials_by_image = {record['image']: record for record in material_records}
             images = []
             for row in rows:
-                kind = next((role for role, ref in roles.items() if ref == row['image']), 'core')
-                images.append({'image': row['image'], 'digest': row.get('amd64_manifest') or row['digest'], 'kind': kind})
+                digest = row.get('amd64_manifest') or row['digest']
+                material = materials_by_image.get(row['image'])
+                if material:
+                    b.require(digest == material['digest'],
+                              'Registry export digest differs from material lock: ' + material['id'])
+                    images.append({'image': row['image'], 'digest': digest,
+                                   'kind': 'material', 'material_id': material['id']})
+                else:
+                    kind = next((role for role, ref in roles.items() if ref == row['image']), 'core')
+                    images.append({'image': row['image'], 'digest': digest, 'kind': kind})
+            b.require(set(materials_by_image) <= {row['image'] for row in rows},
+                      'Registry export omitted selected material image')
             shutil.copytree(charts / 'deployment', stage / 'deployment')
             for row in groups:
                 target = prepared.relative(stage, row['path']); target.parent.mkdir(parents=True, exist_ok=True)
@@ -147,9 +194,11 @@ def prepare(value, h):
                 shutil.copyfile(original, target)
             (stage / 'tools').mkdir(); shutil.copyfile(helm, stage / 'tools/helm'); (stage / 'tools/helm').chmod(0o755)
             b.dump(stage / 'manifests/images-lock.json', images)
-            b.dump(stage / 'manifests/materials.json', [])
+            b.dump(stage / 'manifests/materials.json', material_records)
             b.dump(stage / 'prepared.json', {'schema_version': 1, 'kind': 'nico-package-input', 'complete': True,
                    'include': include, 'image_roles': roles, 'raw_material_groups': sorted(value['sources']['materials']),
+                   'material_ids': [record['id'] for record in material_records],
+                   'prebuilt_material_images': [record['id'] for record in material_records],
                    'export_identity': descriptor['identity'], 'fingerprint': identity})
             prepared.inventory(stage); prepared.verify(stage, kinds=('nico-package-input',))
             stage.rename(root)
