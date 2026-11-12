@@ -683,7 +683,7 @@ def main():
                 locked = {config['registry'] + '/' + config['repository_prefix'] + '/' + r['image'] for r in records} | {r['image'] for r in extra}
                 report = validate_render(bundle, manifest, config, a.helm, scratch, locked)
             report.update({'source_revision': a.source_revision, 'base_archive_sha256': OCI_SHA, 'base_images': base_images,
-                'extra_images': extra, 'profile': 'e703126e4-core-single-node', 'cold_install_tested': False,
+                'extra_images': extra, 'profile': 'e703126e4-core-single-node',
                 'source_assets': {name: sha(REPO / name) for name in plan['repository']} if plan else {p.relative_to(REPO).as_posix(): sha(p) for directory in (ASSETS, REPO / 'deploy/nico-platform', REPO / 'tools/offline-field') for p in sorted(directory.rglob('*')) if p.is_file()}, 'builder_sha256': sha(Path(__file__)), 'build_configuration_sha256': sha(a.config)})
             dump(bundle / 'manifests/build-report.json', report)
             dump(bundle / 'bundle.json', {'schema_version': 1, 'id': config['bundle_id'], 'name': 'NICo Core single-node offline delivery',

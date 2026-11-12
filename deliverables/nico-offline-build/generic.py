@@ -205,7 +205,7 @@ def build_generic(args, document):
             b.dump(bundle / 'manifests/build-report.json', {
                 'profile': PROFILE, 'source_revision': revision, 'base_archive_sha256': b.OCI_SHA,
                 'base_images': base_images, 'extra_images': extra,
-                'validation_render': report, 'validation_only': True, 'cold_install_tested': False,
+                'validation_render': report, 'validation_only': True,
                 'builder_sha256': b.sha(b.BUILD_HOME / 'build.py'),
                 'source_assets': {name: b.sha(b.REPO / name) for name in plan['repository']},
                 'toolkit_assets': {row['target']: b.sha(toolkit_source(row)) for row in plan['toolkit']},
@@ -350,7 +350,6 @@ def configure_main():
                 'source_inventory_sha256': b.sha(source / 'manifests/file-inventory.json'),
                 'site_configuration_sha256': b.sha(args.site_config), 'render': rendered,
                 'material_reuse': 'hardlink', 'hardlinked_files': linked,
-                'cold_install_tested': False,
             })
             b.dump(stage / 'bundle.json', {'schema_version': 2, 'id': config['bundle_id'],
                 'name': config['site_name'], 'version': version, 'architecture': 'linux/amd64',

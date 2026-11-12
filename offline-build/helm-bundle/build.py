@@ -651,7 +651,7 @@ def build(config, args, progress=None):
                 'package_builds_images': bool(groups), 'base_images': rows,
                 'native_x86_boot_artifacts': {'source': 'existing locked image', 'internal_files_verified': False},
                 'validation_render': render, 'image_usage': image_usage, 'tool_hashes': {n: b.sha(bundle / 'tools' / n) for n in ('helm', 'relok8s')},
-                'cold_install_tested': False, 'multi_phase_oci_ui_ready': True})
+                'multi_phase_oci_ui_ready': True})
             b.inventory(bundle)
             verify(bundle)
             with progress.stage('05-archive', 'Compress delivery archive') as checkpoint:
@@ -699,7 +699,7 @@ def build(config, args, progress=None):
                 b.write(stage / 'SHA256SUMS', digest + '  bundle.tar.gz\n' + kit_digest + '  onsite-tools.tar.gz\n')
             b.dump(stage / 'build-result.json', {'version': version, 'source_revision': revision,
                 'archive_bytes': (stage / 'bundle.tar.gz').stat().st_size, 'archive_sha256': digest,
-                'distinct_images': len(image_records), 'charts': len(packages), 'cold_install_tested': False,
+                'distinct_images': len(image_records), 'charts': len(packages),
                 'onsite_tools_archive_sha256': kit_digest})
             progress.complete()
             stage.rename(output)
