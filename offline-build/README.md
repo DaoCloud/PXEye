@@ -6,7 +6,7 @@ Each step has one script and one configuration. Run steps 1–2 on the builder a
 
 | Step | Purpose | Input | Output |
 | --- | --- | --- | --- |
-| [1. Prepare](material-prepare/README.md) | Lock images, build material images, prepare Charts | Original archives, Charts, payloads; one build configuration | Independent prepared directory, packaging configuration and copyable `NEXT_COMMAND` |
+| [1. Prepare](material-prepare/README.md) | Generate raw inputs, export locked images, build material images, prepare Charts | Containerd content, upstream Charts/payloads; one build configuration | Independent prepared directory, packaging configuration and copyable `NEXT_COMMAND` |
 | [2. Package](helm-bundle/README.md) | Render Charts, package images with relok8s, compress and verify | Generated configuration and prepared directory | `bundle.tar.gz`, `onsite-tools.tar.gz`, `SHA256SUMS` |
 | [3. Deploy](onsite/README.md) | Unpack, import images/Charts, install through Helm in order | Those three files and one site configuration | Optional PXEye, NICo Core/dependencies, progress and logs |
 

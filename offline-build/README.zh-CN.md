@@ -6,7 +6,7 @@
 
 | 步骤 | 做什么 | 关键输入 | 输出与交接 |
 | --- | --- | --- | --- |
-| [1. 准备材料](material-prepare/README.zh-CN.md) | 锁定镜像、构建材料镜像、准备 Chart | 原始镜像归档、Chart、材料；一份构建配置 | prepared 目录、第二步配置和可复制的 `NEXT_COMMAND` |
+| [1. 准备材料](material-prepare/README.zh-CN.md) | 生成原始材料目录、导出锁定镜像、构建材料镜像、准备 Chart | containerd内容、上游Chart/材料；一份构建配置 | prepared 目录、第二步配置和可复制的 `NEXT_COMMAND` |
 | [2. 构建交付包](helm-bundle/README.zh-CN.md) | 渲染 Chart，relok8s 打包镜像，压缩验包 | 第一步生成的配置及 prepared 目录 | `bundle.tar.gz`、`onsite-tools.tar.gz`、`SHA256SUMS` |
 | [3. 现场部署](onsite/README.zh-CN.md) | 解包、镜像与 Chart 入库、顺序 Helm 安装 | 上述三个文件；一份现场配置 | 可选 PXEye、NICo Core 及其依赖；安装日志和进度 |
 

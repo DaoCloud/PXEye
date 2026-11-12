@@ -27,6 +27,7 @@ HOME = Path(__file__).resolve().parent
 REPO = HOME.parents[1]
 sys.path.insert(0, str(HOME))
 import prepared as contract
+import sources
 sys.path.insert(0, str(HOME.parent / 'helm-bundle'))
 spec = importlib.util.spec_from_file_location('helm_packager', HOME.parent / 'helm-bundle/build.py')
 h = importlib.util.module_from_spec(spec)
@@ -40,7 +41,9 @@ def identity(value):
 
 def read_config(path):
     c = json.loads(path.read_text())
-    b.require(set(c) == {'schema_version', 'recipe', 'input_root', 'archives', 'output_root', 'cache_directory', 'package_output_root', 'include', 'tools'} and c['schema_version'] == 1, 'Use the materials build configuration schema 1')
+    version = c.get('schema_version')
+    keys = {'schema_version', 'recipe', 'input_root', 'output_root', 'cache_directory', 'package_output_root', 'include', 'tools'}
+    b.require(version in (1, 2) and set(c) == keys | ({'archives'} if version == 1 else {'sources'}), 'Use materials configuration schema 2 (source generation) or legacy schema 1 (existing archives)')
     c['recipe'] = (path.parent / c['recipe']).resolve() if not Path(c['recipe']).is_absolute() else Path(c['recipe'])
     if not c['recipe'].exists() and c['recipe'].name == 'recipe-e703.json': c['recipe'] = HOME / 'recipe-e703.json'
     recipe = json.loads(c['recipe'].read_text())
@@ -50,7 +53,8 @@ def read_config(path):
     for key in ('input_root', 'output_root', 'cache_directory', 'package_output_root'):
         value = Path(c[key]); b.require(value.is_absolute() and not any(x in str(value) for x in ',\n\r'), 'Use absolute paths without commas or newlines: ' + key)
         c[key] = value.resolve()
-    b.require(c['input_root'].is_dir(), 'Missing input_root')
+    b.require(version == 2 or c['input_root'].is_dir(), 'Missing input_root')
+    b.require(not c['input_root'].is_relative_to(REPO), 'Keep generated inputs outside source')
     for key in ('output_root', 'cache_directory', 'package_output_root'):
         b.require(not c[key].is_relative_to(REPO) and not c[key].is_relative_to(c['input_root']) and not c['input_root'].is_relative_to(c[key]), 'Keep outputs/cache outside source and input: ' + key)
     b.require(not c['output_root'].is_relative_to(c['cache_directory']) and not c['cache_directory'].is_relative_to(c['output_root']), 'Separate prepared and cache directories')
@@ -143,6 +147,16 @@ def verify_payload(layout, reference, manifest):
 def build(c, recipe, plan=False):
     run_started = time.monotonic()
     run_started_at = datetime.now(timezone.utc).isoformat()
+    tracked = ['offline-build/material-prepare', 'offline-build/helm-bundle', 'offline-build/build.py', 'offline-build/onsite', 'deploy/offline-core', 'deploy/nico-platform', 'deploy/bootstrap-kubernetes.yaml', 'deploy/nico-cluster-permissions.yaml']
+    if not plan:
+        b.require(sys.platform == 'linux' and platform.machine() in ('x86_64', 'amd64'), 'Run preparation on Linux x86_64')
+        b.require(not h.command(['git', '-C', REPO, 'status', '--porcelain', '--untracked-files=all', '--'] + tracked).stdout, 'Commit build sources before preparation')
+    if c['schema_version'] == 2:
+        c, recipe = sources.generate(c, recipe, plan=plan)
+        if plan:
+            print('SOURCE_PLAN_OK; no files exported, copied or built', flush=True)
+            return
+    print('STAGE 3/5 Verify raw inputs and prepare locked images', flush=True)
     selected, size = preflight(c, recipe, full=not plan)
     verification_seconds = time.monotonic() - run_started
     if plan: return
@@ -155,8 +169,6 @@ def build(c, recipe, plan=False):
     helm_version = h.command([c['tools']['helm'], 'version', '--short']).stdout.strip()
     b.require(helm_version.startswith('v3.'), 'Helm 3 is required')
     revision = h.command(['git', '-C', REPO, 'rev-parse', 'HEAD']).stdout.strip()
-    tracked = ['offline-build/material-prepare', 'offline-build/helm-bundle', 'offline-build/build.py', 'offline-build/onsite', 'deploy/offline-core', 'deploy/nico-platform', 'deploy/bootstrap-kubernetes.yaml', 'deploy/nico-cluster-permissions.yaml']
-    b.require(not h.command(['git', '-C', REPO, 'status', '--porcelain', '--untracked-files=all', '--'] + tracked).stdout, 'Commit build sources before preparation')
     source_hashes = {str(p.relative_to(REPO)): b.sha(p) for name in tracked for p in ([REPO / name] if (REPO / name).is_file() else sorted((REPO / name).rglob('*'))) if p.is_file() and '__pycache__' not in p.parts and p.suffix != '.pyc'}
     helm_path = Path(shutil.which(c['tools']['helm']))
     fingerprint = identity({'recipe': recipe, 'include': c['include'], 'implementation': source_hashes, 'helm_sha256': b.sha(helm_path)})
@@ -206,6 +218,7 @@ def build(c, recipe, plan=False):
                     add_image(temp, layout, desc);contract.image(layout, row['reference'], row['digest'])
                     records.append({'image': row['reference'], 'digest': row['digest'], 'kind': row['kind'], 'purpose': row['purpose'], 'method': 'registry'})
                     timings.append({'id': row['id'], 'action': 'FETCH', 'seconds': round(time.monotonic() - before, 3)})
+                print('STAGE 4/5 Build or reuse material images', flush=True)
                 for name, enabled in c['include'].items():
                     if not enabled:continue
                     group = [r for r in selected if r['group'] == name]
@@ -251,6 +264,7 @@ def build(c, recipe, plan=False):
                     records.append({'image': ref, 'digest': desc['digest'], 'kind': 'material', 'purpose': name, 'method': 'build', 'input_fingerprint': key})
                     timings.append({'id': name, 'action': action, 'seconds': round(time.monotonic() - before, 3)})
                     print(action + '_MATERIAL_READY', name, desc['digest'], flush=True)
+            print('STAGE 5/5 Prepare Charts, verify and publish prepared output', flush=True)
             # Create compatible Charts directly from pinned raw inputs and repository patches.
             charts = stage / 'deployment';(charts / 'charts').mkdir(parents=True);(charts / 'patches').mkdir()
             scratch = stage / '.patch';scratch.mkdir()
@@ -258,7 +272,7 @@ def build(c, recipe, plan=False):
             (stage / 'tools').mkdir();shutil.copyfile(shutil.which(c['tools']['helm']), stage / 'tools/helm');(stage / 'tools/helm').chmod(0o755)
             b.dump(stage / 'manifests/images-lock.json', records);b.dump(stage / 'manifests/materials.json', materials)
             b.dump(stage / 'reports/timings.json', timings)
-            b.dump(stage / 'reports/sources.json', {'recipe': recipe, 'implementation_sha256': source_hashes, 'source_revision': revision, 'helm_version': helm_version, 'started_at': run_started_at, 'finished_at': datetime.now(timezone.utc).isoformat(), 'seconds': round(time.monotonic() - started, 3), 'material_payloads_verified': True})
+            b.dump(stage / 'reports/sources.json', {'recipe': recipe, 'original_sources': c.get('sources'), 'raw_input_directory': str(c['input_root']), 'implementation_sha256': source_hashes, 'source_revision': revision, 'helm_version': helm_version, 'started_at': run_started_at, 'finished_at': datetime.now(timezone.utc).isoformat(), 'seconds': round(time.monotonic() - started, 3), 'material_payloads_verified': True})
             b.dump(stage / 'prepared.json', {'schema_version': 1, 'kind': 'nico-prepared', 'complete': True, 'profile': recipe['profile'], 'architecture': 'linux/amd64', 'fingerprint': fingerprint, 'source_revision': revision, 'include': c['include'], 'scope': recipe['scope']})
             # Staging only: no old outputs, caches or global Docker resources are removed.
             logs = stage / 'logs';logs.mkdir()
@@ -287,7 +301,7 @@ def write_result(c, output, fingerprint, action):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', required=True, type=Path)
-    parser.add_argument('--plan', action='store_true', help='Check file presence and sizes; no hashes, builds or downloads')
+    parser.add_argument('--plan', action='store_true', help='Check source presence, image graph and sizes; no hashes, exports or builds')
     args = parser.parse_args();c, recipe = read_config(args.config.resolve());build(c, recipe, args.plan)
 
 
