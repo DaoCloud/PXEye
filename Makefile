@@ -1,6 +1,9 @@
 PYTHON ?= python3
 NODE ?= node
-IMAGE ?= pxeye:dev
+VERSION = $(shell $(PYTHON) -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')
+BUILD_TIME := $(shell TZ=Asia/Shanghai date +%Y%m%d%H%M)
+IMAGE ?= mmzhou-os-install-console:$(VERSION)-$(BUILD_TIME)
+VCS_REF := $(shell git rev-parse HEAD)
 BASE_IMAGE ?= ubuntu:24.04
 
 .PHONY: syntax lint format-check test wheel image
@@ -23,7 +26,10 @@ wheel:
 	$(PYTHON) -m pip wheel --no-deps --wheel-dir dist .
 
 image:
+	@if test -n "$$(git status --porcelain --untracked-files=normal)"; then echo "Commit changes and use a clean working tree before building" >&2; exit 1; fi
+	@if docker image inspect "$(IMAGE)" >/dev/null 2>&1; then echo "Image already exists: $(IMAGE); use a new build minute/tag" >&2; exit 1; fi
 	test -x bin/nico-admin-cli
 	test -x bin/grpcurl
 	test -x bin/helm
-	docker build --build-arg BASE_IMAGE=$(BASE_IMAGE) -t $(IMAGE) .
+	docker build --build-arg BASE_IMAGE="$(BASE_IMAGE)" --build-arg VCS_REF="$(VCS_REF)" --build-arg VERSION="$(VERSION)" -t "$(IMAGE)" .
+	@echo "BUILT_IMAGE=$(IMAGE)"

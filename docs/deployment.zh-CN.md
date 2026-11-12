@@ -14,16 +14,43 @@ PXEye 运行环境需要访问 Core 和硬件控制器。目标主机需要访�
 
 ## 2. 构建镜像
 
-在仓库根目录准备[外部工具](../bin/README.zh-CN.md)：
+在仓库根目录准备[外部工具](../bin/README.zh-CN.md)：`bin/nico-admin-cli`、`bin/grpcurl`、`bin/helm`。工具必须是目标镜像架构的 Linux 二进制。常规 Dockerfile 需要可用的 Ubuntu 软件源和 Python 包源；离线材料打包不等于离线构建 PXEye。
+
+### 镜像名称与 TAG
+
+默认名称为 `mmzhou-os-install-console`，TAG 为 `<pyproject.toml版本>-<YYYYMMDDHHmm>`，时间统一使用 `Asia/Shanghai`（UTC+8），精确到分钟，例如 `mmzhou-os-install-console:0.22.16-202611121830`。应用版本不包含时间；完整 Git commit 写入 OCI `org.opencontainers.image.revision`，版本写入 `org.opencontainers.image.version`。历史 SHA TAG 保留，不改名。
+
+### 构建与确认
+
+以下命令在构建主机的 PXEye 仓库根目录执行，需要 Python 3.11+、Make 和 Docker。先完成提交，工作树必须干净；外部工具不纳入 Git。默认 `make image` 自动生成上述名称，也可以像下面这样冻结本次引用，供后续步骤复用：
 
 ```bash
-install -m 0755 /path/to/nico-admin-cli bin/nico-admin-cli
-install -m 0755 /path/to/grpcurl bin/grpcurl
-install -m 0755 /path/to/helm bin/helm
-make image IMAGE=pxeye:dev BASE_IMAGE=ubuntu:24.04
+export PXEYE_VERSION="$(python3 -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
+export PXEYE_TAG="$PXEYE_VERSION-$(TZ=Asia/Shanghai date +%Y%m%d%H%M)"
+export PXEYE_IMAGE="mmzhou-os-install-console:$PXEYE_TAG"
+make image IMAGE="$PXEYE_IMAGE"
+docker image inspect "$PXEYE_IMAGE" \
+  --format '{{.Id}} {{.Architecture}} {{index .Config.Labels "org.opencontainers.image.version"}} {{index .Config.Labels "org.opencontainers.image.revision"}}'
 ```
 
-将镜像导入目标集群，或推送到已授权的仓库并修改清单中的镜像引用。PXEye 不会自动下载 NICo 客户端。
+本地已有同名 TAG 时拒绝构建；需要再次构建时，在下一分钟重新生成变量。不要覆盖已交付 TAG。Registry 发布后还应记录仓库返回的 digest，部署以该 digest 为不可变依据。
+
+### 保存与导入 containerd
+
+以下命令紧接构建步骤，在同一构建主机终端执行。仅适用于目标 Kubernetes 使用此主机的 `/run/containerd/containerd.sock`、namespace `k8s.io` 的情况，需要相应权限：
+
+```bash
+mkdir -p ../pxeye-image-archives
+docker save -o "../pxeye-image-archives/pxeye-$PXEYE_TAG.tar" "$PXEYE_IMAGE"
+ctr --address /run/containerd/containerd.sock --namespace k8s.io \
+  images import "../pxeye-image-archives/pxeye-$PXEYE_TAG.tar"
+ctr --address /run/containerd/containerd.sock --namespace k8s.io \
+  images list -q | grep -Fx "docker.io/library/$PXEYE_IMAGE"
+```
+
+Docker 与 containerd 是独立镜像库，`docker images` 不代表 Kubernetes 可用。`ctr` 不带 namespace 默认查看 `default`。多节点集群应将镜像发布到各节点可拉取的 Registry，或逐节点导入；导入本机不代表其他节点已有镜像。
+
+构建和导入均不自动更新 Deployment。部署清单与离线镜像列表必须引用本次准确 TAG；离线导出清单使用上述 containerd 命令读回的完整引用。将镜像推送 Registry 时还需为它添加目标仓库路径，保持同一个 TAG。部署前按对应部署流程准备配置、凭据和持久卷，并保留旧镜像用于回滚。
 
 ## 3. 配置站点和凭据
 

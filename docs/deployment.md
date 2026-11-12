@@ -14,16 +14,43 @@ The PXEye runtime needs routes to Core and hardware controllers. Target hosts ne
 
 ## 2. Build the image
 
-From the repository root, supply compatible binaries as [build inputs](../bin/README.md):
+Prepare the [external tools](../bin/README.md) at the repository root: `bin/nico-admin-cli`, `bin/grpcurl`, and `bin/helm`. Supply Linux binaries for the target image architecture. The standard Dockerfile requires reachable Ubuntu and Python package sources; offline material packaging does not make the PXEye build offline.
+
+### Image name and tag
+
+The default repository is `mmzhou-os-install-console`. Tags follow `<pyproject.toml version>-<YYYYMMDDHHmm>`, using `Asia/Shanghai` (UTC+8), to the minute; for example, `mmzhou-os-install-console:0.22.16-202611121830`. The application version excludes the timestamp. OCI labels record the full Git commit in `org.opencontainers.image.revision` and the application version in `org.opencontainers.image.version`. Retain existing SHA-based tags unchanged.
+
+### Build and inspect
+
+Run at the PXEye repository root on the build host with Python 3.11+, Make, and Docker. Commit changes first; the working tree must be clean. External binaries remain outside Git. Plain `make image` generates the default reference automatically; the following commands freeze it for subsequent steps:
 
 ```bash
-install -m 0755 /path/to/nico-admin-cli bin/nico-admin-cli
-install -m 0755 /path/to/grpcurl bin/grpcurl
-install -m 0755 /path/to/helm bin/helm
-make image IMAGE=pxeye:dev BASE_IMAGE=ubuntu:24.04
+export PXEYE_VERSION="$(python3 -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
+export PXEYE_TAG="$PXEYE_VERSION-$(TZ=Asia/Shanghai date +%Y%m%d%H%M)"
+export PXEYE_IMAGE="mmzhou-os-install-console:$PXEYE_TAG"
+make image IMAGE="$PXEYE_IMAGE"
+docker image inspect "$PXEYE_IMAGE" \
+  --format '{{.Id}} {{.Architecture}} {{index .Config.Labels "org.opencontainers.image.version"}} {{index .Config.Labels "org.opencontainers.image.revision"}}'
 ```
 
-Load the image into the target cluster or push it to your authorized registry and update its manifest reference. PXEye does not download the NICo client automatically.
+An existing local tag blocks the build. To rebuild, regenerate the variables in a later minute. Do not overwrite delivered tags. After publishing, record the registry digest and use it as the immutable deployment reference.
+
+### Save and import into containerd
+
+Continue in the same terminal on the build host. These commands apply only when the target Kubernetes uses this host's `/run/containerd/containerd.sock` and namespace `k8s.io`; appropriate permissions are required:
+
+```bash
+mkdir -p ../pxeye-image-archives
+docker save -o "../pxeye-image-archives/pxeye-$PXEYE_TAG.tar" "$PXEYE_IMAGE"
+ctr --address /run/containerd/containerd.sock --namespace k8s.io \
+  images import "../pxeye-image-archives/pxeye-$PXEYE_TAG.tar"
+ctr --address /run/containerd/containerd.sock --namespace k8s.io \
+  images list -q | grep -Fx "docker.io/library/$PXEYE_IMAGE"
+```
+
+Docker and containerd have separate image stores. `docker images` does not establish Kubernetes availability. Without a namespace, `ctr` selects `default`. For multiple nodes, publish to a registry reachable by every node or import on each node; a local import does not populate other nodes.
+
+Neither building nor importing updates a Deployment. Deployment manifests and offline image lists must reference the exact tag; use the full reference returned above for offline export. Add the destination registry path when publishing, preserving the tag. Follow the relevant deployment procedure for configuration, secrets, persistent volumes, and retaining the previous image for rollback.
 
 ## 3. Configure the site and credentials
 
