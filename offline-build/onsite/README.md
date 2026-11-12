@@ -38,13 +38,19 @@ ${EDITOR:-vi} onsite-run.json
 | archive / checksums | Absolute large-archive and checksum paths |
 | extract_directory / work_directory | Independent per-installation directories, created automatically |
 | site.context / namespace | Explicit context recommended; null allows only one Kind context; namespace defaults to nico-system |
-| site.mode / release_prefix | restore reuses the unique original Core release when prefix is empty; new is for fresh sites |
+| site.mode / release_prefix | restore reuses the unique existing Core or PXEye parent release when prefix is empty; new is for fresh sites |
 | site.registry | Empty URL discovers one valid endpoint; configure CA/TLS policy and external authentication references |
 | site.service_ips / host_network | New sites require DNS/PXE/NTP IPv4 and network name/prefix/gateway/mtu; restore may reuse existing settings |
-| bootstrap_pxeye / site.publish_materials | Optional UI bootstrap and material service; both default false |
+| bootstrap_pxeye | Optional standalone PXEye UI startup; defaults to false |
 | site.storage_class / phase_values | Optional storage and per-phase overrides; credentials remain protected-file references |
 
 The template defaults to **restore mode and preserving existing PXEye**. Fresh sites must change the mode/options/network. Preparation runs once; do not overwrite tools or configuration when resuming.
+
+`bootstrap_pxeye=true` starts only the PXEye UI. NICo components remain
+disabled until their ordered installation phases. Restore is supported only
+when the existing site already uses the single parent-Chart release; a legacy
+four-release NICo installation requires an explicit migration or a clean
+namespace and is rejected before Registry import.
 
 ## Deployment command
 

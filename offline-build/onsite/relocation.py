@@ -47,7 +47,15 @@ def prepare_intermediate(source, destination):
         if not fields:
             return source
         if ROOT_FIELDS in values:
-            raise ValueError('Reserved relocation field already exists')
+            aliases = values[ROOT_FIELDS]
+            if not isinstance(aliases, dict) or not aliases or any(not isinstance(value, str) for value in aliases.values()):
+                raise ValueError('Invalid pre-adapted relocation aliases')
+            prefix = ROOT_FIELDS + '.'
+            referenced = {field[len(prefix):] for field in fields if field.startswith(prefix)}
+            if referenced != set(aliases):
+                raise ValueError('Reserved relocation field already exists outside a compatible relocation archive')
+            print('REUSE_ADAPTED_ROOT_IMAGE_HINTS', ','.join(sorted(aliases)), flush=True)
+            return source
         aliases = {field.replace('.', '__'): field for field in sorted(fields)}
         if len(aliases) != len(fields):
             raise ValueError('Relocation image hint aliases collide')

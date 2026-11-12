@@ -36,11 +36,27 @@ spec = importlib.util.spec_from_file_location('helm_delivery_verify', VERIFY_PAT
 verifier = importlib.util.module_from_spec(spec); spec.loader.exec_module(verifier)
 TOKEN = re.compile(r'@\{([a-z_]+)\}')
 NAME = re.compile(r'[a-z][a-z0-9-]{0,47}[a-z0-9]|[a-z]')
+PXEYE_ONLY_COMPONENTS = {
+    'pxeye': {'enabled': True},
+    'certManager': {'enabled': False},
+    'platform': {'enabled': False},
+    'vaultBootstrap': {'enabled': False},
+    'core': {'enabled': False},
+    'materials': {'enabled': False},
+}
 
 
 def require(value, message):
     if not value:
         raise ValueError(message)
+
+
+def restore_release_candidates(rows):
+    """Return releases that can supply either legacy Core or the parent Chart."""
+    return [row['name'] for row in rows
+            if isinstance(row, dict) and isinstance(row.get('name'), str) and
+            isinstance(row.get('chart'), str) and
+            (row['chart'].startswith('nico-') or row['chart'].startswith('pxeye-'))]
 
 
 def sha(path):
@@ -293,6 +309,20 @@ class Onsite:
         self.state['cluster_endpoint'] = endpoint; self.save()
         self.helm_run(['version', '--short'], 'helm-version')
         self.run([self.relok, 'version'], 'relok8s-version')
+        # A parent Chart cannot safely adopt the legacy four-release layout:
+        # cert-manager, platform and Vault objects retain separate Helm owners.
+        # Stop before Registry import or any Helm write instead of leaving an
+        # operator to diagnose the collision later in the recipe phase.
+        parent_chart = [item.get('id') for item in self.descriptor.get('charts', [])] == ['pxeye']
+        if self.config['mode'] == 'restore' and parent_chart:
+            releases = json.loads(self.helm_run(
+                ['list', '--all', '-n', self.config['namespace'], '-o', 'json'],
+                'legacy-release-layout', private=True).stdout)
+            expected = {self.config['release_prefix'] + suffix for suffix in ('', '-cert-manager', '-platform', '-vault')}
+            if expected.issubset({item.get('name') for item in releases}):
+                raise ValueError('Legacy four-release NICo layout detected for ' + self.config['release_prefix'] +
+                                 '; this parent-Chart delivery has no in-place migration. Migrate to one parent '
+                                 'release or use a clean namespace before restoring')
         print('PREFLIGHT_OK', self.config['context'], self.config['namespace'])
 
     def import_bundle(self):
@@ -811,8 +841,16 @@ class Onsite:
         directory = self.work / 'bootstrap'; directory.mkdir(exist_ok=True)
         chart = self.pull_chart(item, directory)
         values = {'storageClass': self.config.get('storage_class') or '',
-                  'nico': {'enabled': True, 'allowClusterResources': True}}
+                  'nico': {'enabled': True, 'allowClusterResources': True},
+                  # Bootstrap owns the PXEye UI only.  The offline parent
+                  # package has all NICo components enabled by default so its
+                  # later, ordered phases can turn them on; inheriting those
+                  # defaults here would bypass that ordering.
+                  'components': copy.deepcopy(PXEYE_ONLY_COMPONENTS)}
         values = merge(values, self.config.get('pxeye_values', {}))
+        # Components are intentionally not a user override for this path;
+        # one-click NICo installation continues through the frozen phases.
+        values['components'] = copy.deepcopy(PXEYE_ONLY_COMPONENTS)
         path = directory / 'values.yaml'; path.write_text(yaml.safe_dump(values)); path.chmod(0o600)
         release = self.config.get('pxeye_release') or self.config['namespace'] + '-pxeye'
         require(NAME.fullmatch(release), 'Invalid PXEye release')
@@ -1011,8 +1049,9 @@ def main():
                                          '-n', args.namespace, 'list', '--all', '-o', 'json'],
                                         capture_output=True, text=True, timeout=60)
                 require(result.returncode == 0, 'Cannot read existing Helm releases in selected context/namespace')
-                releases = [row['name'] for row in json.loads(result.stdout) if row['chart'].startswith('nico-')]
-                require(len(releases) == 1, 'Expected one existing NICo Core release; use --release-prefix to select explicitly')
+                releases = restore_release_candidates(json.loads(result.stdout))
+                require(len(releases) == 1,
+                        'Expected one existing NICo Core or PXEye parent release; use --release-prefix to select explicitly')
                 args.release_prefix = releases[0]
             if args.output.exists():
                 existing = json.loads(args.output.read_text())

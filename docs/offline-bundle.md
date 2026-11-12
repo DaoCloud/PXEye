@@ -1,11 +1,11 @@
 # Build a NICo offline bundle
 
-The maintained builder, explicit file configuration, outputs and extracted layout are grouped in:
+The maintained build sequence, outputs and extracted layout are grouped in:
 
-- [Part 1: build the offline installation bundle](../offline-build/README.md)
+- [Build an offline delivery](../offline-build/BUILD.md)
 - [Example build configuration](../offline-build/build-config.example.json)
-- [Build script](../offline-build/build.py)
 
-Deployment is documented separately. The builder generates site-specific instructions at `docs/INSTALL.md` inside the finished bundle.
+Deployment is documented separately in [onsite deployment](../offline-build/onsite/README.md).
+The finished bundle also includes delivery documentation under `docs/`.
 
 [简体中文](offline-bundle.zh-CN.md)

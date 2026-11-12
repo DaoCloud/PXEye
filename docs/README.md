@@ -6,10 +6,8 @@ Public PXEye documentation is maintained in English and Simplified Chinese. Star
 
 | Document | English | 简体中文 | Purpose |
 | --- | --- | --- | --- |
-| Three-step offline delivery | [Read](../offline-build/README.md) | [阅读](../offline-build/README.zh-CN.md) | Material preparation, Helm packaging and resumable onsite deployment. |
-| Standalone offline build kit | [Read](../deliverables/nico-offline-build/README.md) | [阅读](../deliverables/nico-offline-build/README.zh-CN.md) | Copyable generic toolkit with scripts, explicit file config, templates and output layout; keep site configuration outside the repository. |
-| Complete offline bundle builder | [Read](../offline-build/README.md) | [阅读](../offline-build/README.zh-CN.md) | Reusable locked-input packaging, integrated Core compatibility fixes and field delivery gates. |
-| Onsite offline initialization | [Read](../offline-build/CONFIGURE.md) | [阅读](../offline-build/CONFIGURE.zh-CN.md) | Supply site parameters after building, reuse existing large materials and generate the deployment guide. |
+| Offline delivery build | [Read](../offline-build/BUILD.md) | [阅读](../offline-build/BUILD.zh-CN.md) | Copyable build sequence, artifacts, scope and handoff boundary. |
+| Onsite offline deployment | [Read](../offline-build/onsite/README.md) | [阅读](../offline-build/onsite/README.zh-CN.md) | Import the verified delivery, freeze site values and install resumably. |
 | Pre-installation checklist | [Read](pre-installation-checklist.md) | [阅读](pre-installation-checklist.zh-CN.md) | One-sentence checks for discovery, host OS writing and managed DPUs. |
 | Onsite DHCP quick check | [Read](dhcp-check.md) | [阅读](dhcp-check.zh-CN.md) | Dependency-free Discover/Offer check through Make, with result diagnosis. |
 | Deployment | [Read](deployment.md) | [阅读](deployment.zh-CN.md) | Binaries, site config, credentials, mounts and persistence. |

@@ -56,8 +56,9 @@ def site_config(config, bundle, work):
             print('SELECT_EXISTING_CORE_RELEASE', flush=True)
             result = subprocess.run(command, capture_output=True, text=True, timeout=60)
             onsite.require(result.returncode == 0, 'Cannot read existing Helm releases')
-            releases = [row['name'] for row in json.loads(result.stdout) if row['chart'].startswith('nico-')]
-            onsite.require(len(releases) == 1, 'Expected one Core release; set site.release_prefix explicitly')
+            releases = onsite.restore_release_candidates(json.loads(result.stdout))
+            onsite.require(len(releases) == 1,
+                           'Expected one NICo Core or PXEye parent release; set site.release_prefix explicitly')
             supplied['release_prefix'] = releases[0]
         else:
             supplied['release_prefix'] = 'nico'

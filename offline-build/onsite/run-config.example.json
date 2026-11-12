@@ -21,7 +21,6 @@
     "storage_class": null,
     "service_ips": {"dns": null, "pxe": null, "ntp": null},
     "host_network": null,
-    "publish_materials": false,
     "phase_values": {}
   }
 }

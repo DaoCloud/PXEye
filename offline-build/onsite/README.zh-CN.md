@@ -38,13 +38,17 @@ ${EDITOR:-vi} onsite-run.json
 | `archive` / `checksums` | 大包和SHA文件的绝对路径 |
 | `extract_directory` / `work_directory` | 每次安装独立，互相分开；脚本自动创建 |
 | `site.context` / `namespace` | 推荐明确指定context；null只允许唯一Kind context；namespace默认nico-system |
-| `site.mode` / `release_prefix` | 恢复填restore，留空前缀时读取唯一原Core release；全新填new |
+| `site.mode` / `release_prefix` | 恢复填restore，留空前缀时读取唯一现有Core或PXEye父Chart release；全新填new |
 | `site.registry` | URL留空自动探测唯一可用端点；CA/跳过TLS校验及认证文件按现场设置 |
 | `site.service_ips` / `host_network` | 全新安装必须填写DNS/PXE/NTP IPv4，以及网络name/prefix/gateway/mtu；恢复可复用旧配置 |
-| `bootstrap_pxeye` / `site.publish_materials` | 前者在顶层控制PXEye启动；后者在site内控制材料服务，默认均false |
+| `bootstrap_pxeye` | 在顶层控制独立 PXEye UI 启动，默认false |
 | `site.storage_class` / `phase_values` | 按需指定存储及阶段定制文件；凭据仅引用受限文件 |
 
 模板默认为 **恢复模式、保留已有PXEye**；全新现场必须修改对应选项和网络参数。工具解压、配置创建只做一次；续跑不要重复覆盖。
+
+`bootstrap_pxeye=true` 只启动 PXEye UI，NICo 组件仍保持关闭，直到后续有序安装阶段逐个启用。
+恢复模式仅支持已经使用单个父 Chart Release 的站点；旧的四个独立 NICo Release 必须先完成明确的
+迁移，或使用干净 namespace，脚本会在入库前拒绝该布局。
 
 ## 部署命令
 

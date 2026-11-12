@@ -7,6 +7,9 @@ entry point. It renders the locked PXEye parent Chart, exports exactly that
 closure from the configured Registry, relocates it once, and verifies the
 offline delivery. Onsite deployment still runs on the fireseed host.
 
+For the concise, copyable build sequence, delivery files and extracted bundle
+layout, see [Build an offline delivery](BUILD.md).
+
 ## Build
 
 Run the following sections in order: publish PXEye, cache the locked Chart image
