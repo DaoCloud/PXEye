@@ -1,0 +1,18 @@
+{{- if not .Values.admin.existingSecret }}
+{{- fail "admin.existingSecret is required" }}
+{{- end }}
+{{- if not .Values.database.url }}
+{{- fail "database.url is required" }}
+{{- end }}
+{{- if not .Values.database.existingSecret }}
+{{- fail "database.existingSecret is required" }}
+{{- end }}
+{{- if not .Values.startup.args }}
+{{- fail "startup.args is required; choose a site-reviewed Keycloak startup mode" }}
+{{- end }}
+{{- if and .Values.realm.existingConfigMap .Values.realm.existingSecret }}
+{{- fail "set exactly one of realm.existingConfigMap or realm.existingSecret" }}
+{{- end }}
+{{- if not (or .Values.realm.existingConfigMap .Values.realm.existingSecret) }}
+{{- fail "set exactly one of realm.existingConfigMap or realm.existingSecret" }}
+{{- end }}
