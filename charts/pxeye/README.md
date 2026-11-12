@@ -2,7 +2,9 @@
 
 **English** · [简体中文](README.zh-CN.md)
 
-Deploys the PXEye web console with its ServiceAccount, RBAC, ConfigMap, authentication Secret, data/material PVCs and Service. Direct Helm deployments and offline packaging use this same Chart source.
+This is the delivery parent Chart. By default it deploys only the PXEye web console with its ServiceAccount, RBAC, ConfigMap, authentication Secret, data/material PVCs and Service. The offline builder vendors the locked NICo dependencies under this Chart, resolves `Chart.lock`, and relocates one complete image closure.
+
+The dependency tree is cert-manager, the platform infrastructure Chart, a separate Vault-bootstrap alias of that Chart, NICo Core, and the optional material publisher. The material publisher is disabled in the current image-only delivery.
 
 ## Installation
 
@@ -15,6 +17,8 @@ helm upgrade --install pxeye ./charts/pxeye \
   --wait --timeout 5m
 ```
 
+For a source-tree deployment, first use the offline builder to download and vendor the pinned dependencies. `charts/pxeye` intentionally does not commit copied upstream Chart trees; the generated `charts/` directory and `Chart.lock` are delivery artifacts.
+
 ## Configuration
 
 | Field | Default | Purpose |
@@ -26,6 +30,9 @@ helm upgrade --install pxeye ./charts/pxeye \
 | `auth.existingSecret` | Empty | Reuse a Secret containing `auth.json`; otherwise generate credentials on first install and retain them on upgrade |
 | `nico.enabled` | `true` | Enable console NICo deployment configuration |
 | `nico.allowClusterResources` | `false` | Create cluster permissions for CRDs, ClusterRoles and related resources |
+| `components.pxeye.enabled` | `true` | Render PXEye UI resources in this parent release |
+| `components.certManager/platform/vaultBootstrap/core.enabled` | `false` | Enable a locked NICo child component; the onsite runner enables these cumulatively in readiness-aware phases |
+| `components.materials.enabled` | `false` | Reserved optional publisher; disabled in the current POC |
 | `nodeSelector` / `imagePullSecrets` | Empty | Scheduling and image-pull authentication |
 
-PVCs use the Helm keep policy. NICo Core is installed through a separate deployment workflow.
+PVCs use the Helm keep policy. The onsite workflow reuses one parent release: cert-manager → platform/certificates → Vault bootstrap → Core. This avoids treating Helm dependency order as a substitute for controller, certificate, and Vault readiness.

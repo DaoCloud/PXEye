@@ -1,0 +1,5 @@
+apiVersion: v2
+name: nico-materials
+version: 0.1.0
+type: application
+description: Optional material publisher for PXEye NICo offline deliveries

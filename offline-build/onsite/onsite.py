@@ -525,9 +525,6 @@ class Onsite:
         phases = []
         for phase in plan['phases']:
             phase.pop('material_chart', None)
-            if phase['id'] == 'core' and self.config.get('publish_materials', False):
-                phases.append({'id': 'materials', 'name': '材料发布', 'chart_id': 'materials',
-                               'release': self.release('materials'), 'timeout_seconds': 1800})
             phases.append(phase)
         plan['phases'] = phases
         for phase in phases:
@@ -537,25 +534,29 @@ class Onsite:
             if not destination.exists(): shutil.copyfile(chart, destination)
             defaults = yaml.safe_load(self.helm_run(['show', 'values', str(chart)], phase['id'] + '-defaults').stdout) or {}
             defaults = self.imported_defaults(defaults, catalog)
-            values = self.image_defaults(defaults, merge(defaults, self.old_values(phase['id'])))
+            # Every staged dependency belongs to one parent release.  A restore
+            # therefore reads the parent values, never obsolete child releases.
+            values = self.image_defaults(defaults, merge(defaults, self.old_values('core')))
             # Escape the site name as TOML, rather than doing raw substitution inside TOML text.
             if phase['id'] == 'core':
-                config = values['nico-api']['siteConfig']['nicoApiSiteConfig']
+                config = values['nicoCore']['nico-api']['siteConfig']['nicoApiSiteConfig']
                 config = config.replace('"@{site_name}"', json.dumps(self.config['site_name']))
-                values['nico-api']['siteConfig']['nicoApiSiteConfig'] = config
+                values['nicoCore']['nico-api']['siteConfig']['nicoApiSiteConfig'] = config
             values = substitute(values, settings)
             values = merge(values, phase.pop('values_inline', {}))
             if self.config.get('storage_class'):
                 values['storageClass'] = self.config['storage_class']
+                for child in ('platform', 'vaultBootstrap', 'materials'):
+                    if isinstance(values.get(child), dict): values[child]['storageClass'] = self.config['storage_class']
             overrides = self.config.get('phase_values', {}).get(phase['id'])
             if overrides:
                 values = merge(values, yaml.safe_load(Path(overrides).read_text()) or {})
-            if phase['id'] == 'core': self.configure_core(values, ips)
+            if phase['id'] == 'core': self.configure_core(values['nicoCore'], ips)
             require(not TOKEN.search(json.dumps(values)), 'Unresolved values variables in ' + phase['id'])
             target = recipe / 'values' / (phase['id'] + '.yaml')
             target.write_text(yaml.safe_dump(values, sort_keys=False, allow_unicode=True)); target.chmod(0o600)
             phase['chart'] = str(destination.relative_to(recipe)); phase['values'] = [str(target.relative_to(recipe))]
-            phase['release'] = self.release(phase['id'])
+            phase['release'] = self.release('core')
             rendered = self.helm_run(['template', phase['release'], str(chart), '-n', self.config['namespace'], '-f', str(target)],
                                      phase['id'] + '-render', private=True).stdout
             self.check_images(rendered, catalog)

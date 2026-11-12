@@ -1,14 +1,35 @@
-# NICo / PXEye 离线交付：三步流程
+# NICo / PXEye 离线交付
 
 [English](README.md) · **简体中文**
 
-构建两步共用唯一的 `build-config.json`，各脚本只管理自己的配置区域。前两步在构建机执行；第三步在火种机使用独立的现场部署配置。第一步只导出镜像；第二步从同一工作目录读取镜像，下载固定版本 Chart 并生成交付包。
+构建机只执行一个脚本、使用一份 `build-config.json`。它依次导出本地 containerd 镜像、准备固定 Chart、生成并校验离线交付包。现场部署仍在火种机执行。
+
+## 构建
+
+```bash
+cd ~/pxeye-build
+python3 ./PXEye/offline-build/delivery.py --write-config ./build-config.json --work-directory "$PWD"
+python3 ./PXEye/offline-build/delivery.py --config ./build-config.json
+```
+
+第一条仅在首次创建共用配置和默认来源文件时执行，并且只补齐镜像导出和 Helm 配置区域。之后只运行最后一条。失败后重复最后一条，已完成的镜像导出、Chart 下载、输入适配和打包阶段按原有摘要与进度记录复用。
+
+只读检查本地镜像、用途、Chart 来源和交付输入：
+
+```bash
+python3 ./PXEye/offline-build/delivery.py --config ./build-config.json --plan
+```
+
+| 内部阶段 | 作用 | 交付/缓存 |
+| --- | --- | --- |
+| image-export | 按 `image_export.image_list` 导出本地镜像 | `offline-images/` |
+| package | 将锁定子 Chart 引入 PXEye 父 Chart、渲染完整依赖树、只执行一次 relok8s 并交付 | `cache/`、`charts/`、`package-input/`、`output/` |
 
 | 步骤 | 做什么 | 关键输入 | 输出与交接 |
 | --- | --- | --- | --- |
-| [1. 导出镜像](material-prepare/README.zh-CN.md) | 按清单导出本地 containerd 镜像 | 工作目录、镜像清单 | 兼容既有格式的 OCI 归档与镜像锁文件 |
-| [2. 构建交付包](helm-bundle/README.zh-CN.md) | 渲染 Chart，relok8s 打包镜像，压缩验包 | 第一步镜像导出、Chart 来源及可选材料 | `bundle.tar.gz`、`onsite-tools.tar.gz`、`SHA256SUMS` |
-| [3. 现场部署](onsite/README.zh-CN.md) | 解包、镜像与 Chart 入库、顺序 Helm 安装 | 上述三个文件；一份现场配置 | 可选 PXEye、NICo Core 及其依赖；安装日志和进度 |
+| [构建内部镜像导出](material-prepare/README.zh-CN.md) | 按清单导出本地 containerd 镜像 | 镜像清单 | `offline-images/` |
+| [构建内部打包](helm-bundle/README.zh-CN.md) | 准备 PXEye 父/子 Chart、一次 relok8s 搬迁和验包 | 导出镜像与 Chart 来源 | 三个交付文件 |
+| [现场部署](onsite/README.zh-CN.md) | 解包、镜像与 Chart 入库、顺序 Helm 安装 | 三个交付文件；现场配置 | PXEye、NICo Core 与依赖 |
 
 ## 配置与状态管理
 
@@ -28,8 +49,9 @@
 ```text
 /srv/PXEye/offline-build/
   build-config.example.json  # 共用构建配置
-  material-prepare/     # 第一步：build.py + images.txt
-  helm-bundle/          # 第二步：build.py + chart-sources.json
+  delivery.py           # 统一构建入口
+  material-prepare/     # images.txt
+  helm-bundle/          # chart-sources.json
   onsite/               # 第三步：run.py + run-config.example.json
 
 /srv/nico-build/        # 构建机配置、镜像导出、缓存和交付包

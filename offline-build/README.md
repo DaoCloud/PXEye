@@ -1,14 +1,35 @@
-# NICo / PXEye offline delivery in three steps
+# NICo / PXEye offline delivery
 
 **English** · [简体中文](README.zh-CN.md)
 
-Steps 1–2 share one `build-config.json` on the builder; each script owns only its section. Step 3 uses a separate site configuration on the fireseed host. Step one exports images; step two consumes them from the same work directory, downloads pinned Charts and builds the delivery.
+Run one builder script with one `build-config.json`. It exports local containerd images, prepares pinned Charts, and builds and verifies the offline delivery. Onsite deployment still runs on the fireseed host.
+
+## Build
+
+```bash
+cd ~/pxeye-build
+python3 ./PXEye/offline-build/delivery.py --write-config ./build-config.json --work-directory "$PWD"
+python3 ./PXEye/offline-build/delivery.py --config ./build-config.json
+```
+
+The first command is only needed once to initialize the shared configuration and default source files. It fills the image-export and Helm sections without overwriting existing values. Afterwards run only the final command. Repeating it resumes verified image export, Chart preparation, input adaptation and packaging stages.
+
+Read-only validation of local images, roles, Chart sources and delivery input:
+
+```bash
+python3 ./PXEye/offline-build/delivery.py --config ./build-config.json --plan
+```
+
+| Internal stage | Purpose | Delivery/cache |
+| --- | --- | --- |
+| image-export | Export local images selected by `image_export.image_list` | `offline-images/` |
+| package | Vendor locked child Charts under the PXEye parent, render the complete dependency tree, run relok8s once, and produce the delivery | `cache/`, `charts/`, `package-input/`, `output/` |
 
 | Step | Purpose | Input | Output |
 | --- | --- | --- | --- |
-| [1. Export images](material-prepare/README.md) | Export listed local containerd images | Work directory and image list | Compatible OCI archive and image lock file |
-| [2. Package](helm-bundle/README.md) | Render Charts, package images with relok8s, compress and verify | Step-one image export, Chart sources and optional materials | `bundle.tar.gz`, `onsite-tools.tar.gz`, `SHA256SUMS` |
-| [3. Deploy](onsite/README.md) | Unpack, import images/Charts, install through Helm in order | Those three files and one site configuration | Optional PXEye, NICo Core/dependencies, progress and logs |
+| [Internal image export](material-prepare/README.md) | Export listed local containerd images | Image list | `offline-images/` |
+| [Internal packaging](helm-bundle/README.md) | Prepare the PXEye parent/dependencies, relocate one image closure and verify | Exported images and Chart sources | Three delivery files |
+| [Onsite deployment](onsite/README.md) | Unpack, import images/Charts, install through Helm in order | Three delivery files and site configuration | PXEye, NICo Core and dependencies |
 
 ## Configuration and state management
 
@@ -26,8 +47,9 @@ Fireseed: Linux amd64, Python 3.11+/PyYAML, kubectl, an available cluster/Regist
 ```text
 /srv/PXEye/offline-build/
   build-config.example.json  # shared build configuration
-  material-prepare/     # build.py + images.txt
-  helm-bundle/          # build.py + chart-sources.json
+  delivery.py           # unified builder entry
+  material-prepare/     # images.txt
+  helm-bundle/          # chart-sources.json
   onsite/               # run.py + run-config.example.json
 
 /srv/nico-build/        # builder configuration, prepared data, caches and delivery

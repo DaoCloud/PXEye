@@ -1,3 +1,4 @@
+{{- if .Values.components.pxeye.enabled }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -6,3 +7,4 @@ metadata:
 data:
   site.json: |
     {{ dict "site" (dict "name" "PXEye" "namespace" .Release.Namespace "deployment" .Release.Name) "core_url" "" "nico_deployment" (dict "enabled" .Values.nico.enabled "namespace" .Release.Namespace "allow_cluster_resources" .Values.nico.allowClusterResources "bundles_directory" "/nico-bundles") | toJson }}
+{{- end }}

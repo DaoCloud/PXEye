@@ -1,0 +1,9 @@
+publisherImage: ""
+materials: {}
+storageClass: ""
+storage: 30Gi
+nodeSelector: {}
+imagePullSecrets: []
+service:
+  type: ClusterIP
+  port: 8080

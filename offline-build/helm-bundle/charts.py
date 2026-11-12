@@ -19,6 +19,24 @@ def pxeye(root, repo, image):
     write(values_path, yaml.safe_dump(values, sort_keys=False))
 
 
+def umbrella(root, repo, dependencies, values):
+    """Compose the delivery Chart from the repository parent and locked children.
+
+    The repository keeps only the dependency declarations.  The offline builder
+    supplies the pinned child trees, then asks Helm to create Chart.lock and the
+    vendored archives.  This prevents a source checkout from silently becoming
+    a different deployment when upstream changes.
+    """
+    import shutil
+    shutil.copytree(repo / 'charts/pxeye', root)
+    dependency_root = root / 'dependencies'
+    for name, child in dependencies.items():
+        shutil.copytree(child, dependency_root / name)
+    root_values = yaml.safe_load((root / 'values.yaml').read_text()) or {}
+    root_values = merge(root_values, values)
+    write(root / 'values.yaml', yaml.safe_dump(root_values, sort_keys=False))
+
+
 def materials(root, images, publisher):
     write(root / 'Chart.yaml', 'apiVersion: v2\nname: nico-materials\nversion: 0.1.0\ntype: application\n')
     write(root / 'values.yaml', yaml.safe_dump({

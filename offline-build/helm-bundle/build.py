@@ -105,7 +105,7 @@ def input_plan(config):
         groups = {name: [r for r in rows if r['path'].startswith(prefixes[name])]
                   for name in descriptor.get('raw_material_groups', [])}
         b.require(all(groups.values()), 'Package input lacks selected raw material files')
-        print('BUILD_PLAN', json.dumps({'prepared_images': len(records), 'new_material_images': list(groups), 'package_builds_images': bool(groups), 'charts': ['pxeye', 'cert-manager', 'platform', 'core', 'materials']}), flush=True)
+        print('BUILD_PLAN', json.dumps({'prepared_images': len(records), 'new_material_images': list(groups), 'package_builds_images': bool(groups), 'charts': ['pxeye parent with locked dependencies']}), flush=True)
         return rows, base, extra, groups
     rows = json.loads((source / 'manifests/file-inventory.json').read_text())['files']
     paths = {r['path']: r for r in rows}
@@ -128,7 +128,7 @@ def input_plan(config):
         b.require(row and path.is_file() and not path.is_symlink() and path.resolve().is_relative_to(source), 'Missing or unsafe input: ' + name)
         b.require(path.stat().st_size == row['bytes'], 'Input size differs: ' + name)
     print('BUILD_PLAN', json.dumps({'base_images': len(base), 'extra_images': len(extra),
-          'new_material_images': list(groups), 'charts': ['pxeye', 'cert-manager', 'platform', 'core', 'materials'],
+          'new_material_images': list(groups), 'charts': ['pxeye parent with locked dependencies'],
           'required_files': sorted(required)}, ensure_ascii=False), flush=True)
     return rows, base, extra, groups
 
@@ -346,7 +346,13 @@ class BuildRegistry:
             '--dest-oci-accept-uncompressed-layers', 'dir:/input', 'docker://' + dest], log, view)
 
 
-def stage_charts(bundle, source, mapping, material_images, bootstrap, core_references, chart_directory=None):
+def stage_charts(bundle, source, mapping, material_images, bootstrap, core_references, chart_directory=None, helm='helm'):
+    """Compose one PXEye umbrella Chart with all locked runtime dependencies.
+
+    The child Charts remain separate Helm dependencies so the onsite runner can
+    enable them in readiness-aware phases.  relok8s sees one root Chart and
+    therefore creates one image closure rather than five unrelated archives.
+    """
     trees = bundle.parent / '.charts'
     trees.mkdir()
     prepared = {}
@@ -356,10 +362,6 @@ def stage_charts(bundle, source, mapping, material_images, bootstrap, core_refer
         roots = [p for p in dest.iterdir() if p.is_dir() and (p / 'Chart.yaml').is_file()]
         b.require(len(roots) == 1, 'Chart root absent or ambiguous: ' + filename)
         prepared[key] = roots[0]
-    prepared['pxeye'] = trees / 'pxeye'
-    charts.pxeye(prepared['pxeye'], REPO, next(v for k, v in mapping.items() if k == '__ui__'))
-    prepared['materials'] = trees / 'materials'
-    charts.materials(prepared['materials'], material_images, bootstrap)
     for key in ('cert-manager', 'core', 'platform'):
         root = prepared[key]
         values = yaml.safe_load((root / 'values.yaml').read_text()) or {}
@@ -385,14 +387,54 @@ def stage_charts(bundle, source, mapping, material_images, bootstrap, core_refer
             b.write(child_path, yaml.safe_dump(child, sort_keys=False))
         b.write(root / 'values.yaml', yaml.safe_dump(values, sort_keys=False))
         b.write(root / '.relok8s-images.yaml', yaml.safe_dump(hints))
-    for key in ('pxeye', 'materials'):
-        root = prepared[key]
-        values = yaml.safe_load((root / 'values.yaml').read_text())
-        identity = {v: v for v in mapping.values()} | {v: v for v in material_images.values()}
-        hints = charts.bind_images(values, identity)
-        b.write(root / 'values.yaml', yaml.safe_dump(values, sort_keys=False))
-        b.write(root / '.relok8s-images.yaml', yaml.safe_dump(hints))
-    return prepared
+    # There are two platform aliases because a single Chart instance cannot
+    # have both infrastructure and vault-bootstrap values at the same time.
+    vault = trees / 'vault-bootstrap'
+    shutil.copytree(prepared['platform'], vault)
+    vault_values = yaml.safe_load((vault / 'values.yaml').read_text()) or {}
+    vault_values = charts.merge(vault_values, yaml.safe_load((REPO / 'deploy/offline-core/values/vault.yaml').read_text()))
+    vault_values['bootstrapImage'] = bootstrap
+    vault_values['coreServiceAccount'] = '@{release_prefix}-nico-api'
+    vault_hints = charts.bind_images(vault_values, mapping | {v: v for v in mapping.values()})
+    b.write(vault / 'values.yaml', yaml.safe_dump(vault_values, sort_keys=False))
+    b.write(vault / '.relok8s-images.yaml', yaml.safe_dump(vault_hints))
+    prepared['vault-bootstrap'] = vault
+
+    materials = trees / 'materials'
+    shutil.copytree(REPO / 'charts/nico-materials', materials)
+    # Materials are purposefully disabled in this first POC. Keep a real Chart
+    # dependency so its later enablement does not change delivery structure.
+    material_values = yaml.safe_load((materials / 'values.yaml').read_text()) or {}
+    b.write(materials / 'values.yaml', yaml.safe_dump(material_values, sort_keys=False))
+
+    root = trees / 'pxeye'
+    child_values = {
+        'image': mapping['__ui__'],
+        'components': {
+            'certManager': {'enabled': True}, 'platform': {'enabled': True},
+            'vaultBootstrap': {'enabled': True}, 'core': {'enabled': True},
+            'materials': {'enabled': False},
+        },
+        'certManager': yaml.safe_load((prepared['cert-manager'] / 'values.yaml').read_text()),
+        'platform': yaml.safe_load((prepared['platform'] / 'values.yaml').read_text()),
+        'vaultBootstrap': vault_values,
+        'nicoCore': yaml.safe_load((prepared['core'] / 'values.yaml').read_text()),
+        'materials': material_values,
+    }
+    charts.umbrella(root, REPO, {
+        'cert-manager': prepared['cert-manager'], 'platform': prepared['platform'],
+        'vault-bootstrap': vault, 'nico': prepared['core'], 'materials': materials,
+    }, child_values)
+    command([helm, 'dependency', 'build', root], root / 'dependency-build.log')
+    # The source directories are only inputs for Helm dependency build; delivery
+    # carries its deterministic packaged children and generated Chart.lock.
+    shutil.rmtree(root / 'dependencies')
+    values = yaml.safe_load((root / 'values.yaml').read_text()) or {}
+    identity = {v: v for v in mapping.values()} | {v: v for v in material_images.values()}
+    hints = charts.bind_images(values, identity)
+    b.write(root / 'values.yaml', yaml.safe_dump(values, sort_keys=False))
+    b.write(root / '.relok8s-images.yaml', yaml.safe_dump(hints))
+    return {'pxeye': root}
 
 
 def validate_charts(roots, helm, mapping, material_images, directory):
@@ -402,14 +444,12 @@ def validate_charts(roots, helm, mapping, material_images, directory):
     report = []
     for key, root in roots.items():
         expected = hinted_images(root)
-        modes = ['infrastructure', 'vault-bootstrap'] if key == 'platform' else ['default']
+        modes = ['default']
         for mode in modes:
             values = b.substitute((root / 'values.yaml').read_text(), settings)
             path = directory / (key + '-' + mode + '.yaml'); path.write_text(values)
             args = [helm, 'template', 'nico' if key in ('core', 'platform') else key, root,
                     '--namespace', 'nico-system', '-f', path]
-            if key == 'platform':
-                args += ['--set', 'mode=' + mode]
             objects = list(yaml.safe_load_all(command(args, directory / (key + '-' + mode + '.log')).stdout))
             images = set()
             def walk(value):
@@ -422,9 +462,8 @@ def validate_charts(roots, helm, mapping, material_images, directory):
             walk(objects)
             b.require(images <= known, 'Rendered image is outside the archive closure: ' + ', '.join(sorted(images - known)))
             b.require(images <= expected, 'Rendered image is absent from this Chart hints: ' + ', '.join(sorted(images - expected)))
-            if key == 'core':
-                native_boot = [v for k, v in mapping.items() if 'boot-artifacts-x86' in k]
-                b.require(native_boot and set(native_boot) <= images, 'Native x86_64 boot-artifacts initContainer was lost during Chart composition')
+            native_boot = [v for k, v in mapping.items() if 'boot-artifacts-x86' in k]
+            b.require(native_boot and set(native_boot) <= images, 'Native x86_64 boot-artifacts initContainer was lost during Chart composition')
             b.require('@{' not in yaml.safe_dump(objects), 'Unresolved validation token in ' + key)
             report.append({'chart': key, 'mode': mode, 'resources': len(objects), 'images': sorted(images)})
     return report
@@ -443,6 +482,7 @@ def check_intermediate(path, expected):
 
 def build(config, args, progress=None):
     _, base, extra, groups = input_plan(config)
+    b.require(not groups, 'Independent material publishing is disabled for the parent-Chart POC; remove helm_bundle.materials')
     b.require(sys.platform == 'linux' and platform.machine() in ('x86_64', 'amd64'), 'Build on Linux x86_64, such as the .50 builder')
     for key in ('docker', 'helm'):
         b.require(shutil.which(config['tools'][key]), 'Required build tool absent: ' + key)
@@ -576,7 +616,7 @@ def build(config, args, progress=None):
                     image_records.append({'build_reference': ref, 'digest': digest, 'kind': 'material'})
                 if (stage / '.charts').exists(): shutil.rmtree(stage / '.charts')
                 with progress.stage('03-charts', 'Compose and render Charts'):
-                    roots = stage_charts(bundle, source, mapping, material_images, bootstrap_ref, [r['image'] for r in base], config.get('chart_directory'))
+                    roots = stage_charts(bundle, source, mapping, material_images, bootstrap_ref, [r['image'] for r in base], config.get('chart_directory'), config['tools']['helm'])
                     render_dir = stage / 'render'; render_dir.mkdir(exist_ok=True)
                     render = validate_charts(roots, config['tools']['helm'], mapping, material_images, render_dir)
                 image_usage = [{'image': r['build_reference'], 'source': r.get('source'), 'used_by': [v['chart'] + '/' + v['mode'] for v in render if r['build_reference'] in v['images']]} for r in image_records]
@@ -625,14 +665,20 @@ def build(config, args, progress=None):
             b.dump(bundle / 'manifests/images-lock.json', image_records)
             b.dump(bundle / 'manifests/materials.json', material_records)
             plan = json.loads((REPO / 'deploy/offline-core/deployment.json').read_text())
-            plan['phases'][1]['material_chart'] = 'materials'
+            component_sets = {
+                'cert-manager': {'pxeye': False, 'certManager': True, 'platform': False, 'vaultBootstrap': False, 'core': False, 'materials': False},
+                'platform': {'pxeye': False, 'certManager': True, 'platform': True, 'vaultBootstrap': False, 'core': False, 'materials': False},
+                'vault': {'pxeye': False, 'certManager': True, 'platform': True, 'vaultBootstrap': True, 'core': False, 'materials': False},
+                'core': {'pxeye': False, 'certManager': True, 'platform': True, 'vaultBootstrap': True, 'core': True, 'materials': False},
+            }
             for phase in plan['phases']:
-                phase['chart_id'] = 'platform' if phase['id'] == 'vault' else phase['id']
+                phase['chart_id'] = 'pxeye'
+                phase['release'] = '@{release_prefix}'
                 phase.pop('chart', None)
                 phase.pop('values', None)
-                phase['values_inline'] = {'mode': 'vault-bootstrap'} if phase['id'] == 'vault' else {}
-            plan['schema_version'] = 2
-            plan['description'] += '；OCI阶段目录需新版安装入口支持。'
+                phase['values_inline'] = {'components': {key: {'enabled': enabled} for key, enabled in component_sets[phase['id']].items()}}
+            plan['schema_version'] = 3
+            plan['description'] += '；各阶段复用同一PXEye父Chart Release，通过组件开关保持证书、Vault与Core的就绪顺序。'
             b.dump(bundle / 'profiles/install-plan.json', plan)
             b.write(bundle / 'profiles/site-values.example.yaml', yaml.safe_dump({
                 'registry': None, 'namespace': 'nico-system', 'release_prefix': 'nico', 'storage_class': None,
@@ -641,7 +687,7 @@ def build(config, args, progress=None):
             }, sort_keys=False))
             b.dump(bundle / 'bundle.json', {'schema_version': 1, 'kind': 'pxeye-nico-helm', 'id': config['bundle_id'],
                 'version': version, 'source_revision': revision, 'architecture': 'linux/amd64', 'charts': packages,
-                'requires_site_configuration': True, 'multi_phase_oci_ui_ready': False})
+                'requires_site_configuration': True, 'multi_phase_oci_ui_ready': True})
             chart_provenance = Path(config.get('chart_directory', source / 'deployment/charts')).parent / 'upstream-sources.json'
             b.dump(bundle / 'manifests/build-report.json', {'source_revision': revision, 'input_bundle': json.loads((source / ('prepared.json' if is_prepared else 'bundle.json')).read_text()),
                 'upstream_chart_sources': json.loads(chart_provenance.read_text()) if chart_provenance.is_file() else None,
@@ -649,7 +695,7 @@ def build(config, args, progress=None):
                 'package_builds_images': bool(groups), 'base_images': rows,
                 'native_x86_boot_artifacts': {'source': 'existing locked image', 'internal_files_verified': False},
                 'validation_render': render, 'image_usage': image_usage, 'tool_hashes': {n: b.sha(bundle / 'tools' / n) for n in ('helm', 'relok8s')},
-                'cold_install_tested': False, 'multi_phase_oci_ui_ready': False})
+                'cold_install_tested': False, 'multi_phase_oci_ui_ready': True})
             b.inventory(bundle)
             verify(bundle)
             with progress.stage('05-archive', 'Compress delivery archive') as checkpoint:

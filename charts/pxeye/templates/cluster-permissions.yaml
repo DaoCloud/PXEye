@@ -1,4 +1,4 @@
-{{- if .Values.nico.allowClusterResources }}
+{{- if and .Values.components.pxeye.enabled .Values.nico.allowClusterResources }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:

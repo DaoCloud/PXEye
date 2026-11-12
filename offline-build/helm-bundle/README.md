@@ -20,7 +20,7 @@ Continue using the same `build-config.json`. Step two owns only `helm_bundle`:
 }
 ```
 
-The default [chart-sources.json](chart-sources.json) lists the NICo e703126e4 download URL, Chart 0.1.1 and checksum, plus the cert-manager v1.17.1 OCI source and checksum. `chart_sources` resolves relative to the configuration file.
+The default [chart-sources.json](chart-sources.json) lists the NICo e703126e4 download URL, Chart 0.1.1 and checksum, plus the cert-manager v1.17.1 OCI source and checksum. The builder vendors both under the PXEye parent, adds the repository platform and optional-material Charts, generates `Chart.lock`, renders the complete dependency closure, then runs relok8s once. `chart_sources` resolves relative to the configuration file.
 
 ## Commands
 

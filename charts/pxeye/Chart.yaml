@@ -3,3 +3,29 @@ name: pxeye
 version: 0.1.0
 type: application
 description: PXEye web console with persistent data, material storage and NICo installer permissions
+dependencies:
+  - name: cert-manager
+    alias: certManager
+    version: v1.17.1
+    repository: file://dependencies/cert-manager
+    condition: components.certManager.enabled
+  - name: pxeye-nico-platform
+    alias: platform
+    version: 0.1.0
+    repository: file://dependencies/platform
+    condition: components.platform.enabled
+  - name: pxeye-nico-platform
+    alias: vaultBootstrap
+    version: 0.1.0
+    repository: file://dependencies/vault-bootstrap
+    condition: components.vaultBootstrap.enabled
+  - name: nico
+    alias: nicoCore
+    version: 0.1.1
+    repository: file://dependencies/nico
+    condition: components.core.enabled
+  - name: nico-materials
+    alias: materials
+    version: 0.1.0
+    repository: file://dependencies/materials
+    condition: components.materials.enabled

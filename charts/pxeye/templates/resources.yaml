@@ -1,3 +1,4 @@
+{{- if .Values.components.pxeye.enabled }}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -291,3 +292,4 @@ spec:
     {{- if eq .Values.service.type "NodePort" }}
     nodePort: {{ .Values.service.nodePort }}
     {{- end }}
+{{- end }}

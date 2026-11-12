@@ -13,3 +13,18 @@ imagePullSecrets: []
 nico:
   enabled: true
   allowClusterResources: false
+components:
+  pxeye:
+    enabled: true
+  certManager:
+    enabled: false
+  platform:
+    enabled: false
+  vaultBootstrap:
+    enabled: false
+  core:
+    enabled: false
+  # Independent boot/DPU material publishing is intentionally disabled in the
+  # first umbrella delivery. It is not part of the current image-only POC.
+  materials:
+    enabled: false
