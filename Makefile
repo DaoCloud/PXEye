@@ -7,7 +7,7 @@ IMAGE ?= mmzhou-os-install-console:$(VERSION)-$(BUILD_TIME)
 VCS_REF := $(shell git -C "$(REPO_ROOT)" rev-parse HEAD)
 BASE_IMAGE ?= ubuntu:24.04
 OFFLINE_BUILD_CONFIG ?= build-config.json
-OFFLINE_BUNDLE_VERSION ?=
+OFFLINE_BUNDLE_VERSION ?= bundle-$(shell TZ=UTC date +%Y%m%dT%H%M%SZ)
 OFFLINE_DELIVERY := $(REPO_ROOT)/offline-build/delivery.py
 OFFLINE_VERSION_ARG := $(if $(OFFLINE_BUNDLE_VERSION),--version $(OFFLINE_BUNDLE_VERSION),)
 
@@ -42,6 +42,8 @@ image:
 # Build a complete offline delivery from the locked PXEye parent Chart.
 # The cache-seed command is idempotent: it exports local containerd images only
 # when the Chart-derived closure changes; otherwise it returns immediately.
+# Defaults: ./build-config.json and a UTC timestamped bundle version. Override
+# either only when a repeatable configuration path or output version is needed.
 bundles:
 	@test -f "$(OFFLINE_BUILD_CONFIG)" || { echo "Missing OFFLINE_BUILD_CONFIG=$(OFFLINE_BUILD_CONFIG)" >&2; exit 1; }
 	$(PYTHON) "$(OFFLINE_DELIVERY)" --config "$(OFFLINE_BUILD_CONFIG)" --seed-cache

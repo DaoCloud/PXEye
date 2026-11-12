@@ -9,12 +9,12 @@ Run one builder script with one `build-config.json`. It exports local containerd
 ```bash
 cd ~/pxeye-build
 python3 ./PXEye/offline-build/delivery.py --write-config ./build-config.json --work-directory "$PWD"
-make -f ./PXEye/Makefile bundles \
-  OFFLINE_BUILD_CONFIG=./build-config.json \
-  OFFLINE_BUNDLE_VERSION="$(date -u +%Y%m%dT%H%M%SZ)"
+make -f ./PXEye/Makefile bundles
 ```
 
 The first command is only needed once to initialize the shared configuration and default source files. `make bundles` is the complete build command: it first renders the parent Chart and derives its image closure, then updates the local OCI cache only if that closure changed, then packages and verifies the delivery. With an unchanged closure, the cache-seed phase returns without exporting from containerd. The package phase reuses the persistent loopback Registry at `localhost:1027`.
+
+`make bundles` defaults to `./build-config.json` and creates `output/bundle-<UTC timestamp>/`. Override only when needed, for example `OFFLINE_BUNDLE_VERSION=release-1`; the target-site Registry, namespace and networking remain onsite deployment configuration, not build arguments.
 
 Read-only validation of local images, roles, Chart sources and delivery input:
 
