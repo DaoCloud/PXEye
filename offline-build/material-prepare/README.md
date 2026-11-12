@@ -105,4 +105,4 @@ sha256sum -c SHA256SUMS
 
 Fix failures and rerun the same command. Completed archives are verified before reuse; interrupted archive writes restart the archive stage rather than resuming by byte offset. `.offline-images.building/` and logs are retained. Changed image versions or lists require a new work directory. Unknown or damaged completed files are not overwritten automatically.
 
-This output is an image export. Step two currently also requires Charts, material metadata and tools in its complete prepared input; an image-only directory is not a complete prepared input. Legacy schema 1/2 material-preparation configurations remain compatible. Step-two input adaptation is separate from this export format.
+[Step two](../helm-bundle/README.md) uses the same work directory, consumes this export, downloads and prepares Charts, and generates its internal packaging input. Chart and independent material sources belong to step two. Legacy schema 1/2 material-preparation configurations remain compatible.

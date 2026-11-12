@@ -1,0 +1,15 @@
+image: ''
+storageClass: ''
+dataStorage: 2Gi
+materialsStorage: 50Gi
+service:
+  type: NodePort
+  port: 80
+  nodePort: 31808
+auth:
+  existingSecret: ''
+nodeSelector: {}
+imagePullSecrets: []
+nico:
+  enabled: true
+  allowClusterResources: false

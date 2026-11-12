@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One-command relok8s delivery from the existing verified local materials bundle."""
+"""Prepare pinned Charts and build a relok8s delivery from exported images or prepared materials."""
 from __future__ import annotations
 
 import argparse
@@ -31,6 +31,7 @@ REPO = HOME.parents[1]
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(HOME))
 import charts
+import chart_sources
 sys.path.insert(0, str(HOME.parent / 'onsite'))
 from relocation import prepare_intermediate
 from progress import Progress, atomic_json, transcript, install_signal_handlers
@@ -61,7 +62,8 @@ def command(argv, log=None, timeout=3600, check=True, **kwargs):
 
 def read_config(path):
     config = json.loads(path.read_text())
-    b.require(set(config) == {'schema_version', 'materials_bundle', 'output_root', 'bundle_id', 'include', 'tools'}
+    required = {'schema_version', 'materials_bundle', 'output_root', 'bundle_id', 'include', 'tools'}
+    b.require(required <= set(config) <= required | {'chart_sources'}
               and config['schema_version'] == 1, 'Use the supplied Helm build configuration schema 1')
     b.require(set(config['include']) == {'aarch64', 'bfb', 'apt'} and all(type(v) is bool for v in config['include'].values()), 'Invalid material switches')
     b.require(set(config['tools']) == {'docker', 'helm', 'relok8s'}, 'Invalid tool configuration')
@@ -76,7 +78,7 @@ def read_config(path):
     b.require(not output.is_relative_to(REPO), 'Keep artifacts outside the Git checkout')
     if (source / 'prepared.json').is_file():
         descriptor = json.loads((source / 'prepared.json').read_text())
-        b.require(descriptor.get('kind') == 'nico-prepared' and descriptor.get('complete'), 'Incomplete prepared input')
+        b.require(descriptor.get('kind') in ('nico-prepared', 'nico-package-input') and descriptor.get('complete'), 'Incomplete prepared input')
         b.require(descriptor['include'] == config['include'], 'Material switches must match prepared input; run preparation with the intended switches')
         return config
     descriptor = json.loads((source / 'bundle.json').read_text())
@@ -93,8 +95,13 @@ def input_plan(config):
         base = [r for r in records if r['kind'] == 'core']
         extra = [dict(r, source_image=r['image'], purpose=r['kind']) for r in records if r['kind'] in ('ui', 'bootstrap')]
         b.require(len(extra) == 2, 'Expected one UI and one bootstrap image')
-        print('BUILD_PLAN', json.dumps({'prepared_images': len(records), 'new_material_images': [], 'package_builds_images': False, 'charts': ['pxeye', 'cert-manager', 'platform', 'core', 'materials']}), flush=True)
-        return rows, base, extra, {}
+        descriptor = json.loads((source / 'prepared.json').read_text())
+        prefixes = {'aarch64': 'boot/aarch64/', 'bfb': 'http/nico/dpu/', 'apt': 'boot/apt/'}
+        groups = {name: [r for r in rows if r['path'].startswith(prefixes[name])]
+                  for name in descriptor.get('raw_material_groups', [])}
+        b.require(all(groups.values()), 'Package input lacks selected raw material files')
+        print('BUILD_PLAN', json.dumps({'prepared_images': len(records), 'new_material_images': list(groups), 'package_builds_images': bool(groups), 'charts': ['pxeye', 'cert-manager', 'platform', 'core', 'materials']}), flush=True)
+        return rows, base, extra, groups
     rows = json.loads((source / 'manifests/file-inventory.json').read_text())['files']
     paths = {r['path']: r for r in rows}
     base = json.loads((source / 'manifests/images-lock.json').read_text())
@@ -334,13 +341,13 @@ class BuildRegistry:
             '--dest-oci-accept-uncompressed-layers', 'dir:/input', 'docker://' + dest], log, view)
 
 
-def stage_charts(bundle, source, mapping, material_images, bootstrap, core_references):
+def stage_charts(bundle, source, mapping, material_images, bootstrap, core_references, chart_directory=None):
     trees = bundle.parent / '.charts'
     trees.mkdir()
     prepared = {}
     for filename, key in [('cert-manager-v1.17.1.tgz', 'cert-manager'), ('nico-0.1.1.tgz', 'core'), ('pxeye-nico-platform-0.1.0.tgz', 'platform')]:
         dest = trees / key; dest.mkdir()
-        b.extract_chart(source / 'deployment/charts' / filename, dest)
+        b.extract_chart((Path(chart_directory) if chart_directory else source / 'deployment/charts') / filename, dest)
         roots = [p for p in dest.iterdir() if p.is_dir() and (p / 'Chart.yaml').is_file()]
         b.require(len(roots) == 1, 'Chart root absent or ambiguous: ' + filename)
         prepared[key] = roots[0]
@@ -456,7 +463,7 @@ def build(config, args, progress=None):
     is_prepared = (source / 'prepared.json').is_file()
     with progress.stage('01-inputs', 'Verify input hashes and toolchain'):
         if is_prepared:
-            prepared.verify(source)
+            prepared.verify(source, kinds=('nico-prepared', 'nico-package-input'))
         else:
             b.verify(source)
             b.require(b.sha(source / 'images/nico-amd64.oci.tar') == b.OCI_SHA, 'Unsupported Core archive')
@@ -465,7 +472,7 @@ def build(config, args, progress=None):
         return
     revision = command(['git', '-C', REPO, 'rev-parse', 'HEAD']).stdout.strip()
     tracked = ['offline-build/material-prepare', 'offline-build/onsite', 'offline-build/helm-bundle', 'offline-build/build.py', 'deploy/bootstrap-kubernetes.yaml',
-               'deploy/nico-platform', 'deploy/offline-core', 'deploy/nico-cluster-permissions.yaml']
+               'deploy/nico-platform', 'deploy/offline-core', 'deploy/nico-cluster-permissions.yaml', 'charts/pxeye']
     dirty = command(['git', '-C', REPO, 'status', '--porcelain', '--untracked-files=all', '--'] + tracked).stdout
     b.require(not dirty, 'Commit build sources before constructing images; unrelated changes are preserved')
     with (output.parent / ('.' + version + '.lock')).open('a') as lock:
@@ -563,7 +570,7 @@ def build(config, args, progress=None):
                     image_records.append({'build_reference': ref, 'digest': digest, 'kind': 'material'})
                 if (stage / '.charts').exists(): shutil.rmtree(stage / '.charts')
                 with progress.stage('03-charts', 'Compose and render Charts'):
-                    roots = stage_charts(bundle, source, mapping, material_images, bootstrap_ref, [r['image'] for r in base])
+                    roots = stage_charts(bundle, source, mapping, material_images, bootstrap_ref, [r['image'] for r in base], config.get('chart_directory'))
                     render_dir = stage / 'render'; render_dir.mkdir(exist_ok=True)
                     render = validate_charts(roots, config['tools']['helm'], mapping, material_images, render_dir)
                 image_usage = [{'image': r['build_reference'], 'source': r.get('source'), 'used_by': [v['chart'] + '/' + v['mode'] for v in render if r['build_reference'] in v['images']]} for r in image_records]
@@ -629,9 +636,11 @@ def build(config, args, progress=None):
             b.dump(bundle / 'bundle.json', {'schema_version': 1, 'kind': 'pxeye-nico-helm', 'id': config['bundle_id'],
                 'version': version, 'source_revision': revision, 'architecture': 'linux/amd64', 'charts': packages,
                 'requires_site_configuration': True, 'multi_phase_oci_ui_ready': False})
+            chart_provenance = Path(config.get('chart_directory', source / 'deployment/charts')).parent / 'upstream-sources.json'
             b.dump(bundle / 'manifests/build-report.json', {'source_revision': revision, 'input_bundle': json.loads((source / ('prepared.json' if is_prepared else 'bundle.json')).read_text()),
+                'upstream_chart_sources': json.loads(chart_provenance.read_text()) if chart_provenance.is_file() else None,
                 'input_inventory_sha256': b.sha(source / ('manifests/files.json' if is_prepared else 'manifests/file-inventory.json')),
-                'package_builds_images': not is_prepared, 'base_images': rows,
+                'package_builds_images': bool(groups), 'base_images': rows,
                 'native_x86_boot_artifacts': {'source': 'existing locked image', 'internal_files_verified': False},
                 'validation_render': render, 'image_usage': image_usage, 'tool_hashes': {n: b.sha(bundle / 'tools' / n) for n in ('helm', 'relok8s')},
                 'cold_install_tested': False, 'multi_phase_oci_ui_ready': False})
@@ -751,14 +760,23 @@ def main():
     parser.add_argument('--write-config', type=Path)
     parser.add_argument('--materials-bundle', type=Path)
     parser.add_argument('--output-root', type=Path)
+    parser.add_argument('--work-directory', type=Path)
     parser.add_argument('--plan', action='store_true')
     parser.add_argument('--check-inputs', action='store_true')
+    parser.add_argument('--prepare-charts', action='store_true', help='Download, verify and unpack Charts only; no Docker or cluster operations')
     parser.add_argument('--version')
     args = parser.parse_args()
     install_signal_handlers()
     if args.write_config:
         b.require(not args.write_config.exists(), 'Configuration exists; not overwriting')
         config = json.loads((HOME / 'build-config.example.json').read_text())
+        if args.work_directory:
+            config['work_directory'] = str(args.work_directory.expanduser().resolve())
+        if args.materials_bundle or args.output_root:
+            config = {'schema_version': 1, 'materials_bundle': '/srv/nico-input/materials-bundle',
+                      'output_root': '/srv/nico-output/helm-bundles', 'bundle_id': 'pxeye-nico-offline',
+                      'include': {'aarch64': True, 'apt': True, 'bfb': True},
+                      'tools': {'docker': 'docker', 'helm': 'helm', 'relok8s': None}}
         for key in ('materials_bundle', 'output_root'):
             value = getattr(args, key)
             if value: config[key] = str(value.resolve())
@@ -768,7 +786,32 @@ def main():
         print('HELM_CONFIG_CREATED', args.write_config)
         return
     b.require(args.config, 'Pass --config or --write-config')
-    config = read_config(args.config.resolve())
+    path = args.config.expanduser().resolve()
+    raw = json.loads(path.read_text())
+    if 'work_directory' in raw:
+        import assembly
+        value = assembly.configuration(path)
+        if args.plan:
+            assembly.plan(value)
+            return
+        work = value['work_directory']; work.mkdir(parents=True, exist_ok=True)
+        with (work / '.package-prepare.lock').open('a') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            logs = work / 'logs/chart-preparation'; logs.mkdir(parents=True, exist_ok=True)
+            with transcript(logs):
+                if args.prepare_charts:
+                    chart_sources.prepare(work, value['sources'].get('charts'), b, helm=value['tools']['helm'])
+                    return
+                config = assembly.prepare(value, sys.modules[__name__])
+    else:
+        config = read_config(path)
+        if args.prepare_charts or config.get('chart_sources'):
+            if args.plan:
+                chart_sources.settings(config.get('chart_sources'))
+            else:
+                downloaded = chart_sources.prepare(config['output_root'], config.get('chart_sources'), b, helm=config['tools']['helm'])
+                config['chart_directory'] = str(downloaded / 'deployment/charts')
+                if args.prepare_charts: return
     if args.plan:
         input_plan(config)
         return

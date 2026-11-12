@@ -1,63 +1,141 @@
-# 第二步：构建离线交付包
+# 第二步：Chart 准备与离线交付构建
 
-[English](README.md) · **简体中文** · [三步总览](../README.zh-CN.md)
+[English](README.md) · **简体中文** · [总览](../README.zh-CN.md)
 
-`build.py` 在构建机上将 prepared 镜像和 Chart 打包为离线交付件。prepared 输入包含已构建的材料镜像；部署环境参数由第三步配置。
+`build.py` 读取第一步导出的镜像，下载固定版本的上游 Chart，准备项目 Chart，并使用 relok8s 生成离线交付包。执行位置为 Linux amd64 构建机，依赖 Python 3.11+/PyYAML、Docker 和 Helm 3。
 
-## 构建阶段
+## 配置
 
-| 阶段 | 处理内容 | 约束与产物 |
-| --- | --- | --- |
-| 输入与工具校验 | 核对 prepared 摘要及锁定工具 | 直接使用第一步生成的配置 |
-| 镜像暂存 | 在本地 loopback Registry 中准备镜像 | 按 digest 复用已导入内容 |
-| Chart 渲染 | 检查配置和真实镜像依赖 | 不允许引用未包含的镜像 |
-| relok8s 打包 | 逐 Chart 收集离线镜像 | 完成的 Chart 验证后复用 |
-| 压缩与验包 | 压缩交付包并逐文件读回 | 成功后发布完整版本目录 |
-| 现场工具交付 | 导出小型执行工具包 | 提供第三步执行入口及配置模板 |
+默认配置只需指定与第一步相同的工作目录：
 
-## 构建命令
-
-构建读取完整 prepared 或兼容 nico-materials 输入及其镜像清单。第一步镜像导出目录不包含完整的 Chart、材料描述和工具，不能直接作为本入口的 materials_bundle。环境要求见[总览](../README.zh-CN.md#执行条件与路径)。
-
-完整材料准备流程生成的配置可继续使用。以下示例指定符合本入口 schema 1 的配置文件路径：
-
-```bash
-read -r -p '粘贴 HELM_BUILD_CONFIG 的绝对路径: ' HELM_CONFIG
-python3 /srv/PXEye/offline-build/helm-bundle/build.py --config "$HELM_CONFIG"
+```json
+{
+  "work_directory": "~/pxeye-build"
+}
 ```
 
-确认：出现 `HELM_BUILD_COMPLETE`；`DELIVERY_FILES` 会列出要复制到火种机的三个文件。
+脚本从 `<work_directory>/offline-images/` 读取 OCI 归档及镜像锁文件，自动创建 Chart、缓存、打包输入和交付输出目录。用户无需填写派生目录、schema 或包名。
 
-配置包含 prepared 路径、输出父目录、包名、材料开关和工具路径。换构建机时修改本地路径即可。首次缺少工具时会准备锁定版本；完全断网需提前缓存工具及 Registry 镜像。
+## Chart 来源
 
-## 交付产物
+[chart-sources.json](chart-sources.json) 维护下载地址、归档 SHA256、Chart 名称、版本及归档内目录。
+
+| Chart | 来源 | 处理方式 |
+| --- | --- | --- |
+| NICo `0.1.1` | [上游 helm 源码](https://github.com/dsx-ai-factory/infra-controller/tree/e703126e4a7a2fe1d4dab5f96cba9bdf055e0921/helm) | 下载固定提交源码归档，提取 `helm/`；应用项目兼容补丁后打包 |
+| cert-manager `v1.17.1` | `oci://quay.io/jetstack/charts/cert-manager` | Helm 拉取固定版本，校验归档摘要并解压 |
+| PXEye | [charts/pxeye](../../charts/pxeye/README.zh-CN.md) | 读取仓库 Chart，注入镜像引用；与直接 Helm 部署使用同一份源码 |
+| 平台依赖 | [deploy/nico-platform](../../deploy/nico-platform/Chart.yaml) | 使用仓库 Chart，提供数据库、证书与 Vault 初始化 |
+| 材料发布 | [charts.py](charts.py) | 根据选中的材料镜像生成 Chart |
+
+NICo 下载地址为：
 
 ```text
-output_root/<version>/
-  bundle.tar.gz             # Chart、relok8s镜像包、清单及离线工具
-  onsite-tools.tar.gz       # 第三步启动脚本及配置模板
-  SHA256SUMS                # 同时校验上面两个归档
-  build-result.json
-  progress.json
-  events.jsonl
-  run.log
-  logs/
-  bundle/                   # 完整交付内容的解压树
+https://codeload.github.com/dsx-ai-factory/infra-controller/tar.gz/e703126e4a7a2fe1d4dab5f96cba9bdf055e0921
 ```
 
-前三个文件组成[第三步](../onsite/README.zh-CN.md)的部署输入，示例交付目录为火种机 `/srv/nico/`。prepared、缓存和构建 Registry 数据仅供构建使用。大包包含完整文件清单；材料原文件封装在镜像中。
+该提交匹配当前 e703 镜像配方；`main` 和仅含 `0.1.1` 的版本号不足以标识具体源码。原始源码中的 Chart 内部符号链接会转换为普通文件。名称、版本或摘要不匹配时停止处理。
 
-## 失败续跑与日志
+镜像站或本地归档可通过 `sources.charts` 覆盖。支持 HTTP(S)、OCI 和本地 `file://` 归档；每个来源必须有 SHA256，`subdirectory` 是归档内含 `Chart.yaml` 的目录。例如，将默认下载切换到本地保留的原始包：
 
-修复原因后重跑原命令。同配置自动记住版本；已完成的镜像、Chart 和完整归档验证后复用，未完成阶段重新执行。成功版本重跑会核验并输出 `HELM_BUILD_REUSED`。创建另一个交付版本才使用 `--version`。
+```json
+{
+  "work_directory": "~/pxeye-build",
+  "sources": {
+    "charts": {
+      "core": {
+        "url": "file:///srv/nico-input/nico-0.1.1.tgz",
+        "sha256": "9e38837fcd7305ffd5e060ba18e973794388d3b0f83363b7903a21d3ae94ad67",
+        "subdirectory": "nico"
+      }
+    }
+  }
+}
+```
 
-| 位置 | 用途 |
-| --- | --- |
-| `output_root/.<version>.building/` | 构建暂存目录，保留恢复所需的中间产物 |
-| `progress.json` | 当前阶段、次数、耗时、失败原因 |
-| `events.jsonl` / `run.log` | 追加阶段历史和终端输出 |
-| `logs/`、`*-relok8s.log` | 具体命令输出及退出结果 |
+版本升级需要同步更新下载锁、镜像清单和兼容配方；覆盖来源地址只用于同版本发布件或镜像站。
 
-恢复粒度为阶段，不是文件字节偏移。输入、配置或源码版本改变时使用新版本，不能混用旧断点。Registry 容器退出时停止，失败保留其数据和端口；成功后清理本次临时数据。
+## 可选材料与镜像角色
 
-兼容 `nico-materials` 输入及其内置材料构建逻辑；prepared 输入使用其中已准备的材料镜像。依据：[relok8s 0.5.4](https://github.com/vmware-tanzu/asset-relocation-tool-for-kubernetes/tree/v0.5.4)、[Helm OCI](https://helm.sh/docs/v3/topics/registries/)。
+默认仅打包第一步清单中的13张 Core/PXEye 镜像，不附加 ARM64 Scout、APT 或 BFB 文件。需要这些材料时，`sources.materials` 指定对应的二进制来源目录，第二步按锁定文件清单校验并构建材料镜像：
+
+```json
+{
+  "work_directory": "~/pxeye-build",
+  "sources": {
+    "materials": {
+      "aarch64": "/srv/nico-input/scout-aarch64",
+      "apt": "/srv/nico-input/apt",
+      "bfb": "/srv/nico-input/dpu"
+    }
+  }
+}
+```
+
+ARM64 目录包含六份 Scout 发布文件；APT 目录包含 `dists/` 和 `pool/`；BFB 目录包含 `bf3-doca3.4.0-26.04/`。省略的材料组不处理。该流程封装已有发布件，不编译 NICo/Scout。
+
+PXEye 与工具镜像的默认角色取自 e703 配方。第一步选择其他版本时，通过 `sources.images.ui` 和 `sources.images.bootstrap` 指定导出清单中的完整镜像引用。`tools` 可选覆盖 `docker`、`helm`、`relok8s` 路径；默认通过环境查找或准备锁定版本。
+
+## 执行
+
+以下命令在构建机执行，假设仓库位于 `/srv/PXEye`。第一步已完成镜像导出。
+
+```bash
+mkdir -p "$HOME/pxeye-build"
+test ! -e "$HOME/pxeye-build/helm-build.json" &&
+cp /srv/PXEye/offline-build/helm-bundle/build-config.example.json "$HOME/pxeye-build/helm-build.json"
+```
+
+仅下载、校验、解压和准备 Chart，不要求先导出镜像，不使用 Docker 或集群：
+
+```bash
+python3 /srv/PXEye/offline-build/helm-bundle/build.py --config "$HOME/pxeye-build/helm-build.json" --prepare-charts
+```
+
+完成后输出 `CHARTS_READY`；重复执行验证后输出 `REUSE_CHARTS`。检查完整构建输入计划，不下载或构建：
+
+```bash
+python3 /srv/PXEye/offline-build/helm-bundle/build.py --config "$HOME/pxeye-build/helm-build.json" --plan
+```
+
+完整构建命令会自动执行 Chart 准备：
+
+```bash
+python3 /srv/PXEye/offline-build/helm-bundle/build.py --config "$HOME/pxeye-build/helm-build.json"
+```
+
+成功输出 `HELM_BUILD_COMPLETE`；`DELIVERY_FILES` 列出第三步需要的三个文件。
+
+## 目录结构
+
+```text
+work_directory/
+  offline-images/                 # 第一步产物
+  cache/charts/                   # 按SHA256保存的下载归档
+  charts/<id>/
+    upstream/{core,cert-manager}/  # 原始Chart目录：Chart.yaml、values.yaml、templates/等
+    raw/charts/                   # 原始Chart的规范化归档
+    trees/{core,cert-manager,platform,pxeye}/
+    deployment/charts/            # 与既有打包入口兼容的Chart归档
+    deployment/patches/
+    sources.json                  # 来源及全部Chart文件摘要
+  package-input/<id>/             # 自动适配第一步镜像与本步Chart/材料
+  logs/chart-preparation/run.log
+  output/<version>/
+    bundle.tar.gz
+    onsite-tools.tar.gz
+    SHA256SUMS
+    bundle/                       # Chart、relok8s镜像包、清单、安装顺序及工具
+    progress.json
+    events.jsonl
+    run.log
+    logs/
+```
+
+前三个交付文件构成[第三步](../onsite/README.zh-CN.md)输入。第二、三步之间的包格式和执行入口保持兼容。交付包内的 `manifests/build-report.json` 同时保存上游 Chart 地址和归档摘要。
+
+## 恢复与兼容
+
+相同配置重复执行会校验并复用下载、Chart、完整打包输入和已完成的打包阶段。Chart 准备失败时保留暂存目录，重试复用已校验的下载归档。完整构建的进度及日志位于 `output/.<version>.building/`，成功后随版本目录发布。改变输入或实现版本时使用独立工作目录或交付版本。
+
+既有 schema 1 的 `nico-prepared` / `nico-materials` 配置继续支持。需要在该模式下下载 Chart，可添加 `chart_sources`，其内容与 `sources.charts` 相同；默认仍使用旧输入中的 Chart。`--prepare-charts` 可单独执行准备。

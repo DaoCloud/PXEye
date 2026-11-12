@@ -63,10 +63,10 @@ def inventory(root):
     return rows
 
 
-def verify(root):
+def verify(root, kinds=('nico-prepared',)):
     root = Path(root)
     descriptor = json.loads((root / 'prepared.json').read_text())
-    require(descriptor.get('kind') == 'nico-prepared' and descriptor.get('schema_version') == 1 and descriptor.get('complete') is True, 'Not a complete prepared-material directory')
+    require(descriptor.get('kind') in kinds and descriptor.get('schema_version') == 1 and descriptor.get('complete') is True, 'Not a complete prepared-material directory')
     rows = json.loads((root / 'manifests/files.json').read_text())['files']
     expected = {r['path'] for r in rows}
     require(len(expected) == len(rows), 'Duplicate prepared inventory records')

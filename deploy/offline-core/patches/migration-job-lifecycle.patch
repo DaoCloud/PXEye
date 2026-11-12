@@ -8,7 +8,7 @@
    annotations:
      argocd.argoproj.io/hook: Sync
      argocd.argoproj.io/sync-wave: "-5"
-@@ -14,12 +15,14 @@
+@@ -14,10 +15,12 @@
      helm.sh/hook-delete-policy: before-hook-creation
      helm.sh/hook-weight: "-5"
  spec:
@@ -21,5 +21,3 @@
          app: {{ include "nico-api.name" . }}-migrate
 +        app.kubernetes.io/instance: {{ include "nico-api.name" . }}-migrate
      spec:
-       restartPolicy: OnFailure
-       {{- with .Values.nodeSelector }}

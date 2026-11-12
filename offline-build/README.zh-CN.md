@@ -2,12 +2,12 @@
 
 [English](README.md) · **简体中文**
 
-每个大步骤使用一个脚本和一份配置。前两步在构建机执行，第三步在火种机执行。第一步镜像导出已独立；第二步当前仍要求包含 Chart、材料和工具的完整 prepared 输入，镜像导出包不能直接替代该格式。
+每个大步骤使用一个脚本和一份配置。前两步在构建机执行，第三步在火种机执行。第一步只导出镜像；第二步从同一工作目录读取镜像，下载固定版本 Chart 并生成交付包。
 
 | 步骤 | 做什么 | 关键输入 | 输出与交接 |
 | --- | --- | --- | --- |
 | [1. 导出镜像](material-prepare/README.zh-CN.md) | 按清单导出本地 containerd 镜像 | 工作目录、镜像清单 | 兼容既有格式的 OCI 归档与镜像锁文件 |
-| [2. 构建交付包](helm-bundle/README.zh-CN.md) | 渲染 Chart，relok8s 打包镜像，压缩验包 | 第一步生成的配置及 prepared 目录 | `bundle.tar.gz`、`onsite-tools.tar.gz`、`SHA256SUMS` |
+| [2. 构建交付包](helm-bundle/README.zh-CN.md) | 渲染 Chart，relok8s 打包镜像，压缩验包 | 第一步镜像导出、Chart 来源及可选材料 | `bundle.tar.gz`、`onsite-tools.tar.gz`、`SHA256SUMS` |
 | [3. 现场部署](onsite/README.zh-CN.md) | 解包、镜像与 Chart 入库、顺序 Helm 安装 | 上述三个文件；一份现场配置 | 可选 PXEye、NICo Core 及其依赖；安装日志和进度 |
 
 ## 配置与状态管理
@@ -28,13 +28,13 @@
 ```text
 /srv/PXEye/offline-build/
   material-prepare/     # 第一步：build.py + build-config.example.json
-  helm-bundle/          # 第二步：build.py，配置由第一步生成
+  helm-bundle/          # 第二步：build.py + build-config.example.json
   onsite/               # 第三步：run.py + run-config.example.json
 
-/srv/nico-build/        # 构建机输入配置、prepared、缓存和交付包
+/srv/nico-build/        # 构建机配置、镜像导出、缓存和交付包
 /srv/nico/              # 火种机三个交付文件、工具、现场配置及运行记录
 ```
 
-当前配方是固定 e703 的单节点 Core/PXEye，不自动追踪运行集群镜像；不包含 REST/Temporal/Keycloak、DPF 服务或 Ubuntu ISO。第一步只导出镜像。现有第二步 prepared 路径只打包，兼容 nico-materials 路径仍包含材料镜像构建。材料 HTTP 就绪不等于消费者 URL 或实机链路已验证。
+当前配方是固定 e703 的单节点 Core/PXEye，不自动追踪运行集群镜像；不包含 REST/Temporal/Keycloak、DPF 服务或 Ubuntu ISO。第一步只导出镜像。第二步按需将独立材料封装为镜像；已有 prepared / nico-materials 输入保留兼容。材料 HTTP 就绪不等于消费者 URL 或实机链路已验证。
 
 兼容格式的维护说明见[旧版材料构建](legacy-materials.zh-CN.md)和[旧版部署配置](CONFIGURE.zh-CN.md)；其输入格式和执行入口独立于本流程。

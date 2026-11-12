@@ -1,0 +1,21 @@
+{{- if not .Values.auth.existingSecret }}
+{{- $old := lookup "v1" "Secret" .Release.Namespace .Release.Name }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ .Release.Name }}
+  namespace: {{ .Release.Namespace }}
+type: Opaque
+{{- if $old }}
+data:
+  auth.json: {{ required "Existing PXEye Secret lacks auth.json" (index $old.data "auth.json") | quote }}
+  {{- with index $old.data "bootstrap-password" }}
+  bootstrap-password: {{ . | quote }}
+  {{- end }}
+{{- else }}
+{{- $password := randAlphaNum 32 }}
+stringData:
+  auth.json: {{ dict "password_sha256" (sha256sum $password) | toJson | quote }}
+  bootstrap-password: {{ $password | quote }}
+{{- end }}
+{{- end }}

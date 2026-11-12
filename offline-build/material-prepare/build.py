@@ -154,7 +154,7 @@ def verify_payload(layout, reference, manifest):
 def build(c, recipe, plan=False):
     run_started = time.monotonic()
     run_started_at = datetime.now(timezone.utc).isoformat()
-    tracked = ['offline-build/material-prepare', 'offline-build/helm-bundle', 'offline-build/build.py', 'offline-build/onsite', 'deploy/offline-core', 'deploy/nico-platform', 'deploy/bootstrap-kubernetes.yaml', 'deploy/nico-cluster-permissions.yaml']
+    tracked = ['offline-build/material-prepare', 'offline-build/helm-bundle', 'offline-build/build.py', 'offline-build/onsite', 'deploy/offline-core', 'deploy/nico-platform', 'deploy/bootstrap-kubernetes.yaml', 'deploy/nico-cluster-permissions.yaml', 'charts/pxeye']
     if not plan:
         b.require(sys.platform == 'linux' and platform.machine() in ('x86_64', 'amd64'), 'Run preparation on Linux x86_64')
         b.require(not h.command(['git', '-C', REPO, 'status', '--porcelain', '--untracked-files=all', '--'] + tracked).stdout, 'Commit build sources before preparation')

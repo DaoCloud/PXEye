@@ -1,0 +1,16 @@
+{
+  "core": {
+    "url": "https://codeload.github.com/dsx-ai-factory/infra-controller/tar.gz/e703126e4a7a2fe1d4dab5f96cba9bdf055e0921",
+    "sha256": "eeaefd12b5e2129888e5452d5272c920fa17b9655c33caaa52b8f777d5cc4331",
+    "subdirectory": "infra-controller-e703126e4a7a2fe1d4dab5f96cba9bdf055e0921/helm",
+    "name": "nico",
+    "version": "0.1.1"
+  },
+  "cert-manager": {
+    "url": "oci://quay.io/jetstack/charts/cert-manager",
+    "sha256": "48707f6e8937290da96065dc7de8b4f5a95d9707798d4b5a0d560f78c12996f7",
+    "subdirectory": "cert-manager",
+    "name": "cert-manager",
+    "version": "v1.17.1"
+  }
+}

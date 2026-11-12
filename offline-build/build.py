@@ -80,7 +80,8 @@ def substitute(value, settings):
 
 def run(command, **kwargs):
     result = subprocess.run(command, capture_output=True, text=True, timeout=180, **kwargs)
-    require(result.returncode == 0, 'Command failed: ' + str(command[0]) + '\n' + result.stderr[:2000])
+    details = result.stdout + result.stderr if str(command[0]) == 'patch' else result.stderr
+    require(result.returncode == 0, 'Command failed: ' + str(command[0]) + '\n' + details[:4000])
     return result.stdout
 
 
@@ -212,9 +213,11 @@ def parse_config(path, value=None):
     return c
 
 
-def patch_core(source, output, scratch):
-    for name in RAW:
-        require(sha(source / 'charts' / name) == RAW[name], 'Unsupported raw Chart revision: ' + name)
+def patch_core(source, output, scratch, expected_charts=None):
+    expected_charts = RAW if expected_charts is None else expected_charts
+    require(set(expected_charts) == set(RAW), 'Both pinned raw Charts are required')
+    for name in expected_charts:
+        require(sha(source / 'charts' / name) == expected_charts[name], 'Unsupported raw Chart revision: ' + name)
     extract_chart(source / 'charts/nico-0.1.1.tgz', scratch)
     for name in ('migration-job-lifecycle.patch', 'core-runtime-compatibility.patch'):
         patch = ASSETS / 'patches' / name
