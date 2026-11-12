@@ -1,13 +1,14 @@
 PYTHON ?= python3
 NODE ?= node
-VERSION = $(shell $(PYTHON) -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')
+REPO_ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
+VERSION = $(shell $(PYTHON) -c 'import tomllib; print(tomllib.load(open("$(REPO_ROOT)/pyproject.toml", "rb"))["project"]["version"])')
 BUILD_TIME := $(shell TZ=Asia/Shanghai date +%Y%m%d%H%M)
 IMAGE ?= mmzhou-os-install-console:$(VERSION)-$(BUILD_TIME)
-VCS_REF := $(shell git rev-parse HEAD)
+VCS_REF := $(shell git -C "$(REPO_ROOT)" rev-parse HEAD)
 BASE_IMAGE ?= ubuntu:24.04
 OFFLINE_BUILD_CONFIG ?= build-config.json
 OFFLINE_BUNDLE_VERSION ?=
-OFFLINE_DELIVERY := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))offline-build/delivery.py)
+OFFLINE_DELIVERY := $(REPO_ROOT)/offline-build/delivery.py
 OFFLINE_VERSION_ARG := $(if $(OFFLINE_BUNDLE_VERSION),--version $(OFFLINE_BUNDLE_VERSION),)
 
 .PHONY: syntax lint format-check test wheel image bundles
