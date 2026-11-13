@@ -803,6 +803,86 @@ class Onsite:
             and labels.get('name') in releases
         )
 
+    def namespace_runtime_resources(self, rows, releases):
+        """Resolve controller outputs from this run's actual parent resources."""
+        namespace = self.config['namespace']
+        owned = {item['metadata']['uid'] for item in rows
+                 if self.namespace_resource_belongs_to(item, releases)}
+        hook_rows = [item for item in rows if item['metadata'].get('annotations', {}).get('helm.sh/hook')
+                     and item['metadata']['uid'] not in owned]
+        if hook_rows:
+            hooks = set()
+            for release in sorted(releases):
+                result = self.helm_run(['get', 'hooks', release, '-n', namespace],
+                                       'namespace-hooks-' + release, private=True, check=False)
+                require(result.returncode == 0 or 'release: not found' in result.stderr.lower(),
+                        'Cannot establish Helm hook ownership for ' + release)
+                for obj in yaml.safe_load_all(result.stdout):
+                    if obj and obj.get('metadata', {}).get('annotations', {}).get('helm.sh/hook'):
+                        meta = obj['metadata']
+                        hooks.add((obj['kind'], meta.get('namespace', namespace), meta['name']))
+            for item in hook_rows:
+                meta = item['metadata']
+                if (item['kind'], meta.get('namespace', namespace), meta['name']) in hooks:
+                    owned.add(meta['uid'])
+
+        def flag(args, name):
+            for index, value in enumerate(args):
+                if value.startswith(name + '='):
+                    return value[len(name) + 1:]
+                if value == name and index + 1 < len(args):
+                    return args[index + 1]
+            return None
+
+        secrets = {item['metadata']['name']: item for item in rows if item['kind'] == 'Secret'}
+        for item in rows:
+            if item['metadata']['uid'] not in owned:
+                continue
+            if item['kind'] == 'Certificate':
+                secret = secrets.get(item.get('spec', {}).get('secretName'))
+                if secret and secret['metadata'].get('annotations', {}).get('cert-manager.io/certificate-name') == item['metadata']['name']:
+                    owned.add(secret['metadata']['uid'])
+            elif item['kind'] == 'Deployment':
+                for container in item.get('spec', {}).get('template', {}).get('spec', {}).get('containers', []):
+                    args = container.get('args') or []
+                    ca_name = flag(args, '--dynamic-serving-ca-secret-name')
+                    ca_namespace = flag(args, '--dynamic-serving-ca-secret-namespace')
+                    if ca_namespace == '$(POD_NAMESPACE)':
+                        env = next((env for env in container.get('env', []) if env.get('name') == 'POD_NAMESPACE'), {})
+                        if env.get('valueFrom', {}).get('fieldRef', {}).get('fieldPath') == 'metadata.namespace':
+                            ca_namespace = item['metadata']['namespace']
+                    secret = secrets.get(ca_name)
+                    if secret and ca_namespace == namespace:
+                        meta = secret['metadata']
+                        if (meta.get('labels', {}).get('app.kubernetes.io/managed-by') == 'cert-manager'
+                                and meta.get('annotations', {}).get('cert-manager.io/allow-direct-injection') == 'true'):
+                            owned.add(meta['uid'])
+            elif item['kind'] == 'Job' and self.state.get('install_intents', {}).get('vault'):
+                for container in item.get('spec', {}).get('template', {}).get('spec', {}).get('containers', []):
+                    command = ' '.join(container.get('command') or [])
+                    if 'pxeye-bootstrap-vault' not in command:
+                        continue
+                    prefix = next((env.get('value') for env in container.get('env', []) if env.get('name') == 'NICO_PREFIX'), None)
+                    if not isinstance(prefix, str) or not NAME.fullmatch(prefix):
+                        continue
+                    for name in (prefix + '-nico-vault-recovery', prefix + '-nico-vault-token', prefix + '-ssh-host-key'):
+                        secret = secrets.get(name)
+                        if (secret and secret.get('type') == 'Opaque'
+                                and secret['metadata'].get('labels', {}).get('app.kubernetes.io/instance') == prefix + '-vault-bootstrap'):
+                            owned.add(secret['metadata']['uid'])
+
+        # CertificateRequests, temporary private-key Secrets and CronJob Jobs
+        # carry real parent UIDs even when they have no Helm annotations.
+        owners = {item['metadata']['uid']: (item['kind'], item['metadata']['name']) for item in rows}
+        while True:
+            before = len(owned)
+            for item in rows:
+                for parent in item['metadata'].get('ownerReferences', []):
+                    if parent.get('uid') in owned and owners.get(parent['uid']) == (parent.get('kind'), parent.get('name')):
+                        owned.add(item['metadata']['uid'])
+            if len(owned) == before:
+                return owned
+
     def check_namespace_resources(self, releases):
         """Reject non-system leftovers instead of letting Helm adopt old site data."""
         if not self.namespace_exists():
@@ -817,18 +897,18 @@ class Onsite:
             'namespace-resource-layout', private=True,
         )
         rows = list(json.loads(result.stdout).get('items') or [])
-        # A healthy shared cert-manager guarantees its namespaced resource
-        # kinds are available. Include them then, so old Certificates/Issuers
-        # cannot be silently inherited by a new Core release.
-        if self.cert_manager_mode == 'reuse':
+        # Shared or successfully installed cert-manager makes these resource
+        # kinds available. Their controller outputs also need ownership checks.
+        if self.cert_manager_mode == 'reuse' or self.state['steps'].get('installed-cert-manager'):
             result = self.kubectl(
                 ['-n', self.config['namespace'], 'get', 'certificates,certificaterequests,issuers', '-o', 'json'],
                 'namespace-cert-manager-layout', private=True,
             )
             rows.extend(json.loads(result.stdout).get('items') or [])
+        runtime_resources = self.namespace_runtime_resources(rows, releases)
         unexpected = []
         for item in rows:
-            if self.namespace_system_resource(item) or self.namespace_resource_belongs_to(item, releases):
+            if self.namespace_system_resource(item) or item['metadata']['uid'] in runtime_resources:
                 continue
             metadata = item.get('metadata') or {}
             unexpected.append(str(item.get('kind') or 'Resource') + '/' + str(metadata.get('name') or '?'))

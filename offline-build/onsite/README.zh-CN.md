@@ -32,6 +32,9 @@ onsite-tools.tar.gz    # 小型执行器；只负责启动大包中的工具
 管理的资源。执行器会拒绝遗留的 PVC、Secret、Service 等 namespaced 资源，不会接管旧的四个独立 NICo
 release、已有 PXEye 或数据。
 
+安装过程中，预检也识别本次控制器生成的资源：cert-manager webhook 引用的 CA、Certificate 签发的
+Secret、已记录的 Helm hook、Vault 初始化输出，以及通过父资源 UID 关联的对象。这些属于正常安装产物。
+
 ## 执行命令
 
 以下命令在火种机执行。第一次先解开小执行器；这不会解开大包。
