@@ -92,9 +92,6 @@ class CurrentCluster:
         row = self.request(self.path(resource, namespace or self.namespace))
         return (row or {}).get("items", [])
 
-    def create(self, resource, body, namespace=None):
-        return self.request(self.path(resource, namespace or self.namespace), body, method="POST")
-
     def patch(self, resource, name, body, namespace=None):
         return self.request(
             self.path(resource, namespace or self.namespace, name),
