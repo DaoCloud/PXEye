@@ -11,6 +11,10 @@ Use the repository-level workflow instead:
 ```bash
 cd ~/pxeye-build/PXEye
 REGISTRY=<registry-host:port> make images
+# Set the Chart image to PUBLISHED_PXEYE_IMAGE manually, then commit it.
+vi charts/pxeye/values.yaml
+git add charts/pxeye/values.yaml
+git commit -m "chore(chart): update PXEye image"
 REGISTRY=<registry-host:port> make cache-images
 REGISTRY=<registry-host:port> make bundles
 ```

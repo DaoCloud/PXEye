@@ -14,7 +14,7 @@ available through `ctr`, Helm 3, Python 3.11+ with PyYAML, and enough free
 space for the Registry cache and the final archive. Commit the PXEye source
 before `make images`; that target deliberately refuses a dirty tree.
 
-The PXEye image reference is fixed by `charts/pxeye/values.yaml`. Set the
+`make images` generates a tag from the version, Shanghai time and source commit. Set the
 build Registry once for this shell. It must contain images reachable by the
 builder and accept pushed images.
 
@@ -29,16 +29,30 @@ default `REGISTRY_INSECURE=true` is for an HTTP Registry.
 
 ## Build
 
-Run the three commands in order:
+Build and push PXEye first:
 
 ```bash
 make images
+```
+
+Manually set the parent Chart's `image` field to the complete successful
+`PUBLISHED_PXEYE_IMAGE` output, for example
+`127.0.0.1:1027/pxeye:0.22.16-202611131820-03c8d4c`:
+
+```bash
+vi charts/pxeye/values.yaml
+git diff -- charts/pxeye/values.yaml
+git add charts/pxeye/values.yaml
+git commit -m "chore(chart): update PXEye image"
 make cache-images
 make bundles
 ```
 
-`make images` builds or reuses, then pushes the exact PXEye image declared by
-the parent Chart. `make cache-images` renders that parent Chart, obtains the
+`make images` builds and pushes a `<version>-<YYYYMMDDHHmm>-<7-character commit>`
+tag without reading or updating the Chart image reference. The full source
+commit is recorded in image metadata. Rebuilding the same commit in the same
+minute refuses to overwrite an existing local tag. After manually updating
+and committing the Chart, `make cache-images` renders that parent Chart, obtains the
 complete image closure, and caches missing images in `REGISTRY`. `make bundles`
 uses that cached Registry content, vendors the locked child Charts under the
 PXEye parent, runs relocation once, and verifies the archive by reading it

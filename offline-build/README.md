@@ -22,17 +22,20 @@ cd ~/pxeye-build/PXEye
 
 ## Publish PXEye
 
-Before caching Chart images or building a delivery, publish the exact PXEye
-reference declared by `charts/pxeye/values.yaml`:
+Before caching Chart images or building a delivery, build and publish PXEye:
 
 ```bash
 REGISTRY=127.0.0.1:1027 REGISTRY_INSECURE=true make images
 ```
 
-`make images` requires the Chart image host to equal `REGISTRY` and uses the
-Chart's explicit tag. If that local tag already exists, it is reused and its
-OCI revision is reported; otherwise the normal clean-tree image build runs.
-It never rewrites Chart values. For an HTTP Registry, configure the Docker
+`make images` builds committed, clean source and pushes
+`REGISTRY/pxeye:<version>-<YYYYMMDDHHmm>-<7-character commit>`, using Asia/Shanghai
+time and recording the full commit in image metadata. It refuses to overwrite
+an existing local tag for the same commit and minute. It does not read or update
+the Chart image reference. Manually set `image` in `charts/pxeye/values.yaml` to
+the successful `PUBLISHED_PXEYE_IMAGE` output and commit the change before
+caching or packaging; see [the build guide](BUILD.md) for commands.
+For an HTTP Registry, configure the Docker
 daemon to trust that Registry as insecure; Docker has no per-push TLS override.
 
 ## Optional ARM64 boot materials

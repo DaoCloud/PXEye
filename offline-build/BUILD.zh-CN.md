@@ -12,7 +12,7 @@ PXEye、NICo Core 及其所需的 Helm 依赖。现场导入和安装是独立�
 Helm 3、Python 3.11+/PyYAML 及足够空间，用于 Registry 缓存和最终归档。执行 `make images`
 前必须提交 PXEye 源码；该目标会主动拒绝脏工作树。
 
-PXEye 镜像引用由 `charts/pxeye/values.yaml` 固定。在当前 shell 一次性设置构建 Registry；
+`make images` 自动生成版本、上海时间和源码 commit 组成的镜像 tag。在当前 shell 一次性设置构建 Registry；
 它必须可被构建机访问并允许推送镜像。
 
 ```bash
@@ -26,15 +26,27 @@ Registry。
 
 ## 构建
 
-按顺序执行三条命令：
+先构建并推送 PXEye：
 
 ```bash
 make images
+```
+
+将成功输出的 `PUBLISHED_PXEYE_IMAGE` 完整地址手动填入父 Chart 的 `image` 字段，
+例如 `127.0.0.1:1027/pxeye:0.22.16-202611131820-03c8d4c`：
+
+```bash
+vi charts/pxeye/values.yaml
+git diff -- charts/pxeye/values.yaml
+git add charts/pxeye/values.yaml
+git commit -m "chore(chart): update PXEye image"
 make cache-images
 make bundles
 ```
 
-`make images` 构建或复用并推送父 Chart 声明的精确 PXEye 镜像。`make cache-images`
+`make images` 使用 `<版本>-<YYYYMMDDHHmm>-<commit前7位>` 的 tag 构建并推送镜像，
+不读取或更新 Chart 镜像引用；完整源码 commit 写入镜像元数据。同一分钟重复构建相同
+commit 时，已有本地 tag 会被拒绝覆盖。手动更新并提交 Chart 后，`make cache-images`
 渲染父 Chart，得到完整镜像闭包，并将缺失镜像缓存到 `REGISTRY`。`make bundles` 使用
 这个 Registry 中已缓存的内容，将锁定的子 Chart 纳入 PXEye 父 Chart，执行一次 relocation，
 并通过归档读回完成校验。启用 ARM 时，它还会基于已校验的本地 payload 构建或复用内容寻址的

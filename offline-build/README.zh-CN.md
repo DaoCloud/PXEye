@@ -19,16 +19,17 @@ cd ~/pxeye-build/PXEye
 
 ## 发布 PXEye
 
-缓存 Chart 镜像或构建交付包之前，先发布 `charts/pxeye/values.yaml` 中声明的精确
-PXEye 镜像引用：
+缓存 Chart 镜像或构建交付包之前，先构建并发布 PXEye 镜像：
 
 ```bash
 REGISTRY=127.0.0.1:1027 REGISTRY_INSECURE=true make images
 ```
 
-`make images` 要求 Chart 镜像主机与 `REGISTRY` 一致，并使用 Chart 中明确的 tag。若本地
-已有该 tag，则复用并输出其 OCI revision；否则按普通的干净工作树规则构建镜像。它不会
-改写 Chart values。HTTP Registry 需要由 Docker daemon 配置为不安全仓库；Docker 的单次
+`make images` 从干净的已提交源码构建并推送 `REGISTRY/pxeye:<版本>-<YYYYMMDDHHmm>-<commit前7位>`，
+时间使用 Asia/Shanghai，完整 commit 写入镜像元数据。同一分钟的相同 commit 不覆盖已有本地 tag。
+它不读取或改写 Chart 镜像引用。将成功输出的 `PUBLISHED_PXEYE_IMAGE` 手动写入
+`charts/pxeye/values.yaml` 的 `image` 字段，并提交该修改，再执行后续缓存和打包；
+具体命令见[构建指南](BUILD.zh-CN.md)。HTTP Registry 需要由 Docker daemon 配置为不安全仓库；Docker 的单次
 push 没有 TLS 跳过参数。
 
 ## 可选 ARM64 引导材料
