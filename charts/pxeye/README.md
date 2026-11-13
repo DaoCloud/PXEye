@@ -23,7 +23,7 @@ For a source-tree deployment, first use the offline builder to download and vend
 
 | Field | Default | Purpose |
 | --- | --- | --- |
-| `image` | Empty, required | Complete PXEye image reference |
+| `image` | Pinned in `values.yaml` | Complete PXEye image reference; update it explicitly after publishing an image |
 | `storageClass` | Empty | Use the cluster default StorageClass |
 | `dataStorage` / `materialsStorage` | `2Gi` / `50Gi` | Data and material PVC sizes |
 | `service.type` / `service.port` / `service.nodePort` | `NodePort` / `80` / `31808` | Service access |

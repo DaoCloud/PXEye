@@ -23,7 +23,7 @@ helm upgrade --install pxeye ./charts/pxeye \
 
 | 字段 | 默认值 | 含义 |
 | --- | --- | --- |
-| `image` | 空，必填 | PXEye 完整镜像引用 |
+| `image` | 在 `values.yaml` 中固定 | PXEye 完整镜像引用；发布镜像后显式更新 |
 | `storageClass` | 空 | 使用集群默认 StorageClass |
 | `dataStorage` / `materialsStorage` | `2Gi` / `50Gi` | 数据和材料 PVC 容量 |
 | `service.type` / `service.port` / `service.nodePort` | `NodePort` / `80` / `31808` | 服务访问方式 |
