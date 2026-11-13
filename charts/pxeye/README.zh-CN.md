@@ -31,6 +31,7 @@ helm upgrade --install pxeye ./charts/pxeye \
 | `nico.enabled` | `true` | 启用控制台中的 NICo 部署配置 |
 | `nico.allowClusterResources` | `false` | 创建操作 CRD、ClusterRole 等资源所需的集群级权限 |
 | `siteBootstrap.*` | `enabled=false` | 仅供自动化现场安装器使用：Core 就绪后使用集群内地址和已有客户端 Secret 接通 PXEye；不填写或发布物理 PXE/DNS/NTP 地址 |
+| `siteBootNetwork.namespace` | Release namespace | PXEye 与 NICo namespace 不同时，指定 NICo DHCP/PXE/DNS/NTP 运行资源所在 namespace；不是物理网络参数 |
 | `components.pxeye.enabled` | `true` | 在父 Release 中渲染 PXEye UI 资源 |
 | `components.certManager/platform/vaultBootstrap/core.enabled` | `false` | 启用锁定的 NICo 子组件；现场安装器按就绪阶段累计开启 |
 | `components.materials.enabled` | `false` | 预留的可选材料发布器；当前 POC 关闭 |
@@ -41,3 +42,7 @@ PVC 带有 Helm keep 策略。现场流程复用同一个父 Release：cert-mana
 `siteBootstrap` 不用于普通手工安装。它只记录集群内 Core/PXE 服务和客户端 Secret 的名称；PXEye 在 Core
 与证书尚未就绪时安全重试，连接成功后才持久化 mTLS 身份。外部 PXE、DHCP、DNS、NTP 与 HostInband 网络不应
 写入该字段，须通过后续站点网络配置和现场验证应用。
+
+当 PXEye 与 NICo 位于不同 namespace 且 `siteBootNetwork.namespace` 指向 NICo namespace 时，Chart 还会在该
+目标 namespace 创建最小 Role/RoleBinding，使 PXEye 仅能读取、创建或更新引导网络所需的 Service、Kea ConfigMap
+和 DHCP Deployment。该权限用于后续页面的“管理引导网络”，不授予集群级权限或 Secret 读取权限。

@@ -1,9 +1,10 @@
 {{- if .Values.components.pxeye.enabled }}
 {{- $bootstrap := default (dict) .Values.siteBootstrap }}
+{{- $bootNetwork := default (dict) .Values.siteBootNetwork }}
 {{- $bootstrapNamespace := default .Release.Namespace $bootstrap.namespace }}
 {{- $connection := dict "namespace" $bootstrapNamespace "client_secret" (default "" $bootstrap.clientSecret) "client_cert_key" (default "tls.crt" $bootstrap.clientCertKey) "client_private_key" (default "tls.key" $bootstrap.clientPrivateKey) "ca_secret" (default "" $bootstrap.caSecret) "ca_key" (default "tls.crt" $bootstrap.caKey) "pxe_internal_url" (default "" $bootstrap.pxeInternalUrl) }}
 {{- $siteBootstrap := dict "enabled" (default false $bootstrap.enabled) "site_name" (default "PXEye" $bootstrap.siteName) "core_url" (default "" $bootstrap.coreUrl) "connection" $connection }}
-{{- $siteConfig := dict "site" (dict "name" (default "PXEye" $bootstrap.siteName) "namespace" .Release.Namespace "deployment" .Release.Name) "core_url" "" "nico_deployment" (dict "enabled" .Values.nico.enabled "namespace" .Release.Namespace "allow_cluster_resources" .Values.nico.allowClusterResources "bundles_directory" "/nico-bundles") "site_bootstrap" $siteBootstrap }}
+{{- $siteConfig := dict "site" (dict "name" (default "PXEye" $bootstrap.siteName) "namespace" .Release.Namespace "deployment" .Release.Name) "core_url" "" "nico_deployment" (dict "enabled" .Values.nico.enabled "namespace" .Release.Namespace "allow_cluster_resources" .Values.nico.allowClusterResources "bundles_directory" "/nico-bundles") "site_bootstrap" $siteBootstrap "site_boot_network" (dict "namespace" (default .Release.Namespace $bootNetwork.namespace)) }}
 apiVersion: v1
 kind: ConfigMap
 metadata:

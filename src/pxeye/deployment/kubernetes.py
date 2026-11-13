@@ -42,7 +42,7 @@ class CurrentCluster:
     def available(self):
         return bool(self.host and (self.account / "token").is_file())
 
-    def request(self, path, body=None, *, timeout=8, method=None):
+    def request(self, path, body=None, *, timeout=8, method=None, content_type="application/json"):
         if not self.available:
             raise ClusterError("未取得当前集群身份，请挂载 ServiceAccount 并启用部署权限。")
         context = ssl.create_default_context(cafile=str(self.account / "ca.crt"))
@@ -55,7 +55,7 @@ class CurrentCluster:
             method=method,
             headers={
                 "Authorization": "Bearer " + (self.account / "token").read_text().strip(),
-                "Content-Type": "application/json",
+                "Content-Type": content_type,
             },
         )
         try:
@@ -91,6 +91,20 @@ class CurrentCluster:
     def list(self, resource, namespace=None):
         row = self.request(self.path(resource, namespace or self.namespace))
         return (row or {}).get("items", [])
+
+    def create(self, resource, body, namespace=None):
+        return self.request(self.path(resource, namespace or self.namespace), body, method="POST")
+
+    def patch(self, resource, name, body, namespace=None):
+        return self.request(
+            self.path(resource, namespace or self.namespace, name),
+            body,
+            method="PATCH",
+            content_type="application/merge-patch+json",
+        )
+
+    def delete(self, resource, name, namespace=None):
+        return self.request(self.path(resource, namespace or self.namespace, name), method="DELETE")
 
     def allowed(self, verb, resource, group="", namespace=None):
         result = self.request(

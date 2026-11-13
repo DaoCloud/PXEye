@@ -31,6 +31,7 @@ For a source-tree deployment, first use the offline builder to download and vend
 | `nico.enabled` | `true` | Enable console NICo deployment configuration |
 | `nico.allowClusterResources` | `false` | Create cluster permissions for CRDs, ClusterRoles and related resources |
 | `siteBootstrap.*` | `enabled=false` | Reserved for the automated onsite installer: connect PXEye after Core is ready using in-cluster endpoints and existing client Secrets; it never publishes physical PXE/DNS/NTP addresses |
+| `siteBootNetwork.namespace` | Release namespace | Namespace containing the NICo DHCP/PXE/DNS/NTP runtime resources when it differs from PXEye; this is not a physical-network setting |
 | `components.pxeye.enabled` | `true` | Render PXEye UI resources in this parent release |
 | `components.certManager/platform/vaultBootstrap/core.enabled` | `false` | Enable a locked NICo child component; the onsite runner enables these cumulatively in readiness-aware phases |
 | `components.materials.enabled` | `false` | Reserved optional publisher; disabled in the current POC |
@@ -42,3 +43,8 @@ PVCs use the Helm keep policy. The onsite workflow reuses one parent release: ce
 Secret names; PXEye retries safely until Core and its certificates are ready, then persists the mTLS connection. Do not
 put external PXE, DHCP, DNS, NTP, or HostInband settings there: apply them through subsequent site-network configuration
 and physical-network validation.
+
+When PXEye and NICo use different namespaces and `siteBootNetwork.namespace` names the NICo namespace, the Chart also
+creates a minimal Role/RoleBinding there. It permits PXEye to read, create or update only the boot-network Services, Kea
+ConfigMap and DHCP Deployment needed by the later **Manage boot network** page; it grants neither cluster-scoped access
+nor Secret reads.

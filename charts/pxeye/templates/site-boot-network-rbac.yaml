@@ -1,0 +1,32 @@
+{{- if .Values.components.pxeye.enabled }}
+{{- $bootNetwork := default (dict) .Values.siteBootNetwork }}
+{{- $targetNamespace := default .Release.Namespace $bootNetwork.namespace }}
+{{- if ne $targetNamespace .Release.Namespace }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ .Release.Name }}-site-boot-network
+  namespace: {{ $targetNamespace }}
+rules:
+- apiGroups: [""]
+  resources: ["services", "configmaps"]
+  verbs: ["get", "list", "watch", "create", "patch"]
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list", "watch", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ .Release.Name }}-site-boot-network
+  namespace: {{ $targetNamespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ .Release.Name }}-site-boot-network
+subjects:
+- kind: ServiceAccount
+  name: {{ .Release.Name }}
+  namespace: {{ .Release.Namespace }}
+{{- end }}
+{{- end }}

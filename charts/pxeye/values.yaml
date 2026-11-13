@@ -27,6 +27,12 @@ siteBootstrap:
   caSecret: ''
   caKey: tls.crt
   pxeInternalUrl: ''
+# Kubernetes namespace that owns NICo DHCP/PXE/DNS/NTP runtime resources.
+# This is a deployment target, not a physical-network parameter.  Empty means
+# the PXEye release namespace.  Set it only when PXEye is intentionally
+# installed in another namespace.
+siteBootNetwork:
+  namespace: ''
 components:
   pxeye:
     enabled: true
