@@ -81,6 +81,20 @@ An unclaimed Kubernetes NodePort does not prove that the fireseed host or an ext
 cluster still needs the required port mapping at creation time, or an existing controlled access route / `kubectl
 port-forward`.
 
+## Open PXEye
+
+After success, the runner prints the port-forward command with the resolved context and namespace. When run over
+SSH, it also prints the fireseed SSH address as the browser URL. Run the printed command on the fireseed host:
+
+```bash
+source /srv/nico/bundle.onsite/environment.sh
+kubectl --context "$CONTEXT" -n "$NICO_NAMESPACE" \
+  port-forward --address 0.0.0.0 "service/$PXEYE_RELEASE" 31808:80
+```
+
+Keep that terminal open. Once it reports `Forwarding`, open `http://127.0.0.1:31808/` on the fireseed host or use
+its reachable address and port `31808` from your browser. Ctrl+C ends the access session.
+
 ## Resume
 
 After fixing an external cause, rerun the identical command:

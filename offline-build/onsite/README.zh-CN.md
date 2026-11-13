@@ -74,6 +74,20 @@ cat "$(dirname "$WORK")/progress.json"
 `NodePort` 未被 Kubernetes 占用不等于火种宿主机或外部网络能够访问它。Kind 仍需要在建集群时设置对应的
 端口映射，或通过现有的受控访问入口/`kubectl port-forward` 访问 PXEye。
 
+## 访问 PXEye
+
+安装成功后，脚本会打印带实际 context、namespace 的转发命令；通过 SSH 执行时，还会打印火种机 SSH
+地址对应的浏览器 URL。在火种机执行打印的命令：
+
+```bash
+source /srv/nico/bundle.onsite/environment.sh
+kubectl --context "$CONTEXT" -n "$NICO_NAMESPACE" \
+  port-forward --address 0.0.0.0 "service/$PXEYE_RELEASE" 31808:80
+```
+
+保持终端运行。出现 `Forwarding` 后，火种机本机访问 `http://127.0.0.1:31808/`；远程浏览器使用火种机
+可达地址和 `31808` 端口。Ctrl+C 结束本次访问会话。
+
 ## 失败续跑
 
 修复外部原因后，用完全相同的命令重跑：

@@ -3,6 +3,7 @@
 
 import argparse
 import fcntl
+import ipaddress
 import json
 import os
 from pathlib import Path
@@ -156,6 +157,27 @@ def write_environment(path):
     return environment
 
 
+def print_access_instructions(config):
+    """Print a usable host access command without assuming Kind port mappings."""
+    command = [
+        'kubectl', '--context', config['context'], '-n', config['namespace'],
+        'port-forward', '--address', '0.0.0.0',
+        'service/' + config['namespace'] + '-pxeye', str(onsite.PXEYE_NODE_PORT) + ':80',
+    ]
+    print('PXEYE_ACCESS: run this command on the fireseed host and keep the terminal open:', flush=True)
+    print(shlex.join(command), flush=True)
+    print('PXEYE_LOCAL_URL: http://127.0.0.1:' + str(onsite.PXEYE_NODE_PORT) + '/', flush=True)
+    connection = os.environ.get('SSH_CONNECTION', '').split()
+    if len(connection) == 4:
+        try:
+            host = ipaddress.ip_address(connection[2])
+        except ValueError:
+            host = None
+        if isinstance(host, ipaddress.IPv4Address) and not host.is_loopback and not host.is_unspecified:
+            print('PXEYE_BROWSER_URL: http://' + str(host) + ':' + str(onsite.PXEYE_NODE_PORT) + '/', flush=True)
+    print('Open the URL after port-forward reports Forwarding. Ctrl+C stops this access session.', flush=True)
+
+
 def run(archive):
     target, work = paths_for(archive)
     onsite.require(
@@ -209,6 +231,7 @@ def run(archive):
                     "; Helm readiness passed; physical provisioning remains disabled until site boot settings are configured",
                     flush=True,
                 )
+                print_access_instructions(engine.config)
             except BaseException as error:
                 progress.fail(error)
                 raise
