@@ -95,6 +95,17 @@ kubectl --context "$CONTEXT" -n "$NICO_NAMESPACE" \
 Keep that terminal open. Once it reports `Forwarding`, open `http://127.0.0.1:31808/` on the fireseed host or use
 its reachable address and port `31808` from your browser. Ctrl+C ends the access session.
 
+The first deployment generates a random login password. The success output also prints this retrieval command;
+run it in your terminal and paste its output into the login form:
+
+```bash
+kubectl --context "$CONTEXT" -n "$NICO_NAMESPACE" \
+  get secret "$PXEYE_RELEASE" -o jsonpath='{.data.bootstrap-password}' | base64 -d
+```
+
+The installer prints the command, not the password, so credentials stay out of the installation log. Helm upgrades
+retain the existing password.
+
 ## Resume
 
 After fixing an external cause, rerun the identical command:

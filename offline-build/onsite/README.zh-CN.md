@@ -88,6 +88,15 @@ kubectl --context "$CONTEXT" -n "$NICO_NAMESPACE" \
 保持终端运行。出现 `Forwarding` 后，火种机本机访问 `http://127.0.0.1:31808/`；远程浏览器使用火种机
 可达地址和 `31808` 端口。Ctrl+C 结束本次访问会话。
 
+首次部署会生成随机登录口令，安装结束也会提示取口令命令。在自己的终端执行，并将输出粘贴到登录框：
+
+```bash
+kubectl --context "$CONTEXT" -n "$NICO_NAMESPACE" \
+  get secret "$PXEYE_RELEASE" -o jsonpath='{.data.bootstrap-password}' | base64 -d
+```
+
+安装器只打印命令，口令不会写入安装日志；Helm 升级保留已有口令。
+
 ## 失败续跑
 
 修复外部原因后，用完全相同的命令重跑：

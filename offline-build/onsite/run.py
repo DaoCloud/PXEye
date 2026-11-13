@@ -176,6 +176,13 @@ def print_access_instructions(config):
         if isinstance(host, ipaddress.IPv4Address) and not host.is_loopback and not host.is_unspecified:
             print('PXEYE_BROWSER_URL: http://' + str(host) + ':' + str(onsite.PXEYE_NODE_PORT) + '/', flush=True)
     print('Open the URL after port-forward reports Forwarding. Ctrl+C stops this access session.', flush=True)
+    password_command = [
+        'kubectl', '--context', config['context'], '-n', config['namespace'],
+        'get', 'secret', config['namespace'] + '-pxeye',
+        '-o', 'jsonpath={.data.bootstrap-password}',
+    ]
+    print('PXEYE_LOGIN: retrieve the generated password in your terminal, then paste it into the login form:', flush=True)
+    print(shlex.join(password_command) + ' | base64 -d', flush=True)
 
 
 def run(archive):
