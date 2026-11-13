@@ -572,7 +572,7 @@ class Application:
                 "page": "network",
                 "detail": "OS DNS 在网络管理的 HostInband 子网中维护",
             },
-            "boot_network": self.site_boot_network.summary(),
+            "boot_network": self.site_boot_network.view(),
         }
 
     def save_site(self, body):

@@ -10,6 +10,7 @@ import json
 import threading
 import time
 import uuid
+from urllib.parse import urlsplit, urlunsplit
 
 from pxeye.common import atomic_json
 from pxeye.deployment.kubernetes import ClusterError
@@ -24,6 +25,7 @@ class SiteBootNetwork:
         self.path = app.adapter.data / "config" / "site-boot-network.json"
         self.lock = threading.RLock()
         self.state = self._load()
+        self._restore_material_http_endpoint()
 
     def _load(self):
         try:
@@ -34,6 +36,12 @@ class SiteBootNetwork:
 
     def _save(self):
         atomic_json(self.path, self.state)
+
+    def _restore_material_http_endpoint(self):
+        current = self.state.get("current") or {}
+        values = current.get("values") or {}
+        if current.get("status") == "applied" and values.get("material_http_address"):
+            self._set_material_http_endpoint(values)
 
     def namespace(self):
         source = self.app.config.get("core_identity_source") or {}
@@ -64,6 +72,8 @@ class SiteBootNetwork:
         required = {
             "dhcp_address",
             "pxe_address",
+            "material_http_address",
+            "material_http_port",
             "dns_address",
             "ntp_address",
             "topology",
@@ -71,6 +81,9 @@ class SiteBootNetwork:
         }
         if set(body) != required:
             raise ValueError("引导网络配置字段无效。")
+        port = body["material_http_port"]
+        if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
+            raise ValueError("材料 HTTP 端口应为 1–65535。")
         topology = str(body["topology"])
         if topology not in ("same_l2", "relay"):
             raise ValueError("DHCP 拓扑只能是同二层或 Relay。")
@@ -78,6 +91,8 @@ class SiteBootNetwork:
         return {
             "dhcp_address": cls._ipv4(body["dhcp_address"], "DHCP 地址"),
             "pxe_address": cls._ipv4(body["pxe_address"], "PXE 引导地址"),
+            "material_http_address": cls._ipv4(body["material_http_address"], "材料 HTTP 地址"),
+            "material_http_port": port,
             "dns_address": cls._ipv4(body["dns_address"], "DNS 地址"),
             "ntp_address": cls._ipv4(body["ntp_address"], "NTP 地址"),
             "topology": topology,
@@ -147,7 +162,7 @@ class SiteBootNetwork:
             ),
             "topology": saved.get("topology", "same_l2"),
             "relay_address": saved.get("relay_address", ""),
-        }
+        } | self._material_http_values()
 
     def _material_http_endpoint(self):
         """Return the configured public base URL for newly registered OS materials.
@@ -157,6 +172,32 @@ class SiteBootNetwork:
         """
         library = self.app.config.get("os_library") or {}
         return str(library.get("public_base_url") or "").rstrip("/")
+
+    def _material_http_values(self):
+        endpoint = self._material_http_endpoint()
+        parsed = urlsplit(endpoint)
+        return {
+            "material_http_address": parsed.hostname or "",
+            "material_http_port": parsed.port or 80,
+            "material_http_endpoint": endpoint,
+        }
+
+    def _material_http_endpoint_for(self, values):
+        parsed = urlsplit(self._material_http_endpoint())
+        path = parsed.path.rstrip("/") or "/public/blobs/internal/nico/os-library"
+        return urlunsplit(
+            (
+                parsed.scheme or "http",
+                f"{values['material_http_address']}:{values['material_http_port']}",
+                path,
+                "",
+                "",
+            )
+        )
+    def _set_material_http_endpoint(self, values):
+        endpoint = self._material_http_endpoint_for(values)
+        self.app.config.setdefault("os_library", {})["public_base_url"] = endpoint
+        return endpoint
 
     @staticmethod
     def _patch_kea(configmap, values):
@@ -240,6 +281,7 @@ class SiteBootNetwork:
         }
         return {
             "values": values,
+            "material_http_endpoint": self._material_http_endpoint_for(values),
             "namespace": discovered["namespace"],
             "resources": resources,
             "dhcp_configmap": discovered["configmap"]["metadata"]["name"],
@@ -249,7 +291,7 @@ class SiteBootNetwork:
                 "更新 Kea DHCP Option 54、PXE 引导地址、DNS 与 NTP 下发参数。",
                 "将 DHCP Deployment 缩放至 1 并执行一次受控滚动更新。",
                 "不会修改 HostInband 网段、DHCP 地址池、设备规划或已有安装任务。",
-                "不会修改 OS 材料 HTTP 端点或既有 OS 定义。",
+                "保存材料 HTTP 地址与端口，供后续新建 OS 版本使用；不会改写既有 OS 定义。",
             ],
         }
 
@@ -302,11 +344,13 @@ class SiteBootNetwork:
                     discovered["namespace"],
                 )
                 ready = self._wait_for_dhcp(deployment)
+                material_endpoint = self._set_material_http_endpoint(values)
                 event.update(
                     status="applied",
                     applied_at=time.time(),
-                    detail="已应用 Kea 配置；仍需从引导网络完成 DHCP/PXE 验证。",
+                    detail="已应用 Kea 配置并保存材料 HTTP 端点；仍需从引导网络完成 DHCP/PXE 验证。",
                     dhcp_deployment_generation=ready.get("metadata", {}).get("generation"),
+                    material_http_endpoint=material_endpoint,
                 )
                 self._save()
                 return self.view()
