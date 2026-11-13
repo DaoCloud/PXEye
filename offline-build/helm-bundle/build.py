@@ -485,7 +485,7 @@ def stage_charts(bundle, source, mapping, material_images, bootstrap, core_refer
             'vaultBootstrap': {'enabled': True}, 'core': {'enabled': True},
             'materials': {'enabled': False},
         },
-        'certManager': yaml.safe_load((prepared['cert-manager'] / 'values.yaml').read_text()),
+        'certmanager': yaml.safe_load((prepared['cert-manager'] / 'values.yaml').read_text()),
         'platform': yaml.safe_load((prepared['platform'] / 'values.yaml').read_text()),
         'vaultBootstrap': vault_values,
         'nicoCore': yaml.safe_load((prepared['core'] / 'values.yaml').read_text()),

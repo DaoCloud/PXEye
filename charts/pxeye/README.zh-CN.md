@@ -37,6 +37,8 @@ helm upgrade --install pxeye ./charts/pxeye \
 | `components.materials.enabled` | `false` | 预留的可选材料发布器；当前 POC 关闭 |
 | `nodeSelector` / `imagePullSecrets` | 空 | 调度约束与镜像拉取认证 |
 
+cert-manager 子配置使用 `certmanager` 键，与全小写的依赖别名一致；启用开关仍为 `components.certManager.enabled`。Helm 会将别名作为子 Chart 的 `.Chart.Name`，因此别名必须符合该子 Chart 生成资源名称的要求。
+
 PVC 带有 Helm keep 策略。现场流程复用同一个父 Release：cert-manager → 平台/证书 → Vault 初始化 → Core；不把 Helm 依赖顺序当成控制器、证书与 Vault 就绪的替代条件。
 
 `siteBootstrap` 不用于普通手工安装。它只记录集群内 Core/PXE 服务和客户端 Secret 的名称；PXEye 在 Core
