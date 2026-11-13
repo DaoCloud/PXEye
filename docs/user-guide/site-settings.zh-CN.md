@@ -36,9 +36,9 @@ product_version: "0.22.0"
 
 ## 3. 引导网络服务地址
 
-点击**管理引导网络**可登记 DHCP、PXE HTTP、DNS 和 NTP 的对外 IPv4 VIP；这些 VIP 必须已由现场平台在对应 LoadBalancer Service 配置并分配。PXEye 会先只读核对 Service 的实际 VIP、Kea ConfigMap 和 DHCP Deployment。确认**保存并应用**后，PXEye 写入 Kea 的 DHCP Option 54、PXE、DNS、NTP 下发参数并滚动 DHCP；它不创建、修改或接管 LoadBalancer Service。
+点击**管理引导网络**可登记 DHCP、PXE HTTP、DNS 和 NTP 的 IPv4 地址及 PXE 端口。PXEye 按填写值更新 Kea ConfigMap 的 DHCP Option 54、PXE、DNS、NTP 下发参数并滚动 DHCP。PXEye 不检查、创建、修改或接管外部 Service、代理或 Relay。
 
-该操作不修改 HostInband 网段、DHCP 地址池、设备规划或现有安装任务。HostInband 是 NICo 为主机启动口选择 DHCP 网段和地址分配的网络对象，仍在网络管理和设备/安装预检中维护，不是服务 VIP。
+该操作不修改 HostInband 网段、DHCP 地址池、设备规划或现有安装任务。HostInband 是 NICo 为主机启动口选择 DHCP 网段和地址分配的网络对象，仍在网络管理和设备/安装预检中维护，不是服务地址。
 
 应用前应处于维护窗口：存在活动安装任务时 PXEye 会阻止改址。应用成功只说明 Kubernetes 与 Kea 已完成受控更新；还需从实际引导 VLAN 完成 DHCP Offer 和 PXE HTTP 验证。PXEye 当前不会自动改写已有 OS 定义中的材料 URL；该迁移需待 NICo 契约验证后通过独立操作完成。
 

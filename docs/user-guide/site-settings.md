@@ -36,9 +36,9 @@ Other information is read-only:
 
 ## 3. Boot-network service addresses
 
-Use **Manage boot network (管理引导网络)** to record the external IPv4 VIPs for DHCP, PXE HTTP, DNS and NTP. The site platform must already have configured and assigned those VIPs on the corresponding LoadBalancer Services. PXEye reads and verifies the live Service VIPs, Kea ConfigMap and DHCP Deployment before any write. After **Save and apply (保存并应用)** is confirmed, PXEye writes Kea DHCP Option 54 plus PXE/DNS/NTP advertisement values and rolls DHCP; it does not create, modify or take ownership of LoadBalancer Services.
+Use **Manage boot network (管理引导网络)** to record IPv4 addresses for DHCP, PXE HTTP, DNS and NTP plus the PXE port. PXEye writes the entered values to Kea DHCP Option 54 plus PXE/DNS/NTP advertisement settings and rolls DHCP; it does not inspect, create, modify or take ownership of external Services, proxies or relays.
 
-This does not change HostInband segments, DHCP pools, device plans or existing installation tasks. HostInband is NICo's network object for choosing a host boot interface's DHCP segment and allocating its address; it remains in network management and device/installation checks, not in this VIP form.
+This does not change HostInband segments, DHCP pools, device plans or existing installation tasks. HostInband is NICo's network object for choosing a host boot interface's DHCP segment and allocating its address; it remains in network management and device/installation checks, not in this address form.
 
 Use a maintenance window: PXEye blocks an address change while installation tasks are active. A successful apply proves only the controlled Kubernetes and Kea update. Validate DHCP Offer and PXE HTTP from the actual boot VLAN separately. PXEye does not yet rewrite existing OS-definition material URLs automatically; that migration will be a separate operation after NICo contract validation.
 
