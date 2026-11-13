@@ -16,6 +16,8 @@ VERSION_ARG := $(if $(BUNDLE_VERSION),--version $(BUNDLE_VERSION),)
 # The supported field workflow uses an HTTP Registry unless the caller
 # explicitly selects TLS.  Export a real default instead of an empty variable.
 REGISTRY_INSECURE ?= true
+# Packaging accepts local Chart edits; opt in to a committed-tree release check.
+REQUIRE_CLEAN_BUILD ?= false
 # Optional ARM64 boot-material image.  Keep it disabled unless the input
 # directory is intentionally supplied for this build.
 INCLUDE_ARM64_MATERIALS ?= 0
@@ -76,7 +78,7 @@ ensure-build-config:
 
 bundles: ensure-build-config
 	@test -n "$(REGISTRY)" || { echo "Set REGISTRY=host:port" >&2; exit 1; }
-	REGISTRY="$(REGISTRY)" REGISTRY_INSECURE="$(REGISTRY_INSECURE)" INCLUDE_ARM64_MATERIALS="$(INCLUDE_ARM64_MATERIALS)" ARM64_MATERIALS_DIR="$(ARM64_MATERIALS_DIR)" $(PYTHON) "$(DELIVERY_SCRIPT)" --config "$(BUILD_CONFIG)" $(VERSION_ARG)
+	REGISTRY="$(REGISTRY)" REGISTRY_INSECURE="$(REGISTRY_INSECURE)" REQUIRE_CLEAN_BUILD="$(REQUIRE_CLEAN_BUILD)" INCLUDE_ARM64_MATERIALS="$(INCLUDE_ARM64_MATERIALS)" ARM64_MATERIALS_DIR="$(ARM64_MATERIALS_DIR)" $(PYTHON) "$(DELIVERY_SCRIPT)" --config "$(BUILD_CONFIG)" $(VERSION_ARG)
 
 cache-images: ensure-build-config
 	@test -n "$(REGISTRY)" || { echo "Set REGISTRY=host:port" >&2; exit 1; }

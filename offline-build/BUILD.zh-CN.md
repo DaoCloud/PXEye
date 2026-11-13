@@ -38,19 +38,27 @@ make images
 ```bash
 vi charts/pxeye/values.yaml
 git diff -- charts/pxeye/values.yaml
-git add charts/pxeye/values.yaml
-git commit -m "chore(chart): update PXEye image"
 make cache-images
 make bundles
 ```
 
 `make images` 使用 `<版本>-<YYYYMMDDHHmm>-<commit前7位>` 的 tag 构建并推送镜像，
 不读取或更新 Chart 镜像引用；完整源码 commit 写入镜像元数据。同一分钟重复构建相同
-commit 时，已有本地 tag 会被拒绝覆盖。手动更新并提交 Chart 后，`make cache-images`
+commit 时，已有本地 tag 会被拒绝覆盖。手动更新 Chart 后，`make cache-images`
 渲染父 Chart，得到完整镜像闭包，并将缺失镜像缓存到 `REGISTRY`。`make bundles` 使用
 这个 Registry 中已缓存的内容，将锁定的子 Chart 纳入 PXEye 父 Chart，执行一次 relocation，
 并通过归档读回完成校验。启用 ARM 时，它还会基于已校验的本地 payload 构建或复用内容寻址的
 ARM 材料镜像。
+
+`make bundles` 默认允许未提交的 Chart 和打包文件修改，构建机无需配置 Git 作者账号。
+构建身份使用 `bundle-<版本>-<上海时间YYYYMMDDHHmm>`，同时记录实际打包文件摘要。
+`manifests/build-source.json` 保存本次文件清单和摘要；Git commit 仅作为来源信息，
+不会代替实际内容身份。同一版本只能续跑相同内容；修改内容后使用新版本，默认时间由 Make 自动生成。
+发布时如需强制要求打包文件已提交，可设置：
+
+```bash
+REQUIRE_CLEAN_BUILD=true make bundles
+```
 
 如需包含可选的 ARM64 引导材料，在后两步前设置以下变量：
 

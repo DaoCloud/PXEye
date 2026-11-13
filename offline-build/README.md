@@ -33,7 +33,7 @@ REGISTRY=127.0.0.1:1027 REGISTRY_INSECURE=true make images
 time and recording the full commit in image metadata. It refuses to overwrite
 an existing local tag for the same commit and minute. It does not read or update
 the Chart image reference. Manually set `image` in `charts/pxeye/values.yaml` to
-the successful `PUBLISHED_PXEYE_IMAGE` output and commit the change before
+the successful `PUBLISHED_PXEYE_IMAGE` output before
 caching or packaging; see [the build guide](BUILD.md) for commands.
 For an HTTP Registry, configure the Docker
 daemon to trust that Registry as insecure; Docker has no per-push TLS override.
@@ -86,6 +86,12 @@ defaults to `outputs_/build-config.json` and creates
 `outputs_/output/bundle-<PXEye version>-<Asia/Shanghai timestamp>/`, such as
 `bundle-0.22.16-202611121650`. Override only when needed, for example
 `BUNDLE_VERSION=release-1`.
+
+Packaging accepts uncommitted edits without a Git author configuration. The
+timestamped version identifies the build, while actual packaging-file hashes
+identify its content for resume and are recorded in `manifests/build-source.json`.
+Changed content requires a new version. Set `REQUIRE_CLEAN_BUILD=true` to require
+committed packaging files; image construction still requires clean source.
 
 After each Registry pull, the builder verifies the selected amd64 content graph
 in containerd. If an old local image record has dangling content, it fetches

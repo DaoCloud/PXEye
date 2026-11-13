@@ -23,6 +23,7 @@ import time
 import urllib.request
 import urllib.error
 import uuid
+from zoneinfo import ZoneInfo
 
 import yaml
 
@@ -43,6 +44,48 @@ spec = importlib.util.spec_from_file_location('materials_builder', HOME.parent /
 b = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(b)
 LOCK = json.loads((HOME / 'toolchain-lock.json').read_text())
+BUILD_SOURCE_PATHS = (
+    'Makefile', 'offline-build/delivery.py', 'offline-build/material-prepare',
+    'offline-build/onsite', 'offline-build/helm-bundle', 'offline-build/build.py',
+    'offline-build/arm_materials.py', 'offline-build/arm-material-init.py',
+    'deploy/bootstrap-kubernetes.yaml', 'deploy/nico-platform', 'deploy/offline-core',
+    'deploy/nico-cluster-permissions.yaml', 'charts/pxeye',
+    'offline-build/build_config.py', 'offline-build/build-config.example.json',
+)
+
+
+def build_source_snapshot():
+    """Identify the actual packaging files, including uncommitted Chart edits."""
+    files = []
+    for relative in BUILD_SOURCE_PATHS:
+        root = REPO / relative
+        candidates = sorted(root.rglob('*')) if root.is_dir() else [root]
+        for path in candidates:
+            if not path.is_file() or '__pycache__' in path.parts or path.suffix in ('.pyc', '.pyo'):
+                continue
+            files.append({'path': path.relative_to(REPO).as_posix(),
+                          'sha256': b.sha(path), 'executable': bool(path.stat().st_mode & 0o111)})
+    files.sort(key=lambda row: row['path'])
+    digest = hashlib.sha256(json.dumps(files, sort_keys=True).encode()).hexdigest()
+    return {'sha256': digest, 'files': files}
+
+
+def require_clean_build():
+    value = os.environ.get('REQUIRE_CLEAN_BUILD', 'false').lower()
+    b.require(value in ('0', 'false', 'no', '1', 'true', 'yes'),
+              'REQUIRE_CLEAN_BUILD must be true or false')
+    if value in ('1', 'true', 'yes'):
+        dirty = command(['git', '-C', REPO, 'status', '--porcelain',
+                         '--untracked-files=all', '--', *BUILD_SOURCE_PATHS]).stdout
+        b.require(not dirty, 'REQUIRE_CLEAN_BUILD=true: commit packaging sources or disable the release check')
+
+
+def source_revision():
+    """Git revision is optional provenance, never the packaging identity."""
+    if not shutil.which('git'):
+        return None
+    result = command(['git', '-C', REPO, 'rev-parse', 'HEAD'], check=False)
+    return result.stdout.strip() if result.returncode == 0 else None
 
 
 def command(argv, log=None, timeout=3600, check=True, **kwargs):
@@ -541,7 +584,7 @@ def build(config, args, progress=None):
         endpoint = os.environ.get('DOCKER_HOST') or endpoint
     b.require(endpoint.startswith('unix://'), 'Use a local Unix Docker endpoint; build Registry loopback cannot use a remote Docker context')
     command([config['tools']['helm'], 'version', '--short'], timeout=30)
-    version = args.version or datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
+    version = args.version or datetime.now(ZoneInfo('Asia/Shanghai')).strftime('%Y%m%d%H%M')
     b.require(re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,79}', version), 'Unsafe build version')
     config['output_root'].mkdir(parents=True, exist_ok=True)
     output = config['output_root'] / version
@@ -562,13 +605,10 @@ def build(config, args, progress=None):
     if args.check_inputs:
         print('HELM_INPUTS_READY; relok8s and pinned registry image will be prepared during build', flush=True)
         return
-    revision = command(['git', '-C', REPO, 'rev-parse', 'HEAD']).stdout.strip()
-    tracked = ['Makefile', 'offline-build/delivery.py', 'offline-build/material-prepare', 'offline-build/onsite',
-               'offline-build/helm-bundle', 'offline-build/build.py', 'offline-build/arm_materials.py',
-               'offline-build/arm-material-init.py', 'deploy/bootstrap-kubernetes.yaml',
-               'deploy/nico-platform', 'deploy/offline-core', 'deploy/nico-cluster-permissions.yaml', 'charts/pxeye', 'offline-build/build_config.py', 'offline-build/build-config.example.json']
-    dirty = command(['git', '-C', REPO, 'status', '--porcelain', '--untracked-files=all', '--'] + tracked).stdout
-    b.require(not dirty, 'Commit build sources before constructing images; unrelated changes are preserved')
+    revision = source_revision()
+    snapshot = build_source_snapshot()
+    b.require(snapshot['sha256'] == progress.state['identity']['implementation'],
+              'Packaging files changed during preparation; rerun with a new bundle version')
     with (output.parent / ('.' + version + '.lock')).open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         b.require(not output.exists(), 'Output already exists')
@@ -725,11 +765,15 @@ def build(config, args, progress=None):
             plan['schema_version'] = 3
             plan['description'] += '；各阶段复用同一PXEye父Chart Release，通过组件开关保持证书、Vault与Core的就绪顺序。'
             b.dump(bundle / 'profiles/install-plan.json', plan)
+            b.dump(bundle / 'manifests/build-source.json', {'build_id': version, 'source_revision': revision,
+                'source_snapshot_sha256': snapshot['sha256'], 'files': snapshot['files']})
             b.dump(bundle / 'bundle.json', {'schema_version': 1, 'kind': 'pxeye-nico-helm', 'id': config['bundle_id'],
+                'build_id': version, 'source_snapshot_sha256': snapshot['sha256'],
                 'version': version, 'source_revision': revision, 'architecture': 'linux/amd64', 'charts': packages,
                 'initial_provisioning_network_state': 'unconfigured', 'multi_phase_oci_ui_ready': True})
             chart_provenance = Path(config.get('chart_directory', source / 'deployment/charts')).parent / 'upstream-sources.json'
-            b.dump(bundle / 'manifests/build-report.json', {'source_revision': revision, 'input_bundle': json.loads((source / ('prepared.json' if is_prepared else 'bundle.json')).read_text()),
+            b.dump(bundle / 'manifests/build-report.json', {'build_id': version, 'source_snapshot_sha256': snapshot['sha256'],
+                'source_revision': revision, 'input_bundle': json.loads((source / ('prepared.json' if is_prepared else 'bundle.json')).read_text()),
                 'upstream_chart_sources': json.loads(chart_provenance.read_text()) if chart_provenance.is_file() else None,
                 'input_inventory_sha256': b.sha(source / ('manifests/files.json' if is_prepared else 'manifests/file-inventory.json')),
                 'package_builds_images': bool(groups), 'base_images': rows,
@@ -781,7 +825,10 @@ def build(config, args, progress=None):
                 command([sys.executable, REPO / 'offline-build/onsite/export.py', '--output', kit], logs / 'onsite-tools.log')
                 kit_digest = b.sha(stage / 'onsite-tools.tar.gz')
                 b.write(stage / 'SHA256SUMS', digest + '  bundle.tar.gz\n' + kit_digest + '  onsite-tools.tar.gz\n')
-            b.dump(stage / 'build-result.json', {'version': version, 'source_revision': revision,
+            b.require(build_source_snapshot()['sha256'] == snapshot['sha256'],
+                      'Packaging files changed during the build; rerun with a new bundle version')
+            b.dump(stage / 'build-result.json', {'version': version, 'build_id': version,
+                'source_snapshot_sha256': snapshot['sha256'], 'source_revision': revision,
                 'archive_bytes': (stage / 'bundle.tar.gz').stat().st_size, 'archive_sha256': digest,
                 'distinct_images': len(image_records), 'charts': len(packages),
                 'onsite_tools_archive_sha256': kit_digest})
@@ -832,20 +879,24 @@ def registry_reference(address, reference):
 
 
 def run_build(config, args):
+    require_clean_build()
+    snapshot = build_source_snapshot()
     output = config['output_root']; output.mkdir(parents=True, exist_ok=True)
     identity = {'config': {k: str(v) if isinstance(v, Path) else v for k, v in config.items()},
-                'implementation': command(['git', '-C', REPO, 'rev-parse', 'HEAD']).stdout.strip(),
+                'implementation': snapshot['sha256'],
                 'input_inventory_sha256': b.sha(config['materials_bundle'] / ('manifests/files.json' if (config['materials_bundle'] / 'prepared.json').exists() else 'manifests/file-inventory.json'))}
     # Persist a default version per configuration. New deliveries use --version.
-    key = hashlib.sha256(json.dumps(identity['config'], sort_keys=True).encode()).hexdigest()[:24]
+    key = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()[:24]
     pointer = output / ('.active-' + key + '.json')
     with (output / ('.active-' + key + '.lock')).open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         if not args.version:
             if pointer.exists(): args.version = json.loads(pointer.read_text())['version']
-            else: args.version = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
+            else: args.version = datetime.now(ZoneInfo('Asia/Shanghai')).strftime('%Y%m%d%H%M')
         b.require(re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,79}', args.version), 'Unsafe build version')
         identity['version'] = args.version
+        identity['build_id'] = args.version
+        print('BUILD_IDENTITY', args.version, 'source_sha256=' + snapshot['sha256'], flush=True)
         directory = output / ('.' + args.version + '.building')
         final = output / args.version
         if final.exists():

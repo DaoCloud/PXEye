@@ -28,7 +28,7 @@ REGISTRY=127.0.0.1:1027 REGISTRY_INSECURE=true make images
 `make images` 从干净的已提交源码构建并推送 `REGISTRY/pxeye:<版本>-<YYYYMMDDHHmm>-<commit前7位>`，
 时间使用 Asia/Shanghai，完整 commit 写入镜像元数据。同一分钟的相同 commit 不覆盖已有本地 tag。
 它不读取或改写 Chart 镜像引用。将成功输出的 `PUBLISHED_PXEYE_IMAGE` 手动写入
-`charts/pxeye/values.yaml` 的 `image` 字段，并提交该修改，再执行后续缓存和打包；
+`charts/pxeye/values.yaml` 的 `image` 字段，再执行后续缓存和打包；
 具体命令见[构建指南](BUILD.zh-CN.md)。HTTP Registry 需要由 Docker daemon 配置为不安全仓库；Docker 的单次
 push 没有 TLS 跳过参数。
 
@@ -74,6 +74,10 @@ REGISTRY=127.0.0.1:1027 REGISTRY_INSECURE=true make bundles
 只读取指定 Registry，然后打包并验证交付物。默认使用 `outputs_/build-config.json`，并生成
 `outputs_/output/bundle-<PXEye版本>-<Asia/Shanghai时间戳>/`，例如
 `bundle-0.22.16-202611121650`。只有需要固定版本（例如 `BUNDLE_VERSION=release-1`）时才覆盖。
+
+打包默认接受未提交修改，无需配置 Git 作者账号。时间版本标识本次构建，实际打包文件摘要
+用于识别内容和校验续跑，记录在 `manifests/build-source.json`；内容变化后使用新版本。
+需要强制已提交打包文件时，可设置 `REQUIRE_CLEAN_BUILD=true`；该开关不改变镜像构建的干净源码要求。
 
 每次从 Registry 拉取后，构建器都会校验 containerd 内对应 amd64 内容图。如果本地旧镜像记录
 指向缺失内容，它只会从同一 Registry 补拉该镜像内容一次并再次校验；不会删除镜像 tag 或

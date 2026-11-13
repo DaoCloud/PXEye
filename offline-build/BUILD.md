@@ -42,8 +42,6 @@ Manually set the parent Chart's `image` field to the complete successful
 ```bash
 vi charts/pxeye/values.yaml
 git diff -- charts/pxeye/values.yaml
-git add charts/pxeye/values.yaml
-git commit -m "chore(chart): update PXEye image"
 make cache-images
 make bundles
 ```
@@ -52,12 +50,24 @@ make bundles
 tag without reading or updating the Chart image reference. The full source
 commit is recorded in image metadata. Rebuilding the same commit in the same
 minute refuses to overwrite an existing local tag. After manually updating
-and committing the Chart, `make cache-images` renders that parent Chart, obtains the
+the Chart, `make cache-images` renders that parent Chart, obtains the
 complete image closure, and caches missing images in `REGISTRY`. `make bundles`
 uses that cached Registry content, vendors the locked child Charts under the
 PXEye parent, runs relocation once, and verifies the archive by reading it
 back. With ARM enabled, it also builds or reuses the content-addressed ARM
 material image from the validated local payload.
+
+`make bundles` accepts uncommitted Chart and packaging-file edits by default;
+the builder does not need a Git author identity. The build ID is
+`bundle-<version>-<Shanghai YYYYMMDDHHmm>`, with a separate digest of the actual
+packaging files. `manifests/build-source.json` records those files and their
+hashes; the Git revision is informational provenance. Resume uses the same
+version and content; changed content requires a new version, whose timestamp
+Make generates automatically. To require committed packaging files for a release:
+
+```bash
+REQUIRE_CLEAN_BUILD=true make bundles
+```
 
 To include the optional ARM64 boot payload, set both variables before the last
 two commands:

@@ -10,10 +10,8 @@
 ```bash
 cd ~/pxeye-build/PXEye
 REGISTRY=<registry-host:port> make images
-# 将 PUBLISHED_PXEYE_IMAGE 手动写入 Chart 的 image 字段，再提交修改。
+# 将 PUBLISHED_PXEYE_IMAGE 手动写入 Chart 的 image 字段。
 vi charts/pxeye/values.yaml
-git add charts/pxeye/values.yaml
-git commit -m "chore(chart): update PXEye image"
 REGISTRY=<registry-host:port> make cache-images
 REGISTRY=<registry-host:port> make bundles
 ```
