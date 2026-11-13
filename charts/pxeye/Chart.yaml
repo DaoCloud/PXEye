@@ -1,6 +1,6 @@
 apiVersion: v2
 name: pxeye
-version: 0.1.0
+version: 0.1.1
 type: application
 description: PXEye web console with persistent data, material storage and NICo installer permissions
 dependencies:

@@ -94,9 +94,9 @@ Registry OCI 导出和 bundle staging 缓存在 `cache/registry-exports/`；最�
 
 ## 配置与状态管理
 
-- **配置分层。** 构建配置定义内容与版本；部署配置定义 Registry、namespace、网络地址、存储和认证。namespace 默认 `nico-system`。
+- **配置分层。** 构建配置只定义内容与版本；现场执行器只接收离线归档路径，并固定部署到 `nico-system`。物理引导网络端点、HostInband 子网和装机策略由 PXEye 后续的站点配置维护，不能写成 Kubernetes Service ClusterIP。
 - **资源管理。** 镜像导入由脚本统一处理，Kubernetes 资源通过项目提供的 Helm Chart 管理。
-- **故障恢复。** 相同配置可复用已验证的材料缓存和已完成阶段。进度记录与输入版本关联，变更输入后使用独立版本或工作目录。
+- **故障恢复。** 相同归档可复用已完成阶段；解压目录与运行状态目录从归档名自动派生。变更归档后使用不同文件名。
 - **验收范围。** 构建校验、Helm 就绪和物理装机分别验收。
 
 ## 执行条件与路径
@@ -115,10 +115,10 @@ containerd 内容存储、Helm 3、足够空间。ARM 材料构建会在 Docker 
   delivery.py           # 统一构建入口
   material-prepare/     # 兼容的显式镜像导出器
   helm-bundle/          # chart-sources.json
-  onsite/               # 第三步：run.py + run-config.example.json
+  onsite/               # 第三步：run.py（唯一输入为 --archive）
 
 /srv/nico-build/        # 构建机配置、镜像导出、缓存和交付包
-/srv/nico/              # 火种机三个交付文件、工具、现场配置及运行记录
+/srv/nico/              # 火种机交付文件、执行器、自动派生的解压目录和运行记录
 ```
 
 当前配方是固定 e703 的单节点 Core/PXEye，不自动追踪运行集群镜像；不包含 REST/Temporal/Keycloak、DPF 服务或 Ubuntu ISO。第一步只导出镜像。第二步按需将独立材料封装为镜像；已有 prepared / nico-materials 输入保留兼容。材料 HTTP 就绪不等于消费者 URL 或实机链路已验证。

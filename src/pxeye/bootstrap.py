@@ -39,7 +39,12 @@ class Application:
         self.config = config
         config.setdefault("core_url", "")
         config.setdefault(
-            "site", {"name": "PXEye", "namespace": "mmzhou", "deployment": "mmzhou-pxeye"}
+            "site",
+            {
+                "name": "PXEye",
+                "namespace": "nico-system",
+                "deployment": "nico-system-pxeye",
+            },
         )
         for key, default in (
             ("devices", []),
@@ -50,6 +55,12 @@ class Application:
             config.setdefault(key, default)
         self.connection_lock = threading.RLock()
         self.adapter = Adapter(config, secret_dir, data_dir)
+        state_path = self.adapter.data / "config" / "site-bootstrap.json"
+        try:
+            state = json.loads(state_path.read_text()) if state_path.exists() else {}
+            self.site_bootstrap_state = state if isinstance(state, dict) else {}
+        except (OSError, ValueError):
+            self.site_bootstrap_state = {}
         self.store = get_store(Path(data_dir) / "console.sqlite3")
         self.executor = Executor(self.adapter, self.store)
         self._bind_core_services()
@@ -68,6 +79,15 @@ class Application:
         self.nico_deployment = NicoDeployment(self)
         if config.get("core_identity_source"):
             threading.Thread(target=self._maintain_core_identity, daemon=True).start()
+        else:
+            bootstrap = self._site_bootstrap_configuration()
+            if bootstrap:
+                threading.Thread(
+                    target=self._bootstrap_deployed_site,
+                    args=(bootstrap,),
+                    daemon=True,
+                    name="pxeye-site-bootstrap",
+                ).start()
 
     def _bind_core_services(self):
         config = self.config
@@ -128,6 +148,7 @@ class Application:
             "core_configured": bool(self.config.get("core_url")),
             "site_name": self.config["site"]["name"],
             "deployment_enabled": bool(self.config.get("nico_deployment", {}).get("enabled")),
+            "site_bootstrap": getattr(self, "site_bootstrap_state", {}),
             "reason": "请先部署 NICo 并应用到站点，或在站点设置中连接已有 Core。",
         }
 
@@ -176,42 +197,165 @@ class Application:
             "ca": root["metadata"]["resourceVersion"],
         }
 
-    def connect_deployed_site(self, operation):
+    @staticmethod
+    def _service_url(value, *, schemes, label):
+        value = str(value or "").strip().rstrip("/")
+        parsed = urlsplit(value)
+        try:
+            port = parsed.port
+        except ValueError:
+            raise ValueError(label + "服务端口无效。") from None
+        if (
+            parsed.scheme not in schemes
+            or not parsed.hostname
+            or parsed.username
+            or parsed.password
+            or parsed.path
+            or parsed.query
+            or parsed.fragment
+            or port == 0
+        ):
+            raise ValueError(label + "地址格式无效。")
+        return value
+
+    def _write_site_bootstrap_state(self, state, detail, **extra):
+        self.site_bootstrap_state = {
+            "state": state,
+            "detail": detail,
+            "updated_at": time.time(),
+            **extra,
+        }
+        atomic_json(
+            self.adapter.data / "config" / "site-bootstrap.json", self.site_bootstrap_state
+        )
+
+    def _site_bootstrap_configuration(self):
+        raw = self.config.get("site_bootstrap")
+        if not isinstance(raw, dict) or raw.get("enabled") is not True:
+            return None
+        try:
+            name = str(raw.get("site_name", "")).strip()
+            if not 1 <= len(name) <= 100:
+                raise ValueError("站点名称无效。")
+            source = raw.get("connection")
+            if not isinstance(source, dict):
+                raise ValueError("Core 客户端身份引用无效。")
+            source = copy.deepcopy(source)
+            source["namespace"] = str(
+                source.get("namespace") or self.nico_deployment.cluster.namespace
+            ).strip()
+            for key in ("namespace", "client_secret", "ca_secret"):
+                if not source.get(key) or not isinstance(source[key], str):
+                    raise ValueError("Core 客户端身份引用不完整。")
+            source.setdefault("client_cert_key", "tls.crt")
+            source.setdefault("client_private_key", "tls.key")
+            source.setdefault("ca_key", "tls.crt")
+            return {
+                "site_name": name,
+                "core_url": self._service_url(
+                    raw.get("core_url"), schemes=("https",), label="Core"
+                ),
+                "source": source,
+                "pxe_internal_url": self._service_url(
+                    source.get("pxe_internal_url"),
+                    schemes=("http", "https"),
+                    label="PXE 内部",
+                ),
+            }
+        except (TypeError, ValueError):
+            self._write_site_bootstrap_state(
+                "invalid", "自动站点连接配置无效；未修改当前 Core 连接。"
+            )
+            return None
+
+    def _bootstrap_deployed_site(self, bootstrap):
+        """Connect a fresh in-cluster PXEye after Core secrets and API are ready."""
+        for attempt in range(1, 121):
+            if self.config.get("core_url"):
+                return
+            self._write_site_bootstrap_state(
+                "waiting",
+                "等待 Core 服务和客户端证书就绪。",
+                attempt=attempt,
+            )
+            try:
+                self._apply_deployed_site(
+                    site_name=bootstrap["site_name"],
+                    core_url=bootstrap["core_url"],
+                    source=bootstrap["source"],
+                    pxe_internal_url=bootstrap["pxe_internal_url"],
+                )
+            except Exception:
+                # The PXEye release starts before the Core phase.  Do not leak
+                # cluster/API errors or Secret-derived content into Pod logs.
+                time.sleep(min(30, 2 ** min(attempt, 5)))
+                continue
+            self._write_site_bootstrap_state(
+                "connected", "已使用集群内 Core 地址和客户端身份完成连接。", attempt=attempt
+            )
+            return
+        self._write_site_bootstrap_state(
+            "needs_attention", "等待 Core 连接超过一小时；请检查 Core 服务、证书与 PXEye RBAC。"
+        )
+
+    def _apply_deployed_site(
+        self, *, site_name, core_url, source, pxe_internal_url="", pxe_url="", bindings=()
+    ):
         with self.connection_lock:
             if self.store.incomplete():
                 raise ValueError("存在未完成安装任务，未切换 Core。")
-            settings = operation["configuration"]
-            source = operation["connection"]
+            core_url = self._service_url(core_url, schemes=("https",), label="Core")
+            external_pxe = (
+                self._service_url(pxe_url, schemes=("http", "https"), label="PXE")
+                if str(pxe_url or "").strip()
+                else ""
+            )
+            internal_pxe = str(pxe_internal_url or source.get("pxe_internal_url") or "").strip()
+            if not internal_pxe:
+                binding = next((item for item in bindings if item.get("id") == "pxe"), None)
+                if binding:
+                    internal_pxe = "http://%s.%s.svc:8080" % (
+                        binding["name"], binding["namespace"]
+                    )
+            internal_pxe = self._service_url(
+                internal_pxe, schemes=("http", "https"), label="PXE 内部"
+            )
             directory, revision = self._core_identity(source)
             proposed = copy.deepcopy(self.config)
             proposed.update(
-                core_url=settings["core_url"],
+                core_url=core_url,
                 core_identity_directory=str(directory),
                 core_identity_source=source,
                 core_identity_revision=revision,
             )
-            proposed["site"]["name"] = settings["site_name"]
+            proposed["site"]["name"] = site_name
             candidate = Adapter(proposed, self.adapter.secrets, self.adapter.data)
             try:
                 candidate.rpc("FindNetworkSegmentIds", {})
             except Exception:
+                import shutil
+
+                shutil.rmtree(directory, ignore_errors=True)
                 raise ValueError("无法使用部署身份读取 Core，站点配置保持原值。") from None
             components = self.nico_deployment.view()["components"]
+            component_namespace = source.get(
+                "namespace", self.nico_deployment.cluster.namespace
+            )
             proposed["site_components"] = [
                 {
                     "id": c["id"],
                     "name": c["name"],
                     "role": c["role"],
                     "endpoint": ", ".join(
-                        f"{e['name']}.{e.get('namespace', settings['namespace'])}.svc: {' / '.join(e['ports'])}"
+                        f"{e['name']}.{e.get('namespace', component_namespace)}.svc: {' / '.join(e['ports'])}"
                         for e in c["endpoints"]
                     ),
                     **(
                         {
                             "probe": {
                                 "type": "tcp",
-                                "host": urlsplit(settings["core_url"]).hostname,
-                                "port": urlsplit(settings["core_url"]).port or 443,
+                                "host": urlsplit(core_url).hostname,
+                                "port": urlsplit(core_url).port or 443,
                             }
                         }
                         if c["id"] == "core"
@@ -221,13 +365,29 @@ class Application:
                 for c in components
                 if c["workloads"]
             ]
-            pxe = next(b for b in operation["bindings"] if b["id"] == "pxe")
+            if not proposed["site_components"]:
+                core = urlsplit(core_url)
+                proposed["site_components"] = [
+                    {
+                        "id": "core",
+                        "name": "NICo Core",
+                        "role": "资源、状态与装机编排 API",
+                        "endpoint": core_url,
+                        "probe": {
+                            "type": "tcp",
+                            "host": core.hostname,
+                            "port": core.port or 443,
+                        },
+                    }
+                ]
             proposed.setdefault("os_library", {}).update(
                 directory=self.config.get("os_library", {}).get("directory", "/materials"),
-                public_base_url=settings["pxe_url"] + "/public/blobs/internal/nico/os-library",
-                verification_base_url=source.get(
-                    "pxe_internal_url", f"http://{pxe['name']}.{pxe['namespace']}.svc:8080"
-                )
+                public_base_url=(
+                    external_pxe + "/public/blobs/internal/nico/os-library"
+                    if external_pxe
+                    else ""
+                ),
+                verification_base_url=internal_pxe
                 + "/public/blobs/internal/nico/os-library",
             )
             persisted = {
@@ -246,8 +406,8 @@ class Application:
             atomic_json(
                 self.adapter.data / "config" / "site-settings.json",
                 {
-                    "name": settings["site_name"],
-                    "core_url": settings["core_url"],
+                    "name": site_name,
+                    "core_url": core_url,
                     "default_install_concurrency": self.config.get(
                         "default_install_concurrency", 5
                     ),
@@ -268,6 +428,16 @@ class Application:
             threading.Thread(target=self._refresh_inventory, daemon=True).start()
             if not getattr(self, "identity_maintenance_started", False):
                 threading.Thread(target=self._maintain_core_identity, daemon=True).start()
+
+    def connect_deployed_site(self, operation):
+        settings = operation["configuration"]
+        self._apply_deployed_site(
+            site_name=settings["site_name"],
+            core_url=settings["core_url"],
+            source=operation["connection"],
+            pxe_url=settings.get("pxe_url", ""),
+            bindings=operation.get("bindings", ()),
+        )
 
     def _maintain_core_identity(self):
         self.identity_maintenance_started = True

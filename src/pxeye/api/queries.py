@@ -10,7 +10,20 @@ class QueryRoutes:
     def get_request(self):
         path = urlsplit(self.path).path
         if path == "/healthz":
-            return self.respond(200, {"status": "ok", "mode": "live", "version": __version__})
+            readiness = self.app.readiness()
+            return self.respond(
+                200,
+                {
+                    "status": "ok",
+                    "mode": "live",
+                    "version": __version__,
+                    "core": {
+                        "configured": readiness["core_configured"],
+                        "ready": readiness["business_available"],
+                        "bootstrap": readiness.get("site_bootstrap", {}),
+                    },
+                },
+            )
         if path.startswith("/api/"):
             session = self.session()
             if session is None:

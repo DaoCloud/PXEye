@@ -1,98 +1,101 @@
-# 第三步：现场导入并部署
+# 火种机一键安装
 
-[English](README.md) · **简体中文** · [三步总览](../README.zh-CN.md)
+[English](README.md) · **简体中文**
 
-`run.py` 在火种机上导入离线镜像和 Chart，并将 PXEye 与 NICo 部署到配置指定的 Kubernetes 集群。部署使用一份配置，通过 Helm 管理资源。
+## 主要目标
 
-## 部署阶段
+用一条命令将一个 PXEye / NICo 离线包导入火种 Kubernetes 集群，并部署控制面。现场只向执行器提供
+`bundle.tar.gz` 的绝对路径；不填写 checksum、解压目录、工作目录、namespace、发布名、证书模式、
+DNS/PXE/NTP 地址或 HostInband 网络。
 
-| 阶段 | 处理内容 | 约束与产物 |
-| --- | --- | --- |
-| 验包与解压 | 验证归档和内部清单，生成独立解压目录 | 已完成目录验证后复用 |
-| 现场解析与预检 | 确认 context、Registry、工具和配置 | 不使用默认集群；namespace默认nico-system |
-| 镜像和 Chart 入库 | relok8s 推送镜像，Helm OCI 发布并读回 Chart | 入库成功不等于节点能拉取镜像 |
-| 冻结安装配方 | 生成现场 values、顺序和摘要 | 不手改派生文件 |
-| 可选 PXEye 启动 | 按配置通过独立 Helm Chart 启动 UI | 已有PXEye时设为false，保留原服务 |
-| NICo 顺序安装 | cert-manager → 平台依赖 → Vault → 可选材料 → Core | 每阶段通过后才继续，保留原PVC身份 |
+首次安装固定使用：
 
-## 环境与配置
+- namespace：`nico-system`
+- NICo 父 Chart release：`nico`
+- PXEye Service：`NodePort` `31808`（Kubernetes 同时自动分配 ClusterIP）
 
-运行要求：Python 3.11+/PyYAML、kubectl、可用集群和 Registry；节点已配置好镜像拉取。Helm 和 relok8s 随大包提供。
+执行器优先使用当前的 `kind-*` context（否则只接受唯一候选）、探测 Registry、默认跳过现场 Registry 的 TLS 证书链与名称校验，
+并在健康的共享 cert-manager 已存在时复用它；不存在时才安装包内 cert-manager。部分安装或未就绪的
+cert-manager 会明确失败，绝不会接管或覆盖。它还会在 Core 阶段完成后，使用同命名空间的客户端
+Secret 和集群内 Core 地址验证 mTLS，并将 PXEye 接通到新 Core。
 
-将第二步 `DELIVERY_FILES` 列出的三个文件复制到火种机 `/srv/nico/`，首次执行：
+## 前置条件
+
+火种机需要 Python 3.11+、PyYAML、`kubectl`，并且节点已经可以从现场 Registry 拉镜像。交付目录中需要：
+
+```text
+bundle.tar.gz          # 大离线交付包
+onsite-tools.tar.gz    # 小型执行器；只负责启动大包中的工具
+```
+
+`nico-system` 必须为空，或只包含 Kubernetes 自身默认对象及同一次执行已经创建的 `nico` / PXEye release
+管理的资源。执行器会拒绝遗留的 PVC、Secret、Service 等 namespaced 资源，不会接管旧的四个独立 NICo
+release、已有 PXEye 或数据。
+
+## 执行命令
+
+以下命令在火种机执行。第一次先解开小执行器；这不会解开大包。
 
 ```bash
 cd /srv/nico
-sha256sum -c SHA256SUMS &&
-test ! -e onsite-tools &&
-test ! -e onsite-run.json &&
-tar -xzf onsite-tools.tar.gz &&
-cp onsite-tools/tools/onsite/run-config.example.json onsite-run.json &&
-${EDITOR:-vi} onsite-run.json
+tar -xzf onsite-tools.tar.gz
+python3 /srv/nico/onsite-tools/tools/onsite/run.py \
+  --archive /srv/nico/bundle.tar.gz
 ```
 
-`onsite-run.json` 为部署配置入口：
+`--archive` 是唯一必填参数。若 Registry 无法从工作负载镜像或 `local-registry-hosting` 证据唯一识别，
+脚本会停在第 2 阶段；仅在这种例外情况下，可在重跑前设置 `NICO_REGISTRY_URL=http(s)://registry-host:port`。
+该变量只选择 Registry 端点；执行器仍按默认策略跳过该端点的 TLS 证书链/名称校验，不能将此视为
+Registry 身份已验证。
 
-| 配置 | 含义与约束 |
-| --- | --- |
-| `archive` / `checksums` | 大包和SHA文件的绝对路径 |
-| `extract_directory` / `work_directory` | 每次安装独立，互相分开；脚本自动创建 |
-| `site.context` / `namespace` | 推荐明确指定context；null只允许唯一Kind context；namespace默认nico-system |
-| `site.mode` / `release_prefix` | 恢复填restore，留空前缀时读取唯一现有Core或PXEye父Chart release；全新填new |
-| `site.cert_manager.mode` | 默认 `install` 安装包内控制器；`reuse` 仅用于已有共享 cert-manager 且目标为空 namespace 的全新安装 |
-| `site.registry` | URL留空自动探测唯一可用端点；HTTPS 提供 `ca_file`，仅已核验的自签名端点可设 `skip_tls_verify: true` |
-| `site.service_ips` / `host_network` | 全新安装必须填写DNS/PXE/NTP IPv4，以及网络name/prefix/gateway/mtu；恢复可复用旧配置 |
-| `bootstrap_pxeye` | 在顶层控制独立 PXEye UI 启动，默认false |
-| `site.storage_class` / `phase_values` | 按需指定存储及阶段定制文件；凭据仅引用受限文件 |
+## 确认命令
 
-模板默认为 **恢复模式、保留已有PXEye**；全新现场必须修改对应选项和网络参数。工具解压、配置创建只做一次；续跑不要重复覆盖。
+成功时末尾输出 `PXEYE_CORE_CONNECTED` 和 `ONSITE_COMPLETE`。后者表示 Helm 就绪且 PXEye 已通过
+集群内 mTLS 验证连接到 Core。运行目录从归档名自动派生；例如 `/srv/nico/bundle.tar.gz` 会生成：
 
-导入前，运行器会按已配置的 TLS 策略探测 `GET /v2/`。Registry 返回 `200` 或认证挑战
-`401` 都表示端点可达。若证书校验失败，必须配置现场 Registry CA，或仅针对已经核验的自签名
-现场 Registry 显式设置 `site.registry.skip_tls_verify`；不会再让 relok8s 的本地转发桥将该问题显示成通用 502。
+```text
+/srv/nico/bundle/             # 解压后的包；内部清单已验证
+/srv/nico/bundle.onsite/      # 进度、日志、冻结的 Helm recipe 和私有状态
+```
 
-`bootstrap_pxeye=true` 只启动 PXEye UI，NICo 组件仍保持关闭，直到后续有序安装阶段逐个启用。
-同一集群需要第二套隔离部署且已有 cert-manager 时，设置 `site.cert_manager.mode=reuse`；安装器会核验
-共享 CRD 与控制器就绪、跳过包内 cert-manager 阶段，绝不接管已有 Release。全新安装还要求目标
-namespace 没有 Helm Release。默认 PXEye NodePort 已被占用时，设置不同的
-`site.pxeye_values.service.nodePort`，或改为 `ClusterIP`。恢复模式仅支持已经使用单个父 Chart Release
-的站点；旧的四个独立 NICo Release 必须先完成明确的迁移，或使用干净 namespace，脚本会在入库前拒绝该布局。
-
-Kubernetes 中未被占用的 NodePort 不等于主机或外部网络可访问。尤其是 Kind 节点只会发布建集群时
-已配置的端口（例如 `extraPortMappings`）。运行器只检查 NodePort 未被其他 Service 占用，不会修改
-Kind、主机网络或防火墙；应使用已有的平台访问入口，或在部署前为 Kind 创建所需端口映射。
-
-## 部署命令
-
-执行命令（任意工作目录，首次与失败后相同）：
+执行器还会在这个运行目录生成只读的 `environment.sh`，供确认和排障使用；它不是安装输入，避免确认命令误用
+当前 shell 的业务集群 context。
 
 ```bash
-python3 /srv/nico/onsite-tools/tools/onsite/run.py --config /srv/nico/onsite-run.json
+source /srv/nico/bundle.onsite/environment.sh
+kubectl --context "$CONTEXT" -n "$NICO_NAMESPACE" get pods
+kubectl --context "$CONTEXT" -n "$NICO_NAMESPACE" get service "$PXEYE_RELEASE"
+cat "$(dirname "$WORK")/progress.json"
 ```
 
-确认：终端显示当前 `STAGE` 和 `DONE` / `FAILED`，最终出现 `ONSITE_COMPLETE`。导入、配方生成和安装均由该入口调度。
+`NodePort` 未被 Kubernetes 占用不等于火种宿主机或外部网络能够访问它。Kind 仍需要在建集群时设置对应的
+端口映射，或通过现有的受控访问入口/`kubectl port-forward` 访问 PXEye。
 
-## 失败续跑与日志
+## 失败续跑
 
-先查看失败原因，修复后重跑原命令。下面路径使用配置模板默认值：
+修复外部原因后，用完全相同的命令重跑：
 
 ```bash
-tail -n 60 /srv/nico/onsite/field-install-01/run.log
-cat /srv/nico/onsite/field-install-01/progress.json
+python3 /srv/nico/onsite-tools/tools/onsite/run.py \
+  --archive /srv/nico/bundle.tar.gz
 ```
 
-| 记录 | 用途 |
-| --- | --- |
-| `work_directory/progress.json` | 当前阶段、状态、次数、耗时、错误 |
-| `events.jsonl` / `run.log` | 追加执行历史，不覆盖失败记录 |
-| `deployment/state.json` | 逐Chart和Helm阶段断点、安装意图 |
-| `deployment/logs/` / `timings.jsonl` | 具体命令日志及耗时 |
-| `deployment/private/` | 受限权限的快照、values及安装输出 |
+执行器会复核已完成阶段后继续，不会重新导入已验证的 Chart，也不会自动解锁 Helm pending 操作。查看：
 
-完成的阶段先核验再跳过。Helm failed或release不存在时可以重试；仍为pending时停止处理，不自动解锁或回滚。Helm已成功但未记账时，核对原意图、版本、values、健康和PVC后补记成功，避免重放初始化。
+```bash
+tail -n 80 /srv/nico/bundle.onsite/run.log
+cat /srv/nico/bundle.onsite/progress.json
+```
 
-输入、配置或工具实现改变时使用新工作目录。不要修改断点，不要同时从UI和CLI安装。当前恢复为阶段级，不是字节级续传。
+## 首次安装的网络边界
 
-`ONSITE_COMPLETE` 只代表导入和Helm就绪；严格mTLS、材料HTTP、物理DHCP/Scout和OS装机另行验收。脚本不清空数据、不重建Kind，也不发起设备发现、Redfish或主机安装。
+本步骤只部署控制面。它不会把 Kubernetes `ClusterIP` 当成物理网络地址，也不会生成虚假的 HostInband 子网、
+DNS/PXE/NTP VIP、DHCP Relay、LoadBalancer、交换机 Relay、路由、ACL 或防火墙规则。初始 Chart 不创建引导服务
+的外部发布地址，也没有 HostInband 规划；这不是物理装机验收，更不是替代现场网络隔离策略的安全门控。
 
-依据：[NICo Reference Installation](https://docs.nvidia.com/infra-controller/documentation/getting-started/installation-options/reference-installation)、[Helm OCI](https://helm.sh/docs/v3/topics/registries/)。
+包内 `nico-dhcp` Deployment 会刻意以零副本启动。上游 DHCP option 占位符不是真实物理端点，因此在后续站点网络
+配置提供真实 DNS/NTP/PXE/VIP 并显式启用 DHCP 前，不会启动 Kea 进程。
+
+物理引导网络地址和 HostInband 规划属于 PXEye 的后续站点配置：DNS 与 NTP 服务器、PXE/DHCP Relay 对外端点、
+引导 VLAN 的 prefix/gateway/MTU、外部 Service/VIP，以及交换机 Relay、路由、ACL 与防火墙规则都在该阶段确认。
+先完成这些配置并从引导 VLAN 验证 DHCP、DNS、NTP、PXE，再开放真实装机。Helm Ready 不等于物理装机验收通过。

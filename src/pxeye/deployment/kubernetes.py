@@ -26,7 +26,7 @@ class CurrentCluster:
             or (
                 (self.account / "namespace").read_text().strip()
                 if (self.account / "namespace").exists()
-                else "mmzhou"
+                else "nico-system"
             )
         )
         self.namespaces = list(

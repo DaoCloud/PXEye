@@ -459,7 +459,9 @@ class NicoDeployment:
                             "persistentVolumeClaim": {
                                 "claimName": self.settings.get(
                                     "materials_claim",
-                                    self.app.config.get("site", {}).get("deployment", "mmzhou-pxeye")
+                                    self.app.config.get("site", {}).get(
+                                        "deployment", "nico-system-pxeye"
+                                    )
                                     + "-materials",
                                 )
                             },

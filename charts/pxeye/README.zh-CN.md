@@ -30,9 +30,14 @@ helm upgrade --install pxeye ./charts/pxeye \
 | `auth.existingSecret` | 空 | 复用含 `auth.json` 的已有 Secret；为空时首次生成密码，升级时保留原认证信息 |
 | `nico.enabled` | `true` | 启用控制台中的 NICo 部署配置 |
 | `nico.allowClusterResources` | `false` | 创建操作 CRD、ClusterRole 等资源所需的集群级权限 |
+| `siteBootstrap.*` | `enabled=false` | 仅供自动化现场安装器使用：Core 就绪后使用集群内地址和已有客户端 Secret 接通 PXEye；不填写或发布物理 PXE/DNS/NTP 地址 |
 | `components.pxeye.enabled` | `true` | 在父 Release 中渲染 PXEye UI 资源 |
 | `components.certManager/platform/vaultBootstrap/core.enabled` | `false` | 启用锁定的 NICo 子组件；现场安装器按就绪阶段累计开启 |
 | `components.materials.enabled` | `false` | 预留的可选材料发布器；当前 POC 关闭 |
 | `nodeSelector` / `imagePullSecrets` | 空 | 调度约束与镜像拉取认证 |
 
 PVC 带有 Helm keep 策略。现场流程复用同一个父 Release：cert-manager → 平台/证书 → Vault 初始化 → Core；不把 Helm 依赖顺序当成控制器、证书与 Vault 就绪的替代条件。
+
+`siteBootstrap` 不用于普通手工安装。它只记录集群内 Core/PXE 服务和客户端 Secret 的名称；PXEye 在 Core
+与证书尚未就绪时安全重试，连接成功后才持久化 mTLS 身份。外部 PXE、DHCP、DNS、NTP 与 HostInband 网络不应
+写入该字段，须通过后续站点网络配置和现场验证应用。

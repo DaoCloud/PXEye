@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """Import a verified relok8s delivery and prepare/install its frozen Helm recipe."""
-import argparse
 import copy
 from datetime import datetime, timezone
 import fcntl
@@ -44,19 +43,14 @@ PXEYE_ONLY_COMPONENTS = {
     'core': {'enabled': False},
     'materials': {'enabled': False},
 }
+NAMESPACE = 'nico-system'
+RELEASE = 'nico'
+PXEYE_NODE_PORT = 31808
 
 
 def require(value, message):
     if not value:
         raise ValueError(message)
-
-
-def restore_release_candidates(rows):
-    """Return releases that can supply either legacy Core or the parent Chart."""
-    return [row['name'] for row in rows
-            if isinstance(row, dict) and isinstance(row.get('name'), str) and
-            isinstance(row.get('chart'), str) and
-            (row['chart'].startswith('nico-') or row['chart'].startswith('pxeye-'))]
 
 
 def sha(path):
@@ -97,17 +91,15 @@ def safe_extract(archive, target, *, limit=None):
                 destination.chmod(0o755 if member.mode & 0o111 else 0o644)
 
 
+def archive_identity(archive):
+    info = Path(archive).stat()
+    return {'name': Path(archive).name, 'bytes': info.st_size, 'mtime_ns': info.st_mtime_ns}
+
+
 def unpack(args):
-    archive, checksums, output = args.archive.resolve(), args.checksums.resolve(), args.output.resolve()
+    archive, output = args.archive.resolve(), args.output.resolve()
+    require(archive.is_file() and not archive.is_symlink(), 'Archive is missing or unsafe: ' + str(archive))
     require(not output.exists(), 'Unpack output exists; choose a new directory')
-    expected = []
-    for line in checksums.read_text().splitlines():
-        match = re.fullmatch(r'([a-fA-F0-9]{64})\s+\*?(.+)', line)
-        if match and match[2] == archive.name:
-            expected.append(match[1].lower())
-    require(len(expected) == 1, 'Expected exactly one checksum for ' + archive.name)
-    print('VERIFY_ARCHIVE_SHA256', flush=True)
-    require(sha(archive) == expected[0], 'Archive checksum mismatch')
     output.parent.mkdir(parents=True, exist_ok=True)
     budget = shutil.disk_usage(output.parent).free - 1024**3
     require(budget > archive.stat().st_size, 'Insufficient space to unpack')
@@ -120,7 +112,7 @@ def unpack(args):
         require(set(temporary.iterdir()) == {bundle}, 'Unexpected extra archive roots')
         require(json.loads(descriptors[0].read_text()).get('kind') == 'pxeye-nico-helm', 'Wrong bundle format')
         verifier.verify(bundle)
-        write_json(temporary / 'unpack-result.json', {'archive_sha256': expected[0], 'root': bundle.name})
+        write_json(temporary / 'unpack-result.json', {'archive': archive_identity(archive), 'root': bundle.name})
         temporary.rename(output)
         print('UNPACK_COMPLETE', output / bundle.name)
     except BaseException:
@@ -183,32 +175,28 @@ class Onsite:
         self.config_path = Path(path).resolve()
         self.config = json.loads(self.config_path.read_text())
         c = self.config
-        require(c.get('schema_version') == 1, 'Unsupported onsite config schema')
-        for key in ('context', 'namespace', 'release_prefix', 'site_name', 'bundle', 'work_directory'):
+        require(c.get('schema_version') == 3, 'Unsupported onsite config schema')
+        for key in ('context', 'namespace', 'site_name', 'bundle', 'work_directory'):
             require(c.get(key), 'Missing site configuration: ' + key)
-        require(NAME.fullmatch(c['namespace']) and NAME.fullmatch(c['release_prefix']), 'Invalid namespace/release prefix')
-        require(len(c['release_prefix']) <= 35, 'Release prefix too long for generated resource names')
-        require(c.get('mode') in ('new', 'restore'), 'Mode must be new or restore')
-        cert_manager = c.get('cert_manager', {})
-        require(isinstance(cert_manager, dict) and set(cert_manager) <= {'mode'},
-                'cert_manager must contain only mode')
-        self.cert_manager_mode = cert_manager.get('mode', 'install')
-        require(self.cert_manager_mode in ('install', 'reuse'),
-                'cert_manager.mode must be install or reuse')
-        require(self.cert_manager_mode == 'install' or c['mode'] == 'new',
-                'cert_manager.mode=reuse is supported only for a new isolated namespace')
-        require(isinstance(c.get('pxeye_values', {}), dict), 'pxeye_values must contain an object')
+        require(NAME.fullmatch(c['namespace']), 'Invalid namespace')
+        require(c['namespace'] == NAMESPACE,
+                'This installer always creates nico-system with the nico parent release')
+        legacy = {'mode', 'release_prefix', 'pxeye_release', 'cert_manager', 'service_ips', 'host_network',
+                  'data_backup_directory', 'storage_class', 'pxeye_values', 'phase_values'}
+        require(not legacy.intersection(c), 'Legacy site configuration is not accepted by the one-command installer')
         self.bundle, self.work = Path(c['bundle']).resolve(), Path(c['work_directory']).resolve()
         require(not self.work.is_relative_to(self.bundle) and not self.bundle.is_relative_to(self.work), 'Work directory must be outside bundle')
         self.work.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.private = self.work / 'private'; self.private.mkdir(exist_ok=True, mode=0o700); self.private.chmod(0o700)
         self.lock = (self.work / '.lock').open('a'); fcntl.flock(self.lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        lock_id = hashlib.sha256((c['context'] + '/' + c['namespace'] + '/' + c['release_prefix']).encode()).hexdigest()[:24]
+        lock_id = hashlib.sha256((c['context'] + '/' + c['namespace'] + '/' + RELEASE).encode()).hexdigest()[:24]
         self.site_lock = (Path(tempfile.gettempdir()) / ('pxeye-onsite-' + lock_id + '.lock')).open('a')
         fcntl.flock(self.site_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         self.descriptor = json.loads((self.bundle / 'bundle.json').read_text())
         require(self.descriptor.get('architecture') == 'linux/amd64', 'Only amd64 control-plane bundles are supported')
         require(self.descriptor.get('kind') == 'pxeye-nico-helm', 'Use the Helm/relok8s delivery, not a legacy OCI bundle')
+        require(self.descriptor.get('initial_provisioning_network_state') == 'unconfigured',
+                'This delivery predates the control-plane-only installer; rebuild the offline bundle with the current source')
         registry = c.get('registry', {})
         up = urlsplit(registry.get('url') or '')
         require(up.scheme in ('http', 'https') and up.hostname and not up.username and not up.password and not up.path and not up.query and not up.fragment,
@@ -229,29 +217,14 @@ class Onsite:
         if registry.get('ca_file'):
             self.env['SSL_CERT_FILE'] = registry['ca_file']
         identity_config = copy.deepcopy(c)
-        identity_config.pop('data_backup_directory', None)  # recovery evidence may be supplied after import
         identity_config['implementation_sha256'] = {name: sha(HOME / name) for name in ('onsite.py', 'registry_bridge.py', 'relocation.py')}
-        identity_config['phase_value_hashes'] = {key: sha(value) for key, value in c.get('phase_values', {}).items()}
         fingerprint = hashlib.sha256(json.dumps(identity_config, sort_keys=True).encode()).hexdigest()
         self.state_path = self.work / 'state.json'
         self.state = json.loads(self.state_path.read_text()) if self.state_path.exists() else {'config_sha256': fingerprint, 'bundle_inventory_sha256': identity, 'steps': {}}
-        # Exact predecessor identities may retain completed imports. All site,
-        # archive and bridge inputs must still match; no arbitrary state reset.
-        if self.state['config_sha256'] != fingerprint and self.state['bundle_inventory_sha256'] == identity:
-            for previous_source, with_relocation in (('83a3456004069e52fae69fb1a0f3cd4b6f1285040699d183f1a51d1931d4ef3b', True), ('1373ef5d197251e0cddce51bde01508af20e01e7333fd34f6ea1097caa6ef510', True), ('88b3747ca185f5fd10f7625f5800c29f717fb7876fe5b3274fedc45e2a740161', True), ('4315ad8762820d95b3054ae5e241ef7e4b366d0f556029d274bfb19c31bce0e4', True), ('19e0d0fc117c305257967152f3c330813883ddc202c567ce1dbc6037f8df235d', True), ('5dacea47145f7fca625ff001d1ff4496e9d6b32ca4ed2b9d8c58537c22e538b7', True), ('1c4a17c382cf1743a62b6ff260aca98f581bff7252bb5dc9e86b3286dc793701', False), ('d0cdd13aab92e73b9eed0437b5f632fcdc2efcb90385d9c325a21e70c5c6c421', False)):
-                predecessor = copy.deepcopy(identity_config)
-                if not with_relocation:
-                    predecessor['implementation_sha256'].pop('relocation.py')
-                predecessor['implementation_sha256']['onsite.py'] = previous_source
-                old_fingerprint = hashlib.sha256(json.dumps(predecessor, sort_keys=True).encode()).hexdigest()
-                if self.state['config_sha256'] == old_fingerprint:
-                    self.state.setdefault('implementation_updates', []).append({
-                        'from': old_fingerprint, 'to': fingerprint, 'reason': 'onsite-compatibility-fix'})
-                    self.state['config_sha256'] = fingerprint
-                    print('REUSE_STATE: compatible onsite update; completed imports retained', flush=True)
-                    break
         require(self.state['config_sha256'] == fingerprint and self.state['bundle_inventory_sha256'] == identity,
                 'Config/bundle changed; use a new work_directory')
+        self.cert_manager_mode = self.state.get('cert_manager_mode')
+        require(self.cert_manager_mode in (None, 'install', 'reuse'), 'Invalid saved cert-manager decision')
         self.save()
 
     def save(self):
@@ -295,39 +268,86 @@ class Onsite:
             result += ['--ca-file', registry['ca_file']]
         return result
 
-    def require_shared_cert_manager(self):
-        """Verify a reusable cluster-wide cert-manager without taking ownership."""
-        for crd in ('certificates.cert-manager.io', 'issuers.cert-manager.io', 'clusterissuers.cert-manager.io'):
-            result = self.kubectl(['get', 'crd', crd, '-o', 'name'], 'shared-cert-manager-crd-' + crd,
-                                  private=True)
-            require(result.stdout.strip(), 'cert_manager.mode=reuse requires CRD ' + crd)
-        deployments = json.loads(self.kubectl(['get', 'deployments', '-A', '-o', 'json'],
-                                              'shared-cert-manager-deployments', private=True).stdout)
-        required = {'cert-manager-controller', 'cert-manager-webhook', 'cert-manager-cainjector'}
-        ready = set()
-        for deployment in deployments.get('items', []):
-            status = deployment.get('status') or {}
-            if int(status.get('readyReplicas') or 0) < 1:
+    def cert_manager_inventory(self):
+        """Return the complete, cluster-scoped cert-manager health picture."""
+        crd_names = ('certificates.cert-manager.io', 'issuers.cert-manager.io', 'clusterissuers.cert-manager.io')
+        crds = {}
+        for name in crd_names:
+            result = self.kubectl(['get', 'crd', name, '--ignore-not-found', '-o', 'json'],
+                                  'cert-manager-crd-' + name, private=True)
+            if not result.stdout.strip():
+                crds[name] = {'present': False, 'healthy': False}
                 continue
-            containers = ((deployment.get('spec') or {}).get('template') or {}).get('spec', {}).get('containers') or []
-            for container in containers:
-                image = str(container.get('image') or '')
-                for component in required:
-                    if component in image:
-                        ready.add(component)
-        missing = sorted(required - ready)
-        require(not missing, 'cert_manager.mode=reuse requires ready shared deployments: ' + ', '.join(missing))
-        print('REUSE_SHARED_CERT_MANAGER', ','.join(sorted(ready)), flush=True)
+            row = json.loads(result.stdout)
+            conditions = {item.get('type'): item.get('status') for item in (row.get('status') or {}).get('conditions', [])}
+            crds[name] = {
+                'present': True,
+                'healthy': conditions.get('Established') == 'True' and conditions.get('NamesAccepted') == 'True',
+            }
+        required = ('cert-manager-controller', 'cert-manager-webhook', 'cert-manager-cainjector')
+        components = {name: {'present': False, 'healthy': False, 'deployments': []} for name in required}
+        deployments = json.loads(self.kubectl(['get', 'deployments', '-A', '-o', 'json'],
+                                              'cert-manager-deployments', private=True).stdout)
+        for deployment in deployments.get('items', []):
+            metadata, spec, status = (deployment.get('metadata') or {}, deployment.get('spec') or {}, deployment.get('status') or {})
+            name = str(metadata.get('name') or '')
+            containers = ((spec.get('template') or {}).get('spec') or {}).get('containers') or []
+            text = ' '.join([name] + [str(container.get('image') or '') for container in containers])
+            desired = int(spec.get('replicas') if spec.get('replicas') is not None else 1)
+            generation = metadata.get('generation')
+            current = status.get('observedGeneration') == generation
+            ready = int(status.get('readyReplicas') or 0)
+            available = int(status.get('availableReplicas') or 0)
+            healthy = current and desired >= 1 and ready >= desired and available >= desired
+            for component in required:
+                if component not in text:
+                    continue
+                row = components[component]
+                row['present'] = True
+                row['healthy'] = row['healthy'] or healthy
+                row['deployments'].append({
+                    'namespace': metadata.get('namespace'), 'name': name, 'desired': desired,
+                    'ready': ready, 'available': available, 'current': current,
+                })
+        return {'crds': crds, 'components': components}
+
+    def resolve_cert_manager_mode(self):
+        inventory = self.cert_manager_inventory()
+        crds = inventory['crds'].values()
+        components = inventory['components'].values()
+        absent = not any(item['present'] for item in crds) and not any(item['present'] for item in components)
+        healthy = all(item['healthy'] for item in crds) and all(item['healthy'] for item in components)
+        if absent:
+            detected = 'install'
+        elif healthy:
+            detected = 'reuse'
+        else:
+            raise ValueError('cert-manager is partially installed or not healthy; resolve it before installation: ' +
+                             json.dumps(inventory, sort_keys=True))
+        saved = self.state.get('cert_manager_mode')
+        if saved:
+            if saved == 'reuse':
+                require(detected == 'reuse', 'Previously reused cert-manager is no longer healthy; stop and inspect it')
+            else:
+                require(detected == 'install' or self.state['steps'].get('installed-cert-manager'),
+                        'cert-manager appeared after this installation chose to install it; stop rather than adopting it')
+            self.cert_manager_mode = saved
+            print('REUSE_CERT_MANAGER_DECISION', saved, flush=True)
+            return
+        self.cert_manager_mode = detected
+        self.state['cert_manager_mode'] = detected
+        self.save()
+        print(('REUSE_SHARED_CERT_MANAGER' if detected == 'reuse' else 'INSTALL_BUNDLED_CERT_MANAGER'), flush=True)
 
     def check_pxeye_node_port(self, release, values):
         """Fail before Helm writes when a standalone PXEye NodePort is occupied."""
         service = values.get('service', {})
-        require(isinstance(service, dict), 'pxeye_values.service must contain an object')
+        require(isinstance(service, dict), 'Generated PXEye Service settings must contain an object')
         if service.get('type', 'NodePort') != 'NodePort':
             return
-        port = service.get('nodePort', 31808)
+        port = service.get('nodePort', PXEYE_NODE_PORT)
         require(type(port) is int and 1 <= port <= 65535,
-                'pxeye_values.service.nodePort must be an integer from 1 to 65535')
+                'Generated PXEye NodePort must be an integer from 1 to 65535')
         rows = json.loads(self.kubectl(['get', 'services', '-A', '-o', 'json'], 'pxeye-nodeport-check',
                                        private=True).stdout)
         for item in rows.get('items', []):
@@ -339,7 +359,7 @@ class Onsite:
                     continue
                 raise ValueError('PXEye NodePort ' + str(port) + ' is already used by ' +
                                  str(metadata.get('namespace')) + '/' + str(metadata.get('name')) +
-                                 '; set pxeye_values.service.nodePort to a free port or use ClusterIP')
+                                 '; the one-command installer reserves NodePort 31808, so release that Service or use a clean target cluster')
         # This only proves Kubernetes has not assigned the NodePort to another
         # Service.  It does not prove a containerized node publishes that port
         # to its host or any external network.
@@ -376,34 +396,22 @@ class Onsite:
         releases = json.loads(self.helm_run(
             ['list', '--all', '-n', self.config['namespace'], '-o', 'json'],
             'namespace-release-layout', private=True).stdout)
-        if self.config['mode'] == 'new':
-            allowed = set()
-            bootstrap = self.state['steps'].get('bootstrapped-pxeye')
-            if isinstance(bootstrap, dict) and isinstance(bootstrap.get('release'), str):
-                allowed.add(bootstrap['release'])
-            bootstrap_intent = self.state.get('pxeye_install_intent')
-            if isinstance(bootstrap_intent, dict) and isinstance(bootstrap_intent.get('release'), str):
-                allowed.add(bootstrap_intent['release'])
-            if self.state.get('install_intents') or any(key.startswith('installed-') for key in self.state['steps']):
-                allowed.add(self.release('core'))
-            unexpected = sorted(item.get('name') for item in releases
-                                if isinstance(item, dict) and isinstance(item.get('name'), str) and item['name'] not in allowed)
-            require(not unexpected,
-                    'New installation requires an empty namespace or only releases created by this run; unexpected: ' +
-                    ', '.join(unexpected))
-        # A parent Chart cannot safely adopt the legacy four-release layout:
-        # cert-manager, platform and Vault objects retain separate Helm owners.
-        # Stop before Registry import or any Helm write instead of leaving an
-        # operator to diagnose the collision later in the recipe phase.
-        parent_chart = [item.get('id') for item in self.descriptor.get('charts', [])] == ['pxeye']
-        if self.config['mode'] == 'restore' and parent_chart:
-            expected = {self.config['release_prefix'] + suffix for suffix in ('', '-cert-manager', '-platform', '-vault')}
-            if expected.issubset({item.get('name') for item in releases}):
-                raise ValueError('Legacy four-release NICo layout detected for ' + self.config['release_prefix'] +
-                                 '; this parent-Chart delivery has no in-place migration. Migrate to one parent '
-                                 'release or use a clean namespace before restoring')
-        if self.cert_manager_mode == 'reuse':
-            self.require_shared_cert_manager()
+        allowed = set()
+        bootstrap = self.state['steps'].get('bootstrapped-pxeye')
+        if isinstance(bootstrap, dict) and isinstance(bootstrap.get('release'), str):
+            allowed.add(bootstrap['release'])
+        bootstrap_intent = self.state.get('pxeye_install_intent')
+        if isinstance(bootstrap_intent, dict) and isinstance(bootstrap_intent.get('release'), str):
+            allowed.add(bootstrap_intent['release'])
+        if self.state.get('install_intents') or any(key.startswith('installed-') for key in self.state['steps']):
+            allowed.add(self.release('core'))
+        unexpected = sorted(item.get('name') for item in releases
+                            if isinstance(item, dict) and isinstance(item.get('name'), str) and item['name'] not in allowed)
+        require(not unexpected,
+                'Fresh installation requires an empty nico-system namespace or only releases created by this run; unexpected: ' +
+                ', '.join(unexpected))
+        self.resolve_cert_manager_mode()
+        self.check_namespace_resources(allowed)
         print('PREFLIGHT_OK', self.config['context'], self.config['namespace'])
 
     def import_bundle(self):
@@ -513,14 +521,7 @@ class Onsite:
         return files[0]
 
     def release(self, phase):
-        return self.config['release_prefix'] + {'core': '', 'pxeye': '-pxeye', 'materials': '-materials'}.get(phase, '-' + phase)
-
-    def old_values(self, phase):
-        if self.config['mode'] != 'restore' or phase in ('pxeye', 'materials'):
-            return {}
-        value = self.helm_run(['get', 'values', self.release(phase), '-n', self.config['namespace'], '--all', '-o', 'json'],
-                              phase + '-old-values', private=True)
-        return json.loads(value.stdout) or {}
+        return RELEASE + {'core': '', 'pxeye': '-pxeye', 'materials': '-materials'}.get(phase, '-' + phase)
 
     def imported_defaults(self, defaults, catalog):
         """Resolve image fields relok8s missed through exact input-lock identities."""
@@ -552,7 +553,7 @@ class Onsite:
         return walk(defaults)
 
     def image_defaults(self, defaults, values):
-        """Retain site settings while replacing every locked image field from the migrated Chart."""
+        """Replace every locked image field with its relocated image identity."""
         # Legacy releases used arrays for boot artifacts; the offline Chart
         # uses index-keyed maps so relok8s can relocate each image.
         if (isinstance(defaults, dict) and defaults and isinstance(values, list)
@@ -572,51 +573,24 @@ class Onsite:
             return values
         return values
 
-    def service_ips(self):
-        values = dict(self.config.get('service_ips') or {})
-        for key, suffix in (('dns', 'dns'), ('pxe', 'pxe'), ('ntp', 'ntp-client')):
-            if not values.get(key) and self.config['mode'] == 'restore':
-                result = self.kubectl(['-n', self.config['namespace'], 'get', 'service', self.config['release_prefix'] + '-nico-' + suffix, '-o', 'json'], 'service-' + key)
-                values[key] = json.loads(result.stdout)['spec']['clusterIP']
-            require(values.get(key), 'Missing service_ips.' + key)
-            try:
-                address = ipaddress.ip_address(values[key])
-            except (ValueError, TypeError):
-                raise ValueError('Invalid service_ips.' + key + ': expected a client-facing IPv4 address, not a headless Service or empty value') from None
-            require(address.version == 4, 'service_ips.' + key + ' must be IPv4')
-        require(len(set(values.values())) == 3, 'Service IPs must be distinct')
-        return values
-
-    def configure_core(self, values, ips):
+    def configure_core(self, values):
         api = values['nico-api']; text = api['siteConfig']['nicoApiSiteConfig']
-        network = self.config.get('host_network')
-        if network:
-            require(re.fullmatch(r'[a-zA-Z0-9_-]+', network['name']), 'Invalid HostInband network name')
-            prefix = ipaddress.ip_network(network['prefix'], strict=True)
-            require(prefix.version == 4 and ipaddress.ip_address(network['gateway']) in prefix, 'Host gateway must be inside IPv4 prefix')
-            require(576 <= int(network.get('mtu', 1500)) <= 9216, 'Invalid MTU')
-            parsed = tomllib.loads(text)
-            nets = parsed.get('networks', {})
-            selected = [(name, value) for name, value in nets.items() if value.get('type') == 'hostinband']
-            require(len(selected) == 1, 'Automatic network substitution requires exactly one HostInband network')
-            old_name, old = selected[0]
-            text = text.replace('[networks.' + old_name + ']', '[networks.' + network['name'] + ']')
-            for key in ('prefix', 'gateway'):
-                text = text.replace(key + ' = "' + old[key] + '"', key + ' = ' + json.dumps(network[key]))
-            text = re.sub(r'(?m)^mtu\s*=\s*\d+\s*$', 'mtu = ' + str(network.get('mtu', 1500)), text)
-        else:
-            require(self.config['mode'] == 'restore', 'New installation requires host_network')
-        # Preserve on-site policy and credentials; only change the site display name explicitly.
+        # A first installation has no physical provisioning-network facts. Do
+        # not ship a documentation subnet or translate Kubernetes ClusterIPs
+        # into DHCP options. Those values are applied later by site settings.
         text = re.sub(r'(?m)^sitename\s*=.*$', lambda _: 'sitename = ' + json.dumps(self.config['site_name']), text)
-        tomllib.loads(text)
-        api['siteConfig']['nicoApiSiteConfig'] = text
-        values['nico-dns'].setdefault('service', {})['clusterIP'] = ips['dns']
-        values['nico-pxe'].setdefault('service', {})['clusterIP'] = ips['pxe']
-        values['nico-ntp'].setdefault('clientService', {})['clusterIP'] = ips['ntp']
-        require(not self.config.get('enable_hardware_actions', False), 'Hardware automation is outside this installer scope')
         parsed = tomllib.loads(text)
+        networks = parsed.get('networks') or {}
+        require(not any(value.get('type') == 'hostinband' for value in networks.values()),
+                'Initial delivery must not define a HostInband provisioning network')
+        api['siteConfig']['nicoApiSiteConfig'] = text
+        dhcp = values.setdefault('nico-dhcp', {})
+        require(dhcp.get('replicas') == 0,
+                'Initial delivery must keep nico-dhcp scaled to zero until physical boot settings are configured')
+        for component in ('nico-dhcp', 'nico-dns', 'nico-pxe', 'nico-ntp'):
+            values.setdefault(component, {}).setdefault('externalService', {})['enabled'] = False
         require(not parsed.get('site_explorer', {}).get('enabled', False) and not parsed.get('firmware_global', {}).get('autoupdate', False),
-                'Existing site enables discovery/firmware automation; disable it in reviewed Core values before restoring')
+                'Initial delivery must not enable discovery or firmware automation')
 
     def prepare_recipe(self):
         self.preflight()
@@ -628,9 +602,8 @@ class Onsite:
         stage = Path(tempfile.mkdtemp(prefix='.recipe-', dir=self.work)); recipe = stage / 'nico-recipe'; recipe.mkdir()
         (recipe / 'charts').mkdir(); (recipe / 'values').mkdir()
         charts = {item['id']: item for item in catalog['charts']}
-        ips = self.service_ips()
-        settings = {'release_prefix': self.config['release_prefix'], 'namespace': self.config['namespace'],
-                    'site_name': self.config['site_name'], 'dns_ip': ips['dns'], 'pxe_ip': ips['pxe'], 'ntp_ip': ips['ntp']}
+        settings = {'release_prefix': RELEASE, 'namespace': self.config['namespace'],
+                    'site_name': self.config['site_name']}
         plan = copy.deepcopy(json.loads((self.bundle / 'profiles/install-plan.json').read_text()))
         plan['schema_version'] = 1
         phases = []
@@ -648,9 +621,7 @@ class Onsite:
             if not destination.exists(): shutil.copyfile(chart, destination)
             defaults = yaml.safe_load(self.helm_run(['show', 'values', str(chart)], phase['id'] + '-defaults').stdout) or {}
             defaults = self.imported_defaults(defaults, catalog)
-            # Every staged dependency belongs to one parent release.  A restore
-            # therefore reads the parent values, never obsolete child releases.
-            values = self.image_defaults(defaults, merge(defaults, self.old_values('core')))
+            values = self.image_defaults(defaults, copy.deepcopy(defaults))
             # Escape the site name as TOML, rather than doing raw substitution inside TOML text.
             if phase['id'] == 'core':
                 config = values['nicoCore']['nico-api']['siteConfig']['nicoApiSiteConfig']
@@ -658,20 +629,13 @@ class Onsite:
                 values['nicoCore']['nico-api']['siteConfig']['nicoApiSiteConfig'] = config
             values = substitute(values, settings)
             values = merge(values, phase.pop('values_inline', {}))
-            if self.config.get('storage_class'):
-                values['storageClass'] = self.config['storage_class']
-                for child in ('platform', 'vaultBootstrap', 'materials'):
-                    if isinstance(values.get(child), dict): values[child]['storageClass'] = self.config['storage_class']
-            overrides = self.config.get('phase_values', {}).get(phase['id'])
-            if overrides:
-                values = merge(values, yaml.safe_load(Path(overrides).read_text()) or {})
             if self.cert_manager_mode == 'reuse':
                 components = values.setdefault('components', {})
                 require(isinstance(components, dict), 'Parent Chart components must contain an object')
                 cert_manager = components.setdefault('certManager', {})
                 require(isinstance(cert_manager, dict), 'Parent Chart components.certManager must contain an object')
                 cert_manager['enabled'] = False
-            if phase['id'] == 'core': self.configure_core(values['nicoCore'], ips)
+            if phase['id'] == 'core': self.configure_core(values['nicoCore'])
             require(not TOKEN.search(json.dumps(values)), 'Unresolved values variables in ' + phase['id'])
             target = recipe / 'values' / (phase['id'] + '.yaml')
             target.write_text(yaml.safe_dump(values, sort_keys=False, allow_unicode=True)); target.chmod(0o600)
@@ -807,6 +771,74 @@ class Onsite:
     def namespace_exists(self):
         return bool(self.kubectl(['get', 'namespace', self.config['namespace'], '--ignore-not-found', '-o', 'name'], 'namespace').stdout.strip())
 
+    @staticmethod
+    def namespace_system_resource(item):
+        """Return true only for the namespace-scoped objects Kubernetes creates itself."""
+        metadata = item.get('metadata') or {}
+        annotations = metadata.get('annotations') or {}
+        if item.get('kind') == 'ServiceAccount' and metadata.get('name') == 'default':
+            return True
+        if item.get('kind') == 'ConfigMap' and metadata.get('name') == 'kube-root-ca.crt':
+            return True
+        return (
+            item.get('kind') == 'Secret'
+            and item.get('type') == 'kubernetes.io/service-account-token'
+            and annotations.get('kubernetes.io/service-account.name') == 'default'
+        )
+
+    def namespace_resource_belongs_to(self, item, releases):
+        """Recognize Helm resources for exactly the releases this run owns."""
+        metadata = item.get('metadata') or {}
+        annotations = metadata.get('annotations') or {}
+        if (
+            annotations.get('meta.helm.sh/release-name') in releases
+            and annotations.get('meta.helm.sh/release-namespace') == self.config['namespace']
+        ):
+            return True
+        labels = metadata.get('labels') or {}
+        return (
+            item.get('kind') == 'Secret'
+            and item.get('type') == 'helm.sh/release.v1'
+            and labels.get('owner') == 'helm'
+            and labels.get('name') in releases
+        )
+
+    def check_namespace_resources(self, releases):
+        """Reject non-system leftovers instead of letting Helm adopt old site data."""
+        if not self.namespace_exists():
+            return
+        resource_types = (
+            'services,configmaps,secrets,persistentvolumeclaims,serviceaccounts,'
+            'roles,rolebindings,deployments,statefulsets,daemonsets,jobs,cronjobs,'
+            'networkpolicies,poddisruptionbudgets'
+        )
+        result = self.kubectl(
+            ['-n', self.config['namespace'], 'get', resource_types, '-o', 'json'],
+            'namespace-resource-layout', private=True,
+        )
+        rows = list(json.loads(result.stdout).get('items') or [])
+        # A healthy shared cert-manager guarantees its namespaced resource
+        # kinds are available. Include them then, so old Certificates/Issuers
+        # cannot be silently inherited by a new Core release.
+        if self.cert_manager_mode == 'reuse':
+            result = self.kubectl(
+                ['-n', self.config['namespace'], 'get', 'certificates,certificaterequests,issuers', '-o', 'json'],
+                'namespace-cert-manager-layout', private=True,
+            )
+            rows.extend(json.loads(result.stdout).get('items') or [])
+        unexpected = []
+        for item in rows:
+            if self.namespace_system_resource(item) or self.namespace_resource_belongs_to(item, releases):
+                continue
+            metadata = item.get('metadata') or {}
+            unexpected.append(str(item.get('kind') or 'Resource') + '/' + str(metadata.get('name') or '?'))
+        require(
+            not unexpected,
+            'Fresh installation refuses residual resources in nico-system; remove or migrate them before retrying: ' +
+            ', '.join(sorted(unexpected)),
+        )
+        print('NAMESPACE_LAYOUT_OK', self.config['namespace'], flush=True)
+
     def check_ownership(self, root, phase):
         args = ['template', phase['release'], str(root / phase['chart']), '-n', self.config['namespace']]
         for path in phase['values']: args += ['-f', str(root / path)]
@@ -857,51 +889,6 @@ class Onsite:
         (directory / 'helm.txt').write_text(result.stdout); (directory / 'helm.txt').chmod(0o600)
         write_json(directory / 'complete.json', {'metadata_only': True, 'helm_exit_code': result.returncode})
 
-    def cold_backup(self, engine, node):
-        """Export only the two stopped backend PVCs from a confirmed Kind node."""
-        self.preflight()
-        require(self.config['mode'] == 'restore', 'Cold backup is only for restoring existing backends')
-        nodes = json.loads(self.kubectl(['get', 'nodes', '-o', 'json'], 'backup-nodes').stdout)
-        require(node in {item['metadata']['name'] for item in nodes['items']}, 'Kind node is not in the selected cluster')
-        names = [self.config['release_prefix'] + '-nico-' + key for key in ('postgres', 'vault')]
-
-        def stopped():
-            resources = json.loads(self.kubectl(['-n', self.config['namespace'], 'get', 'pods,deployments,statefulsets,daemonsets', '-o', 'json'], 'backup-writer-check', private=True).stdout)
-            for item in resources['items']:
-                spec = item['spec'] if item['kind'] == 'Pod' else item['spec']['template']['spec']
-                claims = {v['persistentVolumeClaim']['claimName'] for v in spec.get('volumes', []) if 'persistentVolumeClaim' in v}
-                require(not claims.intersection(names) and item['metadata']['name'] not in names,
-                        'Cold backup requires backend Pods/controllers stopped; never stop them automatically')
-        stopped()
-        directory = self.private / ('data-backup-' + str(time.time_ns())); directory.mkdir(mode=0o700)
-        records = []
-        for name in names:
-            pvc = json.loads(self.kubectl(['-n', self.config['namespace'], 'get', 'pvc', name, '-o', 'json'], 'backup-' + name + '-pvc', private=True).stdout)
-            pv = json.loads(self.kubectl(['get', 'pv', pvc['spec']['volumeName'], '-o', 'json'], 'backup-' + name + '-pv', private=True).stdout)
-            path = pv['spec'].get('hostPath', {}).get('path') or pv['spec'].get('local', {}).get('path')
-            require(path and Path(path).is_absolute(), 'Cold backup helper only supports Kind hostPath/local PVs')
-            affinities = pv['spec'].get('nodeAffinity', {}).get('required', {}).get('nodeSelectorTerms', [])
-            affinity_names = {value for term in affinities for rule in term.get('matchExpressions', [])
-                              if rule['key'] == 'kubernetes.io/hostname' and rule['operator'] == 'In' for value in rule['values']}
-            require(affinity_names == {node}, 'PV node affinity must identify exactly the selected Kind node')
-            archive = directory / (name + '.tar')
-            command = [engine, 'exec', node, 'tar', '-C', path, '-cf', '-', '.']
-            print('RUN', shlex.join(command), '> private backup archive', flush=True)
-            started = time.monotonic()
-            with archive.open('xb') as output:
-                result = subprocess.run(command, stdout=output, stderr=subprocess.PIPE, timeout=7200)
-            (directory / (name + '.stderr')).write_bytes(result.stderr)
-            require(result.returncode == 0, 'Cold PVC archive failed; incomplete evidence retained at ' + str(directory))
-            records.append({'pvc': name, 'uid': pvc['metadata']['uid'], 'pv': pvc['spec']['volumeName'],
-                            'node': node, 'archive': archive.name, 'bytes': archive.stat().st_size, 'sha256': sha(archive),
-                            'seconds': round(time.monotonic() - started, 3)})
-        stopped()
-        write_json(directory / 'backup.json', {'complete': True, 'mode': 'stopped-kind-volumes', 'volumes': records,
-                                               'restore_tested': False})
-        self.config['data_backup_directory'] = str(directory)
-        write_json(self.config_path, self.config)
-        print('COLD_BACKUP_COMPLETE', directory, '; archive SHA recorded, restoration not tested')
-
     def check_health(self, root, phase):
         args = ['template', phase['release'], str(root / phase['chart']), '-n', self.config['namespace']]
         for value in phase['values']: args += ['-f', str(root / value)]
@@ -934,22 +921,49 @@ class Onsite:
         item = next(row for row in catalog['charts'] if row['id'] == 'pxeye')
         directory = self.work / 'bootstrap'; directory.mkdir(exist_ok=True)
         chart = self.pull_chart(item, directory)
-        values = {'storageClass': self.config.get('storage_class') or '',
-                  'nico': {'enabled': True, 'allowClusterResources': True},
+        core_release = self.release('core')
+        namespace = self.config['namespace']
+        values = {'nico': {'enabled': True, 'allowClusterResources': True},
+                  'siteBootstrap': {
+                      'enabled': True,
+                      'siteName': self.config['site_name'],
+                      'coreUrl': 'https://' + core_release + '-nico-api.' + namespace + '.svc.cluster.local:1079',
+                      'namespace': namespace,
+                      'clientSecret': core_release + '-nico-admin-client',
+                      'clientCertKey': 'tls.crt',
+                      'clientPrivateKey': 'tls.key',
+                      'caSecret': core_release + '-nico-site-ca',
+                      'caKey': 'tls.crt',
+                      'pxeInternalUrl': 'http://' + core_release + '-nico-pxe.' + namespace + '.svc:8080',
+                  },
                   # Bootstrap owns the PXEye UI only.  The offline parent
                   # package has all NICo components enabled by default so its
                   # later, ordered phases can turn them on; inheriting those
                   # defaults here would bypass that ordering.
                   'components': copy.deepcopy(PXEYE_ONLY_COMPONENTS)}
-        values = merge(values, self.config.get('pxeye_values', {}))
         # Components are intentionally not a user override for this path;
         # one-click NICo installation continues through the frozen phases.
         values['components'] = copy.deepcopy(PXEYE_ONLY_COMPONENTS)
+        # The one-command path has no editable deployment settings.  Keep the
+        # PXEye access contract and its in-cluster Core handoff deterministic.
+        values.setdefault('service', {}).update({'type': 'NodePort', 'nodePort': PXEYE_NODE_PORT})
+        values['siteBootstrap'] = {
+            'enabled': True,
+            'siteName': self.config['site_name'],
+            'coreUrl': 'https://' + core_release + '-nico-api.' + namespace + '.svc.cluster.local:1079',
+            'namespace': namespace,
+            'clientSecret': core_release + '-nico-admin-client',
+            'clientCertKey': 'tls.crt',
+            'clientPrivateKey': 'tls.key',
+            'caSecret': core_release + '-nico-site-ca',
+            'caKey': 'tls.crt',
+            'pxeInternalUrl': 'http://' + core_release + '-nico-pxe.' + namespace + '.svc:8080',
+        }
         path = directory / 'values.yaml'; path.write_text(yaml.safe_dump(values)); path.chmod(0o600)
-        release = self.config.get('pxeye_release') or self.config['namespace'] + '-pxeye'
+        release = self.config['namespace'] + '-pxeye'
         require(NAME.fullmatch(release), 'Invalid PXEye release')
         require(release != self.release('core'),
-                'pxeye_release must differ from release_prefix; PXEye and Core parent releases are separate')
+                'PXEye and Core parent releases must differ')
         self.check_pxeye_node_port(release, values)
         phase = {'id': 'pxeye', 'release': release, 'chart': str(chart.relative_to(self.work)),
                  'values': [str(path.relative_to(self.work))]}
@@ -977,6 +991,29 @@ class Onsite:
         self.state['steps']['bootstrapped-pxeye'] = {'release': release, 'at': datetime.now(timezone.utc).isoformat()}; self.save()
         print('PXEYE_HELM_READY; existing non-Helm PXEye is never automatically adopted')
 
+    def check_pxeye_core_connection(self):
+        """Require the PXEye process to finish its in-cluster mTLS handoff."""
+        release = self.config['namespace'] + '-pxeye'
+        program = (
+            'import json, sys; from urllib.request import urlopen; '
+            'state = json.load(urlopen("http://127.0.0.1:8080/healthz", timeout=5)); '
+            'sys.exit(0 if state.get("core", {}).get("ready") else 1)'
+        )
+        deadline = time.monotonic() + 300
+        while time.monotonic() < deadline:
+            result = self.kubectl(
+                ['-n', self.config['namespace'], 'exec', 'deployment/' + release, '--', 'python3', '-c', program],
+                'pxeye-core-connection', check=False, private=True, timeout=30)
+            if result.returncode == 0:
+                self.state['steps']['pxeye-core-connected'] = {
+                    'release': release, 'at': datetime.now(timezone.utc).isoformat()}
+                self.save()
+                print('PXEYE_CORE_CONNECTED', flush=True)
+                return
+            time.sleep(5)
+        raise ValueError('PXEye did not complete its in-cluster Core connection within five minutes; see ' +
+                         str(self.private / 'pxeye-core-connection.log'))
+
 
 def detect_registry(args):
     """Discover a site endpoint from explicit cluster evidence, then probe Registry V2."""
@@ -999,39 +1036,48 @@ def detect_registry(args):
         if optional and result.returncode:
             print('REGISTRY_DISCOVERY_HINT_UNAVAILABLE: optional local-registry-hosting ConfigMap', flush=True)
             return {}
-        require(result.returncode == 0, 'Registry discovery cannot read target namespace workloads')
+        require(result.returncode == 0, 'Registry discovery cannot read cluster workload evidence')
         return json.loads(result.stdout) if result.stdout.strip() else {}
 
-    # No subnet scan or public image-Registry enumeration. Use the existing PXEye
-    # image authority and private-IP/loopback image authorities in this namespace.
-    objects = read(['-n', args.namespace, 'get', 'pods,deployments', '-o', 'json'])
-    for item in objects.get('items', []):
-        spec = item['spec'] if item['kind'] == 'Pod' else item['spec']['template']['spec']
-        for container in spec.get('containers', []) + spec.get('initContainers', []):
-            image = container.get('image', '')
-            if '/' not in image:
-                continue
-            authority = image.split('/', 1)[0]
-            if not ('.' in authority or ':' in authority or authority == 'localhost'):
-                continue
-            host = urlsplit('//' + authority).hostname
-            try:
-                address = ipaddress.ip_address(host)
-                local = address.is_private and not address.is_unspecified and not address.is_multicast
-            except ValueError:
-                local = host == 'localhost' or bool(host and host.endswith('.localhost'))
-            public = host in {'docker.io', 'index.docker.io', 'registry-1.docker.io', 'ghcr.io',
-                              'quay.io', 'nvcr.io', 'registry.k8s.io', 'gcr.io'}
-            if not public and (local or container.get('name') == 'pxeye'):
-                add(authority, 'workload-image')
-    hint = read(['-n', 'kube-public', 'get', 'configmap', 'local-registry-hosting',
-                 '--ignore-not-found', '-o', 'json'], optional=True)
-    if hint:
-        data = yaml.safe_load(hint.get('data', {}).get('localRegistryHosting.v1', '')) or {}
-        if isinstance(data, dict):
-            add(data.get('host'), 'local-registry-hosting')
-    require(candidates, 'No Registry candidate found; use --registry-url to specify the site endpoint')
-    require(len(candidates) <= 16, 'Too many Registry candidates; use --registry-url to select the site endpoint')
+    # No subnet scan or public image-Registry enumeration. A new nico-system
+    # namespace is empty, so inspect existing workload image authorities across
+    # the cluster as the explicit local evidence of the fireseed Registry.
+    override = os.environ.get('NICO_REGISTRY_URL')
+    if override:
+        parsed = urlsplit(override)
+        require(parsed.scheme in ('http', 'https') and parsed.hostname and not parsed.username and not parsed.password and
+                not parsed.path.rstrip('/') and not parsed.query and not parsed.fragment,
+                'NICO_REGISTRY_URL must be http(s)://host[:port] without a path')
+        add(parsed.netloc, 'NICO_REGISTRY_URL')
+    else:
+        objects = read(['get', 'pods,deployments', '-A', '-o', 'json'])
+        for item in objects.get('items', []):
+            spec = item['spec'] if item['kind'] == 'Pod' else item['spec']['template']['spec']
+            for container in spec.get('containers', []) + spec.get('initContainers', []):
+                image = container.get('image', '')
+                if '/' not in image:
+                    continue
+                authority = image.split('/', 1)[0]
+                if not ('.' in authority or ':' in authority or authority == 'localhost'):
+                    continue
+                host = urlsplit('//' + authority).hostname
+                try:
+                    address = ipaddress.ip_address(host)
+                    local = address.is_private and not address.is_unspecified and not address.is_multicast
+                except ValueError:
+                    local = host == 'localhost' or bool(host and host.endswith('.localhost'))
+                public = host in {'docker.io', 'index.docker.io', 'registry-1.docker.io', 'ghcr.io',
+                                  'quay.io', 'nvcr.io', 'registry.k8s.io', 'gcr.io'}
+                if not public and (local or container.get('name') == 'pxeye'):
+                    add(authority, 'workload-image')
+        hint = read(['-n', 'kube-public', 'get', 'configmap', 'local-registry-hosting',
+                     '--ignore-not-found', '-o', 'json'], optional=True)
+        if hint:
+            data = yaml.safe_load(hint.get('data', {}).get('localRegistryHosting.v1', '')) or {}
+            if isinstance(data, dict):
+                add(data.get('host'), 'local-registry-hosting')
+    require(candidates, 'No Registry candidate found; make the site Registry visible to a workload or set NICO_REGISTRY_URL')
+    require(len(candidates) <= 16, 'Too many Registry candidates; set NICO_REGISTRY_URL to select the site endpoint')
     context = ssl.create_default_context(cafile=str(args.ca_file) if args.ca_file else None)
     if args.skip_tls_verify:
         context.check_hostname = False
@@ -1072,130 +1118,22 @@ def detect_registry(args):
     for probe in probes:
         print('REGISTRY_PROBE', json.dumps(probe, sort_keys=True), flush=True)
     require(len(found) == 1, 'Expected one reachable Registry V2 endpoint, found ' + str(len(found)) +
-            '; check probe results or select explicitly with --registry-url')
+            '; check probe results or set NICO_REGISTRY_URL')
     selected = next(iter(found))
     print('REGISTRY_DETECTED', selected, flush=True)
     return selected, {'sources': {key: sorted(value) for key, value in candidates.items()}, 'probes': probes}
 
 
-def select_restore_context(config_path):
-    if config_path.exists():
-        context = json.loads(config_path.read_text()).get('context')
-        require(context, 'Existing config has no context; inspect it before continuing')
-        return context
+def select_install_context():
     result = subprocess.run(['kubectl', 'config', 'get-contexts', '-o', 'name'],
                             capture_output=True, text=True, timeout=15)
     require(result.returncode == 0, 'Cannot read local kubeconfig contexts')
     contexts = [name for name in result.stdout.splitlines() if name.startswith('kind-')]
-    require(len(contexts) == 1, 'Expected one Kind context; select explicitly with --context')
+    current = subprocess.run(['kubectl', 'config', 'current-context'], capture_output=True, text=True, timeout=15)
+    require(current.returncode == 0, 'Cannot read the current kubeconfig context')
+    selected = current.stdout.strip()
+    if selected in contexts:
+        return selected
+    require(len(contexts) == 1,
+            'Expected exactly one Kind context; select the intended cluster with kubectl config use-context before running')
     return contexts[0]
-
-
-def finish_site_preflight(args):
-    Onsite(args.output).preflight()
-    if args.activation_file:
-        args.activation_file.write_text('export CONTEXT=' + shlex.quote(args.context) + '\n' +
-                                        'export NICO_NAMESPACE=' + shlex.quote(args.namespace) + '\n')
-
-
-def main():
-    os.umask(0o077)
-    parser = argparse.ArgumentParser(description=__doc__)
-    sub = parser.add_subparsers(dest='action', required=True)
-    unpack_parser = sub.add_parser('unpack', help='Verify and safely unpack a delivered archive')
-    for name in ('archive', 'checksums', 'output'): unpack_parser.add_argument('--' + name, type=Path, required=True)
-    for action in ('write-config', 'prepare-site'):
-        automatic = action == 'prepare-site'
-        config = sub.add_parser(action, help='Create restore configuration and preflight' if automatic else 'Create a site config, never overwrite')
-        for option, variable, kind in [('output', 'CONFIG', Path), ('context', 'CONTEXT', str),
-                                       ('bundle', 'BUNDLE', Path), ('work-directory', 'WORK', Path)]:
-            config.add_argument('--' + option, type=kind, required=not automatic,
-                                default=os.environ.get(variable) if automatic else None)
-        config.add_argument('--namespace', default=os.environ.get('NICO_NAMESPACE', 'nico-system') if automatic else 'nico-system')
-        config.add_argument('--release-prefix', default=None if automatic else 'nico')
-        if automatic:
-            config.add_argument('--activation-file', type=Path, help=argparse.SUPPRESS)
-        else:
-            config.add_argument('--restore', action='store_true')
-        config.add_argument('--registry-url', help='Explicit Registry endpoint; omit to discover from the selected cluster')
-        config.add_argument('--ca-file', type=Path)
-        config.add_argument('--skip-tls-verify', action='store_true')
-        config.add_argument('--docker-config-directory', type=Path)
-    backup = sub.add_parser('backup', help='Cold-copy stopped Postgres/Vault PVCs from a confirmed Kind node')
-    backup.add_argument('--config', type=Path, required=True)
-    backup.add_argument('--engine', choices=('podman', 'docker'), required=True)
-    backup.add_argument('--node', required=True)
-    for name in ('preflight', 'import', 'recipe', 'ui-package', 'bootstrap', 'install'):
-        command = sub.add_parser(name); command.add_argument('--config', type=Path, required=True)
-        if name == 'install':
-            command.add_argument('--phase', default='all')
-            command.add_argument('--resume-failed', action='store_true')
-    args = parser.parse_args()
-    if args.action == 'unpack': return unpack(args)
-    if args.action in ('write-config', 'prepare-site'):
-        automatic = args.action == 'prepare-site'
-        if automatic:
-            for field, variable in [('output', 'CONFIG'), ('bundle', 'BUNDLE'), ('work_directory', 'WORK')]:
-                require(getattr(args, field), 'Missing ' + variable + '; activate environment.sh first')
-            if not args.context:
-                args.context = select_restore_context(args.output)
-                print('CONTEXT_SELECTED', args.context, flush=True)
-            args.restore = True
-            if not args.release_prefix:
-                result = subprocess.run([str(args.bundle / 'tools/helm'), '--kube-context', args.context,
-                                         '-n', args.namespace, 'list', '--all', '-o', 'json'],
-                                        capture_output=True, text=True, timeout=60)
-                require(result.returncode == 0, 'Cannot read existing Helm releases in selected context/namespace')
-                releases = restore_release_candidates(json.loads(result.stdout))
-                require(len(releases) == 1,
-                        'Expected one existing NICo Core or PXEye parent release; use --release-prefix to select explicitly')
-                args.release_prefix = releases[0]
-            if args.output.exists():
-                existing = json.loads(args.output.read_text())
-                expected = {'context': args.context, 'namespace': args.namespace, 'release_prefix': args.release_prefix,
-                            'bundle': str(args.bundle.resolve()), 'work_directory': str(args.work_directory.resolve()),
-                            'mode': 'restore'}
-                require(all(existing.get(key) == value for key, value in expected.items()),
-                        'Existing config targets different inputs; inspect it or choose a new CONFIG/WORK')
-                registry = existing.get('registry', {})
-                require(registry.get('skip_tls_verify', False) == args.skip_tls_verify,
-                        'Existing Registry TLS policy differs; use matching options or a new CONFIG/WORK')
-                for key, supplied in [('url', args.registry_url), ('ca_file', args.ca_file),
-                                      ('docker_config_directory', args.docker_config_directory)]:
-                    if supplied is not None:
-                        value = str(supplied.resolve()) if isinstance(supplied, Path) else supplied
-                        require(registry.get(key) == value, 'Existing Registry option differs: ' + key)
-                print('REUSE_SITE_CONFIG', args.output, flush=True)
-                finish_site_preflight(args)
-                return
-        require(not args.output.exists(), 'Configuration exists; not overwriting')
-        document = json.loads((HOME / 'site-config.example.json').read_text())
-        document.update(context=args.context, namespace=args.namespace, release_prefix=args.release_prefix,
-                        bundle=str(args.bundle.resolve()), work_directory=str(args.work_directory.resolve()),
-                        mode='restore' if args.restore else 'new')
-        registry_url, discovery = (args.registry_url, None) if args.registry_url else detect_registry(args)
-        document['registry'].update(url=registry_url, skip_tls_verify=args.skip_tls_verify,
-                                    ca_file=str(args.ca_file.resolve()) if args.ca_file else None,
-                                    docker_config_directory=str(args.docker_config_directory.resolve()) if args.docker_config_directory else None)
-        if discovery:
-            document['registry']['discovery'] = discovery
-        write_json(args.output, document)
-        print('SITE_CONFIG_CREATED', args.output, flush=True)
-        if automatic:
-            finish_site_preflight(args)
-        return
-    onsite = Onsite(args.config)
-    if args.action == 'backup': onsite.cold_backup(args.engine, args.node)
-    elif args.action == 'preflight': onsite.preflight()
-    elif args.action == 'import': onsite.import_bundle()
-    elif args.action == 'recipe': onsite.prepare_recipe()
-    elif args.action == 'ui-package': onsite.preflight(); onsite.ui_package()
-    elif args.action == 'bootstrap': onsite.bootstrap()
-    elif args.action == 'install': onsite.install(args.phase, args.resume_failed)
-
-
-if __name__ == '__main__':
-    try:
-        main()
-    except (ValueError, KeyError, TypeError, OSError, subprocess.SubprocessError, tarfile.TarError, yaml.YAMLError) as error:
-        raise SystemExit(str(error)) from None

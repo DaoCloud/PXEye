@@ -30,9 +30,15 @@ For a source-tree deployment, first use the offline builder to download and vend
 | `auth.existingSecret` | Empty | Reuse a Secret containing `auth.json`; otherwise generate credentials on first install and retain them on upgrade |
 | `nico.enabled` | `true` | Enable console NICo deployment configuration |
 | `nico.allowClusterResources` | `false` | Create cluster permissions for CRDs, ClusterRoles and related resources |
+| `siteBootstrap.*` | `enabled=false` | Reserved for the automated onsite installer: connect PXEye after Core is ready using in-cluster endpoints and existing client Secrets; it never publishes physical PXE/DNS/NTP addresses |
 | `components.pxeye.enabled` | `true` | Render PXEye UI resources in this parent release |
 | `components.certManager/platform/vaultBootstrap/core.enabled` | `false` | Enable a locked NICo child component; the onsite runner enables these cumulatively in readiness-aware phases |
 | `components.materials.enabled` | `false` | Reserved optional publisher; disabled in the current POC |
 | `nodeSelector` / `imagePullSecrets` | Empty | Scheduling and image-pull authentication |
 
 PVCs use the Helm keep policy. The onsite workflow reuses one parent release: cert-manager → platform/certificates → Vault bootstrap → Core. This avoids treating Helm dependency order as a substitute for controller, certificate, and Vault readiness.
+
+`siteBootstrap` is not for normal manual installation. It contains only in-cluster Core/PXE service endpoints and client
+Secret names; PXEye retries safely until Core and its certificates are ready, then persists the mTLS connection. Do not
+put external PXE, DHCP, DNS, NTP, or HostInband settings there: apply them through subsequent site-network configuration
+and physical-network validation.

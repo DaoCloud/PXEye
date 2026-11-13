@@ -70,8 +70,8 @@ outputs_/
     └── build-result.json              # 版本、镜像/Chart 数量和摘要
 ```
 
-复制到火种机前，校验这三个交付文件。请保持文件名不变：现场执行器会用
-`SHA256SUMS` 中的条目匹配 `bundle.tar.gz`。
+`SHA256SUMS` 是构建侧和传输侧的可选校验记录；一键现场执行器不依赖它。现场执行器只接收
+`bundle.tar.gz` 的路径，并在解压后验证包内不可变文件清单。若现场传输流程要求人工校验，仍可执行：
 
 ```bash
 cd outputs_/output/bundle-<version>
@@ -94,5 +94,11 @@ docs/                               # 交付文档和许可证
 当前配方覆盖 PXEye / NICo Core 及必需的 cert-manager、platform、Vault 依赖，并可选包含
 ARM64 引导材料；不包含 REST、Temporal、Keycloak、DPF 服务或操作系统 ISO。
 
-现场恢复要求目标已经使用单个父 Chart Release。旧的四个独立 NICo Release 需要明确迁移，
-或使用干净 namespace；本离线包不会接管它们。
+现场执行器会使用包内 PXEye Chart 将 PXEye 接到同命名空间的 Core 客户端 Secret 和集群内 API；因此本次
+源码变更后必须先用 `make images` 发布新的 PXEye 镜像，再运行 `make bundles`。它不把物理 DNS/PXE/NTP
+端点或 HostInband 网络写入包。
+
+首次安装要求 `nico-system` 除 Kubernetes 自动生成的默认对象外为空。执行器会拒绝遗留 PVC、Secret、Service
+等 namespaced 资源，不会接管它们。旧的四个独立 NICo Release 需要明确迁移或使用干净的 `nico-system`；
+本离线包不会接管它们。初始控制面包还会将 `nico-dhcp` 保持为零副本；真实 DNS/NTP/PXE/VIP 与显式启用 DHCP
+属于后续站点网络配置。

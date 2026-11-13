@@ -19,7 +19,12 @@ def main():
     config = json.loads(Path(os.environ.get("CONSOLE_CONFIG", "/config/site.json")).read_text())
     data_dir = Path(os.environ.get("CONSOLE_DATA", "/data"))
     config.setdefault(
-        "site", {"name": "PXEye", "namespace": "mmzhou", "deployment": "mmzhou-pxeye"}
+        "site",
+        {
+            "name": "PXEye",
+            "namespace": "nico-system",
+            "deployment": "nico-system-pxeye",
+        },
     )
     deployed_site = data_dir / "config" / "deployment-site.json"
     if deployed_site.exists():

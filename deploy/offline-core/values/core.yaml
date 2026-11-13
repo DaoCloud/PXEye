@@ -80,21 +80,6 @@ nico-api:
 
       enabled = false
 
-
-      [networks.mmzhou-host-boot]
-
-      type = "hostinband"
-
-      prefix = "192.0.2.0/24"
-
-      gateway = "192.0.2.1"
-
-      mtu = 1500
-
-      reserve_first = 5
-
-      allocation_strategy = "reserved"
-
       '
   hostname: nico.local
   vaultClusterInfo:
@@ -210,13 +195,13 @@ nico-dns:
 nico-dhcp:
   nameOverride: '@{release_prefix}-nico-dhcp'
   apiServiceName: '@{release_prefix}-nico-api'
-  config:
-    kea:
-      hookLibraryPath: /usr/lib/kea/hooks/libdhcp.so
-      hookParameters:
-        nameservers: '@{dns_ip}'
-        ntpServer: '@{ntp_ip}'
-        provisioningServer: '@{pxe_ip}'
+  # A first control-plane installation has no real boot-network endpoints.
+  # Keep the upstream REPLACE_WITH_* hook values loud, but run no Kea Pod until
+  # the later site-network action supplies real DNS/NTP/PXE/VIP settings and
+  # explicitly scales DHCP up.  That prevents an invalid placeholder from
+  # making Core readiness fail, without turning a ClusterIP or documentation
+  # address into a physical DHCP option.
+  replicas: 0
   certificate:
     spiffeServiceName: nico-dhcp
 nico-hardware-health:

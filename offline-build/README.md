@@ -106,9 +106,9 @@ are not steps in this workflow. The onsite handoff starts at
 
 ## Configuration and state management
 
-- Configure contents/versions during building; configure Registry, namespace, networking, storage and authentication onsite. The default namespace is `nico-system`.
+- Build configuration defines contents and versions. The onsite runner accepts only the delivery archive and always deploys to `nico-system`. Physical boot endpoints, the HostInband network and provisioning policy are subsequent PXEye site settings; they must never be Kubernetes Service ClusterIPs.
 - Scripts manage image imports, and project Helm Charts manage Kubernetes resources.
-- Recovery reuses verified materials and completed stages with the same configuration. Progress records are associated with their inputs; changed inputs require a separate version or work directory.
+- Recovery reuses completed stages for the same archive. Extraction and runtime-state paths are derived from the archive name; use a different archive name for changed input.
 - Package verification, Helm readiness and physical provisioning acceptance are separate outcomes.
 
 ## Requirements and paths
@@ -126,10 +126,10 @@ Fireseed: Linux amd64, Python 3.11+/PyYAML, kubectl, an available cluster/Regist
   delivery.py           # unified builder entry
   material-prepare/     # legacy explicit-image exporter
   helm-bundle/          # chart-sources.json
-  onsite/               # run.py + run-config.example.json
+  onsite/               # run.py; its only input is --archive
 
 /srv/nico-build/        # builder configuration, prepared data, caches and delivery
-/srv/nico/              # onsite delivery files, tools, configuration and records
+/srv/nico/              # onsite delivery files, runner, derived extraction and runtime records
 ```
 
 The pinned e703 profile covers single-node Core/PXEye, without REST/Temporal/Keycloak, DPF services or Ubuntu ISOs. It does not discover current running images. Step one only exports images. Step two wraps optional binary materials as images; existing prepared / nico-materials inputs remain compatible. Material HTTP readiness does not establish consumer URLs or physical connectivity.

@@ -13,6 +13,20 @@ imagePullSecrets: []
 nico:
   enabled: true
   allowClusterResources: false
+# A one-command offline installation enables this only after fixing the
+# cluster-local Core endpoint and Secret names.  It never supplies physical
+# PXE/DNS/NTP addresses; those remain an explicit site-network action.
+siteBootstrap:
+  enabled: false
+  siteName: PXEye
+  coreUrl: ''
+  namespace: ''
+  clientSecret: ''
+  clientCertKey: tls.crt
+  clientPrivateKey: tls.key
+  caSecret: ''
+  caKey: tls.crt
+  pxeInternalUrl: ''
 components:
   pxeye:
     enabled: true

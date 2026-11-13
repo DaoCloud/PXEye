@@ -19,12 +19,8 @@ def main():
     if root.exists() or archive.exists():
         raise SystemExit('Output directory/archive exists; choose a new output')
     target = root / 'tools/onsite'; target.mkdir(parents=True)
-    for name in ('run.py', 'run-config.example.json', 'progress.py', 'onsite.py', 'registry_bridge.py', 'site-config.example.json', 'README.zh-CN.md', 'README.md', 'prepare_bundle.py', 'prepare-site.sh', 'relocation.py'):
+    for name in ('run.py', 'progress.py', 'onsite.py', 'registry_bridge.py', 'relocation.py', 'README.zh-CN.md', 'README.md'):
         shutil.copyfile(HOME / name, target / name)
-    wrapper = HOME / 'prepare-bundle.sh'
-    if not wrapper.is_file(): wrapper = HOME.parent / 'prepare-bundle.sh'
-    shutil.copyfile(wrapper, root / 'tools/prepare-bundle.sh')
-    (root / 'tools/prepare-bundle.sh').chmod(0o755)
     verify = HOME.parent / 'helm-bundle/verify.py'
     if not verify.is_file(): verify = HOME.parent / 'verify.py'
     shutil.copyfile(verify, root / 'tools/verify.py')

@@ -481,8 +481,7 @@ def validate_charts(roots, helm, mapping, material_images, directory, material_r
     material_records = list(material_records or [])
     arm_material = boot_aarch64_material(material_records)
     known = set(mapping.values()) | set(material_images.values()) | set(material_image_mapping(material_records).values())
-    settings = {'release_prefix': 'nico', 'namespace': 'nico-system', 'site_name': 'Build validation',
-                'dns_ip': '10.96.40.10', 'pxe_ip': '10.96.40.11', 'ntp_ip': '10.96.40.12'}
+    settings = {'release_prefix': 'nico', 'namespace': 'nico-system', 'site_name': 'Build validation'}
     report = []
     for key, root in roots.items():
         expected = hinted_images(root)
@@ -704,8 +703,6 @@ def build(config, args, progress=None):
             shutil.copyfile(HOME / 'verify.py', bundle / 'tools/verify.py')
             shutil.copytree(REPO / 'offline-build/onsite', bundle / 'tools/onsite', dirs_exist_ok=True,
                             ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
-            shutil.copyfile(REPO / 'offline-build/onsite/prepare-bundle.sh', bundle / 'tools/prepare-bundle.sh')
-            (bundle / 'tools/prepare-bundle.sh').chmod(0o755)
             for name in ('README.md', 'README.zh-CN.md'):
                 shutil.copyfile(HOME / name, bundle / 'docs' / name)
             shutil.copyfile(HOME / 'toolchain-lock.json', bundle / 'manifests/toolchain-lock.json')
@@ -728,14 +725,9 @@ def build(config, args, progress=None):
             plan['schema_version'] = 3
             plan['description'] += '；各阶段复用同一PXEye父Chart Release，通过组件开关保持证书、Vault与Core的就绪顺序。'
             b.dump(bundle / 'profiles/install-plan.json', plan)
-            b.write(bundle / 'profiles/site-values.example.yaml', yaml.safe_dump({
-                'registry': None, 'namespace': 'nico-system', 'release_prefix': 'nico', 'storage_class': None,
-                'service_ips': {'dns': None, 'pxe': None, 'ntp': None},
-                'host_network': {'name': None, 'prefix': None, 'gateway': None, 'mtu': 1500},
-            }, sort_keys=False))
             b.dump(bundle / 'bundle.json', {'schema_version': 1, 'kind': 'pxeye-nico-helm', 'id': config['bundle_id'],
                 'version': version, 'source_revision': revision, 'architecture': 'linux/amd64', 'charts': packages,
-                'requires_site_configuration': True, 'multi_phase_oci_ui_ready': True})
+                'initial_provisioning_network_state': 'unconfigured', 'multi_phase_oci_ui_ready': True})
             chart_provenance = Path(config.get('chart_directory', source / 'deployment/charts')).parent / 'upstream-sources.json'
             b.dump(bundle / 'manifests/build-report.json', {'source_revision': revision, 'input_bundle': json.loads((source / ('prepared.json' if is_prepared else 'bundle.json')).read_text()),
                 'upstream_chart_sources': json.loads(chart_provenance.read_text()) if chart_provenance.is_file() else None,

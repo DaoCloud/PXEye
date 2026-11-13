@@ -79,9 +79,10 @@ outputs_/
     └── build-result.json              # version, image/chart counts and digests
 ```
 
-Verify the three files before copying them to the fireseed host. Keep their
-filenames unchanged: the onsite runner matches `bundle.tar.gz` against
-`SHA256SUMS`.
+`SHA256SUMS` is optional build/transfer evidence; the one-command onsite
+runner does not consume it. The runner accepts only the `bundle.tar.gz` path
+and verifies the delivery's immutable internal file inventory after extraction.
+If the field transfer process requires an explicit check, run:
 
 ```bash
 cd outputs_/output/bundle-<version>
@@ -105,6 +106,12 @@ The current profile covers PXEye/NICo Core and required cert-manager, platform
 and Vault dependencies, plus optional ARM64 boot material. It does not include
 REST, Temporal, Keycloak, DPF services or an operating-system ISO.
 
-Onsite restore assumes the target already uses the single parent-Chart release.
-A legacy four-release NICo installation needs an explicit migration or a clean
-namespace; it is not adopted by this bundle.
+The onsite runner uses the bundled PXEye Chart to connect PXEye to the same-namespace Core client Secrets and
+in-cluster API. Therefore, after a PXEye source change, publish a new PXEye image with `make images` before running
+`make bundles`. It does not put physical DNS/PXE/NTP endpoints or a HostInband network into the delivery.
+
+The first install requires an empty `nico-system` namespace apart from Kubernetes-generated default objects. It rejects
+residual PVCs, Secrets, Services and other namespaced resources rather than adopting them. A legacy four-release NICo
+installation needs an explicit migration or a clean `nico-system`; it is not adopted by this bundle. The initial
+control-plane-only delivery also keeps `nico-dhcp` at zero replicas: real DNS/NTP/PXE/VIP values and explicit DHCP
+enablement are a later site-network action.

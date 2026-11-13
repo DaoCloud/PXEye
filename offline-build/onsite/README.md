@@ -1,108 +1,111 @@
-# Step 3: import and deploy onsite
+# One-command fireseed installation
 
-**English** · [简体中文](README.zh-CN.md) · [Overview](../README.md)
+**English** · [简体中文](README.zh-CN.md)
 
-`run.py` imports offline images and Charts on the fireseed host and deploys PXEye and NICo to the configured Kubernetes cluster. One deployment configuration controls resource management through Helm.
+## Goal
 
-## Deployment stages
+Import one PXEye/NICo offline delivery and deploy its control plane with one command. The runner accepts only the
+absolute path to `bundle.tar.gz`; it does not ask for a checksum, extraction directory, work directory, namespace,
+release name, certificate mode, DNS/PXE/NTP addresses, or a HostInband network.
 
-| Stage | Action | Key point |
-| --- | --- | --- |
-| Verify/unpack | Verify archives/inventory and unpack independently | Revalidate completed extraction before reuse |
-| Resolve/preflight | Confirm context, Registry, tools and settings | Never use the default cluster; namespace defaults to nico-system |
-| Import | Push images with relok8s; publish and read back Helm OCI Charts | Import success does not establish node image pulls |
-| Freeze recipe | Generate site values, order and hashes | Do not edit generated files |
-| Optional PXEye | Bootstrap the UI through its own Helm Chart | false preserves existing PXEye |
-| Install NICo | cert-manager → platform → Vault → optional materials → Core | Each phase must pass; preserve original PVC identities |
+The first install is fixed to:
 
-## Environment and configuration
+- namespace: `nico-system`
+- NICo parent-Chart release: `nico`
+- PXEye Service: `NodePort` `31808` (Kubernetes also allocates its ClusterIP)
 
-Requirements: Python 3.11+/PyYAML, kubectl, an available cluster/Registry and configured node image pulls. Helm/relok8s come with the large bundle.
+The runner prefers the current `kind-*` context (otherwise it accepts exactly one candidate), discovers the Registry, skips TLS certificate-chain/name validation for
+the site Registry by default, and reuses a healthy shared cert-manager. It installs the bundled cert-manager
+only when no cert-manager exists. A partial or unhealthy cert-manager stops the run; it is never adopted or replaced.
+After the Core phase, it uses the same-namespace client Secrets and the in-cluster Core address to verify mTLS and
+connect PXEye to the new Core.
 
-Copy the three files printed by step 2's `DELIVERY_FILES` to `/srv/nico/`, then run once:
+## Prerequisites
+
+The fireseed host needs Python 3.11+, PyYAML and `kubectl`; cluster nodes must already be able to pull from the site
+Registry. Put these delivery files in one directory:
+
+```text
+bundle.tar.gz          # large offline delivery
+onsite-tools.tar.gz    # small bootstrap runner for the delivery tools
+```
+
+`nico-system` must be empty, except for Kubernetes' own default objects or resources managed by the `nico` / PXEye
+releases created by this same run. The installer rejects residual PVCs, Secrets, Services and other namespaced
+resources instead of adopting legacy four-release NICo deployments, existing PXEye, or existing data.
+
+## Run
+
+Run the following on the fireseed host. The first command extracts only the small runner, not the large bundle.
 
 ```bash
 cd /srv/nico
-sha256sum -c SHA256SUMS &&
-test ! -e onsite-tools &&
-test ! -e onsite-run.json &&
-tar -xzf onsite-tools.tar.gz &&
-cp onsite-tools/tools/onsite/run-config.example.json onsite-run.json &&
-${EDITOR:-vi} onsite-run.json
+tar -xzf onsite-tools.tar.gz
+python3 /srv/nico/onsite-tools/tools/onsite/run.py \
+  --archive /srv/nico/bundle.tar.gz
 ```
 
-`onsite-run.json` is the deployment configuration entry point:
+`--archive` is the only required input. If Registry discovery cannot find one unique endpoint from workload-image or
+`local-registry-hosting` evidence, the runner stops during stage 2. Only in that exception, set
+`NICO_REGISTRY_URL=http(s)://registry-host:port` before rerunning. The variable selects only the Registry endpoint;
+the default policy still skips its TLS certificate-chain/name validation and must not be treated as Registry identity
+verification.
 
-| Setting | Key rule |
-| --- | --- |
-| archive / checksums | Absolute large-archive and checksum paths |
-| extract_directory / work_directory | Independent per-installation directories, created automatically |
-| site.context / namespace | Explicit context recommended; null allows only one Kind context; namespace defaults to nico-system |
-| site.mode / release_prefix | restore reuses the unique existing Core or PXEye parent release when prefix is empty; new is for fresh sites |
-| site.cert_manager.mode | `install` (default) installs the bundled controller; `reuse` is only for a new, empty namespace with a verified shared cert-manager |
-| site.registry | Empty URL discovers one valid endpoint; for HTTPS provide `ca_file`, or use `skip_tls_verify: true` only for a verified self-signed endpoint |
-| site.service_ips / host_network | New sites require DNS/PXE/NTP IPv4 and network name/prefix/gateway/mtu; restore may reuse existing settings |
-| bootstrap_pxeye | Optional standalone PXEye UI startup; defaults to false |
-| site.storage_class / phase_values | Optional storage and per-phase overrides; credentials remain protected-file references |
+## Confirm
 
-The template defaults to **restore mode and preserving existing PXEye**. Fresh sites must change the mode/options/network. Preparation runs once; do not overwrite tools or configuration when resuming.
+Success ends with `PXEYE_CORE_CONNECTED` and `ONSITE_COMPLETE`. The latter means Helm is ready and PXEye has completed
+an in-cluster mTLS connection to Core. Directories are derived from the archive name; for
+`/srv/nico/bundle.tar.gz`, the runner creates:
 
-The runner probes `GET /v2/` using the configured TLS policy before importing
-anything. A Registry may return either `200` or an authentication challenge
-(`401`). A certificate failure must be fixed with the Registry CA, or by
-explicitly setting `site.registry.skip_tls_verify` for a verified self-signed
-site Registry; it is not retried through relok8s' local transport bridge.
+```text
+/srv/nico/bundle/             # extracted delivery; internal inventory verified
+/srv/nico/bundle.onsite/      # progress, logs, frozen Helm recipe, private state
+```
 
-`bootstrap_pxeye=true` starts only the PXEye UI. NICo components remain
-disabled until their ordered installation phases. For a second isolated
-deployment in a cluster that already has cert-manager, set
-`site.cert_manager.mode` to `reuse`; the installer validates the shared CRDs
-and controller, skips the bundled cert-manager phase, and never adopts the
-existing release. A new install requires a namespace with no Helm releases.
-If the default PXEye NodePort is occupied, set a distinct
-`site.pxeye_values.service.nodePort` (or use `ClusterIP`). Restore is supported
-only when the existing site already uses the single parent-Chart release; a
-legacy four-release NICo installation requires an explicit migration or a
-clean namespace and is rejected before Registry import.
-
-A free Kubernetes NodePort is not an external-access guarantee. In particular,
-a Kind node publishes only ports configured when the cluster was created (for
-example, with `extraPortMappings`). The runner checks that the NodePort is not
-claimed by another Service but does not modify Kind, host networking, or a
-firewall. Use an existing platform access route, or create the required Kind
-port mapping before deployment.
-
-## Deployment command
-
-Command, from any working directory; identical after failure:
+The runner also writes a read-only `environment.sh` in that run directory for inspection and troubleshooting. It is
+not an installer input; it prevents confirmation commands from accidentally using the current shell's business-cluster
+context.
 
 ```bash
-python3 /srv/nico/onsite-tools/tools/onsite/run.py --config /srv/nico/onsite-run.json
+source /srv/nico/bundle.onsite/environment.sh
+kubectl --context "$CONTEXT" -n "$NICO_NAMESPACE" get pods
+kubectl --context "$CONTEXT" -n "$NICO_NAMESPACE" get service "$PXEYE_RELEASE"
+cat "$(dirname "$WORK")/progress.json"
 ```
 
-Confirmation: current `STAGE`, `DONE` / `FAILED`, then `ONSITE_COMPLETE`. The runner coordinates import, recipe generation and installation.
+An unclaimed Kubernetes NodePort does not prove that the fireseed host or an external network can reach it. A Kind
+cluster still needs the required port mapping at creation time, or an existing controlled access route / `kubectl
+port-forward`.
 
-## Recovery and logs
+## Resume
 
-Inspect the failure, fix its cause and rerun the original command. Using template paths:
+After fixing an external cause, rerun the identical command:
 
 ```bash
-tail -n 60 /srv/nico/onsite/field-install-01/run.log
-cat /srv/nico/onsite/field-install-01/progress.json
+python3 /srv/nico/onsite-tools/tools/onsite/run.py \
+  --archive /srv/nico/bundle.tar.gz
 ```
 
-| Record | Purpose |
-| --- | --- |
-| work_directory/progress.json | Stage, status, attempts, duration and error |
-| events.jsonl / run.log | Appended execution history, including failures |
-| deployment/state.json | Chart/Helm checkpoints and installation intent |
-| deployment/logs/ and timings.jsonl | Command output and duration |
-| deployment/private/ | Protected snapshots, values and installation output |
+Completed stages are rechecked and reused. The runner neither reimports verified Charts nor automatically unlocks a
+pending Helm operation. Inspect:
 
-Completed stages are verified before skipping. Failed/absent Helm releases may retry; pending operations stop for operator investigation, without automatic unlock or rollback. A successful operation interrupted before journaling is recovered only after checking saved intent, version, values, health and PVCs.
+```bash
+tail -n 80 /srv/nico/bundle.onsite/run.log
+cat /srv/nico/bundle.onsite/progress.json
+```
 
-Changed inputs/configuration/implementation require a new work directory. Do not edit checkpoints or run UI and CLI installers concurrently. Recovery is per stage, not by byte offset.
+## Initial networking boundary
 
-`ONSITE_COMPLETE` means import and Helm readiness passed. Strict mTLS, material HTTP, physical DHCP/Scout and OS acceptance remain separate. The runner does not wipe data, recreate Kind, discover devices, write Redfish or install hosts.
+This step installs only the control plane. It does not turn a Kubernetes `ClusterIP` into a physical address, create a
+sample HostInband subnet, or configure DNS/PXE/NTP VIPs, DHCP Relay, LoadBalancers, switch relay, routing, ACLs, or
+firewall rules. The initial Chart creates neither external boot-service endpoints nor a HostInband plan; this is not
+physical-provisioning acceptance and is not a substitute for network-isolation controls.
 
-References: [NICo reference installation](https://docs.nvidia.com/infra-controller/documentation/getting-started/installation-options/reference-installation), [Helm OCI](https://helm.sh/docs/v3/topics/registries/).
+The bundled `nico-dhcp` Deployment intentionally starts at zero replicas. Its upstream DHCP option placeholders are
+not valid physical endpoints, so no Kea process is started until later site-network configuration supplies real
+DNS/NTP/PXE/VIP values and explicitly enables DHCP.
+
+Physical boot endpoints and HostInband planning belong to the subsequent PXEye site configuration: DNS/NTP servers,
+PXE/DHCP-Relay external endpoints, provisioning-VLAN prefix/gateway/MTU, external Services/VIPs, and switch relay,
+routing, ACL and firewall rules. Configure and validate those from the provisioning VLAN before enabling real
+provisioning. Helm readiness is not physical-installation acceptance.
