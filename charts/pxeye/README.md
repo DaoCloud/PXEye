@@ -45,6 +45,5 @@ put external PXE, DHCP, DNS, NTP, or HostInband settings there: apply them throu
 and physical-network validation.
 
 When PXEye and NICo use different namespaces and `siteBootNetwork.namespace` names the NICo namespace, the Chart also
-creates a minimal Role/RoleBinding there. It permits PXEye to update the Kea ConfigMap and DHCP Deployment needed by
-the later **Manage boot network** page; it grants neither cluster-scoped access
-nor Secret reads.
+creates a namespace-scoped Role/RoleBinding there. It grants PXEye access to namespaced resources in that target
+namespace for the later **Manage boot network** page; it grants neither cluster-scoped access nor Secret reads.

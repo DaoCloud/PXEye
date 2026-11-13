@@ -113,6 +113,50 @@ class SiteBootNetwork:
             "deployment": mounts[0],
         }
 
+    def _values_from_kea(self, configmap):
+        """Return the currently advertised addresses from the live Kea ConfigMap."""
+        try:
+            dhcp = json.loads(configmap["data"]["kea_config.json"])["Dhcp4"]
+        except (KeyError, TypeError, ValueError):
+            raise ValueError("Kea ConfigMap 格式无效；无法读取当前引导网络地址。") from None
+
+        option = next(
+            (row for row in dhcp.get("option-data", []) if row.get("name") == "dhcp-server-identifier"),
+            {},
+        )
+        hook = next(
+            (
+                row
+                for row in dhcp.get("hooks-libraries", [])
+                if "nico-provisioning-server-ipv4" in row.get("parameters", {})
+                or "carbide-provisioning-server-ipv4" in row.get("parameters", {})
+            ),
+            None,
+        )
+        if not hook:
+            raise ValueError("Kea 配置缺少 NICo DHCP hook；无法读取当前引导网络地址。")
+        parameters = hook.get("parameters") or {}
+        saved = (self.state.get("current") or {}).get("values") or {}
+        return {
+            "dhcp_address": str(option.get("data") or ""),
+            "pxe_address": str(
+                parameters.get("nico-provisioning-server-ipv4")
+                or parameters.get("carbide-provisioning-server-ipv4")
+                or ""
+            ),
+            # Kea has no PXE HTTP port field. Preserve a previously applied port,
+            # otherwise present the conventional NICo PXE HTTP default.
+            "pxe_port": saved.get("pxe_port", 8080),
+            "dns_address": str(
+                parameters.get("nico-nameservers") or parameters.get("carbide-nameservers") or ""
+            ),
+            "ntp_address": str(
+                parameters.get("nico-ntpserver") or parameters.get("carbide-ntpserver") or ""
+            ),
+            "topology": saved.get("topology", "same_l2"),
+            "relay_address": saved.get("relay_address", ""),
+        }
+
     @staticmethod
     def _patch_kea(configmap, values):
         try:
@@ -176,6 +220,7 @@ class SiteBootNetwork:
         result["namespace"] = self.namespace()
         try:
             discovered = self._discover()
+            result["values"] = self._values_from_kea(discovered["configmap"])
             result["dhcp_configmap"] = discovered["configmap"]["metadata"]["name"]
             result["dhcp_deployment"] = discovered["deployment"]["metadata"]["name"]
             result["cluster_ready"] = True

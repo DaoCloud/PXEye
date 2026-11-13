@@ -32,7 +32,7 @@ siteBootstrap:
 # the PXEye release namespace.  Set it only when PXEye is intentionally
 # installed in another namespace.
 siteBootNetwork:
-  namespace: ''
+  namespace: nico-system
 components:
   pxeye:
     enabled: true

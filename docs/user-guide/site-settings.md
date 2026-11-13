@@ -36,7 +36,7 @@ Other information is read-only:
 
 ## 3. Boot-network service addresses
 
-Use **Manage boot network (管理引导网络)** to record IPv4 addresses for DHCP, PXE HTTP, DNS and NTP plus the PXE port. PXEye writes the entered values to Kea DHCP Option 54 plus PXE/DNS/NTP advertisement settings and rolls DHCP; it does not inspect, create, modify or take ownership of external Services, proxies or relays.
+Use **Manage boot network (管理引导网络)** to read the current IPv4 addresses for DHCP, PXE HTTP, DNS and NTP from Kea, then update them plus the PXE port. PXEye writes the entered values to Kea DHCP Option 54 plus PXE/DNS/NTP advertisement settings and rolls DHCP; it does not inspect, create, modify or take ownership of external Services, proxies or relays.
 
 This does not change HostInband segments, DHCP pools, device plans or existing installation tasks. HostInband is NICo's network object for choosing a host boot interface's DHCP segment and allocating its address; it remains in network management and device/installation checks, not in this address form.
 

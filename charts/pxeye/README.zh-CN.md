@@ -44,5 +44,5 @@ PVC 带有 Helm keep 策略。现场流程复用同一个父 Release：cert-mana
 写入该字段，须通过后续站点网络配置和现场验证应用。
 
 当 PXEye 与 NICo 位于不同 namespace 且 `siteBootNetwork.namespace` 指向 NICo namespace 时，Chart 还会在该
-目标 namespace 创建最小 Role/RoleBinding，使 PXEye 仅能更新 Kea ConfigMap
-和 DHCP Deployment。该权限用于后续页面的“管理引导网络”，不授予集群级权限或 Secret 读取权限。
+目标 namespace 创建 Role/RoleBinding，使 PXEye 能访问目标 namespace 的 namespaced 资源。
+该权限用于后续页面的“管理引导网络”，不授予集群级权限或 Secret 读取权限。
