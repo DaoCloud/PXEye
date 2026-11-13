@@ -344,6 +344,7 @@ function sitePage() {
     .join("");
   const boot = s.boot_network || {},
     bootValues = boot.values || {},
+    materialHttpEndpoint = boot.material_http_endpoint || "",
     bootTone = boot.state === "applied" ? "green" : boot.state === "needs_attention" ? "red" : "gray",
     bootLabel =
       boot.state === "applied"
@@ -360,7 +361,7 @@ function sitePage() {
     `<section class="site-overview"><div class="site-overview-main"><span class="site-eyebrow">当前站点</span><h2>${esc(s.site.name)}</h2><div class="site-overview-meta"><span>${esc(s.site.namespace)} / ${esc(s.site.deployment)}</span><span class="live-code">${esc(s.core_url)}</span><span>新建安装批次默认并发 ${esc(s.default_install_concurrency || 5)} 台</span></div></div><div class="site-health"><span class="site-status-dot ${healthy ? "ok" : "bad"}"></span><div><strong>${healthy ? "Core 连接正常" : "Core 连接异常"}</strong><span>${esc(core.detail || "尚未获得连接状态")}</span><small>检查于 ${when(s.checked_at)}</small></div></div></section>` +
     `<div class="site-layout"><section class="site-panel"><header class="site-panel-header"><div><span class="site-eyebrow">安全连接</span><h2>连接身份</h2></div></header><dl class="site-identity"><div><dt>客户端身份</dt><dd>${esc(identity.subject || identity.error || "未提供")}</dd></div><div><dt>签发者</dt><dd>${esc(identity.issuer || "—")}</dd></div><div><dt>有效期</dt><dd>${esc(identity.valid_from || "—")}<span>至 ${esc(identity.valid_until || "—")}</span></dd></div></dl></section><section class="site-panel"><header class="site-panel-header"><div><span class="site-eyebrow">本地存储</span><h2>数据目录</h2></div></header><div class="site-storage-list">${storage}</div></section></div>` +
     `<section class="site-panel site-services-panel"><header class="site-panel-header"><div><span class="site-eyebrow">运行依赖</span><h2>网络与基础服务</h2></div>${button("管理 OS DNS", "site-network")}</header><div class="site-services">${services}</div><p class="site-panel-note">${esc(s.dns_maintenance.detail)}</p></section>` +
-    `<section class="site-panel site-services-panel"><header class="site-panel-header"><div><span class="site-eyebrow">物理引导网络</span><h2>DHCP / PXE / DNS / NTP</h2></div>${button("管理引导网络", "site-boot-network", true)}</header><div class="site-services"><div class="site-service-row"><span class="site-service-dot ${bootTone === "green" ? "ok" : bootTone === "red" ? "bad" : "set"}"></span><div class="site-service-name"><strong>当前服务地址</strong><span>保存后将写入 Kea 并滚动 DHCP</span></div><span class="site-service-endpoint live-code">${esc(bootValues.dhcp_address || "未配置")} / ${esc(bootValues.pxe_address || "未配置")}:${esc(bootValues.pxe_port || "—")}</span><div class="site-service-state ${bootTone === "green" ? "ok" : bootTone === "red" ? "bad" : "set"}"><strong>${bootLabel}</strong><span>${esc(boot.detail || "尚未配置物理引导服务地址。")}</span></div></div></div><p class="site-panel-note">PXEye 将按填写值更新 Kea 下发参数；不检查或修改外部 Service、DHCP 地址池或安装流程。</p></section>`
+    `<section class="site-panel site-services-panel"><header class="site-panel-header"><div><span class="site-eyebrow">物理引导网络</span><h2>DHCP / PXE / DNS / NTP</h2></div>${button("管理引导网络", "site-boot-network", true)}</header><div class="site-services"><div class="site-service-row"><span class="site-service-dot ${bootTone === "green" ? "ok" : bootTone === "red" ? "bad" : "set"}"></span><div class="site-service-name"><strong>DHCP / PXE 引导地址</strong><span>保存后将写入 Kea 并滚动 DHCP</span></div><span class="site-service-endpoint live-code">${esc(bootValues.dhcp_address || "未配置")} / ${esc(bootValues.pxe_address || "未配置")}</span><div class="site-service-state ${bootTone === "green" ? "ok" : bootTone === "red" ? "bad" : "set"}"><strong>${bootLabel}</strong><span>${esc(boot.detail || "尚未配置物理引导服务地址。")}</span></div></div><div class="site-service-row"><span class="site-service-dot ${materialHttpEndpoint ? "set" : "bad"}"></span><div class="site-service-name"><strong>安装材料 HTTP 端点</strong><span>新建 OS 版本的 ISO、kernel、initrd 发布基址</span></div><span class="site-service-endpoint live-code">${esc(materialHttpEndpoint || "未配置")}</span><div class="site-service-state ${materialHttpEndpoint ? "set" : "bad"}"><strong>${materialHttpEndpoint ? "已配置" : "需要配置"}</strong><span>既有 OS 保持各自不可变的材料 URL。</span></div></div></div><p class="site-panel-note">PXE 引导地址只更新 Kea。材料 HTTP 端点独立管理，必须是装机网络可访问的完整地址和端口；PXEye 不会修改外部 Service、DHCP 地址池或既有 OS。</p></section>`
   );
 }
 function editSite() {
@@ -396,7 +397,6 @@ function bootNetworkBody() {
   return {
     dhcp_address: $("#boot-dhcp-address").value.trim(),
     pxe_address: $("#boot-pxe-address").value.trim(),
-    pxe_port: Number($("#boot-pxe-port").value),
     dns_address: $("#boot-dns-address").value.trim(),
     ntp_address: $("#boot-ntp-address").value.trim(),
     topology: $("#boot-topology").value,
@@ -410,7 +410,7 @@ async function bootNetworkDialog() {
   modal(
     "管理引导网络",
     "修改物理网 DHCP、PXE、DNS 与 NTP 服务地址",
-    `<div class="live-form">${inputField("boot-dhcp-address", "DHCP 地址", values.dhcp_address || "", 'placeholder="例如 192.0.2.10"')}${inputField("boot-pxe-address", "PXE HTTP 地址", values.pxe_address || "", 'placeholder="例如 192.0.2.11"')}${inputField("boot-pxe-port", "PXE HTTP 端口", values.pxe_port || 8080, 'type="number" min="1" max="65535" step="1"')}${inputField("boot-dns-address", "DNS 地址", values.dns_address || "", 'placeholder="例如 192.0.2.12"')}${inputField("boot-ntp-address", "NTP 地址", values.ntp_address || "", 'placeholder="例如 192.0.2.13"')}<label>DHCP 拓扑<select id="boot-topology"><option value="same_l2" ${values.topology !== "relay" ? "selected" : ""}>同二层</option><option value="relay" ${values.topology === "relay" ? "selected" : ""}>DHCP Relay</option></select></label>${inputField("boot-relay-address", "Relay 地址（仅 Relay 时必填）", values.relay_address || "", 'placeholder="例如 192.0.2.1"')}<p class="live-small">PXEye 将按填写值更新 Kea 下发参数并滚动 DHCP；不会检查或修改外部 Service、代理、HostInband、地址池、设备规划或现有安装任务。</p>${status.cluster_ready ? `<p class="live-small">目标命名空间：${esc(status.namespace)}；DHCP：${esc(status.dhcp_deployment || "等待发现")}。</p>` : `<div class="live-error">${esc(status.cluster_error || "当前集群目标不可用。")}</div>`}<div id="resource-error" class="live-error"></div></div>`,
+    `<div class="live-form">${inputField("boot-dhcp-address", "DHCP 地址", values.dhcp_address || "", 'placeholder="例如 192.0.2.10"')}${inputField("boot-pxe-address", "PXE 引导地址", values.pxe_address || "", 'placeholder="例如 192.0.2.11"')}${inputField("boot-dns-address", "DNS 地址", values.dns_address || "", 'placeholder="例如 192.0.2.12"')}${inputField("boot-ntp-address", "NTP 地址", values.ntp_address || "", 'placeholder="例如 192.0.2.13"')}<label>DHCP 拓扑<select id="boot-topology"><option value="same_l2" ${values.topology !== "relay" ? "selected" : ""}>同二层</option><option value="relay" ${values.topology === "relay" ? "selected" : ""}>DHCP Relay</option></select></label>${inputField("boot-relay-address", "Relay 地址（仅 Relay 时必填）", values.relay_address || "", 'placeholder="例如 192.0.2.1"')}<p class="live-small">安装材料 HTTP 端点：<code>${esc(status.material_http_endpoint || "未配置")}</code>。它含端口且独立于 Kea；当前弹窗不会修改它或既有 OS。</p><p class="live-small">PXEye 将按填写值更新 Kea 下发参数并滚动 DHCP；不会检查或修改外部 Service、代理、HostInband、地址池、设备规划或现有安装任务。</p>${status.cluster_ready ? `<p class="live-small">目标命名空间：${esc(status.namespace)}；DHCP：${esc(status.dhcp_deployment || "等待发现")}。</p>` : `<div class="live-error">${esc(status.cluster_error || "当前集群目标不可用。")}</div>`}<div id="resource-error" class="live-error"></div></div>`,
     button("取消", "close") + button("预览变更", "site-boot-preview", true),
   );
 }
@@ -422,7 +422,7 @@ async function previewBootNetwork() {
     "仅修改预览中列出的 Kubernetes 资源",
     defs([
       ["DHCP 地址", esc(values.dhcp_address)],
-      ["PXE HTTP", esc(values.pxe_address + ":" + values.pxe_port)],
+      ["PXE 引导地址", esc(values.pxe_address)],
       ["DNS / NTP", esc(values.dns_address + " / " + values.ntp_address)],
       ["受控资源", Object.values(preview.resources).map(esc).join("、")],
       ["Kea ConfigMap", esc(preview.dhcp_configmap)],

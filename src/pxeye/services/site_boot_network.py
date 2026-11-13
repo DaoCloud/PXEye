@@ -64,7 +64,6 @@ class SiteBootNetwork:
         required = {
             "dhcp_address",
             "pxe_address",
-            "pxe_port",
             "dns_address",
             "ntp_address",
             "topology",
@@ -72,17 +71,13 @@ class SiteBootNetwork:
         }
         if set(body) != required:
             raise ValueError("引导网络配置字段无效。")
-        port = body["pxe_port"]
-        if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
-            raise ValueError("PXE HTTP 端口应为 1–65535。")
         topology = str(body["topology"])
         if topology not in ("same_l2", "relay"):
             raise ValueError("DHCP 拓扑只能是同二层或 Relay。")
         relay = cls._ipv4(body["relay_address"], "Relay 地址", required=topology == "relay")
         return {
             "dhcp_address": cls._ipv4(body["dhcp_address"], "DHCP 地址"),
-            "pxe_address": cls._ipv4(body["pxe_address"], "PXE HTTP 地址"),
-            "pxe_port": port,
+            "pxe_address": cls._ipv4(body["pxe_address"], "PXE 引导地址"),
             "dns_address": cls._ipv4(body["dns_address"], "DNS 地址"),
             "ntp_address": cls._ipv4(body["ntp_address"], "NTP 地址"),
             "topology": topology,
@@ -144,9 +139,6 @@ class SiteBootNetwork:
                 or parameters.get("carbide-provisioning-server-ipv4")
                 or ""
             ),
-            # Kea has no PXE HTTP port field. Preserve a previously applied port,
-            # otherwise present the conventional NICo PXE HTTP default.
-            "pxe_port": saved.get("pxe_port", 8080),
             "dns_address": str(
                 parameters.get("nico-nameservers") or parameters.get("carbide-nameservers") or ""
             ),
@@ -156,6 +148,15 @@ class SiteBootNetwork:
             "topology": saved.get("topology", "same_l2"),
             "relay_address": saved.get("relay_address", ""),
         }
+
+    def _material_http_endpoint(self):
+        """Return the configured public base URL for newly registered OS materials.
+
+        Kea advertises a PXE IP address, while an OperatingSystem holds an
+        immutable HTTP URL. These must remain separate site settings.
+        """
+        library = self.app.config.get("os_library") or {}
+        return str(library.get("public_base_url") or "").rstrip("/")
 
     @staticmethod
     def _patch_kea(configmap, values):
@@ -218,6 +219,7 @@ class SiteBootNetwork:
     def view(self):
         result = self.summary()
         result["namespace"] = self.namespace()
+        result["material_http_endpoint"] = self._material_http_endpoint()
         try:
             discovered = self._discover()
             result["values"] = self._values_from_kea(discovered["configmap"])
@@ -244,10 +246,10 @@ class SiteBootNetwork:
             "dhcp_deployment": discovered["deployment"]["metadata"]["name"],
             "effects": [
                 "按用户填写的地址更新 Kea DHCP 下发参数；不检查或修改外部 Service。",
-                "更新 Kea DHCP Option 54、PXE、DNS 与 NTP 下发参数。",
+                "更新 Kea DHCP Option 54、PXE 引导地址、DNS 与 NTP 下发参数。",
                 "将 DHCP Deployment 缩放至 1 并执行一次受控滚动更新。",
                 "不会修改 HostInband 网段、DHCP 地址池、设备规划或已有安装任务。",
-                "不会自动改写 OS 定义；公开材料 URL 迁移将在 NICo 契约验证后单独提供。",
+                "不会修改 OS 材料 HTTP 端点或既有 OS 定义。",
             ],
         }
 

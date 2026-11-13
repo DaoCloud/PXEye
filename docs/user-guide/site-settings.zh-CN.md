@@ -36,11 +36,13 @@ product_version: "0.22.0"
 
 ## 3. 引导网络服务地址
 
-点击**管理引导网络**会先从 Kea 读取 DHCP、PXE HTTP、DNS 和 NTP 的当前 IPv4 地址，再允许修改这些地址及 PXE 端口。PXEye 按填写值更新 Kea ConfigMap 的 DHCP Option 54、PXE、DNS、NTP 下发参数并滚动 DHCP。PXEye 不检查、创建、修改或接管外部 Service、代理或 Relay。
+站点页将 **DHCP / PXE 引导地址** 与 **安装材料 HTTP 端点** 分开显示。前者从 Kea 读取 DHCP、PXE、DNS 和 NTP 的当前 IPv4 地址，并可在**管理引导网络**中修改；PXEye 按填写值更新 Kea ConfigMap 的 DHCP Option 54、PXE、DNS、NTP 下发参数并滚动 DHCP。PXEye 不检查、创建、修改或接管外部 Service、代理或 Relay。
+
+安装材料 HTTP 端点来自 `os_library.public_base_url`，包含目标主机访问所需的地址和端口，例如 `http://192.0.2.10:31880/public/blobs/internal/nico/os-library`。它是新建 OS 版本发布 ISO、kernel、initrd 的基址，不属于 Kea 配置；既有 NICo OS 保留各自不可变的材料 URL。
 
 该操作不修改 HostInband 网段、DHCP 地址池、设备规划或现有安装任务。HostInband 是 NICo 为主机启动口选择 DHCP 网段和地址分配的网络对象，仍在网络管理和设备/安装预检中维护，不是服务地址。
 
-应用前应处于维护窗口：存在活动安装任务时 PXEye 会阻止改址。应用成功只说明 Kubernetes 与 Kea 已完成受控更新；还需从实际引导 VLAN 完成 DHCP Offer 和 PXE HTTP 验证。PXEye 当前不会自动改写已有 OS 定义中的材料 URL；该迁移需待 NICo 契约验证后通过独立操作完成。
+应用前应处于维护窗口：存在活动安装任务时 PXEye 会阻止改址。应用成功只说明 Kubernetes 与 Kea 已完成受控更新；还需从实际引导 VLAN 完成 DHCP Offer 和材料 HTTP 验证。PXEye 当前不会自动改写已有 OS 定义中的材料 URL；材料入口变化后，应创建新的 OS 版本并由新的安装方案引用。
 
 ## 4. 操作步骤
 
