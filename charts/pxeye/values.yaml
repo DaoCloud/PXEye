@@ -1,4 +1,4 @@
-image: '127.0.0.1:1027/pxeye:0.22.16-7d7ec8a'
+image: '127.0.0.1:1027/pxeye:0.22.16-ec31491'
 storageClass: ''
 dataStorage: 2Gi
 materialsStorage: 50Gi
