@@ -4,9 +4,10 @@
 
 ## Goal
 
-Import one PXEye/NICo offline delivery and deploy its control plane with one command. The runner accepts only the
-absolute path to `bundle.tar.gz`; it does not ask for a checksum, extraction directory, work directory, namespace,
-release name, certificate mode, DNS/PXE/NTP addresses, or a HostInband network.
+Import one PXEye/NICo offline delivery and deploy its control plane with one command. The only required input is the
+absolute path to `bundle.tar.gz`; optional `--mode kind|k8s` selects the cluster mode and defaults to `kind`.
+There is no installer configuration file to fill in, and no checksum, extraction directory, work directory, namespace,
+release name, certificate mode, DNS/PXE/NTP addresses, or HostInband network to supply.
 
 The first install is fixed to:
 
@@ -14,8 +15,13 @@ The first install is fixed to:
 - NICo parent-Chart release: `nico`
 - PXEye Service: `NodePort` `31808` (Kubernetes also allocates its ClusterIP)
 
-The runner prefers the current `kind-*` context (otherwise it accepts exactly one candidate), discovers the Registry, skips TLS certificate-chain/name validation for
-the site Registry by default, and reuses a healthy shared cert-manager. It installs the bundled cert-manager
+In `kind` mode, the runner prefers the current `kind-*` context; otherwise it accepts exactly one Kind candidate.
+In `k8s` mode, it uses the kubeconfig's current context without a name-prefix restriction and stops if that context
+is missing or does not exist in kubeconfig. Select the intended context with `kubectl config use-context` before
+running; the installer has no `--context` parameter.
+
+Both modes discover the Registry, skip TLS certificate-chain/name validation for the site Registry by default,
+and reuse a healthy shared cert-manager. The runner installs the bundled cert-manager
 only when no cert-manager exists. A partial or unhealthy cert-manager stops the run; it is never adopted or replaced.
 After the Core phase, it uses the same-namespace client Secrets and the in-cluster Core address to verify mTLS and
 connect PXEye to the new Core.
@@ -23,7 +29,11 @@ connect PXEye to the new Core.
 ## Prerequisites
 
 The fireseed host needs Python 3.11+, PyYAML and `kubectl`; cluster nodes must already be able to pull from the site
-Registry. Put these delivery files in one directory:
+Registry. Both modes require an existing cluster, a reachable API server and kubeconfig with installation permissions,
+at least one Ready amd64 node, a usable default StorageClass with capacity for the bundled PVCs, and an available
+NodePort `31808`. The site Registry must accept image pushes and Helm OCI Chart push/pull from the fireseed host.
+Mode selection does not create a cluster or prepare node runtimes, storage, Registry access or network routes.
+Put these delivery files in one directory:
 
 ```text
 bundle.tar.gz          # large offline delivery
@@ -49,7 +59,16 @@ python3 /srv/nico/onsite-tools/tools/onsite/run.py \
   --archive /srv/nico/bundle.tar.gz
 ```
 
-`--archive` is the only required input. If Registry discovery cannot find one unique endpoint from workload-image or
+The command above uses the default `kind` mode; `--mode kind` makes that choice explicit. To install into the
+current ordinary Kubernetes context, use:
+
+```bash
+python3 /srv/nico/onsite-tools/tools/onsite/run.py \
+  --archive /srv/nico/bundle.tar.gz --mode k8s
+```
+
+`--archive` remains the only required input. Namespace, release, Registry discovery and installation stages are the
+same in both modes. If Registry discovery cannot find one unique endpoint from workload-image or
 `local-registry-hosting` evidence, the runner stops during stage 2. Only in that exception, set
 `NICO_REGISTRY_URL=http(s)://registry-host:port` before rerunning. The variable selects only the Registry endpoint;
 the default policy still skips its TLS certificate-chain/name validation and must not be treated as Registry identity
@@ -65,6 +84,10 @@ an in-cluster mTLS connection to Core. Directories are derived from the archive 
 /srv/nico/bundle/             # extracted delivery; internal inventory verified
 /srv/nico/bundle.onsite/      # progress, logs, frozen Helm recipe, private state
 ```
+
+The first execution records `cluster_mode` and the selected context in the generated `install-config.json` in that
+run directory. This is frozen runtime state, not a user-supplied installer configuration. Subsequent Kubernetes and
+Helm commands explicitly use the recorded context.
 
 The runner also writes a read-only `environment.sh` in that run directory for inspection and troubleshooting. It is
 not an installer input; it prevents confirmation commands from accidentally using the current shell's business-cluster
@@ -114,6 +137,17 @@ After fixing an external cause, rerun the identical command:
 python3 /srv/nico/onsite-tools/tools/onsite/run.py \
   --archive /srv/nico/bundle.tar.gz
 ```
+
+For a run started with `--mode k8s`, keep the same flag when resuming:
+
+```bash
+python3 /srv/nico/onsite-tools/tools/onsite/run.py \
+  --archive /srv/nico/bundle.tar.gz --mode k8s
+```
+
+The same run directory must retain its frozen mode and context. A different mode stops the run. In `k8s` mode,
+changing kubeconfig's current context also stops the rerun instead of targeting another cluster; restore the
+recorded context with `kubectl config use-context` before resuming. Do not edit the generated state to retarget a run.
 
 Completed stages are rechecked and reused. The runner neither reimports verified Charts nor automatically unlocks a
 pending Helm operation. Inspect:

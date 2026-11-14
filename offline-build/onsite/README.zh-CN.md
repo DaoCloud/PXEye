@@ -4,8 +4,9 @@
 
 ## 主要目标
 
-用一条命令将一个 PXEye / NICo 离线包导入火种 Kubernetes 集群，并部署控制面。现场只向执行器提供
-`bundle.tar.gz` 的绝对路径；不填写 checksum、解压目录、工作目录、namespace、发布名、证书模式、
+用一条命令将一个 PXEye / NICo 离线包导入火种 Kubernetes 集群，并部署控制面。唯一必填输入是
+`bundle.tar.gz` 的绝对路径；可选参数 `--mode kind|k8s` 选择集群模式，默认 `kind`。
+不需要填写安装配置文件，也不填写 checksum、解压目录、工作目录、namespace、发布名、证书模式、
 DNS/PXE/NTP 地址或 HostInband 网络。
 
 首次安装固定使用：
@@ -14,14 +15,22 @@ DNS/PXE/NTP 地址或 HostInband 网络。
 - NICo 父 Chart release：`nico`
 - PXEye Service：`NodePort` `31808`（Kubernetes 同时自动分配 ClusterIP）
 
-执行器优先使用当前的 `kind-*` context（否则只接受唯一候选）、探测 Registry、默认跳过现场 Registry 的 TLS 证书链与名称校验，
-并在健康的共享 cert-manager 已存在时复用它；不存在时才安装包内 cert-manager。部分安装或未就绪的
+`kind` 模式优先使用当前的 `kind-*` context，否则只接受唯一 Kind 候选。`k8s` 模式使用 kubeconfig 的
+当前 context，不限制名称前缀；未设置当前 context 或其名称不在 kubeconfig 中时停止。执行前通过
+`kubectl config use-context` 选择目标；安装器不提供 `--context` 参数。
+
+两种模式都自动探测 Registry，默认跳过现场 Registry 的 TLS 证书链与名称校验，并在健康的共享
+cert-manager 已存在时复用它；不存在时才安装包内 cert-manager。部分安装或未就绪的
 cert-manager 会明确失败，绝不会接管或覆盖。它还会在 Core 阶段完成后，使用同命名空间的客户端
 Secret 和集群内 Core 地址验证 mTLS，并将 PXEye 接通到新 Core。
 
 ## 前置条件
 
-火种机需要 Python 3.11+、PyYAML、`kubectl`，并且节点已经可以从现场 Registry 拉镜像。交付目录中需要：
+火种机需要 Python 3.11+、PyYAML、`kubectl`，并且节点已经可以从现场 Registry 拉镜像。两种模式都需要
+已有集群、可达的 API Server、具有安装权限的 kubeconfig、至少一个 Ready amd64 节点、可用且容量足够
+承载包内 PVC 的默认 StorageClass，以及可用的 NodePort `31808`。现场 Registry 必须允许火种机推送镜像，
+并支持 Helm OCI Chart 推送和拉取。选择模式不会创建集群，也不会准备节点运行时、存储、Registry 访问或网络路由。
+交付目录中需要：
 
 ```text
 bundle.tar.gz          # 大离线交付包
@@ -46,7 +55,15 @@ python3 /srv/nico/onsite-tools/tools/onsite/run.py \
   --archive /srv/nico/bundle.tar.gz
 ```
 
-`--archive` 是唯一必填参数。若 Registry 无法从工作负载镜像或 `local-registry-hosting` 证据唯一识别，
+上述命令使用默认 `kind` 模式，也可显式加上 `--mode kind`。安装到当前普通 Kubernetes context 时执行：
+
+```bash
+python3 /srv/nico/onsite-tools/tools/onsite/run.py \
+  --archive /srv/nico/bundle.tar.gz --mode k8s
+```
+
+`--archive` 仍是唯一必填参数。两种模式的 namespace、release、Registry 发现及安装阶段保持一致。
+若 Registry 无法从工作负载镜像或 `local-registry-hosting` 证据唯一识别，
 脚本会停在第 2 阶段；仅在这种例外情况下，可在重跑前设置 `NICO_REGISTRY_URL=http(s)://registry-host:port`。
 该变量只选择 Registry 端点；执行器仍按默认策略跳过该端点的 TLS 证书链/名称校验，不能将此视为
 Registry 身份已验证。
@@ -60,6 +77,9 @@ Registry 身份已验证。
 /srv/nico/bundle/             # 解压后的包；内部清单已验证
 /srv/nico/bundle.onsite/      # 进度、日志、冻结的 Helm recipe 和私有状态
 ```
+
+首次执行会将 `cluster_mode` 和选中的 context 记录到该运行目录自动生成的 `install-config.json`。
+这是冻结的运行状态，不是用户填写的安装配置；后续 Kubernetes 和 Helm 命令显式使用记录的 context。
 
 执行器还会在这个运行目录生成只读的 `environment.sh`，供确认和排障使用；它不是安装输入，避免确认命令误用
 当前 shell 的业务集群 context。
@@ -105,6 +125,17 @@ kubectl --context "$CONTEXT" -n "$NICO_NAMESPACE" \
 python3 /srv/nico/onsite-tools/tools/onsite/run.py \
   --archive /srv/nico/bundle.tar.gz
 ```
+
+若首次使用 `--mode k8s`，续跑时保留同一个参数：
+
+```bash
+python3 /srv/nico/onsite-tools/tools/onsite/run.py \
+  --archive /srv/nico/bundle.tar.gz --mode k8s
+```
+
+同一运行目录必须保留已冻结的模式和 context。使用不同模式会停止；`k8s` 模式下，如果 kubeconfig 的
+当前 context 已变化，续跑也会停止，不会切换到另一个集群。续跑前通过 `kubectl config use-context`
+恢复记录的 context；不要修改生成的状态来改变本次运行目标。
 
 执行器会复核已完成阶段后继续，不会重新导入已验证的 Chart，也不会自动解锁 Helm pending 操作。查看：
 

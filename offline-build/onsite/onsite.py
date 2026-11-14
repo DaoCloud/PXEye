@@ -46,6 +46,7 @@ PXEYE_ONLY_COMPONENTS = {
 NAMESPACE = 'nico-system'
 RELEASE = 'nico'
 PXEYE_NODE_PORT = 31808
+INSTALL_MODES = ('kind', 'k8s')
 
 
 def require(value, message):
@@ -176,6 +177,7 @@ class Onsite:
         self.config = json.loads(self.config_path.read_text())
         c = self.config
         require(c.get('schema_version') == 3, 'Unsupported onsite config schema')
+        require(c.get('cluster_mode') in INSTALL_MODES, 'Invalid generated cluster mode')
         for key in ('context', 'namespace', 'site_name', 'bundle', 'work_directory'):
             require(c.get(key), 'Missing site configuration: ' + key)
         require(NAME.fullmatch(c['namespace']), 'Invalid namespace')
@@ -1204,14 +1206,20 @@ def detect_registry(args):
     return selected, {'sources': {key: sorted(value) for key, value in candidates.items()}, 'probes': probes}
 
 
-def select_install_context():
+def select_install_context(mode='kind'):
+    require(mode in INSTALL_MODES, 'Unsupported cluster mode: ' + str(mode))
     result = subprocess.run(['kubectl', 'config', 'get-contexts', '-o', 'name'],
                             capture_output=True, text=True, timeout=15)
     require(result.returncode == 0, 'Cannot read local kubeconfig contexts')
-    contexts = [name for name in result.stdout.splitlines() if name.startswith('kind-')]
+    contexts = result.stdout.splitlines()
     current = subprocess.run(['kubectl', 'config', 'current-context'], capture_output=True, text=True, timeout=15)
     require(current.returncode == 0, 'Cannot read the current kubeconfig context')
     selected = current.stdout.strip()
+    if mode == 'k8s':
+        require(selected and selected in contexts,
+                'Expected a valid current Kubernetes context; select the intended cluster with kubectl config use-context before running')
+        return selected
+    contexts = [name for name in contexts if name.startswith('kind-')]
     if selected in contexts:
         return selected
     require(len(contexts) == 1,

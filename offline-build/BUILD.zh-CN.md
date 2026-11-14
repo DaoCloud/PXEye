@@ -90,8 +90,9 @@ outputs_/
     └── build-result.json              # 版本、镜像/Chart 数量和摘要
 ```
 
-`SHA256SUMS` 是构建侧和传输侧的可选校验记录；一键现场执行器不依赖它。现场执行器只接收
-`bundle.tar.gz` 的路径，并在解压后验证包内不可变文件清单。若现场传输流程要求人工校验，仍可执行：
+`SHA256SUMS` 是构建侧和传输侧的可选校验记录；一键现场执行器不依赖它。`bundle.tar.gz` 的路径是
+唯一必填输入，可选 `--mode kind|k8s`，默认 `kind`，见[现场部署](onsite/README.zh-CN.md)。
+执行器在解压后验证包内不可变文件清单。若现场传输流程要求人工校验，仍可执行：
 
 ```bash
 cd outputs_/output/bundle-<version>

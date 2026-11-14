@@ -99,7 +99,7 @@ Registry OCI 导出和 bundle staging 缓存在 `cache/registry-exports/`；最�
 
 ## 配置与状态管理
 
-- **配置分层。** 构建配置只定义内容与版本；现场执行器只接收离线归档路径，并固定部署到 `nico-system`。物理引导网络端点、HostInband 子网和装机策略由 PXEye 后续的站点配置维护，不能写成 Kubernetes Service ClusterIP。
+- **配置分层。** 构建配置只定义内容与版本；现场执行器仅必填离线归档路径，可选 `--mode kind|k8s`（默认 `kind`），并固定部署到 `nico-system`，见[现场部署](onsite/README.zh-CN.md)。物理引导网络端点、HostInband 子网和装机策略由 PXEye 后续的站点配置维护，不能写成 Kubernetes Service ClusterIP。
 - **资源管理。** 镜像导入由脚本统一处理，Kubernetes 资源通过项目提供的 Helm Chart 管理。
 - **故障恢复。** 相同归档可复用已完成阶段；解压目录与运行状态目录从归档名自动派生。变更归档后使用不同文件名。
 - **验收范围。** 构建校验、Helm 就绪和物理装机分别验收。
@@ -120,7 +120,7 @@ containerd 内容存储、Helm 3、足够空间。ARM 材料构建会在 Docker 
   delivery.py           # 统一构建入口
   material-prepare/     # 兼容的显式镜像导出器
   helm-bundle/          # chart-sources.json
-  onsite/               # 第三步：run.py（唯一输入为 --archive）
+  onsite/               # 第三步：run.py（必填 --archive，可选 --mode kind|k8s，默认 kind）
 
 /srv/nico-build/        # 构建机配置、镜像导出、缓存和交付包
 /srv/nico/              # 火种机交付文件、执行器、自动派生的解压目录和运行记录

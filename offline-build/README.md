@@ -115,7 +115,7 @@ are not steps in this workflow. The onsite handoff starts at
 
 ## Configuration and state management
 
-- Build configuration defines contents and versions. The onsite runner accepts only the delivery archive and always deploys to `nico-system`. Physical boot endpoints, the HostInband network and provisioning policy are subsequent PXEye site settings; they must never be Kubernetes Service ClusterIPs.
+- Build configuration defines contents and versions. The onsite runner requires only the delivery archive, accepts optional `--mode kind|k8s` (default `kind`), and always deploys to `nico-system`; see [onsite deployment](onsite/README.md). Physical boot endpoints, the HostInband network and provisioning policy are subsequent PXEye site settings; they must never be Kubernetes Service ClusterIPs.
 - Scripts manage image imports, and project Helm Charts manage Kubernetes resources.
 - Recovery reuses completed stages for the same archive. Extraction and runtime-state paths are derived from the archive name; use a different archive name for changed input.
 - Package verification, Helm readiness and physical provisioning acceptance are separate outcomes.
@@ -135,7 +135,7 @@ Fireseed: Linux amd64, Python 3.11+/PyYAML, kubectl, an available cluster/Regist
   delivery.py           # unified builder entry
   material-prepare/     # legacy explicit-image exporter
   helm-bundle/          # chart-sources.json
-  onsite/               # run.py; its only input is --archive
+  onsite/               # run.py; required --archive, optional --mode kind|k8s (default kind)
 
 /srv/nico-build/        # builder configuration, prepared data, caches and delivery
 /srv/nico/              # onsite delivery files, runner, derived extraction and runtime records

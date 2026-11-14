@@ -104,8 +104,9 @@ outputs_/
 ```
 
 `SHA256SUMS` is optional build/transfer evidence; the one-command onsite
-runner does not consume it. The runner accepts only the `bundle.tar.gz` path
-and verifies the delivery's immutable internal file inventory after extraction.
+runner does not consume it. The `bundle.tar.gz` path is the only required input;
+optional `--mode kind|k8s` defaults to `kind`. See [onsite deployment](onsite/README.md).
+The runner verifies the delivery's immutable internal file inventory after extraction.
 If the field transfer process requires an explicit check, run:
 
 ```bash

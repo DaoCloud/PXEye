@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install one PXEye/NICo offline delivery with its archive path as the only input."""
+"""Install one PXEye/NICo offline delivery into an existing Kind or Kubernetes cluster."""
 
 import argparse
 import fcntl
@@ -83,24 +83,25 @@ def extract(archive, target):
     return bundle
 
 
-def resolved_install_config(bundle, work):
+def resolved_install_config(bundle, work, mode, context):
     path = work / "install-config.json"
     if path.exists():
         document = json.loads(path.read_text())
         expected = {
             "schema_version": 3,
+            "cluster_mode": mode,
+            "context": context,
             "namespace": NAMESPACE,
             "bundle": str(bundle),
             "work_directory": str(work / "deployment"),
         }
         onsite.require(
             all(document.get(key) == value for key, value in expected.items()),
-            "Resolved installation configuration targets another bundle or site; use a different archive name",
+            "Resolved installation configuration targets another bundle, mode or context; resume with the original target or use a different archive name",
         )
         print("REUSE_INSTALL_CONFIG", path, flush=True)
         return path
 
-    context = onsite.select_install_context()
     registry_args = SimpleNamespace(
         context=context,
         namespace=NAMESPACE,
@@ -114,6 +115,7 @@ def resolved_install_config(bundle, work):
         # selected archive.  The release identity is deliberately not exposed:
         # this entrypoint always manages nico-system/nico.
         "schema_version": 3,
+        "cluster_mode": mode,
         "context": context,
         "namespace": NAMESPACE,
         "site_name": "PXEye",
@@ -185,7 +187,7 @@ def print_access_instructions(config):
     print(shlex.join(password_command) + ' | base64 -d', flush=True)
 
 
-def run(archive):
+def run(archive, mode="kind"):
     target, work = paths_for(archive)
     onsite.require(
         not work.is_relative_to(target) and not target.is_relative_to(work),
@@ -198,8 +200,11 @@ def run(archive):
     work.mkdir(parents=True, exist_ok=True, mode=0o700)
     with (work / ".run.lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        context = onsite.select_install_context(mode)
         identity = {
             "archive": archive_identity(archive),
+            "cluster_mode": mode,
+            "context": context,
             "implementation": {
                 name: onsite.sha(HOME / name)
                 for name in ("run.py", "onsite.py", "progress.py", "registry_bridge.py", "relocation.py")
@@ -207,11 +212,12 @@ def run(archive):
         }
         progress = Progress(work, identity)
         with transcript(work):
+            print("INSTALL_TARGET", "mode=" + mode, "context=" + context, flush=True)
             try:
                 with progress.stage("01-unpack", "Unpack delivery and verify its embedded inventory"):
                     bundle = extract(archive, target)
                 with progress.stage("02-site", "Resolve the cluster, Registry and fixed installation identity"):
-                    resolved = resolved_install_config(bundle, work)
+                    resolved = resolved_install_config(bundle, work, mode, context)
                     write_environment(resolved)
                 engine = onsite.Onsite(resolved)
                 with progress.stage("03-preflight", "Check bundle, target cluster and tools"):
@@ -248,9 +254,11 @@ def main():
     os.umask(0o077)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--archive", required=True, type=Path, help="Absolute path to bundle.tar.gz")
+    parser.add_argument("--mode", choices=onsite.INSTALL_MODES, default="kind",
+                        help="Cluster selection: kind (default) or k8s (current kubeconfig context)")
     args = parser.parse_args()
     install_signal_handlers()
-    run(require_archive(args.archive))
+    run(require_archive(args.archive), args.mode)
 
 
 if __name__ == "__main__":
