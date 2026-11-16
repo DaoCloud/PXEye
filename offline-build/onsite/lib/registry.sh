@@ -172,7 +172,7 @@ registry_bridge_config() {
       | ($authority|escaped) as $up_re
       | ("^(https?://|//)" + $up_re + "([/?#].*)?$|^http://localhost:" + ($port|tostring) + "([/?#].*)?$") as $safe
       | "{http.reverse_proxy.header.Location}" as $loc
-      | ($loc + " != \"\" && (" + $loc + ".startsWith(\"//\") || " + $loc + ".matches(\"^[A-Za-z][A-Za-z0-9+.-]*:.*\")) && !" + $loc + ".matches(" + ($safe|tojson) + ")") as $unsafe
+      | ($loc + " != null && " + $loc + " != \"\" && (" + $loc + ".startsWith(\"//\") || " + $loc + ".matches(\"^[A-Za-z][A-Za-z0-9+.-]*:.*\")) && !" + $loc + ".matches(" + ($safe|tojson) + ")") as $unsafe
       | {admin:{disabled:true,config:{persist:false}},logging:{logs:{default:{writer:{output:"discard"}}}},apps:{http:{servers:{registry:{
           listen:["127.0.0.1:"+($port|tostring)],automatic_https:{disable:true},routes:[
             {match:[{path:[$ready]}],handle:[{handler:"static_response",status_code:204}]},
@@ -196,6 +196,7 @@ registry_bridge_start() {
     BRIDGE_PRIVATE=$(mktemp -d "$DEPLOY/private/relok-auth-XXXXXX")
     BRIDGE_READY_PATH=/__pxeye_bridge_$(basename "$BRIDGE_PRIVATE")
     chmod 700 "$BRIDGE_PRIVATE"
+    mkdir -m 700 "$BRIDGE_PRIVATE/caddy-data" "$BRIDGE_PRIVATE/caddy-config"
     auth_dir=$("$JQ" -r '.registry.docker_config_directory // empty' "$CONFIG")
     if [[ -n $auth_dir ]]; then
         "$JQ" -e '(.credsStore // "") == "" and ((.credHelpers // {})|length)==0' "$auth_dir/config.json" > /dev/null ||
@@ -205,9 +206,11 @@ registry_bridge_start() {
         port=$((30000 + ((RANDOM << 1 ^ RANDOM) % 25000)))
         BRIDGE_ADDRESS=localhost:$port
         registry_bridge_config "$BRIDGE_PRIVATE/caddy.json" "$port"
-        "$CADDY" validate --config "$BRIDGE_PRIVATE/caddy.json" > "$BRIDGE_PRIVATE/validate.log" 2>&1 ||
+        env XDG_DATA_HOME="$BRIDGE_PRIVATE/caddy-data" XDG_CONFIG_HOME="$BRIDGE_PRIVATE/caddy-config" \
+            "$CADDY" validate --config "$BRIDGE_PRIVATE/caddy.json" > "$BRIDGE_PRIVATE/validate.log" 2>&1 ||
             die "Invalid Registry transport configuration; see $BRIDGE_PRIVATE/validate.log"
         env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u all_proxy \
+            XDG_DATA_HOME="$BRIDGE_PRIVATE/caddy-data" XDG_CONFIG_HOME="$BRIDGE_PRIVATE/caddy-config" \
             "$CADDY" run --config "$BRIDGE_PRIVATE/caddy.json" > "$BRIDGE_PRIVATE/caddy.log" 2>&1 &
         BRIDGE_PID=$!
         ready=false
