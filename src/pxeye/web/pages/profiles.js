@@ -14,7 +14,9 @@ const profileFieldNames = {
   credential: "OS密码",
 };
 async function loadProfiles() {
-  state.profiles = (await api("/api/install-profiles")).profiles;
+  const result = await api("/api/install-profiles");
+  state.profiles = result.profiles;
+  state.profileDefaults = result.creation_defaults;
 }
 function profilePage() {
   return (
@@ -132,6 +134,20 @@ function profileFilesValue() {
   return files;
 }
 
+function profileOSOptions(architecture, current = "") {
+  const os = (state.osLibrary?.operating_systems || []).filter(
+    (o) =>
+      o.status === "registered" &&
+      o.native?.is_active &&
+      o.architecture === architecture &&
+      o.installer === "ubuntu-server",
+  );
+  const options = [["", "稍后选择OS"], ...os.map((o) => [o.id, o.name])];
+  if (current && !options.some((o) => o[0] === current))
+    options.push([current, "当前 OS（需检查可用性）"]);
+  return options;
+}
+
 async function profileEditor(id, copy = false) {
   await loadProfiles();
   try {
@@ -139,11 +155,13 @@ async function profileEditor(id, copy = false) {
   } catch (error) {
     state.osLibrary ||= { operating_systems: [], error: error.message };
   }
-  const p =
-    state.profiles.find((p) => p.id === id) ||
-    state.profiles.find((p) => p.network_mode === "flat" && p.active) ||
-    state.profiles.find((p) => p.network_mode === "flat");
-  if (!p) return toast("站点缺少基础安装方案，请联系管理员配置。");
+  const p = id
+    ? state.profiles.find((p) => p.id === id)
+    : state.profileDefaults?.find((p) => p.architecture === "x86_64");
+  if (!p)
+    throw Error(
+      id ? "安装方案不存在，请刷新。" : "无法读取新建方案配置，请刷新。",
+    );
   const isNew = copy || !id,
     s = structuredClone(p.settings),
     readonly = !isNew && p.status === "published";
@@ -154,17 +172,20 @@ async function profileEditor(id, copy = false) {
   };
   if (!id) s.login_mode = "password";
   state.wizard = { resource: "profile", profile: p, isNew };
-  const os = state.osLibrary.operating_systems.filter(
-    (o) =>
-      o.status === "registered" &&
-      o.native?.is_active &&
-      o.architecture === p.architecture &&
-      o.installer === "ubuntu-server",
-  );
-  const options = [["", "稍后选择OS"], ...os.map((o) => [o.id, o.name])];
-  if (s.os_id && !options.some((o) => o[0] === s.os_id))
-    options.push([s.os_id, "当前 OS（需检查可用性）"]);
-  let body = `<fieldset ${readonly ? "disabled" : ""} style="border:0;padding:0"><section class="subsection"><h3>基本信息</h3><div class="live-editor-grid">${inputField("profile-name", "方案名称", isNew ? p.name + " · 副本" : p.name)}${inputField("profile-description", "说明", p.description)}${selectField("profile-os", "默认 OS", options, s.os_id)}</div><p class="live-small">${esc(p.architecture)} · Ubuntu autoinstall · UEFI</p></section><section class="subsection"><h3>安装设置</h3><h4>系统盘选择</h4><div class="live-editor-grid">${selectField(
+  const options = profileOSOptions(p.architecture, s.os_id);
+  let body = `<fieldset ${readonly ? "disabled" : ""} style="border:0;padding:0"><section class="subsection"><h3>基本信息</h3><div class="live-editor-grid">${inputField("profile-name", "方案名称", copy && id ? p.name + " · 副本" : p.name)}${inputField("profile-description", "说明", p.description)}${
+    !id
+      ? selectField(
+          "profile-architecture",
+          "CPU 架构",
+          [
+            ["x86_64", "x86_64"],
+            ["aarch64", "aarch64"],
+          ],
+          p.architecture,
+        )
+      : ""
+  }${selectField("profile-os", "默认 OS", options, s.os_id)}</div><p class="live-small">${id ? esc(p.architecture) + " · " : ""}Ubuntu autoinstall · UEFI；可先保存草稿，发布前补齐配置。</p></section><section class="subsection"><h3>安装设置</h3><h4>系统盘选择</h4><div class="live-editor-grid">${selectField(
     "profile-disk-selection",
     "选择规则",
     [
@@ -205,9 +226,9 @@ async function profileEditor(id, copy = false) {
       ["clear", "清除密码"],
     ],
     "keep",
-  )}${multiline("profile-keys", "SSH 公钥（每行一个）", s.authorized_keys)}</div><p class="live-small">使用密码登录时，需在此处或设备规划中设置密码。</p></section>${profileFilesSection(s.custom_files || [], readonly)}<section class="subsection"><h3>安装验收</h3><label class="live-check"><input id="profile-gpu-check" type="checkbox" ${s.gpu_environment_check ? "checked" : ""}> GPU 环境检查</label><p class="live-small">仅在最终验收读取 /var/lib/metal-deployer/state.json；部署成功后才进入重启验收。最长等待 60 分钟，不执行 GPU 测试或部署脚本；未勾选时跳过。</p></section><details class="subsection"><summary>高级设置</summary><div class="live-editor-grid">${inputField("profile-timezone", "时区", s.timezone)}${multiline("profile-ntp", "NTP 服务器（每行一个）", s.ntp)}${multiline("profile-packages", "额外软件包（每行一个）", s.packages)}${inputField("profile-apt", "APT 软件源 URL", s.apt?.primary?.[0]?.uri || "")}${inputField("profile-security", "APT 安全更新源 URL", s.apt?.security?.[0]?.uri || "")}${multiline("profile-dns-checks", "DNS 验收域名（每行一个）", s.dns_checks)}${multiline("profile-http-checks", "HTTP 验收 URL（每行一个）", s.http_checks)}</div><p class="live-small">留空时仅使用 ISO 内材料；需要额外软件时填写可达的站点内 APT 源。当前不支持自定义脚本、多盘分区或 LVM。</p>${defs(
+  )}${multiline("profile-keys", "SSH 公钥（每行一个）", s.authorized_keys)}</div><p class="live-small">使用密码登录时，需在此处或设备规划中设置密码。</p></section>${profileFilesSection(s.custom_files || [], readonly)}<section class="subsection"><h3>安装验收</h3><label class="live-check"><input id="profile-gpu-check" type="checkbox" ${s.gpu_environment_check ? "checked" : ""}> GPU 环境检查</label><p class="live-small">仅在最终验收读取 /var/lib/metal-deployer/state.json；部署成功后才进入重启验收。最长等待 60 分钟，不执行 GPU 测试或部署脚本；未勾选时跳过。</p></section><details class="subsection"><summary>高级设置</summary>${p.network_mode === "flat" ? `<h4>实例网络</h4><div class="live-editor-grid">${inputField("profile-vpc", "Flat VPC ID（可稍后填写）", p.vpc_id || "")}${inputField("profile-tenant", "租户 ID（可稍后填写）", p.tenant_organization_id || "")}</div><p class="live-small">填写已有 Flat VPC 及其所属租户；可先留空，安装前补齐。</p>` : ""}<div class="live-editor-grid">${inputField("profile-timezone", "时区", s.timezone)}${multiline("profile-ntp", "NTP 服务器（每行一个）", s.ntp)}${multiline("profile-packages", "额外软件包（每行一个）", s.packages)}${inputField("profile-apt", "APT 软件源 URL", s.apt?.primary?.[0]?.uri || "")}${inputField("profile-security", "APT 安全更新源 URL", s.apt?.security?.[0]?.uri || "")}${multiline("profile-dns-checks", "DNS 验收域名（每行一个）", s.dns_checks)}${multiline("profile-http-checks", "HTTP 验收 URL（每行一个）", s.http_checks)}</div><p class="live-small">留空时仅使用 ISO 内材料；需要额外软件时填写可达的站点内 APT 源。当前不支持自定义脚本、多盘分区或 LVM。</p>${defs(
     [
-      ["网络模式", esc(p.network_mode) + " · 继承站点已有租户/VPC"],
+      ["网络模式", esc(p.network_mode)],
       ["验证范围", esc(p.evidence)],
     ],
   )}</details></fieldset><div id="resource-error" class="live-error" role="alert"></div>`;
@@ -218,7 +239,7 @@ async function profileEditor(id, copy = false) {
       button("检查方案", "profile-check") +
       button("发布版本", "profile-publish");
   modal(
-    readonly ? "查看安装方案" : "编辑安装方案",
+    readonly ? "查看安装方案" : isNew ? "新建安装方案" : "编辑安装方案",
     `${p.name} · ${isNew ? "新草稿" : "v" + p.version}`,
     body,
     foot,
@@ -242,6 +263,13 @@ async function profileSave() {
     const config = {
       name: $("#profile-name").value.trim(),
       description: $("#profile-description").value,
+      architecture: $("#profile-architecture")?.value || p.architecture,
+      ...(p.network_mode === "flat"
+        ? {
+            vpc_id: $("#profile-vpc").value.trim(),
+            tenant_organization_id: $("#profile-tenant").value.trim(),
+          }
+        : {}),
       os_id: $("#profile-os").value,
       username: $("#profile-user").value.trim(),
       login_mode: $("#profile-mode").value,
@@ -578,6 +606,15 @@ registerActions(
     }
   },
 );
+
+observeUI("change", "profile-architecture", (event) => {
+  if (event.target.id !== "profile-architecture") return;
+  $("#profile-os").innerHTML = profileOSOptions(event.target.value)
+    .map(
+      ([value, name]) => `<option value="${esc(value)}">${esc(name)}</option>`,
+    )
+    .join("");
+});
 
 observeUI("input", "profile-file-summary", (event) => {
   const input = event.target.closest("[data-file-field]");

@@ -311,12 +311,13 @@ print(json.dumps({'serial':Path('/sys/class/dmi/id/product_serial').read_text().
         return host
 
     def baseline(self, device):
-        os_config = json.loads((self.secrets / device["baseline_file"]).read_text())
+        profile = None
         if device.get("first_install_profile"):
-            library = self.profiles
-            profile = library.get(device["first_install_profile"])
-            if profile.get("managed"):
-                os_config = library.template(profile)
+            profile = self.profiles.get(device["first_install_profile"])
+        if profile and profile.get("managed"):
+            os_config = self.profiles.template(profile)
+        else:
+            os_config = json.loads((self.secrets / device["baseline_file"]).read_text())
         ai = yaml.safe_load(os_config["user_data"])["autoinstall"]
         disks = [x for x in ai["storage"]["config"] if x["type"] == "disk"]
         if device.get("first_install_profile"):

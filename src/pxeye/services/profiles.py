@@ -17,7 +17,7 @@ from pxeye.installation.storage_policy import (
     selection_label,
     apply_partition_layout,
 )
-from pxeye.installation.profile_template import apply_software_install
+from pxeye.installation.profile_template import apply_software_install, generic_ubuntu
 from pxeye.installation.custom_files import (
     normalize_custom_files,
     apply_custom_files,
@@ -34,6 +34,50 @@ class InstallProfiles:
     def __init__(self, adapter, store=None):
         self.adapter = adapter
         self.store = store or get_store(adapter.data / "console.sqlite3")
+
+    @staticmethod
+    def creation_default(architecture):
+        """Return an unsaved generic draft, without site files or hardware identities."""
+        if architecture not in ("x86_64", "aarch64"):
+            raise ValueError("安装方案架构仅支持 x86_64 或 aarch64。")
+        return {
+            "id": "",
+            "family_id": "",
+            "version": 1,
+            "name": "Ubuntu Server",
+            "description": "",
+            "status": "draft",
+            "active": False,
+            "managed": True,
+            "architecture": architecture,
+            "network_mode": "flat",
+            "os_release": "",
+            "ssh_user": "operator",
+            "dns": "",
+            "timezone": "UTC",
+            "dns_checks": [],
+            "http_checks": [],
+            "baseline_file": "",
+            "allocation": {},
+            "legacy_os": False,
+            "settings": {
+                "os_id": "",
+                "username": "operator",
+                "login_mode": "password",
+                "authorized_keys": [],
+                "timezone": "UTC",
+                "ntp": [],
+                "packages": [],
+                "apt": {},
+                "dns_checks": [],
+                "http_checks": [],
+                "allow_overrides": dict.fromkeys(OVERRIDABLE, True),
+                "storage": normalize_storage(),
+                "gpu_environment_check": False,
+                "custom_files": [],
+            },
+            "template": generic_ubuntu(None, "operator", "", "UTC", ""),
+        }
 
     def import_legacy(self):
         """Import initial templates once at application bootstrap, never in list reads."""
@@ -106,6 +150,8 @@ class InstallProfiles:
         settings["storage"] = normalize_storage(settings.get("storage"))
         settings.setdefault("gpu_environment_check", False)
         settings.setdefault("custom_files", [])
+        allocation = row.get("allocation", {})
+        vpc = allocation.get("network", {}).get("auto_config", {}).get("vpc_id", "")
         return {
             k: row[k]
             for k in (
@@ -122,6 +168,10 @@ class InstallProfiles:
             )
         } | {
             "settings": settings,
+            "vpc_id": vpc.get("value", "") if isinstance(vpc, dict) else vpc,
+            "tenant_organization_id": allocation.get("tenant", {}).get(
+                "tenant_organization_id", ""
+            ),
             "custom_files_policy": {
                 "max_files": MAX_FILES,
                 "max_file_bytes": MAX_FILE_BYTES,
@@ -131,7 +181,7 @@ class InstallProfiles:
             "ssh_user": settings["username"],
             "revision": self.revision(row),
             "password_present": bool(row["settings"].get("login_ref")),
-            "references": self.references(row["id"]),
+            "references": self.references(row["id"]) if row["id"] else {"devices": [], "tasks": 0},
             "layout": storage_label(settings["storage"]),
             "disk_selection": selection_label(settings["storage"]),
             "boot_mode": "UEFI",
@@ -147,7 +197,11 @@ class InstallProfiles:
             "profiles": [
                 self.public(r)
                 for r in sorted(self.rows(), key=lambda r: (r["name"], -r["version"], r["id"]))
-            ]
+            ],
+            "creation_defaults": [
+                self.public(self.creation_default(architecture)) | {"revision": ""}
+                for architecture in ("x86_64", "aarch64")
+            ],
         }
 
     def selectable(self):
@@ -210,9 +264,14 @@ class InstallProfiles:
             "storage",
             "gpu_environment_check",
             "custom_files",
+            "architecture",
+            "vpc_id",
+            "tenant_organization_id",
         }
         if not isinstance(config, dict) or set(config) - fields:
             raise ValueError("方案含未知配置。")
+        if config.get("architecture", previous["architecture"]) != previous["architecture"]:
+            raise ValueError("已有方案或其副本不能修改架构，请新建方案。")
         s = copy.deepcopy(previous["settings"])
         name, description = (
             config.get("name", previous["name"]),
@@ -226,7 +285,15 @@ class InstallProfiles:
             or len(description) > 1000
         ):
             raise ValueError("请填写有效方案名称和说明。")
-        for k in fields - {"name", "description", "password", "credential_action"}:
+        for k in fields - {
+            "name",
+            "description",
+            "password",
+            "credential_action",
+            "architecture",
+            "vpc_id",
+            "tenant_organization_id",
+        }:
             if k in config:
                 s[k] = copy.deepcopy(config[k])
         if type(s.get("gpu_environment_check", False)) is not bool:
@@ -342,9 +409,47 @@ class InstallProfiles:
             DeviceConfig(self.adapter, None).save_login(s, s["username"], password)
         return name.strip(), description, s
 
+    @staticmethod
+    def allocation(config, previous):
+        """Edit explicit Flat allocation references, leaving unrelated options intact."""
+        allocation = copy.deepcopy(previous.get("allocation", {}))
+        if "vpc_id" in config:
+            vpc = config["vpc_id"]
+            if not isinstance(vpc, str):
+                raise ValueError("VPC ID 格式无效。")
+            vpc = vpc.strip()
+            if vpc:
+                try:
+                    vpc = str(uuid.UUID(vpc))
+                except ValueError:
+                    raise ValueError("VPC ID 格式无效。") from None
+                if previous["network_mode"] != "flat":
+                    raise ValueError("仅 Flat 安装方案支持设置 VPC ID。")
+                allocation.setdefault("network", {}).setdefault("auto_config", {})["vpc_id"] = {
+                    "value": vpc
+                }
+            else:
+                allocation.get("network", {}).get("auto_config", {}).pop("vpc_id", None)
+        if "tenant_organization_id" in config:
+            tenant = config["tenant_organization_id"]
+            if (
+                not isinstance(tenant, str)
+                or len(tenant) > 255
+                or any(c in tenant for c in "\n\r\x00")
+            ):
+                raise ValueError("租户 ID 格式无效。")
+            tenant = tenant.strip()
+            if tenant:
+                allocation.setdefault("tenant", {})["tenant_organization_id"] = tenant
+            else:
+                allocation.get("tenant", {}).pop("tenant_organization_id", None)
+        return allocation
+
     def save(self, body):
         if set(body) != {"id", "revision", "source_id", "config"}:
             raise ValueError("方案保存字段不完整。")
+        if not isinstance(body["config"], dict):
+            raise ValueError("方案配置格式无效。")
         with self.store.db() as db:
             db.execute("BEGIN IMMEDIATE")
             if body["id"]:
@@ -352,7 +457,11 @@ class InstallProfiles:
                 if old.get("status") != "draft" or body["revision"] != self.revision(old):
                     raise ValueError("只能编辑当前草稿；已发布版本请创建新版本。")
             else:
-                source = self.get(body["source_id"], executable=False)
+                source = (
+                    self.get(body["source_id"], executable=False)
+                    if body["source_id"]
+                    else self.creation_default(body["config"].get("architecture", "x86_64"))
+                )
                 if not source.get("managed") or source["network_mode"] != "flat":
                     raise ValueError("请选择已支持的通用Flat方案作为基础。")
                 old = copy.deepcopy(source)
@@ -362,9 +471,11 @@ class InstallProfiles:
                     version=1,
                     status="draft",
                     active=False,
+                    created_at=time.time(),
                 )
                 if body["revision"]:
                     raise ValueError("新草稿不能携带旧版本。")
+            allocation = self.allocation(body["config"], old)
             name, description, settings = self.normalize(body["config"], old)
             row = old | {
                 "name": name,
@@ -373,6 +484,7 @@ class InstallProfiles:
                 "status": "draft",
                 "active": False,
                 "legacy_os": False,
+                "allocation": allocation,
             }
             row.pop("checked", None)
             self.put(db, row)

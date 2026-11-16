@@ -33,7 +33,8 @@ def apply_software_install(ai, packages=None, apt=None):
 def generic_ubuntu(source, username, dns, timezone, ntp):
     if not re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}", username):
         raise ValueError("安装用户名称无效。")
-    original = yaml.safe_load(source["user_data"])["autoinstall"]
+    source = source or {}
+    original = yaml.safe_load(source["user_data"])["autoinstall"] if source else {}
     ai = {
         "version": 1,
         "locale": original.get("locale", "en_US.UTF-8"),
@@ -42,7 +43,7 @@ def generic_ubuntu(source, username, dns, timezone, ntp):
         "ssh": {
             "install-server": True,
             "allow-pw": False,
-            "authorized-keys": original["ssh"]["authorized-keys"],
+            "authorized-keys": original.get("ssh", {}).get("authorized-keys", []),
         },
         "network": {
             "version": 2,
@@ -52,7 +53,7 @@ def generic_ubuntu(source, username, dns, timezone, ntp):
                     "dhcp6": False,
                     "addresses": ["192.0.2.2/24"],
                     "routes": [{"to": "default", "via": "192.0.2.1"}],
-                    "nameservers": {"addresses": [dns]},
+                    "nameservers": {"addresses": [dns] if dns else []},
                 }
             },
         },
@@ -100,7 +101,7 @@ def generic_ubuntu(source, username, dns, timezone, ntp):
         "user-data": {
             "ssh_deletekeys": False,
             "timezone": timezone,
-            "ntp": {"enabled": True, "servers": [ntp]},
+            "ntp": {"enabled": bool(ntp), "servers": [ntp] if ntp else []},
         },
         "shutdown": "reboot",
         "refresh-installer": {"update": False},
