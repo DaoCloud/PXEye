@@ -140,3 +140,7 @@ residual PVCs, Secrets, Services and other namespaced resources rather than adop
 installation needs an explicit migration or a clean `nico-system`; it is not adopted by this bundle. The initial
 control-plane-only delivery also keeps `nico-dhcp` at zero replicas: real DNS/NTP/PXE/VIP values and explicit DHCP
 enablement are a later site-network action.
+
+## Compare with a test environment
+
+Use the [version audit tool](../tools/version-audit/README.md) to export committed packaging inputs and runtime image/Scout file inventories, then compare them. It does not change packaging configuration or running services.

@@ -123,3 +123,7 @@ ARM64 引导材料；不包含 REST、Temporal、Keycloak、DPF 服务或操作�
 等 namespaced 资源，不会接管它们。旧的四个独立 NICo Release 需要明确迁移或使用干净的 `nico-system`；
 本离线包不会接管它们。初始控制面包还会将 `nico-dhcp` 保持为零副本；真实 DNS/NTP/PXE/VIP 与显式启用 DHCP
 属于后续站点网络配置。
+
+## 与测试环境核对版本
+
+使用[版本核对脚本](../tools/version-audit/README.zh-CN.md)导出已提交打包配置和环境镜像、Scout文件清单，生成逐项对比。脚本不会修改打包配置或运行服务。
