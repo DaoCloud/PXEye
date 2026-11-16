@@ -2055,29 +2055,21 @@
   padding: 16px 0;
 }
 .equipment-planning-search {
-  display: flex;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   margin-left: auto;
-  margin-right: 8%;
   width: min(520px, 70%);
 }
 .equipment-planning-search label {
   white-space: nowrap;
+  font-size: 12px;
   font-weight: 500;
 }
-.equipment-planning-search input {
+.equipment-planning-search .input {
   width: 100%;
   min-width: 0;
-  padding: 10px 14px;
-  border: 1px solid var(--border, #d6dde5);
-  border-radius: 8px;
-  background: var(--surface, #fff);
-  color: inherit;
-}
-.equipment-planning-search input:focus-visible {
-  outline: 2px solid #76b900;
-  outline-offset: 2px;
 }
 @media (max-width: 700px) {
   .equipment-planning-toolbar {
