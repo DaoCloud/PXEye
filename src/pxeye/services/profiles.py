@@ -516,8 +516,12 @@ class InstallProfiles:
         p = self.get(key, executable=False)
         s = p["settings"]
         problems = []
-        if not s["username"] or not s["os_id"]:
-            problems.append("请补齐OS和用户名。")
+        if not s["os_id"]:
+            problems.append("请选择默认 OS。")
+        if not s["username"]:
+            problems.append("请填写 OS 用户名。")
+        if problems:
+            return {"passed": False, "problems": problems, "os_record": None}
         os_record = None
         try:
             os_record = self.compatible_os(s["os_id"], p)

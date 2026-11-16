@@ -245,7 +245,7 @@ async function profileEditor(id, copy = false) {
     foot,
   );
 }
-async function profileSave() {
+async function profileSave({ action } = {}) {
   return busy(async () => {
     const w = state.wizard,
       p = w.profile;
@@ -312,6 +312,7 @@ async function profileSave() {
       config,
     });
     await profileEditor(saved.id);
+    if (action) return await busy(() => profileAction(action, saved.id));
     toast(saved.export_error || "草稿已保存。");
   });
 }
@@ -589,9 +590,9 @@ registerActions(
         case "profile-save":
           return await profileSave();
         case "profile-check":
-          return await profileAction("check");
+          return await profileSave({ action: "check" });
         case "profile-publish":
-          return await profileAction("publish");
+          return await profileSave({ action: "publish" });
         case "profile-version":
           return await profileAction("new-version", el.dataset.id);
         case "profile-active":

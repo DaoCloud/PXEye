@@ -73,8 +73,8 @@ Expand **Advanced settings (高级设置)**:
 ## 3. Actions
 
 1. Click **New profile (新建方案)**, select an architecture and enter a name, or **Copy (复制)** an existing profile. **Save draft (保存草稿)** is available before OS and login credentials are complete.
-2. Reopen the draft and **Check profile (检查方案)**. Resolve missing OS, username or incompatible materials.
-3. Click **Publish version (发布版本)**. Select it in device **System configuration (系统配置)** and review the resolved login and disk settings.
+2. Fill in the draft and click **Check profile (检查方案)**. Current edits are saved before checking. Missing default OS, missing OS username and incompatible materials have separate messages; NTP is optional.
+3. Click **Publish version (发布版本)**. Current edits are saved before validation and publication. Select it in device **System configuration (系统配置)** and review the resolved login and disk settings.
 4. Use **View (查看)** for published versions. To change one, click **New version (新版本)**, edit and publish, then select that version for devices.
 5. **Disable (停用)** profiles for new installations and **Enable (启用)** them again as needed. Unreferenced drafts may be deleted.
 
