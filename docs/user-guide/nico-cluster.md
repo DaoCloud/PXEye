@@ -4,8 +4,8 @@ language: en
 title: NICo cluster
 description: Deploy NICo online or offline with Helm, inspect services and progress, and connect the site.
 navigation_group: configuration
-updated_at: "2026-11-08"
-product_version: "0.22.1"
+updated_at: "2026-11-16"
+product_version: "0.22.16"
 ---
 
 # NICo cluster
@@ -30,7 +30,8 @@ Open **Configuration → NICo cluster** to run Helm in the Kubernetes cluster ho
 | Namespace | The PXEye namespace; read-only. |
 | Timeout | 900 seconds by default; 60–1800 seconds. |
 | values YAML | Paste Chart parameters or read a YAML file. Ordinary Charts need no separate component manifest; complete recipes use their per-phase values. |
-| Site connection | Optional section for Core HTTPS, public PXE URL, client and CA Secrets, and target architecture. Service URLs can also be supplied when connecting after installation. |
+
+Configure boot network and installation-material HTTP addresses under [Site settings → Management boot network](site-settings.md).
 
 Set image, database, Vault, service exposure and Boot options through the Chart values. A standalone NICo Core Chart uses the selected release prefix for default workload names and mounts the shared PXEye materials PVC. Complete recipes must keep workload names, Service DNS and Secret references aligned through their per-phase values. The materials PVC comes from site configuration and is independent of the Helm release name.
 

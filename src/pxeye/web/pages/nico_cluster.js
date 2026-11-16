@@ -190,16 +190,7 @@ function nicoConfigPanel(data) {
     )
     .join(
       "",
-    )}</div>${sourceFields}<div class="nico-field-grid">${inputField("nico-site-name", "站点名称", values.site_name, 'maxlength="100"')}${inputField("nico-prefix", "Helm 发布名", values.release_prefix, 'maxlength="49"')}${inputField("nico-namespace", "命名空间", data.namespace, "readonly")}${inputField("nico-timeout", "部署超时（秒）", values.timeout_seconds, 'type="number" min="60" max="1800"')}</div><div class="nico-values-header"><label for="nico-values">安装参数 · values YAML</label><label class="nico-values-file">从文件读取<input type="file" id="nico-values-file" accept=".yaml,.yml"></label></div><textarea id="nico-values" class="input nico-values-editor" spellcheck="false" rows="10" placeholder="在这里粘贴 Chart 的 values，也可以从 YAML 文件读取。">${esc(values.values_yaml || "")}</textarea><p class="live-small">参数按所选 Chart 生效。NICo Core 的数据库、Vault、镜像和 Boot 配置在 values 中填写；普通 Chart 不需要额外的组件清单。</p><details class="nico-connection-settings"><summary>站点连接（可选，安装后应用）</summary><div class="nico-field-grid">${inputField("nico-core-url", "Core HTTPS 地址", values.core_url, `type="url" placeholder="https://${esc(values.release_prefix)}-nico-api.${esc(data.namespace)}.svc:1079"`)}${inputField("nico-pxe-url", "PXE / HTTP 对外地址", values.pxe_url, 'type="url" placeholder="http://192.0.2.50:8080"')}${inputField("nico-client-secret", "Core 客户端 Secret", values.client_secret, `placeholder="${esc(values.release_prefix)}-nico-admin-client"`)}${inputField("nico-ca-secret", "Core CA Secret", values.ca_secret, `placeholder="${esc(values.release_prefix)}-nico-site-ca"`)}${selectField(
-    "nico-architecture",
-    "被安装主机架构",
-    [
-      ["both", "x86_64 与 ARM64"],
-      ["x86_64", "x86_64"],
-      ["aarch64", "ARM64 / Grace"],
-    ],
-    values.architecture,
-  )}</div></details>${!data.enabled || !data.cluster_available ? '<div class="nico-notice"><span>当前仅可查看服务；执行安装需要 PXEye 的 ServiceAccount 具备部署权限并启用集群部署。</span></div>' : ""}<div class="nico-form-actions">${button("检查并预览", "nico-preflight", true, active || state.nicoUploading || !data.enabled || !data.cluster_available || (offline ? !values.package_id : !values.chart_source) ? "disabled" : "")}</div></div></section><aside class="site-panel nico-deployment-notes"><header class="site-panel-header"><div><span class="site-eyebrow">部署流程</span><h2>填写参数，执行 Helm</h2></div></header><ol><li><span>01</span><div><strong>选择部署方式</strong><p>在线下载，或从页面上传离线材料。</p></div></li><li><span>02</span><div><strong>填写安装参数</strong><p>指定发布名和 values，检查生成的 Helm 命令。</p></div></li><li><span>03</span><div><strong>确认并部署</strong><p>后台执行 Helm，查看服务和操作进度。</p></div></li><li><span>04</span><div><strong>连接站点</strong><p>服务和 Boot 材料就绪后，验证 Core 并启用业务页面。</p></div></li></ol><p class="site-panel-note">NICo Core Chart 不包含全部数据库、Vault、REST 和工作流依赖。可分别安装依赖 Chart，或使用包含它们的完整部署包。</p></aside></div>`;
+    )}</div>${sourceFields}<div class="nico-field-grid">${inputField("nico-site-name", "站点名称", values.site_name, 'maxlength="100"')}${inputField("nico-prefix", "Helm 发布名", values.release_prefix, 'maxlength="49"')}${inputField("nico-namespace", "命名空间", data.namespace, "readonly")}${inputField("nico-timeout", "部署超时（秒）", values.timeout_seconds, 'type="number" min="60" max="1800"')}</div><div class="nico-values-header"><label for="nico-values">安装参数 · values YAML</label><label class="nico-values-file">从文件读取<input type="file" id="nico-values-file" accept=".yaml,.yml"></label></div><textarea id="nico-values" class="input nico-values-editor" spellcheck="false" rows="10" placeholder="在这里粘贴 Chart 的 values，也可以从 YAML 文件读取。">${esc(values.values_yaml || "")}</textarea><p class="live-small">参数按所选 Chart 生效。NICo Core 的数据库、Vault、镜像和 Boot 配置在 values 中填写；普通 Chart 不需要额外的组件清单。</p>${!data.enabled || !data.cluster_available ? '<div class="nico-notice"><span>当前仅可查看服务；执行安装需要 PXEye 的 ServiceAccount 具备部署权限并启用集群部署。</span></div>' : ""}<div class="nico-form-actions">${button("检查并预览", "nico-preflight", true, active || state.nicoUploading || !data.enabled || !data.cluster_available || (offline ? !values.package_id : !values.chart_source) ? "disabled" : "")}</div></div></section><aside class="site-panel nico-deployment-notes"><header class="site-panel-header"><div><span class="site-eyebrow">部署流程</span><h2>填写参数，执行 Helm</h2></div></header><ol><li><span>01</span><div><strong>选择部署方式</strong><p>在线下载，或从页面上传离线材料。</p></div></li><li><span>02</span><div><strong>填写安装参数</strong><p>指定发布名和 values，检查生成的 Helm 命令。</p></div></li><li><span>03</span><div><strong>确认并部署</strong><p>后台执行 Helm，查看服务和操作进度。</p></div></li><li><span>04</span><div><strong>连接站点</strong><p>服务和 Boot 材料就绪后，验证 Core 并启用业务页面。</p></div></li></ol><p class="site-panel-note">NICo Core Chart 不包含全部数据库、Vault、REST 和工作流依赖。可分别安装依赖 Chart，或使用包含它们的完整部署包。</p></aside></div>`;
 }
 
 async function nicoUploadMaterial(file) {
@@ -466,12 +457,8 @@ observeUI("input", "nico_cluster.js", (event) => {
     "nico-repository-url": "repository_url",
     "nico-values": "values_yaml",
     "nico-timeout": "timeout_seconds",
-    "nico-client-secret": "client_secret",
-    "nico-ca-secret": "ca_secret",
     "nico-site-name": "site_name",
     "nico-prefix": "release_prefix",
-    "nico-core-url": "core_url",
-    "nico-pxe-url": "pxe_url",
   };
   const key = keys[event.target.id];
   if (key && state.nicoForm) state.nicoForm[key] = event.target.value;
@@ -499,10 +486,6 @@ observeUI("change", "nico_cluster.js", async (event) => {
         ? state.nico.source_defaults?.chart_source || ""
         : "";
     render();
-    return;
-  }
-  if (event.target.id === "nico-architecture") {
-    state.nicoForm.architecture = event.target.value;
     return;
   }
   if (event.target.id !== "nico-package") return;

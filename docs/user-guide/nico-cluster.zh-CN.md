@@ -4,8 +4,8 @@ language: zh-CN
 title: NICo 集群
 description: 在线或离线通过 Helm 部署 NICo，查看服务和部署进度，并连接站点。
 navigation_group: configuration
-updated_at: "2026-11-08"
-product_version: "0.22.1"
+updated_at: "2026-11-16"
+product_version: "0.22.16"
 ---
 
 # NICo 集群
@@ -30,7 +30,8 @@ product_version: "0.22.1"
 | 命名空间 | PXEye 所在命名空间，页面只读。 |
 | 部署超时 | 默认 900 秒，可填 60–1800 秒。 |
 | values YAML | 粘贴所选 Chart 的安装参数，或点击**从文件读取**。普通 Chart 无需另外编写组件映射表；完整部署包使用包内各阶段 values。 |
-| 站点连接 | 可选展开。填写 Core HTTPS、PXE 对外地址、客户端和 CA Secret，以及目标主机架构；也可在安装后的连接确认中补填服务地址。 |
+
+管理引导和安装材料 HTTP 地址在[站点设置 → 管理引导网络](site-settings.zh-CN.md)中统一配置。
 
 NICo 的镜像、数据库、Vault、服务暴露和 Boot 配置按 Chart 的 values 填写。单个 NICo Core Chart 的默认工作负载名沿用所填发布名前缀，并使用 PXEye 的共享材料 PVC。完整部署包需在各阶段values中显式保持名称、Service DNS及Secret引用一致；材料PVC使用站点配置，不随Helm发布名改名。
 
