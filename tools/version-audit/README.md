@@ -33,7 +33,7 @@ Snapshots may be collected on different hosts and copied together for comparison
 | Images | Reuse the packager from a committed Git snapshot to render the full parent Chart and dependency image closure | Active Pod main/init containers, actual imageID, Pod UID and node | Linux platform manifest digest by image role |
 | x86 Boot / Scout | Hash selected files from the configured Boot image's local layers | Hash files actually published by NICo PXE, including external mounts | Relative path and SHA256 |
 | ARM Boot / Scout | With `--include-arm64`, read the committed ARM file recipe | Published `aarch64/` files | Relative path and SHA256 |
-| Additional ISO/materials | The default bundle excludes externally supplied ISO files | Published ISO, BFB, deb, kernel/initrd files and build metadata | Report runtime-only files separately |
+| Additional ISO/materials | The default bundle excludes externally supplied ISO files | With `--include-site-files`, hash published site materials under `nico/` | Report runtime-only files separately |
 
 JSON preserves image references, available OCI version/revision labels and the Scout revision declared by `BUILD-INFO.json`. Actual file hashes determine equality. Credentials, file contents and cloud-init/user-data are not exported.
 
@@ -57,7 +57,8 @@ Console output and `comparison.txt` group images and files, showing up to 12 fil
 - `package --registry <host:port>` uses the same cache hostname mapping as `make bundles`. It reads current Registry tag metadata instead of trusting stale local tags. Add `--registry-http` for HTTP; otherwise HTTPS uses system CA validation. Without a Registry, resolve local containerd records.
 - `package --chart-cache <directory>` reuses checksum-named archives from the build workspace's `cache/charts`, verifying hashes first. Missing pinned Helm sources may be downloaded. No prebuilt bundle is required.
 - `package --include-arm64` corresponds to `make bundles INCLUDE_ARM64_MATERIALS=1`. Default is disabled, matching Make. The material image digest is generated during an actual build; this audit exports the committed payload file identities.
-- `runtime --namespace <name>` is repeatable; defaults to `nico-system` and `mmzhou`. The default Pod name pattern is `nico|pxeye|os-install-console|cert-manager`, adjustable via `--name-pattern`. Finished and deleting Pods are excluded.
+- `runtime --namespace <name>` is repeatable; defaults to `nico-system`, `mmzhou` and `cert-manager`. The default Pod name pattern is `nico|pxeye|os-install-console|cert-manager`, adjustable via `--name-pattern`. Finished and deleting Pods are excluded.
+- `runtime --include-site-files` also hashes uploads under `nico/`. Default skips site uploads and focuses on Boot/Scout infrastructure files. Large ISO hashes can take time.
 - `runtime --boot-root <path>` defaults to `/forge-boot-artifacts/blobs/internal` inside PXE. Actual hashing, particularly ISO files, can take time. Requires `sh`, `find`, `sha256sum` and, for build metadata, `head` in that container.
 - `--architecture amd64|arm64` selects the control-plane container platform, default `amd64`, independently of the installed host architecture.
 - `--content-dir`, `--ctr`, `--containerd-namespace` adapt local storage access. Kind stores content inside its node containers; supply accessible paths/tools. Missing content remains unverified.

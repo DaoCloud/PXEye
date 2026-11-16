@@ -332,15 +332,20 @@ def package(args):
 def runtime(args):
     report = snapshot('runtime')
     report['context'] = args.context
-    report['namespaces'] = args.namespace or ['nico-system', 'mmzhou']
+    report['namespaces'] = args.namespace or ['nico-system', 'mmzhou', 'cert-manager']
     report['architecture'] = args.architecture
     report['file_scope'] = ROOT if not args.boot_root else args.boot_root
+    report['include_site_files'] = args.include_site_files
     content = Content(args)
     kube = [args.kubectl, '--context', args.context, '--request-timeout=30s']
     found = False
     file_sources = set()
     for namespace in report['namespaces']:
-        pods = json.loads(run(kube + ['-n', namespace, 'get', 'pods', '-o', 'json']))
+        try:
+            pods = json.loads(run(kube + ['-n', namespace, 'get', 'pods', '-o', 'json']))
+        except (ValueError, OSError) as error:
+            report['errors'].append(f'无法读取namespace {namespace}: {error}')
+            continue
         for pod in pods['items']:
             meta, spec, status = pod['metadata'], pod['spec'], pod.get('status', {})
             if (not re.search(args.name_pattern, meta['name']) or meta.get('deletionTimestamp')
@@ -370,7 +375,8 @@ def runtime(args):
         base = kube + ['-n', namespace, 'exec', pod, '-c', container, '--']
         root = args.boot_root or ROOT
         print(f'计算发布文件SHA256 {namespace}/{pod}:{root}', file=sys.stderr)
-        command = f'find "$1" -type f \\( {FILE_TEST} \\) -exec sha256sum {{}} +'
+        prune = '' if args.include_site_files else '-path "$1/nico" -prune -o '
+        command = f'find "$1" {prune}-type f \\( {FILE_TEST} \\) -exec sha256sum {{}} +'
         try:
             output = run(base + ['sh', '-c', command, 'audit', root])
             if not output.strip():
@@ -393,6 +399,8 @@ def runtime(args):
         except (ValueError, OSError) as error:
             report['errors'].append(f'{namespace}/{pod}文件采集失败: {error}')
     report['notes'].append('文件只读核对PXE发布目录中的EFI/squashfs/ISO/BFB/deb/kernel/initrd及构建元数据；不读取凭据或user-data。')
+    if not args.include_site_files:
+        report['notes'].append('默认跳过nico/下站点上传的ISO等材料；加--include-site-files可完整计算这些额外文件。')
     return report
 
 
@@ -403,6 +411,7 @@ def compare(args):
         raise ValueError('Use schema-1 package/runtime snapshots')
     result = snapshot('comparison')
     result.update(package_revision=expected.get('source_revision'), context=actual.get('context'))
+    result['scope'] = {k: actual.get(k) for k in ('namespaces', 'file_scope', 'include_site_files')}
     result['rows'] = []
     for section, key, value in [('images', 'role', 'digest'), ('files', 'path', 'sha256')]:
         left, right = defaultdict(list), defaultdict(list)
@@ -423,6 +432,8 @@ def compare(args):
     if not expected['images'] or not actual['images']:
         result['errors'].append('镜像清单为空，不能判定环境与打包版本一致。')
     print(f"打包基准 {expected.get('source_revision', '')[:12]}  |  环境 {actual.get('context')}")
+    print('环境范围: ' + ', '.join(actual.get('namespaces', [])))
+    for note in actual['notes']: print('范围说明: ' + note)
     for section, label in [('images', '镜像'), ('files', '文件')]:
         rows = [r for r in result['rows'] if r['type'] == section]
         print(f'\n{label}（{len(rows)}项）')
@@ -475,10 +486,11 @@ No images are built/pulled, no workloads/configuration are changed. package may 
             p.add_argument('--include-arm64', action='store_true', help='Match make bundles INCLUDE_ARM64_MATERIALS=1')
         else:
             p.add_argument('--context', required=True)
-            p.add_argument('--namespace', action='append', help='Repeatable; default nico-system and mmzhou')
+            p.add_argument('--namespace', action='append', help='Repeatable; default nico-system, mmzhou and cert-manager')
             p.add_argument('--name-pattern', default='nico|pxeye|os-install-console|cert-manager', help='Pod name regex scope')
             p.add_argument('--kubectl', default='kubectl')
             p.add_argument('--boot-root', help='PXE container published-file root')
+            p.add_argument('--include-site-files', action='store_true', help='Also hash uploaded ISO/BFB and other files under nico/; potentially slow')
     args = parser.parse_args()
     try:
         if args.command == 'compare':

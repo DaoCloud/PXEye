@@ -36,7 +36,7 @@ python3 "$AUDIT" compare \
 | 镜像 | 从 Git 提交快照复用打包器，渲染父 Chart 及依赖的完整镜像清单；读取对应 Registry/本地内容 | 所选活动 Pod 的主容器和 init container，包括实际 imageID、Pod UID、节点 | 同一镜像角色的 Linux 平台 manifest digest |
 | x86 Boot / Scout | 从已提交配置引用的 Boot 镜像本地层中计算文件摘要 | 从 NICo PXE 容器实际发布目录计算摘要，包括外挂材料 | 相对路径及文件 SHA256 |
 | ARM Boot / Scout | 加 `--include-arm64` 后，读取提交中的 ARM 文件配方 | 同一 PXE 发布目录中的 `aarch64/` 文件 | 相对路径及文件 SHA256 |
-| ISO 等额外材料 | 默认打包流程不包含外部 ISO | 导出已发布的 ISO、BFB、deb、kernel/initrd 等文件摘要 | 标为“仅环境”，不假定它们应进入默认包 |
+| ISO 等额外材料 | 默认打包流程不包含外部 ISO | 加 `--include-site-files` 后导出 `nico/` 下站点发布材料摘要 | 标为“仅环境”，不假定它们应进入默认包 |
 
 镜像标签和可用的 OCI 版本、源码提交标签保存在 JSON；Scout 的 `BUILD-INFO.json` 声明提交也会读取，但最终一致性以实际文件摘要为准。文件内容及凭据不导出，cloud-init/user-data 不在扫描范围。
 
@@ -58,7 +58,8 @@ python3 "$AUDIT" compare \
 - `package --registry <host:port>`：与 `make bundles REGISTRY=...` 的缓存地址映射一致；指定后从 Registry 读取当前标签摘要，避免采用过期本地标签。HTTP 必须显式加 `--registry-http`。不提供 Registry 时按本地 containerd 记录解析。
 - `package --chart-cache <目录>`：复用构建工作区 `cache/charts` 中的 SHA 命名归档，复用前重新校验。缺少时可能下载固定上游 Chart；不要求已有离线包。
 - `package --include-arm64`：对应 `make bundles INCLUDE_ARM64_MATERIALS=1`。默认关闭，与仓库 Make 默认一致；ARM 材料镜像在构建时生成，本脚本只导出配方中的文件身份。
-- `runtime --namespace <名称>`：可重复；默认 `nico-system`、`mmzhou`，Pod 名默认匹配 `nico|pxeye|os-install-console|cert-manager`，可用 `--name-pattern` 调整。已结束和正在删除的 Pod 不纳入。
+- `runtime --namespace <名称>`：可重复；默认 `nico-system`、`mmzhou`、`cert-manager`，Pod 名默认匹配 `nico|pxeye|os-install-console|cert-manager`，可用 `--name-pattern` 调整。已结束和正在删除的 Pod 不纳入。
+- `runtime --include-site-files`：默认跳过 `nico/` 下站点上传材料，只核对 Boot/Scout 等基础材料。需要完整导出站点 ISO、BFB 等文件时启用，计算大文件摘要可能较慢。
 - `runtime --boot-root <路径>`：默认 PXE 容器内 `/forge-boot-artifacts/blobs/internal`。计算真实文件摘要可能耗时，尤其是 ISO；需要容器具备 `sh`、`find`、`sha256sum`，读取构建说明还需 `head`。
 - `--architecture amd64|arm64`：控制面容器运行平台，默认 `amd64`，与待安装主机的 ARM 架构分别处理。
 - `--content-dir`、`--ctr`、`--containerd-namespace`：适配本机 containerd；Kind 的内容存储在节点容器内，需使用对应可访问的存储路径和工具。无法访问时明确显示无法确认。
