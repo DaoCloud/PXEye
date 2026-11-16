@@ -127,8 +127,9 @@ bash /srv/nico/onsite-tools/install.sh \
   --archive /srv/nico/bundle.tar.gz --mode k8s
 ```
 
-Completed stages are checked and reused. A changed mode, context, archive or implementation stops the run; restore
-the original target/toolkit to continue. Pending Helm operations are never unlocked automatically. Existing Python
+Completed stages are checked and reused. A changed mode, context, archive or state format stops the run; restore
+the original target to continue. Updating the Shell tools records the source fingerprint and rechecks the frozen
+configuration, recipe and Helm intent, so tool fixes can resume. Pending Helm operations are never unlocked automatically. Existing Python
 runner progress is not adopted. Start Shell with an archive name that has no installation in progress; do not edit
 or delete old state to bypass identity checks.
 

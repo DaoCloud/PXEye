@@ -92,7 +92,7 @@ safe_extract() {
     [[ $total =~ ^[0-9]+$ ]] || die 'Cannot determine archive expansion size'
     if ((limit > 0 && total > limit)); then die 'Archive expansion exceeds available space or configured limit'; fi
     tar --extract --file "$archive" --directory "$destination" --no-same-owner --no-same-permissions \
-        --delay-directory-restore --keep-old-files
+        --delay-directory-restore --keep-old-files --warning=no-timestamp
     rm -f -- "$listing" "$names"
 }
 

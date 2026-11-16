@@ -119,7 +119,8 @@ bash /srv/nico/onsite-tools/install.sh \
   --archive /srv/nico/bundle.tar.gz --mode k8s
 ```
 
-已完成阶段会复核并复用。模式、context、归档或执行器变化会停止；恢复原目标和工具后再续跑。
+已完成阶段会复核并复用。模式、context、归档或安装状态格式变化会停止；恢复原目标后再续跑。
+更新 Shell 工具会记录源码指纹，并重新核对冻结的配置、配方和 Helm intent，允许修复工具后继续。
 不会自动解锁 Helm pending，也不会自动采用旧 Python 执行器的进度。首次改用 Shell 时使用尚未开始安装的
 归档名称；不删除或改写旧安装状态来绕过检查。
 

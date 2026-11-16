@@ -26,7 +26,10 @@ registry_curl_flags() {
 
 registry_helm_flags() {
     HELM_TLS_FLAGS=()
-    [[ $REGISTRY_URL != http://* ]] || HELM_TLS_FLAGS+=(--plain-http)
+    if [[ $REGISTRY_URL == http://* ]]; then
+        HELM_TLS_FLAGS+=(--plain-http)
+        return
+    fi
     [[ $("$JQ" -r '.registry.skip_tls_verify // false' "$CONFIG") != true ]] || HELM_TLS_FLAGS+=(--insecure-skip-tls-verify)
     local ca
     ca=$("$JQ" -r '.registry.ca_file // empty' "$CONFIG")

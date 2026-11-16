@@ -99,10 +99,19 @@ _implementation=$({ find "$KIT_DIR" -type f -name '*.sh' -print0; find "$BIN_DIR
 IDENTITY=$("$JQ" -nc --argjson archive "$ARCHIVE_ID" --arg mode "$MODE" --arg context "$CONTEXT" --arg implementation "$_implementation" \
     '{installer:"pxeye-onsite-shell-v1",archive:$archive,cluster_mode:$mode,context:$context,implementation:$implementation}')
 if [[ -f $PROGRESS ]]; then
-    "$JQ" -e --argjson identity "$IDENTITY" '.identity==$identity' "$PROGRESS" >/dev/null || \
-        die 'Archive, implementation, mode or context changed; resume the original target/toolkit or use a different archive name. Python-run progress is not adopted.'
+    "$JQ" -e --argjson identity "$IDENTITY" '(.identity|del(.implementation))==($identity|del(.implementation))' "$PROGRESS" >/dev/null || \
+        die 'Archive, installer format, mode or context changed; resume the original target or use a different archive name. Python-run progress is not adopted.'
+    # Tool fixes may resume the same format. Inputs, cluster and frozen Helm
+    # intent stay immutable; record each implementation used for this run.
+    _previous=$("$JQ" -r '.implementation_history[-1].sha256 // .identity.implementation // empty' "$PROGRESS")
+    if [[ $_previous != "$_implementation" ]]; then
+        jq_atomic "$PROGRESS" '.implementation_history=((.implementation_history // [{sha256:.identity.implementation,observed_at:.updated_at}]) + [{sha256:$implementation,observed_at:$at}])' \
+            --arg implementation "$_implementation" --arg at "$(now)"
+        IMPLEMENTATION_UPDATED=true
+    fi
 else
-    jq_atomic "$PROGRESS" '{schema_version:1,identity:$identity,status:"pending",stages:{}}' --argjson identity "$IDENTITY"
+    jq_atomic "$PROGRESS" '{schema_version:1,identity:$identity,implementation_history:[{sha256:$identity.implementation,observed_at:$at}],status:"pending",stages:{}}' \
+        --argjson identity "$IDENTITY" --arg at "$(now)"
 fi
 JOURNAL_READY=true
 trap 'onsite_failure $? $LINENO' ERR
@@ -111,6 +120,9 @@ trap 'onsite_failure 143 $LINENO' TERM
 trap 'registry_bridge_stop' EXIT
 exec > >(tee -a "$WORK/run.log") 2>&1
 printf 'INSTALL_TARGET mode=%s context=%s\n' "$MODE" "$CONTEXT"
+if [[ ${IMPLEMENTATION_UPDATED:-false} == true ]]; then
+    printf 'INSTALLER_UPDATED; source fingerprint recorded; frozen inputs and Helm intent will be rechecked\n'
+fi
 
 unpack_delivery() {
     local temporary free descriptor roots saved
