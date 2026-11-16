@@ -401,8 +401,6 @@ function bootNetworkBody() {
     material_http_port: Number($("#boot-material-http-port").value),
     dns_address: $("#boot-dns-address").value.trim(),
     ntp_address: $("#boot-ntp-address").value.trim(),
-    topology: $("#boot-topology").value,
-    relay_address: $("#boot-relay-address").value.trim(),
   };
 }
 async function bootNetworkDialog() {
@@ -412,7 +410,7 @@ async function bootNetworkDialog() {
   modal(
     "管理引导网络",
     "修改物理网 DHCP、PXE、DNS 与 NTP 服务地址",
-    `<div class="live-form">${inputField("boot-dhcp-address", "DHCP 地址", values.dhcp_address || "", 'placeholder="例如 192.0.2.10"')}${inputField("boot-pxe-address", "PXE 引导地址", values.pxe_address || "", 'placeholder="例如 192.0.2.11"')}${inputField("boot-material-http-address", "安装材料 HTTP 地址", values.material_http_address || "", 'placeholder="例如 192.0.2.11"')}${inputField("boot-material-http-port", "安装材料 HTTP 端口", values.material_http_port || 80, 'type="number" min="1" max="65535" step="1"')}${inputField("boot-dns-address", "DNS 地址", values.dns_address || "", 'placeholder="例如 192.0.2.12"')}${inputField("boot-ntp-address", "NTP 地址", values.ntp_address || "", 'placeholder="例如 192.0.2.13"')}<label>DHCP 拓扑<select id="boot-topology"><option value="same_l2" ${values.topology !== "relay" ? "selected" : ""}>同二层</option><option value="relay" ${values.topology === "relay" ? "selected" : ""}>DHCP Relay</option></select></label>${inputField("boot-relay-address", "Relay 地址（仅 Relay 时必填）", values.relay_address || "", 'placeholder="例如 192.0.2.1"')}<p class="live-small">当前材料发布基址：<code>${esc(status.material_http_endpoint || "未配置")}</code>。保存后仅供后续新建 OS 版本使用，既有 OS 不修改。</p><p class="live-small">PXEye 将按填写值更新 Kea 下发参数并滚动 DHCP；不会检查或修改外部 Service、代理、HostInband、地址池、设备规划或现有安装任务。</p>${status.cluster_ready ? `<p class="live-small">目标命名空间：${esc(status.namespace)}；DHCP：${esc(status.dhcp_deployment || "等待发现")}。</p>` : `<div class="live-error">${esc(status.cluster_error || "当前集群目标不可用。")}</div>`}<div id="resource-error" class="live-error"></div></div>`,
+    `<div class="live-form">${inputField("boot-dhcp-address", "DHCP 地址", values.dhcp_address || "", 'placeholder="例如 192.0.2.10"')}${inputField("boot-pxe-address", "PXE 引导地址", values.pxe_address || "", 'placeholder="例如 192.0.2.11"')}${inputField("boot-material-http-address", "安装材料 HTTP 地址", values.material_http_address || "", 'placeholder="例如 192.0.2.11"')}${inputField("boot-material-http-port", "安装材料 HTTP 端口", values.material_http_port || 80, 'type="number" min="1" max="65535" step="1"')}${inputField("boot-dns-address", "DNS 地址", values.dns_address || "", 'placeholder="例如 192.0.2.12"')}${inputField("boot-ntp-address", "NTP 地址", values.ntp_address || "", 'placeholder="例如 192.0.2.13"')}<p class="live-small">当前材料发布基址：<code>${esc(status.material_http_endpoint || "未配置")}</code>。保存后仅供后续新建 OS 版本使用，既有 OS 不修改。</p><p class="live-small">PXEye 将按填写值更新 Kea 下发参数并滚动 DHCP；不会检查或修改外部 Service、代理、HostInband、地址池、设备规划或现有安装任务。</p>${status.cluster_ready ? `<p class="live-small">目标命名空间：${esc(status.namespace)}；DHCP：${esc(status.dhcp_deployment || "等待发现")}。</p>` : `<div class="live-error">${esc(status.cluster_error || "当前集群目标不可用。")}</div>`}<div id="resource-error" class="live-error"></div></div>`,
     button("取消", "close") + button("预览变更", "site-boot-preview", true),
   );
 }

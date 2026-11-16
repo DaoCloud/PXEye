@@ -4,8 +4,8 @@ language: zh-CN
 title: 站点设置
 description: 查看控制面连接、客户端身份和存储，设置站点、引导服务地址及安装并发。
 navigation_group: configuration
-updated_at: "2026-11-08"
-product_version: "0.22.0"
+updated_at: "2026-11-16"
+product_version: "0.22.16"
 ---
 
 # 站点设置
@@ -43,6 +43,8 @@ product_version: "0.22.0"
 该操作不修改 HostInband 网段、DHCP 地址池、设备规划或现有安装任务。HostInband 是 NICo 为主机启动口选择 DHCP 网段和地址分配的网络对象，仍在网络管理和设备/安装预检中维护，不是服务地址。
 
 应用前应处于维护窗口：存在活动安装任务时 PXEye 会阻止改址。应用成功只说明 Kubernetes 与 Kea 已完成受控更新；还需从实际引导 VLAN 完成 DHCP Offer 和材料 HTTP 验证。PXEye 当前不会自动改写已有 OS 定义中的材料 URL；材料入口变化后，应创建新的 OS 版本并由新的安装方案引用。
+
+DHCP 拓扑与 Relay 地址无需在 PXEye 填写。跨子网时，在实际中继设备上配置 DHCP Relay；NICo 根据收到报文中的 `giaddr` 及子网规则处理请求。
 
 ## 4. 操作步骤
 

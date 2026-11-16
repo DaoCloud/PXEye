@@ -4,8 +4,8 @@ language: en
 title: Site settings
 description: Inspect Core connections, client identity and storage, and configure site boot-service addresses and installation concurrency.
 navigation_group: configuration
-updated_at: "2026-11-08"
-product_version: "0.22.0"
+updated_at: "2026-11-16"
+product_version: "0.22.16"
 ---
 
 # Site settings
@@ -43,6 +43,8 @@ The installation-material HTTP endpoint comes from `os_library.public_base_url`,
 This does not change HostInband segments, DHCP pools, device plans or existing installation tasks. HostInband is NICo's network object for choosing a host boot interface's DHCP segment and allocating its address; it remains in network management and device/installation checks, not in this address form.
 
 Use a maintenance window: PXEye blocks an address change while installation tasks are active. A successful apply proves only the controlled Kubernetes and Kea update. Validate DHCP Offer and material HTTP access from the actual boot VLAN separately. PXEye does not rewrite existing OS-definition material URLs automatically; after a material-endpoint change, create a new OS version and reference it from a new installation-plan version.
+
+PXEye does not require DHCP topology or relay address inputs. For routed clients, configure DHCP relay on the relay device; NICo processes requests using the received `giaddr` and subnet rules.
 
 ## 4. Actions
 

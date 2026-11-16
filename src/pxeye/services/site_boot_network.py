@@ -76,18 +76,13 @@ class SiteBootNetwork:
             "material_http_port",
             "dns_address",
             "ntp_address",
-            "topology",
-            "relay_address",
         }
-        if set(body) != required:
+        # Accept obsolete fields from an already-open older client without using them.
+        if set(body) - {"topology", "relay_address"} != required:
             raise ValueError("引导网络配置字段无效。")
         port = body["material_http_port"]
         if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
             raise ValueError("材料 HTTP 端口应为 1–65535。")
-        topology = str(body["topology"])
-        if topology not in ("same_l2", "relay"):
-            raise ValueError("DHCP 拓扑只能是同二层或 Relay。")
-        relay = cls._ipv4(body["relay_address"], "Relay 地址", required=topology == "relay")
         return {
             "dhcp_address": cls._ipv4(body["dhcp_address"], "DHCP 地址"),
             "pxe_address": cls._ipv4(body["pxe_address"], "PXE 引导地址"),
@@ -95,8 +90,6 @@ class SiteBootNetwork:
             "material_http_port": port,
             "dns_address": cls._ipv4(body["dns_address"], "DNS 地址"),
             "ntp_address": cls._ipv4(body["ntp_address"], "NTP 地址"),
-            "topology": topology,
-            "relay_address": relay,
         }
 
     def _discover(self):
@@ -146,7 +139,6 @@ class SiteBootNetwork:
         if not hook:
             raise ValueError("Kea 配置缺少 NICo DHCP hook；无法读取当前引导网络地址。")
         parameters = hook.get("parameters") or {}
-        saved = (self.state.get("current") or {}).get("values") or {}
         return {
             "dhcp_address": str(option.get("data") or ""),
             "pxe_address": str(
@@ -160,8 +152,6 @@ class SiteBootNetwork:
             "ntp_address": str(
                 parameters.get("nico-ntpserver") or parameters.get("carbide-ntpserver") or ""
             ),
-            "topology": saved.get("topology", "same_l2"),
-            "relay_address": saved.get("relay_address", ""),
         } | self._material_http_values()
 
     def _material_http_endpoint(self):
