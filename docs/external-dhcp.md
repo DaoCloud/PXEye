@@ -21,6 +21,8 @@ Use this optional mode when the network team supplies DHCP addresses but cannot 
 5. Start the existing first-install or reinstall workflow. Task creation freezes the site mode. PXEye publishes immutable boot media and submits a per-device intent; the ordinary Core admission/allocation/reboot flow remains the execution entry point.
 6. Follow **Installation task → External DHCP / BMC boot** for the Core phase, generation and media cleanup. Normal installation and target-disk acceptance still determine completion.
 
+The boot HTTP endpoint controls only the bootstrap medium’s first request. It does not rewrite Core/PXE service ports or subsequent script URLs. See [Site settings](user-guide/site-settings.md#3-boot-network-service-addresses) for the fields used by each mode.
+
 The boot HTTP endpoint serves `/api/v0/pxe/boot`. The materials HTTP endpoint serves the small bootstrap ISO and the OS's ISO/kernel/initrd. An existing OS retains the URLs with which it was registered.
 
 ## Ownership and recovery

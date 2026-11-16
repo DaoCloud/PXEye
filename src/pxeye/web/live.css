@@ -114,6 +114,51 @@
 .live-form input[type="checkbox"] {
   width: auto;
 }
+.site-dhcp-modes {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.site-dhcp-modes legend {
+  padding: 0;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+.site-dhcp-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.live-form .site-dhcp-option {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.site-dhcp-option:has(input:checked) {
+  border-color: var(--accent);
+  background: #eef6f1;
+}
+.site-dhcp-option:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.live-form .site-dhcp-option input {
+  width: auto;
+  margin: 0;
+  accent-color: var(--accent);
+}
+.site-boot-fields[hidden] {
+  display: none;
+}
+.site-boot-fields .live-note,
+.site-boot-fields .live-small {
+  margin: 0;
+}
 .live-check {
   display: flex !important;
   align-items: flex-start;

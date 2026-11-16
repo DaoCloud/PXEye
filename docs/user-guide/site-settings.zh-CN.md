@@ -38,6 +38,19 @@ product_version: "0.22.16"
 
 站点页将 **DHCP / PXE 引导地址** 与 **安装材料 HTTP 端点** 分开显示。**管理引导网络**是这些地址与 DHCP 模式的统一入口。默认 **Nico DHCP** 模式从 Kea 读取当前值；应用时更新 DHCP Option 54、PXE、DNS、NTP 下发参数并滚动 DHCP。**外部 DHCP** 模式使用完整的引导 HTTP 端点，要求为规划中的启动 MAC/IP 配置固定租约；PXEye 保持 Kea 停止，不改写其分配参数。PXEye 不检查、创建、修改或接管外部 Service、代理或 Relay。配套 Core/Scout 与硬件前提见[外部 DHCP 装机](../external-dhcp.zh-CN.md)。
 
+DHCP 模式采用 **Nico DHCP / 外部 DHCP** 二选一。选择 Nico DHCP 时显示 **Nico DHCP 地址**和 **PXE 引导服务器 IP**；选择外部 DHCP 时显示 **引导 HTTP 端点**及固定租约要求。切换选项本身不会应用配置，未选模式的已保存地址会保留；预览仅列出当前模式使用的引导字段。
+
+该模式是站点级默认值，因为应用外部模式会停止本站点共享的 Kea 服务；新任务保存创建时的模式。逐机启动 MAC/IP 仍在设备规划维护。
+
+| 引导字段 | 格式与作用 |
+| --- | --- |
+| Nico DHCP 地址 | IPv4；作为 DHCP Server Identifier（Option 54）下发。 |
+| PXE 引导服务器 IP | IPv4，不带协议或端口；Nico DHCP 下发的 next-server/引导服务器地址。 |
+| 引导 HTTP 端点 | 完整 `http://主机:端口` 或 `https://主机:端口`；写入外部模式的小型引导介质，用于请求 `/api/v0/pxe/boot`。 |
+| 安装材料 HTTP 地址与端口 | 发布小型引导 ISO 和新 OS 版本的 ISO、kernel、initrd；两种模式共用。 |
+
+引导 HTTP 端点仅控制小型介质进入 Nico 的首段请求，不会修改 Core/PXE 服务自身的端口或后续脚本中的服务地址。那些地址仍须由现有服务配置提供并对主机可达；它不是全局 PXE 端口开关。
+
 安装材料 HTTP 端点来自 `os_library.public_base_url`，包含目标主机访问所需的地址和端口，例如 `http://192.0.2.10:31880/public/blobs/internal/nico/os-library`。它是新建 OS 版本发布 ISO、kernel、initrd 的基址，不属于 Kea 配置；既有 NICo OS 保留各自不可变的材料 URL。
 
 该操作不修改 HostInband 网段、DHCP 地址池、设备规划或现有安装任务。HostInband 是 NICo 为主机启动口选择 DHCP 网段和地址分配的网络对象，仍在网络管理和设备/安装预检中维护，不是服务地址。
