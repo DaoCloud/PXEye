@@ -6,11 +6,12 @@ Public PXEye documentation is maintained in English and Simplified Chinese. Star
 
 | Document | English | 简体中文 | Purpose |
 | --- | --- | --- | --- |
+| External DHCP provisioning | [Read](external-dhcp.md) | [阅读](external-dhcp.zh-CN.md) | Fixed leases, BMC VirtualMedia, Core ownership and recovery. |
 | Offline delivery build | [Read](../offline-build/BUILD.md) | [阅读](../offline-build/BUILD.zh-CN.md) | Copyable build sequence, artifacts, scope and handoff boundary. |
 | Onsite offline deployment | [Read](../offline-build/onsite/README.md) | [阅读](../offline-build/onsite/README.zh-CN.md) | Import the verified delivery, freeze site values and install resumably. |
 | Pre-installation checklist | [Read](pre-installation-checklist.md) | [阅读](pre-installation-checklist.zh-CN.md) | One-sentence checks for discovery, host OS writing and managed DPUs. |
 | Onsite DHCP quick check | [Read](dhcp-check.md) | [阅读](dhcp-check.zh-CN.md) | Dependency-free Discover/Offer check through Make, with result diagnosis. |
-| Deployment | [Read](deployment.md) | [阅读](deployment.zh-CN.md) | Binaries, site config, credentials, mounts and persistence. |
+| Deployment | [Read](deployment.md) | [阅读](deployment.zh-CN.md) | Image build, generic UEFI media, site config, credentials and persistent publication. |
 | NICo cluster deployment | [Read](nico-deployment.md) | [阅读](nico-deployment.zh-CN.md) | Independent startup, online/offline Helm deployment, permissions and site connection. |
 | Install your first server | [Read](getting-started.md) | [阅读](getting-started.zh-CN.md) | First-device path from enrollment to acceptance. |
 | Features and boundaries | [Read](features.md) | [阅读](features.zh-CN.md) | Native mappings, device capabilities and installation scope. |

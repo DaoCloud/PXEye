@@ -143,6 +143,12 @@ def receive(adapter, store, body):
             "INSERT OR IGNORE INTO installer_events VALUES (?,?,?,?,?)",
             (task["id"], binding["attempt"], event["stage"], json.dumps(event), time.time()),
         )
+    if event["stage"] != "failed":
+        from pxeye.services.boot_transport import BootTransport
+
+        # A signed event from the running installer proves that the tiny iPXE ISO
+        # is no longer its root medium. Core checks this boot's nonce before ejecting.
+        BootTransport(adapter, store).acknowledge(task, event)
     return {"accepted": True}
 
 

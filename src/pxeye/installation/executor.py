@@ -16,6 +16,7 @@ import uuid
 from pathlib import Path
 
 from pxeye.common import sha
+from pxeye.services.boot_transport import BootTransport, external_boot
 from pxeye.installation.accept_config import validate_config
 from pxeye.installation.acceptance_skips import apply_skips, refresh_skips
 from pxeye.installation.install_events import observations
@@ -245,6 +246,7 @@ class Console:
 class Executor:
     def __init__(self, adapter, store):
         self.adapter, self.store = adapter, store
+        self.boot_transport = BootTransport(adapter, store)
 
     def event(self, task, stage, message, **extra):
         task["stage"] = stage
@@ -281,11 +283,15 @@ class Executor:
         return signed or installer_exit_evidence(text, task["id"], trusted_key)
 
     def observe_installation(self, task, device, known, *, save=True):
+        if save and external_boot(task):
+            self.boot_transport.observe(task)
         events = observations(self.adapter, self.store, task)
         if not events:
             return None
         if events.get("failed"):
             raise RuntimeError("安装器已通过签名事件报告安装失败；保留现场，不自动重装。")
+        if save and external_boot(task) and (events.get("installed") or events.get("shutdown")):
+            self.boot_transport.handoff(task, device)
         identities = {
             " ".join(e["host_key"].split()[:2])
             for stage, e in events.items()
@@ -328,6 +334,7 @@ class Executor:
         folder.mkdir(parents=True, mode=0o700, exist_ok=True)
         console = None
         try:
+            self.boot_transport.release_for_native(task)
             if task.get("deferred_bootstrap"):
                 self.bootstrap_first(task, folder)
             device = self.task_device(task)
@@ -364,6 +371,7 @@ class Executor:
                     task["device"], "hardware"
                 )
                 self.bind_synchronized_plan(task, self.adapter.installation_plan(task["device"]))
+                self.boot_transport.prepare(task, "INSTALLATION", device=device)
                 self.verify_materials(task)
                 if task["synchronized_plan"] != self.adapter.installation_plan(task["device"]):
                     raise RuntimeError("材料校验期间规划发生变化，停止写入配置。")
@@ -791,7 +799,8 @@ class Executor:
         legacy = task.get("network_entry_recovery") or {}
         recovery = task.get("automatic_recovery") or {}
         return (
-            task.get("status") in ("running", "needs_attention")
+            not external_boot(task)
+            and task.get("status") in ("running", "needs_attention")
             and task.get("stage") in ("boot", "pxe")
             and requests == 1
             and (not recovery or Executor.obsolete_automatic_recovery(recovery))
@@ -936,6 +945,8 @@ class Executor:
 
     def reconcile_interrupted_boot_recovery(self, task):
         """Resume observation only after an interrupted boot-order write is proven complete."""
+        if external_boot(task):
+            return False
         recovery = task.get("automatic_recovery") or {}
         if recovery.get("state") != "config_requesting":
             return False
@@ -1001,6 +1012,8 @@ class Executor:
 
     def request_failed_bios_reboot(self, task, machine_state):
         """Apply a proven pending boot order with one NICo reboot after retry exhaustion."""
+        if external_boot(task):
+            return False
         recovery = task.get("automatic_recovery") or {}
         if recovery.get("failed_bios_reboot"):
             return False
@@ -1170,6 +1183,8 @@ class Executor:
 
     def request_standard_pxe_boot(self, task, machine_state, reason):
         """Apply one bounded Redfish Pxe/Once override without replaying installation."""
+        if external_boot(task):
+            return False
         recovery = task["automatic_recovery"]
         if recovery.get("standard_pxe_retry"):
             return False
@@ -1249,6 +1264,8 @@ class Executor:
 
     def recover_disk_boot(self, task, device, system):
         """One recovery only, after trustworthy installer shutdown and observed UEFI."""
+        if external_boot(task):
+            return False
         if (
             task.get("disk_exit_recovery_requested")
             or task.get("normal_reboot_requested")
@@ -1409,6 +1426,7 @@ class Executor:
     def start_install_retry(self, task, device, folder):
         # Preserve this Instance and address. Never repeat Allocate or ingestion cleanup.
         self.install_retry_preflight(task)
+        self.boot_transport.prepare(task, "INSTALLATION", device=device)
         self.verify_materials(task)
         self.install_retry_preflight(task)
         if self.verified_retry_configuration(task):
@@ -1553,7 +1571,12 @@ class Executor:
         An ingestion request of unknown outcome is never replayed.  Preparation
         failures retain the device reservation and can be explicitly continued.
         """
-        from pxeye.services.onboarding import Onboarding, discovery_info, preparation_message
+        from pxeye.services.onboarding import (
+            Onboarding,
+            discovery_info,
+            preparation_message,
+            resumable_admission,
+        )
         from pxeye.common import digest
 
         onboarding = Onboarding(self.adapter, self.store)
@@ -1595,9 +1618,19 @@ class Executor:
             gate = self.adapter.rpc("DetermineMachineIngestionState", endpoint).get(
                 "machineIngestionState"
             )
-            if previous and previous["status"] != "accepted":
+            explicit_readmission = bool(
+                previous and external_boot(previous) and gate == "WaitingForIngestion"
+            )
+            if (
+                previous
+                and previous["status"] != "accepted"
+                and not resumable_admission(previous)
+                and not explicit_readmission
+            ):
                 raise RuntimeError("此前接入请求结果待核对；不会重复发送开机或接入请求。")
-            if gate == "WaitingForIngestion" and not previous:
+            if gate == "WaitingForIngestion" and (
+                not previous or resumable_admission(previous) or explicit_readmission
+            ):
                 self.event(
                     task,
                     "prepare",
@@ -1612,12 +1645,17 @@ class Executor:
                     },
                     task.get("actor", "nico-ui"),
                     task_id=task["id"],
+                    task=task,
                 )
             elif (
                 gate not in ("IngestionMachineNotCreated", "IngestionMachineCreated")
                 and not previous
             ):
                 raise RuntimeError("BMC 尚未进入 NICo 发现；请检查 BMC 网络和 Site Explorer。")
+        if external_boot(task) and not observed["first_install_ready"]:
+            # A new task may start after a prior admission was cancelled while
+            # its Machine still exists. Declare policy without replaying ingestion.
+            self.boot_transport.prepare(task, "DISCOVERY", row=row)
         deadline = time.monotonic() + self.adapter.config.get("discovery_timeout_seconds", 900)
         task["preparation_deadline"] = time.time() + self.adapter.config.get(
             "discovery_timeout_seconds", 900
@@ -1625,6 +1663,8 @@ class Executor:
         last_progress = None
         next_guard_check = time.monotonic() + 30
         while time.monotonic() < deadline:
+            if external_boot(task):
+                self.boot_transport.observe(task)
             observed = onboarding.observed([row])[task["device"]]
             machine = observed["machine"] or {}
             if observed["instances"] or str(machine.get("state", "")).startswith("Assigned"):
@@ -1740,6 +1780,7 @@ class Executor:
         from pxeye.services.device_plans import DevicePlans
 
         DevicePlans(self.adapter, onboarding.resources).synchronize(task["device"], "hardware")
+        self.boot_transport.prepare(task, "INSTALLATION", device=device)
         self.verify_materials(task)
         plan, _, _ = onboarding.plan(task["device"], device["profile"], device["disk_serial"])
         if plan != task["installation_plan"]:
@@ -1901,6 +1942,8 @@ subprocess.run(['systemctl','reboot','--no-block'],check=True)
 print('NORMAL_REBOOT_REQUESTED')
 """
         self.check_bound(device, task)
+        if external_boot(task):
+            self.boot_transport.wait_for_handoff(task, device)
         task["last_acceptance_error"] = None
         task["initial"] = initial
         from pxeye.installation.gpu_acceptance import wait_for_gpu_environment
@@ -1950,6 +1993,11 @@ print('NORMAL_REBOOT_REQUESTED')
         system = self.adapter.redfish(device)
         if system.get("Boot", {}).get("BootSourceOverrideEnabled") != "Disabled":
             raise RuntimeError("最终 BMC 启动覆盖仍未禁用。")
+        if external_boot(task):
+            # Reboot acceptance may have taken minutes. Fence completion against
+            # replacement/cancellation after the initial local-disk handoff.
+            status = self.boot_transport.completion_status(task)
+            self.boot_transport._record(task, status)
         (folder / "after-reboot.json").write_text(json.dumps(after, indent=2))
         task["after_reboot"] = after
         task["warnings"] = after.get("warnings", [])

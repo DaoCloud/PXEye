@@ -12,6 +12,7 @@ import yaml
 from pxeye.services.resources import Resources
 from pxeye.common import atomic_json, digest, value_id
 from pxeye.installation.storage_policy import scout_disks, select_disk, selection_label
+from pxeye.services.boot_transport import BootTransport, FIXED_LEASE_NOTICE, site_boot_snapshot
 
 HOSTNAME = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?")
 GATE = {
@@ -99,6 +100,13 @@ def preparation_message(progress):
             if progress.get("scout_received")
             else "；等待 Scout 硬件回报"
         )
+    )
+
+
+def resumable_admission(record):
+    """Only a saved external policy with no dispatched ingestion write is resumable."""
+    return bool(
+        record and record.get("external_boot") and record.get("ingestion_requested") is False
     )
 
 
@@ -265,13 +273,16 @@ class Onboarding:
                 observed = self.observed([row])[serial]
                 if self.store.active(serial):
                     raise ValueError("设备有活动任务或待处理现场；先查看安装任务。")
-                previous = self.admission(row["id"])
-                if previous:
-                    raise ValueError(
-                        "已有接管请求（" + previous["status"] + "）；先核对状态，不重复发送。"
-                    )
                 if observed["machine"] or observed["instances"]:
                     raise ValueError("设备已关联 Machine/Instance；请查看硬件准备状态。")
+                previous = self.admission(row["id"])
+                if previous:
+                    if previous.get("boot_network", {}).get("dhcp_mode") != "external":
+                        raise ValueError(
+                            "已有接管请求（" + previous["status"] + "）；先核对状态，不重复发送。"
+                        )
+                    BootTransport(self.adapter, self.store).check_readmission(previous, row)
+                    return "旧外部接管策略已安全停止；实时门控通过后可明确重新接管"
                 return "无活动安装任务，无重复接管请求"
 
             inspect("scope", "任务与重复请求", scope)
@@ -492,7 +503,7 @@ class Onboarding:
             raise ValueError("BMC 没有返回唯一匹配的主机序列号。")
         return systems[0]
 
-    def admit(self, body, actor, *, task_id=None):
+    def admit(self, body, actor, *, task_id=None, task=None):
         if set(body) - {
             "serial",
             "revision",
@@ -525,14 +536,24 @@ class Onboarding:
         if observed["machine"] or observed["instances"]:
             raise ValueError("设备已进入接管流程；不能重复放行。")
         previous = self.admission(row["id"])
+        boot_network = site_boot_snapshot(self.adapter)
+        readmission = bool(
+            previous
+            and previous.get("boot_network", {}).get("dhcp_mode") == "external"
+            and (not resumable_admission(previous) or boot_network["dhcp_mode"] != "external")
+        )
         if previous:
             if (
                 task_id
+                and not readmission
                 and previous["status"] == "accepted"
                 and previous.get("bmc_mac") == row["bmc_mac_address"]
             ):
                 return previous
-            raise ValueError("已有接管请求记录；请检查 NICo 当前状态，不重复发送。")
+            if not readmission and (
+                previous.get("revision") != body["revision"] or not resumable_admission(previous)
+            ):
+                raise ValueError("已有接管请求记录；请检查 NICo 当前状态，不重复发送。")
         self.check_preparation(row)
         if not row.get("bmc_retain_credentials") and not self.adapter.config.get(
             "bmc_site_credential_file"
@@ -551,7 +572,19 @@ class Onboarding:
         )
         if gate != "WaitingForIngestion":
             raise ValueError(GATE.get(gate, "NICo 接管门控状态不允许放行。"))
-        record = {
+        if readmission:
+            BootTransport(self.adapter, self.store).check_readmission(previous, row)
+        if boot_network["dhcp_mode"] != "external":
+            # Admission is an authorized write path. Leave any old, cleaned policy
+            # before native ingestion; a query or mode switch never releases it.
+            BootTransport(self.adapter, self.store).release_for_native({"device": body["serial"]})
+        if readmission:
+            atomic_json(
+                self.directory / "history" / (row["id"] + "-" + str(time.time_ns()) + ".json"),
+                previous,
+            )
+            previous = None
+        record = previous or {
             "serial": body["serial"],
             "actor": actor,
             "at": time.time(),
@@ -560,12 +593,33 @@ class Onboarding:
             "bmc_mac": row["bmc_mac_address"],
             "revision": body["revision"],
         }
+        if boot_network["dhcp_mode"] == "external":
+            record.update(external_boot=True, ingestion_requested=False)
         path = self.directory / (row["id"] + ".json")
         atomic_json(path, record)
         try:
             from pxeye.services.device_plans import DevicePlans
 
             DevicePlans(self.adapter, self.resources).synchronize(body["serial"], "hardware")
+            if boot_network["dhcp_mode"] == "external":
+                # Persist the generation with the task (or admission record) before
+                # letting Core's native ingestion controller perform any power action.
+                if task_id:
+                    boot_task = task if task is not None else self.store.get(task_id)
+                    if not boot_task or boot_task["id"] != task_id:
+                        raise ValueError("接管任务身份不一致。")
+                    BootTransport(self.adapter, self.store).prepare(boot_task, "DISCOVERY", row=row)
+                else:
+                    record.update(
+                        device=body["serial"],
+                        boot_network=record.get("boot_network") or boot_network,
+                    )
+                    BootTransport(
+                        self.adapter, self.store, save=lambda value: atomic_json(path, value)
+                    ).prepare(record, "DISCOVERY", row=row)
+            if record.get("external_boot"):
+                record["ingestion_requested"] = True
+                atomic_json(path, record)
             self.adapter.rpc("AllowIngestionAndPowerOn", endpoint)
             record["status"] = "accepted"
             record["gate_after"] = self.adapter.rpc("DetermineMachineIngestionState", endpoint).get(
@@ -625,6 +679,12 @@ class Onboarding:
             return "主机启动 MAC：" + host["mac_address"]
 
         run("boot_interface", "主机 PXE/iPXE 启动口", startup)
+        if site_boot_snapshot(self.adapter)["dhcp_mode"] == "external":
+            run(
+                "external_dhcp",
+                "外部 DHCP 固定租约与 Core 引导接口",
+                lambda: (BootTransport(self.adapter, self.store).check(row), FIXED_LEASE_NOTICE)[1],
+            )
 
         def network():
             bindings = (
@@ -733,6 +793,8 @@ class Onboarding:
         profile = self.profile(profile_id)
         if observed["architecture"] != profile["architecture"]:
             raise ValueError("OS 方案架构与 Scout 发现的 CPU 架构不兼容。")
+        if site_boot_snapshot(self.adapter)["dhcp_mode"] == "external":
+            BootTransport.check_scope(profile, machine, row=row)
         selection = select_disk(
             observed["disks"], profile.get("settings", {}).get("storage"), disk_serial
         )
@@ -884,6 +946,9 @@ class Onboarding:
         checks, snapshot, plan, device = [], {}, None, None
         try:
             plan, device, observed = self.plan(serial, profile_id, disk_serial)
+            boot = BootTransport(self.adapter, self.store)
+            if boot.check(self.inventory_row(serial), device)["dhcp_mode"] == "external":
+                boot.check_os(device)
             checks.append(
                 {
                     "name": "Ready、无 Instance、Scout 身份/系统盘与网络规划",
@@ -966,6 +1031,8 @@ class Onboarding:
         profile = self.profile(profile_id)
         if not profile:
             raise ValueError("安装方案不存在。")
+        if BootTransport(self.adapter, self.store).check(row)["dhcp_mode"] == "external":
+            BootTransport.check_scope(profile, row=row)
         if disk_serial is not None and (
             not isinstance(disk_serial, str)
             or not 1 <= len(disk_serial) <= 128
@@ -1044,6 +1111,8 @@ class Onboarding:
             disk_serial=disk_serial,
         )
         DeviceConfig(self.adapter, self.resources).bind(plan, device)
+        if site_boot_snapshot(self.adapter)["dhcp_mode"] == "external":
+            BootTransport(self.adapter, self.store).check_os(device)
         baseline_revision = digest(self.adapter.baseline(device))
         if device.get("materials"):
             self.adapter.check_materials(device)
