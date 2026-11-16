@@ -30,7 +30,7 @@ render_phase() {
 }
 
 check_ownership() {
-    local root=$1 phase=$2 objects obj kind name namespace cluster exists=0 actual hooks
+    local root=$1 phase=$2 objects obj kind name namespace cluster exists=0 actual hooks crd
     render_phase "$root" "$phase" "$("$JQ" -r '.id' <<< "$phase")-ownership-render"
     objects="$RENDERED.json"
     yaml_documents "$RENDERED" > "$objects" || die 'Cannot parse rendered resources for ownership checks'
@@ -46,6 +46,22 @@ check_ownership() {
         esac
         [[ "$cluster" == 1 || -z "$namespace" || "$namespace" == "$NAMESPACE" ]] || die 'Chart targets another namespace'
         [[ "$cluster" == 1 || "$exists" == 1 ]] || continue
+        crd=
+        case "$kind" in
+            Certificate) crd=certificates.cert-manager.io ;;
+            Issuer) crd=issuers.cert-manager.io ;;
+            ClusterIssuer) crd=clusterissuers.cert-manager.io ;;
+        esac
+        # A fresh recipe includes resources for later phases before this run
+        # installs cert-manager. An explicitly absent CRD has no instances to
+        # inspect; after registration normal ownership checks apply.
+        if [[ -n "$crd" && -f $DEPLOY/private/cert-manager-inventory.json ]] &&
+            "$JQ" -e '.cert_manager_mode == "install"' "$STATE" >/dev/null &&
+            ! state_has installed-cert-manager &&
+            "$JQ" -e --arg crd "$crd" '.crds[$crd].present == false' "$DEPLOY/private/cert-manager-inventory.json" >/dev/null; then
+            printf 'AWAIT_CERT_MANAGER_REGISTRATION %s/%s; %s is absent\n' "$kind" "$name" "$crd"
+            continue
+        fi
         if [[ "$cluster" == 1 ]]; then
             kctl "$PHASE_ID-owner-$kind-$name" get "$kind" "$name" --ignore-not-found -o json || die "Cannot inspect $kind/$name ownership"
         else
