@@ -9,7 +9,6 @@ registry_url_parts() {
       | .port = ((.port // (if $scheme == "https" then "443" else "80" end)) | tonumber)
       | if .port < 1 or .port > 65535 then error("Invalid Registry port") else . end
       | .hostname = (.host | ltrimstr("[") | rtrimstr("]"))
-      | .authority = (.host + (if .port == (if $scheme == "https" then 443 else 80 end) then "" else ":" + (.port|tostring) end))
       | .url = (.scheme + "://" + .authority)
     '
 }

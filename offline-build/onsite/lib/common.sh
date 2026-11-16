@@ -20,7 +20,9 @@ jq_atomic() {
         printf '{}\n' | "$JQ" "$@" "$filter" > "$temporary"
     fi
     chmod 600 "$temporary"
-    sync -f "$temporary"
+    # fdatasync only this new state file; syncfs (-f) can wait on unrelated
+    # writes across a shared host filesystem.
+    sync -d "$temporary"
     mv -f -- "$temporary" "$file"
 }
 
@@ -30,7 +32,7 @@ state_mark() {
 state_has() { "$JQ" -e --arg key "$1" '.steps[$key] != null' "$STATE" >/dev/null; }
 
 run() {
-    local label=$1 status started ended
+    local label=$1 status started ended history
     shift
     [[ $label =~ ^[A-Za-z0-9._-]+$ ]] || die 'Invalid command log label'
     mkdir -p "$DEPLOY/private"
@@ -45,9 +47,12 @@ run() {
         status=$?
     fi
     chmod 600 "$RESULT" "$DEPLOY/private/$label.stderr"
+    history=$(mktemp -d "$DEPLOY/private/$label.attempt-XXXXXX")
+    cp "$RESULT" "$history/stdout"
+    cp "$DEPLOY/private/$label.stderr" "$history/stderr"
     ended=$(date +%s)
-    "$JQ" -nc --arg step "$label" --argjson seconds "$((ended-started))" --argjson exit_code "$status" \
-        '{step:$step,seconds:$seconds,exit_code:$exit_code}' >> "$DEPLOY/timings.jsonl"
+    "$JQ" -nc --arg step "$label" --arg logs "$history" --argjson seconds "$((ended-started))" --argjson exit_code "$status" \
+        '{step:$step,seconds:$seconds,exit_code:$exit_code,logs:$logs}' >> "$DEPLOY/timings.jsonl"
     if ((status)); then
         printf '%s failed (exit %s); see %s/private/%s.stderr\n' "$label" "$status" "$DEPLOY" "$label" >&2
     fi
