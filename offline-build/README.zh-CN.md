@@ -110,7 +110,7 @@ Registry OCI 导出和 bundle staging 缓存在 `cache/registry-exports/`；最�
 containerd 内容存储、Helm 3、足够空间。ARM 材料构建会在 Docker 修改本地或 Registry
 状态前拒绝其他主机架构。断网构建需预置锁定的工具和基础镜像。
 
-火种机：Linux amd64、Python 3.11+/PyYAML、kubectl、可用 Registry 和 Kubernetes；节点已能从该 Registry 拉镜像。Helm、relok8s 随离线包交付。
+火种机：Linux amd64、Bash 4+、kubectl、curl、常见 GNU 工具、可用 Registry 和 Kubernetes；节点已能从该 Registry 拉镜像。现场工具包携带 jq/yq/Caddy，无需主机 Python；Helm、relok8s 随离线包交付。
 
 文档统一使用这些路径；真实路径只在相应配置中设置：
 
@@ -120,7 +120,7 @@ containerd 内容存储、Helm 3、足够空间。ARM 材料构建会在 Docker 
   delivery.py           # 统一构建入口
   material-prepare/     # 兼容的显式镜像导出器
   helm-bundle/          # chart-sources.json
-  onsite/               # 第三步：run.py（必填 --archive，可选 --mode kind|k8s，默认 kind）
+  onsite/               # 第三步：install.sh（必填 --archive，可选 --mode kind|k8s，默认 kind）
 
 /srv/nico-build/        # 构建机配置、镜像导出、缓存和交付包
 /srv/nico/              # 火种机交付文件、执行器、自动派生的解压目录和运行记录

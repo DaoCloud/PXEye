@@ -127,7 +127,7 @@ content store accessible with `ctr`, Helm 3 and sufficient space. ARM material
 construction rejects another host architecture before Docker mutates local or
 Registry state. Fully offline builds require cached locked tools and base images.
 
-Fireseed: Linux amd64, Python 3.11+/PyYAML, kubectl, an available cluster/Registry and working node image pulls. Helm and relok8s are delivered in the bundle.
+Fireseed: Linux amd64, Bash 4+, kubectl, curl and standard GNU utilities, an available cluster/Registry and working node image pulls. The onsite kit includes jq/yq/Caddy; host Python is not required. Helm and relok8s are delivered in the bundle.
 
 ```text
 /srv/PXEye/offline-build/
@@ -135,7 +135,7 @@ Fireseed: Linux amd64, Python 3.11+/PyYAML, kubectl, an available cluster/Regist
   delivery.py           # unified builder entry
   material-prepare/     # legacy explicit-image exporter
   helm-bundle/          # chart-sources.json
-  onsite/               # run.py; required --archive, optional --mode kind|k8s (default kind)
+  onsite/               # install.sh; required --archive, optional --mode kind|k8s (default kind)
 
 /srv/nico-build/        # builder configuration, prepared data, caches and delivery
 /srv/nico/              # onsite delivery files, runner, derived extraction and runtime records
