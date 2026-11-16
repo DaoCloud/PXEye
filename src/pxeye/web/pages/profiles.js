@@ -142,7 +142,7 @@ function profileOSOptions(architecture, current = "") {
       o.architecture === architecture &&
       o.installer === "ubuntu-server",
   );
-  const options = [["", "稍后选择OS"], ...os.map((o) => [o.id, o.name])];
+  const options = [["", "请选择 OS"], ...os.map((o) => [o.id, o.name])];
   if (current && !options.some((o) => o[0] === current))
     options.push([current, "当前 OS（需检查可用性）"]);
   return options;
@@ -185,7 +185,7 @@ async function profileEditor(id, copy = false) {
           p.architecture,
         )
       : ""
-  }${selectField("profile-os", "默认 OS", options, s.os_id)}</div><p class="live-small">${id ? esc(p.architecture) + " · " : ""}Ubuntu autoinstall · UEFI；可先保存草稿，发布前补齐配置。</p></section><section class="subsection"><h3>安装设置</h3><h4>系统盘选择</h4><div class="live-editor-grid">${selectField(
+  }${selectField("profile-os", "默认 OS", options, s.os_id)}</div><p class="live-small">${id ? esc(p.architecture) + " · " : ""}Ubuntu autoinstall · UEFI；发布时自动保存并检查配置。</p></section><section class="subsection"><h3>安装设置</h3><h4>系统盘选择</h4><div class="live-editor-grid">${selectField(
     "profile-disk-selection",
     "选择规则",
     [
@@ -233,14 +233,10 @@ async function profileEditor(id, copy = false) {
     ],
   )}</details></fieldset><div id="resource-error" class="live-error" role="alert"></div>`;
   let foot = button("关闭", "close");
-  if (!readonly) foot += button("保存草稿", "profile-save", true);
-  if (!isNew && !readonly)
-    foot +=
-      button("检查方案", "profile-check") +
-      button("发布版本", "profile-publish");
+  if (!readonly) foot += button("发布版本", "profile-publish", true);
   modal(
     readonly ? "查看安装方案" : isNew ? "新建安装方案" : "编辑安装方案",
-    `${p.name} · ${isNew ? "新草稿" : "v" + p.version}`,
+    `${p.name} · ${isNew ? "新方案" : "v" + p.version}`,
     body,
     foot,
   );
