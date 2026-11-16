@@ -209,7 +209,7 @@ print_access() {
     fi
     printf 'PXEYE_LOGIN: retrieve the generated password in your terminal:\n'
     printf '%q ' kubectl --context "$CONTEXT" -n "$NAMESPACE" get secret "$NAMESPACE-pxeye" -o 'jsonpath={.data.bootstrap-password}'
-    printf '| base64 -d\n'
+    printf '| base64 -d; echo\n'
 }
 
 onsite_main() {

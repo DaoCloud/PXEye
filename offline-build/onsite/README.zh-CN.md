@@ -108,7 +108,7 @@ kubectl --context "$CONTEXT" -n "$NICO_NAMESPACE" \
 
 ```bash
 kubectl --context "$CONTEXT" -n "$NICO_NAMESPACE" \
-  get secret "$PXEYE_RELEASE" -o jsonpath='{.data.bootstrap-password}' | base64 -d
+  get secret "$PXEYE_RELEASE" -o jsonpath='{.data.bootstrap-password}' | base64 -d; echo
 ```
 
 执行器只打印取口令命令，不读取口令到控制台日志。Kind 的 NodePort 是否映射到宿主机取决于建集群配置；

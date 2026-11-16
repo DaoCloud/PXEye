@@ -115,7 +115,7 @@ bootstrap password in your own terminal:
 
 ```bash
 kubectl --context "$CONTEXT" -n "$NICO_NAMESPACE" \
-  get secret "$PXEYE_RELEASE" -o jsonpath='{.data.bootstrap-password}' | base64 -d
+  get secret "$PXEYE_RELEASE" -o jsonpath='{.data.bootstrap-password}' | base64 -d; echo
 ```
 
 The runner prints only that command and does not retrieve the password into its console log. Kind NodePort host
