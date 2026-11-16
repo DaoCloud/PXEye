@@ -30,6 +30,16 @@ Secret 和集群内 Core 地址验证 mTLS，并将 PXEye 接通到新 Core。
 已有集群、可达的 API Server、具有安装权限的 kubeconfig、至少一个 Ready amd64 节点、可用且容量足够
 承载包内 PVC 的默认 StorageClass，以及可用的 NodePort `31808`。现场 Registry 必须允许火种机推送镜像，
 并支持 Helm OCI Chart 推送和拉取。选择模式不会创建集群，也不会准备节点运行时、存储、Registry 访问或网络路由。
+
+执行前确认 Python 版本为 3.11 或更高，且 PyYAML 可以正常导入：
+
+```bash
+python3.11 -c 'import sys,tomllib,yaml; print(sys.version); print(yaml.__version__)'
+```
+
+若 `python3` 指向旧版解释器（例如 Rocky 8），下文所有安装器命令（包括续跑）都使用 `python3.11` 替代
+`python3`，不要替换系统 Python。
+
 交付目录中需要：
 
 ```text

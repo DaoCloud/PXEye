@@ -11,6 +11,14 @@ import shlex
 import sys
 from types import SimpleNamespace
 
+if sys.version_info < (3, 11):
+    raise SystemExit(
+        "Python 3.11+ with PyYAML is required; found Python "
+        + ".".join(str(part) for part in sys.version_info[:3])
+        + ". Install Python 3.11+, then rerun:\n  python3.11 "
+        + " ".join(shlex.quote(arg) for arg in sys.argv)
+    )
+
 sys.dont_write_bytecode = True
 import onsite
 from progress import Progress, atomic_json, install_signal_handlers, transcript

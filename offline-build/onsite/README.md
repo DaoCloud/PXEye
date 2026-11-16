@@ -33,6 +33,16 @@ Registry. Both modes require an existing cluster, a reachable API server and kub
 at least one Ready amd64 node, a usable default StorageClass with capacity for the bundled PVCs, and an available
 NodePort `31808`. The site Registry must accept image pushes and Helm OCI Chart push/pull from the fireseed host.
 Mode selection does not create a cluster or prepare node runtimes, storage, Registry access or network routes.
+
+Before running, verify that Python is 3.11 or newer and PyYAML imports successfully:
+
+```bash
+python3.11 -c 'import sys,tomllib,yaml; print(sys.version); print(yaml.__version__)'
+```
+
+If `python3` points to an older interpreter (for example, on Rocky 8), use `python3.11` instead of `python3` in every
+installer command below, including resume commands. Do not replace the system Python.
+
 Put these delivery files in one directory:
 
 ```text
