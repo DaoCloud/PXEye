@@ -1829,6 +1829,10 @@
   background: #c45648;
   box-shadow: 0 0 0 4px #f7e8e5;
 }
+.site-service-dot.warn {
+  background: #b98524;
+  box-shadow: 0 0 0 4px #fbf3e2;
+}
 .site-service-dot.set {
   background: #728078;
   box-shadow: 0 0 0 4px #edf0ee;
@@ -1995,6 +1999,9 @@
 }
 .site-service-state.bad strong {
   color: #a54033;
+}
+.site-service-state.warn strong {
+  color: #8d651c;
 }
 .site-service-state.set strong {
   color: #69756f;

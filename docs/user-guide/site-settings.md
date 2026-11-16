@@ -42,6 +42,10 @@ DNS and NTP addresses are optional; entered values must be valid IPv4 addresses.
 
 The installation-material HTTP endpoint comes from `os_library.public_base_url`, including the address and port reachable by target hosts, for example `http://192.0.2.10:31880/public/blobs/internal/nico/os-library`. It is the base URL for ISO, kernel and initrd published for newly created OS versions; it is not a Kea setting, and existing NICo OS definitions retain their individual immutable material URLs.
 
+Opening or refreshing the site page runs an HTTP check against the current material endpoint. It reads response headers without downloading an ISO. The check prefers a locally published material path under the current endpoint and compares the response length: green means the material access check passed, red means the endpoint is missing or access failed, and amber means material access is not yet verified. When no published material is available, a directory response only indicates whether the HTTP service responded; a directory returning 403/404 does not by itself mean material downloads fail. The page also shows the check time and latency.
+
+The check originates from PXEye and only affects the displayed status, not address-save validation. Reachability from the provisioning network must still be verified from that network.
+
 This does not change HostInband segments, DHCP pools, device plans or existing installation tasks. HostInband is NICo's network object for choosing a host boot interface's DHCP segment and allocating its address; it remains in network management and device/installation checks, not in this address form.
 
 Use a maintenance window: PXEye blocks an address change while installation tasks are active. A successful apply proves only the controlled Kubernetes and Kea update. Validate DHCP Offer and material HTTP access from the actual boot VLAN separately. PXEye does not rewrite existing OS-definition material URLs automatically; after a material-endpoint change, create a new OS version and reference it from a new installation-plan version.
