@@ -147,18 +147,23 @@ check_pvcs() {
             (.spec.volumeName // null) == ($old.spec.volumeName // null)))' "$RESULT" >/dev/null || die 'Existing PVC identity/binding changed; stop and inspect'
 }
 
-verify_release_intent() {
-    local root=$1 phase=$2 current value wanted="$DEPLOY/private/verify-values.yaml" metadata releases
+release_values_match() {
+    local root=$1 phase=$2 current value wanted="$DEPLOY/private/verify-values.yaml"
     phase_arguments "$root" "$phase"
     hrun "$PHASE_ID-resume-values" get values "$PHASE_RELEASE" -n "$NAMESPACE" -o json || die 'Cannot read deployed Helm values'
     current=$RESULT
-    printf '{}\n' > "$wanted"
+    printf '{}\n' > "$wanted" || die 'Cannot prepare frozen Helm values'
     while IFS= read -r value; do
-        merge_yaml "$wanted" "$root/$value" "$wanted.tmp"
-        mv "$wanted.tmp" "$wanted"
+        merge_yaml "$wanted" "$root/$value" "$wanted.tmp" || die 'Cannot merge frozen Helm values'
+        mv "$wanted.tmp" "$wanted" || die 'Cannot save frozen Helm values'
     done < <("$JQ" -r '.values[]' <<< "$phase")
     "$YQ" -o=json '.' "$wanted" > "$wanted.json" || die 'Cannot read frozen Helm values'
-    "$JQ" -e -s '(.[0] // {}) == .[1]' "$current" "$wanted.json" >/dev/null || die 'Deployed Helm values differ from frozen intent'
+    "$JQ" -e -s '(.[0] // {}) == .[1]' "$current" "$wanted.json" >/dev/null
+}
+
+verify_release_intent() {
+    local root=$1 phase=$2 metadata releases
+    release_values_match "$root" "$phase" || die 'Deployed Helm values differ from frozen intent'
     hrun "$PHASE_ID-resume-chart" show chart "$PHASE_CHART" || die 'Cannot read frozen Chart metadata'
     metadata="$RESULT.json"
     "$YQ" -o=json '.' "$RESULT" > "$metadata" || die 'Cannot parse frozen Chart metadata'
@@ -172,6 +177,28 @@ verify_release_intent() {
 verify_deployed() {
     verify_release_intent "$1" "$2"
     check_health "$1" "$2"
+}
+
+verify_completed_predecessor() {
+    local root=$1 key=$2 release=$3 previous previous_key intent
+    # A manual rollback can restore the preceding completed phase after an
+    # interrupted upgrade. Accept only this run's exact frozen predecessor;
+    # never adopt an arbitrary deployed release or mark the new phase complete.
+    previous=$("$JQ" -ce --arg key "$key" --arg release "$release" '
+        .phases as $phases | ($phases | map(.id) | index($key)) as $index |
+        [$phases[:$index][] | select(.release == $release)] | last |
+        if . == null then error("No preceding phase for this release") else . end
+    ' "$root/deployment.json") || die 'Deployed release does not match an earlier phase of this installation'
+    previous_key=$("$JQ" -r '.id' <<< "$previous")
+    state_has "installed-$previous_key" || die 'Preceding Helm phase was not completed by this installation'
+    [[ -f $DEPLOY/private/before-$previous_key/complete.json ]] || die 'Missing original snapshot for the completed predecessor'
+    intent=$(install_intent "$root" "$previous")
+    "$JQ" -e --arg key "$previous_key" --argjson intent "$intent" '.install_intents[$key] == $intent' "$STATE" >/dev/null ||
+        die 'Completed predecessor intent differs from the frozen recipe'
+    check_ownership "$root" "$previous"
+    check_pvcs "$previous_key"
+    verify_deployed "$root" "$previous"
+    printf 'RESUME_AFTER_ROLLBACK %s; verified completed predecessor %s\n' "$key" "$previous_key"
 }
 
 verify_later_failed_phase() {
@@ -272,10 +299,13 @@ install_phase() {
         case "$status" in
             deployed)
                 "$JQ" -e --arg key "$key" --argjson wanted "$intent" '.install_intents[$key] == $wanted' "$STATE" >/dev/null || die 'No matching install intent; inspect deployed release before continuing'
-                verify_deployed "$root" "$phase"
-                state_mark "installed-$key" "$("$JQ" -cn --arg release "$release" --arg at "$(date -u +%FT%TZ)" '{release:$release, at:$at, recovered:true}')"
-                printf 'RECOVERED_INSTALLED %s\n' "$key"
-                return ;;
+                if release_values_match "$root" "$phase"; then
+                    verify_deployed "$root" "$phase"
+                    state_mark "installed-$key" "$("$JQ" -cn --arg release "$release" --arg at "$(date -u +%FT%TZ)" '{release:$release, at:$at, recovered:true}')"
+                    printf 'RECOVERED_INSTALLED %s\n' "$key"
+                    return
+                fi
+                verify_completed_predecessor "$root" "$key" "$release" ;;
             failed|not-found) printf 'RESUME_FAILED_PHASE %s %s\n' "$key" "$status" ;;
             *) die "Helm is pending or requires operator review: $status" ;;
         esac

@@ -136,6 +136,14 @@ configuration, recipe and Helm intent, so tool fixes can resume. Pending Helm op
 runner progress is not adopted. Start Shell with an archive name that has no installation in progress; do not edit
 or delete old state to bypass identity checks.
 
+After confirming no Helm installation process remains, an operator may inspect the release history and use
+standard `helm rollback` to restore this installation's most recent completed predecessor, then rerun the original
+command. The runner verifies that phase's frozen Chart, values, recorded intent, ownership, PVCs and health before
+retrying the unfinished phase; unknown deployment states still stop the run. It never rolls back automatically or
+edits Helm Secrets. Rollback may temporarily remove later-phase resources. A Core retry upgrades the cumulative
+parent Chart, reconciles platform resources and runs the Vault upgrade hook; existing PVC identities and bindings
+remain checked.
+
 ```bash
 tail -n 80 /srv/nico/bundle.onsite/run.log
 cat /srv/nico/bundle.onsite/progress.json

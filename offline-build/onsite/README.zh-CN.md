@@ -128,6 +128,11 @@ bash /srv/nico/onsite-tools/install.sh \
 不会自动解锁 Helm pending，也不会自动采用旧 Python 执行器的进度。首次改用 Shell 时使用尚未开始安装的
 归档名称；不删除或改写旧安装状态来绕过检查。
 
+若确认已没有 Helm 安装进程，可由运维人员检查历史后，使用标准 `helm rollback` 回到本次安装已完成的
+最近前序阶段，再执行原命令。执行器核对该阶段的冻结 Chart、values、安装 intent、资源归属、PVC 及健康状态后，
+继续未完成阶段；未知部署状态仍会停止。执行器不自动回滚，不修改 Helm Secret。回滚可能暂时移除后续阶段的资源；
+Core 重试使用累积父 Chart，会重新调和平台对象并执行 Vault 的升级 hook，已有 PVC 身份和绑定持续受检查。
+
 ```bash
 tail -n 80 /srv/nico/bundle.onsite/run.log
 cat /srv/nico/bundle.onsite/progress.json
