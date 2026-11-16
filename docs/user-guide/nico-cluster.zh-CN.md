@@ -2,7 +2,7 @@
 page_id: nico-cluster
 language: zh-CN
 title: NICo 集群
-description: 在线或离线通过 Helm 部署 NICo，查看服务和部署进度，并连接站点。
+description: 在线或离线通过 Helm 部署 NICo，查看服务状态，并连接站点。
 navigation_group: configuration
 updated_at: "2026-11-16"
 product_version: "0.22.16"
@@ -39,7 +39,7 @@ NICo 的镜像、数据库、Vault、服务暴露和 Boot 配置按 Chart 的 va
 
 1. 选择在线来源，或切换离线并上传材料。
 2. 填写发布名和 values，点击**检查并预览**。系统在后台准备 Chart、检查配置与权限。
-3. 检查通过后点击**开始部署**，查看生成的 Helm 命令并确认。**部署流程**显示实际命令、阶段和退出码。
+3. 检查通过后点击**开始部署**，查看生成的 Helm 命令并确认。页面顶部显示部署状态与已完成阶段数；检查或确认后进入**服务总览**。
 4. 在**服务总览**查看完整组件、副本、端口和镜像。单个 Chart 安装成功显示**Helm 已完成**；依赖未齐全时可返回部署配置继续安装其他 Chart。
 5. 必需服务、依赖资源和 Boot HTTP 材料就绪后，点击**应用到站点**。验证 Core 身份成功才保存站点配置并启用业务页面。
 

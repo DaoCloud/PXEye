@@ -123,16 +123,11 @@ function nicoClusterPage() {
     action = button("站点设置", "nico-site", true);
   const tabs = [
     ["services", "服务总览"],
-    ["progress", "部署流程"],
     ["config", "部署配置"],
   ];
   const completed = op?.phases.filter((p) => p.state === "ready").length || 0;
   const body =
-    state.nicoTab === "config"
-      ? nicoConfigPanel(data)
-      : state.nicoTab === "progress"
-        ? nicoProgressPanel(data)
-        : nicoServicesPanel(data);
+    state.nicoTab === "config" ? nicoConfigPanel(data) : nicoServicesPanel(data);
   return (
     heading(
       "NICo 集群",
@@ -264,27 +259,6 @@ function nicoServicesPanel(data) {
   return `<section class="site-panel nico-services"><header class="site-panel-header"><div><span class="site-eyebrow">服务运行状态</span><h2>NICo 组件</h2></div><div class="nico-filter">${groups.map((group) => `<button data-live="nico-group" data-group="${esc(group)}" class="${state.nicoGroup === group ? "active" : ""}">${esc(group)}</button>`).join("")}</div></header>${table(["服务 / 作用", "工作负载", "就绪副本", "服务端口", "状态"], rows)}<p class="site-panel-note">点击服务查看镜像与端点。Boot 材料由 Core / PXE 容器提供；服务就绪后仍需验证实际 DHCP 和主机引导路径。</p></section>`;
 }
 
-function nicoProgressPanel(data) {
-  const op = data.operation;
-  if (!op)
-    return '<section class="site-panel"><div class="live-empty">尚未开始部署。先在部署配置中检查材料。</div></section>';
-  return (
-    (op.status === "installed"
-      ? '<div class="nico-notice"><span>本次 Helm 安装已完成。完整服务和 Boot 材料仍在服务总览中核对；可以返回部署配置继续安装依赖 Chart。</span></div>'
-      : "") +
-    `<div class="nico-progress-layout"><section class="site-panel"><header class="site-panel-header"><div><span class="site-eyebrow">按依赖顺序执行</span><h2>部署进度</h2></div>${nicoBadge(op.status)}</header><ol class="nico-timeline">${op.phases.map((p, i) => `<li class="${esc(p.state)}"><span class="nico-step-marker">${p.state === "ready" ? "✓" : i + 1}</span><div class="nico-step-content"><div><strong>${esc(p.name)}</strong>${nicoBadge(p.state)}</div><p>${esc(p.detail || (p.state === "running" ? "正在执行" : "等待前序阶段完成"))}</p>${p.release ? `<span class="live-code">${esc(p.release)}</span>` : ""}${p.finished_at ? `<small>完成于 ${when(p.finished_at)}</small>` : ""}</div></li>`).join("")}</ol></section><section class="site-panel"><header class="site-panel-header"><div><span class="site-eyebrow">执行记录</span><h2>操作与命令</h2></div><span class="live-small">${op.events.length} 条</span></header><div class="nico-events">${op.events.map((event) => `<div class="nico-event"><time>${when(event.at)}</time><p>${esc(event.message)}${event.exit_code != null ? ` · 退出码 ${esc(event.exit_code)}` : ""}</p>${event.command ? `<code>${esc(event.command)}</code>` : ""}</div>`).join("") || '<div class="live-empty">等待执行记录</div>'}</div></section></div>` +
-    ((data.jobs || []).length
-      ? `<section class="site-panel nico-initialization"><header class="site-panel-header"><div><span class="site-eyebrow">初始化</span><h2>作业与依赖</h2></div></header>${table(
-          ["类型", "资源", "状态", "说明"],
-          [...data.jobs, ...(data.dependencies || [])].map(
-            (j) =>
-              `<tr><td>${esc(j.kind)}</td><td class="live-code">${esc(j.name)}</td><td>${nicoBadge(j.state)}</td><td>${esc(j.detail)}</td></tr>`,
-          ),
-        )}</section>`
-      : "")
-  );
-}
-
 function nicoServiceDialog(id) {
   const c = state.nico.components.find((x) => x.id === id);
   if (!c) return;
@@ -356,7 +330,7 @@ async function nicoPreflight() {
     ),
     timeout_seconds: Number(v.timeout_seconds),
   });
-  state.nicoTab = "progress";
+  state.nicoTab = "services";
   await readSection("nico", sectionReads.nico);
   toast("已启动后台检查，准备 Chart 与 Helm 命令。");
 }
@@ -443,7 +417,7 @@ registerActions(
           },
         );
         close();
-        state.nicoTab = "progress";
+        state.nicoTab = "services";
         await readSection("nico", sectionReads.nico);
         toast(result.detail);
       });
