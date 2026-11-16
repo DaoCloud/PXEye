@@ -4,110 +4,95 @@
 
 ## 主要目标
 
-用一条命令将一个 PXEye / NICo 离线包导入火种 Kubernetes 集群，并部署控制面。唯一必填输入是
-`bundle.tar.gz` 的绝对路径；可选参数 `--mode kind|k8s` 选择集群模式，默认 `kind`。
-不需要填写安装配置文件，也不填写 checksum、解压目录、工作目录、namespace、发布名、证书模式、
-DNS/PXE/NTP 地址或 HostInband 网络。
+通过一个 Shell 入口，将已有离线包导入现场 Registry，并部署 PXEye / NICo 控制面。
+现场不需要 Python、PyYAML、pip 或容器运行时。第一、二步的构建流程、Charts 和大包格式保持不变。
 
-首次安装固定使用：
-
-- namespace：`nico-system`
-- NICo 父 Chart release：`nico`
-- PXEye Service：`NodePort` `31808`（Kubernetes 同时自动分配 ClusterIP）
-
-`kind` 模式优先使用当前的 `kind-*` context，否则只接受唯一 Kind 候选。`k8s` 模式使用 kubeconfig 的
-当前 context，不限制名称前缀；未设置当前 context 或其名称不在 kubeconfig 中时停止。执行前通过
-`kubectl config use-context` 选择目标；安装器不提供 `--context` 参数。
-
-两种模式都自动探测 Registry，默认跳过现场 Registry 的 TLS 证书链与名称校验，并在健康的共享
-cert-manager 已存在时复用它；不存在时才安装包内 cert-manager。部分安装或未就绪的
-cert-manager 会明确失败，绝不会接管或覆盖。它还会在 Core 阶段完成后，使用同命名空间的客户端
-Secret 和集群内 Core 地址验证 mTLS，并将 PXEye 接通到新 Core。
+固定安装身份：namespace `nico-system`，NICo 父 Chart release `nico`，PXEye NodePort `31808`。
+`--archive` 是唯一必填参数；可选 `--mode kind|k8s`，默认 `kind`，无需填写安装配置文件。
 
 ## 前置条件
 
-火种机需要 Python 3.11+、PyYAML、`kubectl`，并且节点已经可以从现场 Registry 拉镜像。两种模式都需要
-已有集群、可达的 API Server、具有安装权限的 kubeconfig、至少一个 Ready amd64 节点、可用且容量足够
-承载包内 PVC 的默认 StorageClass，以及可用的 NodePort `31808`。现场 Registry 必须允许火种机推送镜像，
-并支持 Helm OCI Chart 推送和拉取。选择模式不会创建集群，也不会准备节点运行时、存储、Registry 访问或网络路由。
+执行机器为 Linux amd64，具备 Bash 4+、kubectl，以及常见 GNU 工具：tar、gzip、find、sort、stat、
+sha256sum、timeout、flock、sync；另需 curl。小工具包已携带锁定版本的 jq、Mike Farah yq 和 Caddy。
+现场不会下载依赖，也不会修改系统 Python。
 
-执行前确认 Python 版本为 3.11 或更高，且 PyYAML 可以正常导入：
+目标集群需要可达的 API Server、具有安装权限的 kubeconfig、可调度的 amd64 节点、可用的默认
+StorageClass 和足够容量。节点已经能够从现场 Registry 拉镜像；Registry 支持镜像及 Helm OCI Chart
+推送和拉取。`31808` 未被其他 Service 占用。
 
-```bash
-python3.11 -c 'import sys,tomllib,yaml; print(sys.version); print(yaml.__version__)'
-```
-
-若 `python3` 指向旧版解释器（例如 Rocky 8），下文所有安装器命令（包括续跑）都使用 `python3.11` 替代
-`python3`，不要替换系统 Python。
-
-交付目录中需要：
-
-```text
-bundle.tar.gz          # 大离线交付包
-onsite-tools.tar.gz    # 小型执行器；只负责启动大包中的工具
-```
-
-`nico-system` 必须为空，或只包含 Kubernetes 自身默认对象及同一次执行已经创建的 `nico` / PXEye release
-管理的资源。执行器会拒绝遗留的 PVC、Secret、Service 等 namespaced 资源，不会接管旧的四个独立 NICo
-release、已有 PXEye 或数据。
-
-安装过程中，预检也识别本次控制器生成的资源：cert-manager webhook 引用的 CA、Certificate 签发的
-Secret、已记录的 Helm hook、Vault 初始化输出，以及通过父资源 UID 关联的对象。这些属于正常安装产物。
+`nico-system` 应为空，或仅包含 Kubernetes 默认对象和同一次执行创建的资源。健康的共享 cert-manager
+会复用；没有时安装包内版本，部分安装或异常状态会停止。执行器不接管其他安装的 Release、PVC 或数据。
 
 ## 执行命令
 
-以下命令在火种机执行。第一次先解开小执行器；这不会解开大包。
+以下命令在火种机执行，交付文件放在 `/srv/nico`：
+
+```text
+/srv/nico/
+  bundle.tar.gz           # 已构建的大包，镜像和 Charts
+  onsite-tools.tar.gz     # Shell 执行器及固定版本工具
+```
+
+解开小工具包，再按目标集群执行。以下为普通 Kubernetes：
 
 ```bash
 cd /srv/nico
 tar -xzf onsite-tools.tar.gz
-python3 /srv/nico/onsite-tools/tools/onsite/run.py \
-  --archive /srv/nico/bundle.tar.gz
-```
-
-上述命令使用默认 `kind` 模式，也可显式加上 `--mode kind`。安装到当前普通 Kubernetes context 时执行：
-
-```bash
-python3 /srv/nico/onsite-tools/tools/onsite/run.py \
+kubectl config current-context
+bash /srv/nico/onsite-tools/install.sh \
   --archive /srv/nico/bundle.tar.gz --mode k8s
 ```
 
-`--archive` 仍是唯一必填参数。两种模式的 namespace、release、Registry 发现及安装阶段保持一致。
-若 Registry 无法从工作负载镜像或 `local-registry-hosting` 证据唯一识别，
-脚本会停在第 2 阶段；仅在这种例外情况下，可在重跑前设置 `NICO_REGISTRY_URL=http(s)://registry-host:port`。
-该变量只选择 Registry 端点；执行器仍按默认策略跳过该端点的 TLS 证书链/名称校验，不能将此视为
-Registry 身份已验证。
+`k8s` 使用当前 kubeconfig context；执行前通过 `kubectl config use-context` 选择目标。
+Kind 使用 `--mode kind` 或省略该参数：优先当前的 `kind-*` context，否则仅接受唯一 Kind 候选。
+
+Registry 自动从已有工作负载镜像及 `local-registry-hosting` 信息发现。无法唯一识别时，在重跑前设置
+`NICO_REGISTRY_URL` 为现场的完整 `http://host:port` 或 `https://host:port` 地址。执行器默认跳过 Registry
+服务端证书链和名称验证；节点自身的 HTTP/证书信任配置仍由现场准备。
+
+## 阶段与目录
+
+| 阶段 | 作用 |
+| --- | --- |
+| 01-unpack | 检查归档成员、解压并验证包内文件清单 |
+| 02-site | 保存模式、context、Registry 和固定安装身份 |
+| 03-preflight | 复核包、集群、工具、cert-manager 与资源归属 |
+| 04-import | relok8s 导入镜像，发布并读回 Helm OCI Chart |
+| 05-recipe | 冻结安装 values、镜像引用和分阶段计划 |
+| 06-pxeye | Helm 安装或核对 PXEye |
+| 07-install-* | 依次安装 cert-manager、平台、Vault、Core |
+| 08-pxeye-core | 验证 PXEye 通过集群内 mTLS 连接 Core |
+
+目录由归档名派生，无需额外参数：
+
+```text
+/srv/nico/bundle/                   # 解压内容，保留原始大包文件不变
+/srv/nico/bundle.onsite/
+  progress.json                    # 阶段状态和执行身份
+  events.jsonl                     # 阶段历史
+  run.log                          # 不含口令的控制台日志
+  install-config.json              # 自动生成的运行状态，不是用户配置
+  environment.sh                   # 查询环境变量
+  deployment/                      # OCI 目录、冻结 recipe、私有日志及安装状态
+```
+
+Caddy 只在本机 loopback 上为 relok8s 提供传输适配，随本次进程退出，不创建或保留 Registry 服务。
+原包里的 Python 文件属于历史包内容，保持原样但不会由 Shell 执行器调用。
 
 ## 确认命令
 
-成功时末尾输出 `PXEYE_CORE_CONNECTED` 和 `ONSITE_COMPLETE`。后者表示 Helm 就绪且 PXEye 已通过
-集群内 mTLS 验证连接到 Core。运行目录从归档名自动派生；例如 `/srv/nico/bundle.tar.gz` 会生成：
-
-```text
-/srv/nico/bundle/             # 解压后的包；内部清单已验证
-/srv/nico/bundle.onsite/      # 进度、日志、冻结的 Helm recipe 和私有状态
-```
-
-首次执行会将 `cluster_mode` 和选中的 context 记录到该运行目录自动生成的 `install-config.json`。
-这是冻结的运行状态，不是用户填写的安装配置；后续 Kubernetes 和 Helm 命令显式使用记录的 context。
-
-执行器还会在这个运行目录生成只读的 `environment.sh`，供确认和排障使用；它不是安装输入，避免确认命令误用
-当前 shell 的业务集群 context。
+末尾出现 `PXEYE_CORE_CONNECTED` 和 `ONSITE_COMPLETE` 表示 Helm 就绪及 PXEye/Core 连接通过：
 
 ```bash
 source /srv/nico/bundle.onsite/environment.sh
-kubectl --context "$CONTEXT" -n "$NICO_NAMESPACE" get pods
+kubectl --context "$CONTEXT" -n "$NICO_NAMESPACE" get pods,pvc
 kubectl --context "$CONTEXT" -n "$NICO_NAMESPACE" get service "$PXEYE_RELEASE"
-cat "$(dirname "$WORK")/progress.json"
+cat /srv/nico/bundle.onsite/progress.json
 ```
-
-`NodePort` 未被 Kubernetes 占用不等于火种宿主机或外部网络能够访问它。Kind 仍需要在建集群时设置对应的
-端口映射，或通过现有的受控访问入口/`kubectl port-forward` 访问 PXEye。
 
 ## 访问 PXEye
 
-安装成功后，脚本会打印带实际 context、namespace 的转发命令；通过 SSH 执行时，还会打印火种机 SSH
-地址对应的浏览器 URL。在火种机执行打印的命令：
+安装完成会打印目标 context 对应的访问命令和取口令命令。火种机执行以下命令并保持终端运行：
 
 ```bash
 source /srv/nico/bundle.onsite/environment.sh
@@ -115,54 +100,33 @@ kubectl --context "$CONTEXT" -n "$NICO_NAMESPACE" \
   port-forward --address 0.0.0.0 "service/$PXEYE_RELEASE" 31808:80
 ```
 
-保持终端运行。出现 `Forwarding` 后，火种机本机访问 `http://127.0.0.1:31808/`；远程浏览器使用火种机
-可达地址和 `31808` 端口。Ctrl+C 结束本次访问会话。
-
-首次部署会生成随机登录口令，安装结束也会提示取口令命令。在自己的终端执行，并将输出粘贴到登录框：
+看到 `Forwarding` 后，通过火种机可达地址的 `31808` 端口访问。取首次生成的口令：
 
 ```bash
 kubectl --context "$CONTEXT" -n "$NICO_NAMESPACE" \
   get secret "$PXEYE_RELEASE" -o jsonpath='{.data.bootstrap-password}' | base64 -d
 ```
 
-安装器只打印命令，口令不会写入安装日志；Helm 升级保留已有口令。
+执行器只打印取口令命令，不读取口令到控制台日志。Kind 的 NodePort 是否映射到宿主机取决于建集群配置；
+port-forward 在两种模式下都适用。
 
 ## 失败续跑
 
-修复外部原因后，用完全相同的命令重跑：
+修复原因后执行完全相同的命令：
 
 ```bash
-python3 /srv/nico/onsite-tools/tools/onsite/run.py \
-  --archive /srv/nico/bundle.tar.gz
-```
-
-若首次使用 `--mode k8s`，续跑时保留同一个参数：
-
-```bash
-python3 /srv/nico/onsite-tools/tools/onsite/run.py \
+bash /srv/nico/onsite-tools/install.sh \
   --archive /srv/nico/bundle.tar.gz --mode k8s
 ```
 
-同一运行目录必须保留已冻结的模式和 context。使用不同模式会停止；`k8s` 模式下，如果 kubeconfig 的
-当前 context 已变化，续跑也会停止，不会切换到另一个集群。续跑前通过 `kubectl config use-context`
-恢复记录的 context；不要修改生成的状态来改变本次运行目标。
-
-执行器会复核已完成阶段后继续，不会重新导入已验证的 Chart，也不会自动解锁 Helm pending 操作。查看：
+已完成阶段会复核并复用。模式、context、归档或执行器变化会停止；恢复原目标和工具后再续跑。
+不会自动解锁 Helm pending，也不会自动采用旧 Python 执行器的进度。首次改用 Shell 时使用尚未开始安装的
+归档名称；不删除或改写旧安装状态来绕过检查。
 
 ```bash
 tail -n 80 /srv/nico/bundle.onsite/run.log
 cat /srv/nico/bundle.onsite/progress.json
 ```
 
-## 首次安装的网络边界
-
-本步骤只部署控制面。它不会把 Kubernetes `ClusterIP` 当成物理网络地址，也不会生成虚假的 HostInband 子网、
-DNS/PXE/NTP VIP、DHCP Relay、LoadBalancer、交换机 Relay、路由、ACL 或防火墙规则。初始 Chart 不创建引导服务
-的外部发布地址，也没有 HostInband 规划；这不是物理装机验收，更不是替代现场网络隔离策略的安全门控。
-
-包内 `nico-dhcp` Deployment 会刻意以零副本启动。上游 DHCP option 占位符不是真实物理端点，因此在后续站点网络
-配置提供真实 DNS/NTP/PXE/VIP 并显式启用 DHCP 前，不会启动 Kea 进程。
-
-物理引导网络地址和 HostInband 规划属于 PXEye 的后续站点配置：DNS 与 NTP 服务器、PXE/DHCP Relay 对外端点、
-引导 VLAN 的 prefix/gateway/MTU、外部 Service/VIP，以及交换机 Relay、路由、ACL 与防火墙规则都在该阶段确认。
-先完成这些配置并从引导 VLAN 验证 DHCP、DNS、NTP、PXE，再开放真实装机。Helm Ready 不等于物理装机验收通过。
+本步骤只安装控制面。DHCP 初始为零副本；DNS、DHCP、PXE、NTP、材料 HTTP 及物理引导网络由后续站点配置
+维护。Helm Ready 不等于真实装机验收通过。
