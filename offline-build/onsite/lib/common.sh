@@ -34,7 +34,7 @@ state_has() { "$JQ" -e --arg key "$1" '.steps[$key] != null' "$STATE" >/dev/null
 run() {
     local label=$1 status started ended history
     shift
-    [[ $label =~ ^[A-Za-z0-9._-]+$ ]] || die 'Invalid command log label'
+    [[ $label =~ ^[A-Za-z0-9._:-]+$ ]] || die 'Invalid command log label'
     mkdir -p "$DEPLOY/private"
     RESULT="$DEPLOY/private/$label.stdout"
     started=$(date +%s)

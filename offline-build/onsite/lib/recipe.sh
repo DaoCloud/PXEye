@@ -153,6 +153,7 @@ prepare_recipe() {
     if [[ -e $root || -L $root ]]; then
         validate_recipe
         printf 'REUSE_RECIPE %s\n' "$root"
+        if [[ ! -f $DEPLOY/ui-recipe.tar.gz || ! -f $DEPLOY/recipe-result.json ]]; then ui_package; fi
         return
     fi
     cluster_preflight
