@@ -174,6 +174,31 @@ verify_deployed() {
     check_health "$1" "$2"
 }
 
+verify_later_failed_phase() {
+    local root=$1 key=$2 release=$3 latest latest_key intent
+    # Ordered phases upgrade the same parent release. A later failed upgrade
+    # must not make us replay or downgrade an earlier completed phase.
+    latest=$("$JQ" -ce --arg key "$key" --arg release "$release" --slurpfile state "$STATE" '
+        [.phases[] | select(.release == $release)] as $phases |
+        [$phases[] | select($state[0].install_intents[.id] != null)] | last as $latest |
+        ($phases | map(.id)) as $ids |
+        ($ids | index($key)) as $completed |
+        ($ids | index($latest.id)) as $started |
+        if $latest != null and ($completed | type) == "number" and ($started | type) == "number" and
+            $started > $completed and $state[0].steps["installed-" + $latest.id] == null
+        then $latest else error("No later unfinished phase explains this failed release") end
+    ' "$root/deployment.json") || die 'Failed parent release does not match a later phase recorded by this installation'
+    latest_key=$("$JQ" -r '.id' <<< "$latest")
+    [[ -f $DEPLOY/private/before-$latest_key/complete.json ]] || die 'Missing original snapshot for the later failed phase'
+    intent=$(install_intent "$root" "$latest")
+    "$JQ" -e --arg key "$latest_key" --argjson intent "$intent" '.install_intents[$key] == $intent' "$STATE" >/dev/null ||
+        die 'Later failed phase intent differs from the frozen recipe'
+    check_ownership "$root" "$latest"
+    check_pvcs "$latest_key"
+    verify_release_intent "$root" "$latest"
+    printf 'PRESERVE_COMPLETED_PHASE %s; parent release matches later failed phase %s\n' "$key" "$latest_key"
+}
+
 recover_cert_manager_install() {
     local root="$DEPLOY/recipe" phase intent release status
     # This path runs during preflight, before namespace resource checks. It
@@ -219,7 +244,12 @@ install_phase() {
     release=$PHASE_RELEASE
     if state_has "installed-$key"; then
         hrun "$key-status" status "$release" -n "$NAMESPACE" -o json || die "Previously completed Helm phase is unavailable: $key"
-        "$JQ" -e '.info.status == "deployed"' "$RESULT" >/dev/null || die "Previously completed Helm phase is no longer deployed: $key"
+        status=$("$JQ" -r '.info.status' "$RESULT")
+        case "$status" in
+            deployed) ;;
+            failed) verify_later_failed_phase "$root" "$key" "$release" ;;
+            *) die "Completed phase parent release is pending or requires operator review: $key ($status)" ;;
+        esac
         check_pvcs "$key"
         check_health "$root" "$phase"
         printf 'ALREADY_INSTALLED %s\n' "$key"
