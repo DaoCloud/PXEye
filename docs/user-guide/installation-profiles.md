@@ -63,7 +63,7 @@ Expand **Advanced settings (高级设置)**:
 | Field | Requirement |
 | --- | --- |
 | Timezone (时区) | IANA timezone, such as `Asia/Shanghai`. |
-| NTP servers (NTP 服务器) | One reachable address or hostname per line; required when publishing. |
+| NTP servers (NTP 服务器) | Optional, one reachable address or hostname per line. If empty, cloud-init does not configure NTP and acceptance does not check NTP synchronization. No public server is added automatically. |
 | Extra packages (额外软件包) | One package name per line. Installation dependencies must exist on the ISO or configured repositories. |
 | APT primary / security URL (APT 软件源 / 安全更新源 URL) | Reachable repositories for the target architecture. Empty values use ISO materials for offline installation. |
 | DNS acceptance domains / HTTP acceptance URLs (DNS 验收域名 / HTTP 验收 URL) | One per line, checked during acceptance. DNS acceptance domains do not configure DNS servers. |
@@ -72,8 +72,8 @@ Expand **Advanced settings (高级设置)**:
 
 ## 3. Actions
 
-1. Click **New profile (新建方案)**, select an architecture and enter a name, or **Copy (复制)** an existing profile. **Save draft (保存草稿)** is available before OS, NTP and login credentials are complete.
-2. Reopen the draft and **Check profile (检查方案)**. Resolve missing OS, username, NTP or incompatible materials.
+1. Click **New profile (新建方案)**, select an architecture and enter a name, or **Copy (复制)** an existing profile. **Save draft (保存草稿)** is available before OS and login credentials are complete.
+2. Reopen the draft and **Check profile (检查方案)**. Resolve missing OS, username or incompatible materials.
 3. Click **Publish version (发布版本)**. Select it in device **System configuration (系统配置)** and review the resolved login and disk settings.
 4. Use **View (查看)** for published versions. To change one, click **New version (新版本)**, edit and publish, then select that version for devices.
 5. **Disable (停用)** profiles for new installations and **Enable (启用)** them again as needed. Unreferenced drafts may be deleted.
@@ -111,4 +111,4 @@ Use pending/running/success/failed for overall and stage status. Supply a nonemp
 
 Success evidence is saved before normal reboot. Reboot acceptance uses that evidence rather than requiring the historical state file to match the new boot ID. Continue acceptance only observes again; it does not reinstall or rerun scripts. Final acceptance cannot pass without the required pre-reboot success evidence.
 
-Acceptance labels follow: Installer success → Host configuration → System disk and EFI partition verification → Network configuration → SSH connectivity → DNS / HTTP / NTP connectivity → GPU environment check (optional) → Reboot acceptance. System disk and EFI partition verification checks root/ESP placement rather than reconfiguring firmware. Existing required/advisory service policies are unchanged. This state file is a custom deployment protocol, not the standard cloud-init status.
+Acceptance labels follow: Installer success → Host configuration → System disk and EFI partition verification → Network configuration → SSH connectivity → DNS / HTTP / NTP connectivity → GPU environment check (optional) → Reboot acceptance. System disk and EFI partition verification checks root/ESP placement rather than reconfiguring firmware. Only configured DNS/HTTP acceptance targets and NTP are checked; existing required/advisory policies for configured services are unchanged. This state file is a custom deployment protocol, not the standard cloud-init status.

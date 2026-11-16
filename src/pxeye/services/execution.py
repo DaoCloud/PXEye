@@ -535,7 +535,7 @@ print(json.dumps({'serial':Path('/sys/class/dmi/id/product_serial').read_text().
                 raise RuntimeError("安装模板缺少唯一管理默认路由。")
             nic["addresses"] = [plan["management_ip"] + "/" + str(plan["prefixlen"])]
             routes[0]["via"] = plan["gateway"]
-            if plan.get("dns_servers"):
+            if "dns_servers" in plan:
                 nic["nameservers"] = {"addresses": plan["dns_servers"]}
             if "network" in data:
                 raise RuntimeError("模板同时存在顶层 network，请先统一网络来源。")
@@ -575,6 +575,9 @@ print(json.dumps({'serial':Path('/sys/class/dmi/id/product_serial').read_text().
         binding = inject(self, ai, device, task)
         config["user_data"] = "#cloud-config\n" + yaml.safe_dump(data, sort_keys=False, width=1000)
         freeze(self, binding, config["user_data"])
+        # Freeze acceptance intent with the rendered task, independently of
+        # subsequent profile edits. Legacy tasks retain their previous check.
+        task["ntp_configured"] = ai["user-data"].get("ntp", {}).get("enabled", True) is not False
         config["run_provisioning_instructions_on_every_boot"] = False
         return config
 

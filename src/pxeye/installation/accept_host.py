@@ -275,10 +275,11 @@ def check_services(context):
         except Exception as error:
             service_checks.append({"name": name, "passed": False, "error": type(error).__name__})
 
-    service(
-        "NTP同步",
-        lambda: command(["timedatectl", "show", "-p", "NTPSynchronized", "--value"]) == "yes",
-    )
+    if task.get("ntp_configured", True):
+        service(
+            "NTP同步",
+            lambda: command(["timedatectl", "show", "-p", "NTPSynchronized", "--value"]) == "yes",
+        )
     for hostname in device["dns_checks"]:
         service("DNS解析 " + hostname, lambda h=hostname: bool(command(["getent", "ahostsv4", h])))
     import urllib.request

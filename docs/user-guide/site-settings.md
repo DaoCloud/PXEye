@@ -38,6 +38,8 @@ Other information is read-only:
 
 The site page displays **DHCP / PXE boot addresses** separately from the **installation-material HTTP endpoint**. The first is read from Kea for DHCP, PXE, DNS and NTP and can be changed through **Manage boot network (管理引导网络)**. PXEye writes the entered values to Kea DHCP Option 54 plus PXE/DNS/NTP advertisement settings and rolls DHCP; it does not inspect, create, modify or take ownership of external Services, proxies or relays.
 
+DNS and NTP addresses are optional; entered values must be valid IPv4 addresses. Leaving them blank clears the corresponding NICo DHCP hook service configuration without restoring its built-in defaults. This does not change NTP settings in installation profiles. Material or package URLs containing hostnames still require working DNS; offline sites can use internal services and IP URLs.
+
 The installation-material HTTP endpoint comes from `os_library.public_base_url`, including the address and port reachable by target hosts, for example `http://192.0.2.10:31880/public/blobs/internal/nico/os-library`. It is the base URL for ISO, kernel and initrd published for newly created OS versions; it is not a Kea setting, and existing NICo OS definitions retain their individual immutable material URLs.
 
 This does not change HostInband segments, DHCP pools, device plans or existing installation tasks. HostInband is NICo's network object for choosing a host boot interface's DHCP segment and allocating its address; it remains in network management and device/installation checks, not in this address form.

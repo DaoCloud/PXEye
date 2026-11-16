@@ -38,6 +38,8 @@ product_version: "0.22.16"
 
 站点页将 **DHCP / PXE 引导地址** 与 **安装材料 HTTP 端点** 分开显示。前者从 Kea 读取 DHCP、PXE、DNS 和 NTP 的当前 IPv4 地址，并可在**管理引导网络**中修改；PXEye 按填写值更新 Kea ConfigMap 的 DHCP Option 54、PXE、DNS、NTP 下发参数并滚动 DHCP。PXEye 不检查、创建、修改或接管外部 Service、代理或 Relay。
 
+DNS、NTP 地址均可留空；填写时须为有效 IPv4 地址。留空会清空对应的 NICo DHCP hook 服务地址配置，不使用其内置默认地址。此处不修改安装方案的 NTP 设置；引用域名的材料或软件源仍需可用的 DNS，离线环境可使用内网服务和 IP URL。
+
 安装材料 HTTP 端点来自 `os_library.public_base_url`，包含目标主机访问所需的地址和端口，例如 `http://192.0.2.10:31880/public/blobs/internal/nico/os-library`。它是新建 OS 版本发布 ISO、kernel、initrd 的基址，不属于 Kea 配置；既有 NICo OS 保留各自不可变的材料 URL。
 
 该操作不修改 HostInband 网段、DHCP 地址池、设备规划或现有安装任务。HostInband 是 NICo 为主机启动口选择 DHCP 网段和地址分配的网络对象，仍在网络管理和设备/安装预检中维护，不是服务地址。
