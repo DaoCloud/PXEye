@@ -1,6 +1,61 @@
 #!/usr/bin/env bash
 # Frozen Helm recipes; sourced by install.sh after common and cluster helpers.
 
+recipe_chart_alias_map() {
+    local chart=$1 output=$2 member
+    member=$(tar -tf "$chart" | awk 'split($0,p,"/")==2 && p[2]=="Chart.yaml" {print}')
+    [[ -n $member && $member != *$'\n'* ]] || die 'Expected one root Chart metadata file'
+    tar -xOf "$chart" -- "$member" > "$output.yaml" || die 'Cannot read recipe Chart metadata'
+    "$YQ" -p yaml -o json '.' "$output.yaml" > "$output.metadata" || die 'Cannot parse recipe Chart metadata'
+    "$JQ" '
+      def dns: type=="string" and test("^[a-z0-9]([a-z0-9-]*[a-z0-9])?$") and length<=63;
+      . as $chart | (reduce ((.dependencies // [])[] | select(.name=="cert-manager")) as $dependency ({};
+        ($dependency.alias // $dependency.name) as $alias
+        | if $alias|dns then . else
+            ($alias|ascii_downcase) as $normalized
+            | if ($normalized|dns|not) then error("cert-manager alias cannot form a DNS name")
+              elif any($chart.dependencies[]; (.alias // .name)==$normalized) then error("cert-manager alias normalization collides")
+              else .[$alias]=$normalized end
+          end)) as $aliases
+      | [($chart.dependencies // [])[] | (.alias // .name) as $alias | ($aliases[$alias] // $alias)] as $names
+      | if ($names|length)!=($names|unique|length) then error("Derived dependency aliases collide") else $aliases end
+    ' "$output.metadata" > "$output" || die 'Cannot derive cert-manager DNS naming policy'
+}
+
+derive_recipe_chart() {
+    local source=$1 destination=$2 scratch=$3 root path
+    mkdir -p "$scratch"
+    recipe_chart_alias_map "$source" "$scratch/aliases.json"
+    if [[ $("$JQ" 'length' "$scratch/aliases.json") == 0 ]]; then cp "$source" "$destination"; return; fi
+    safe_extract "$source" "$scratch/tree" 268435456
+    local roots=()
+    while IFS= read -r -d '' path; do roots+=("$path"); done < <(find "$scratch/tree" -mindepth 2 -maxdepth 2 -type f -name Chart.yaml -print0)
+    ((${#roots[@]} == 1)) || die 'Recipe Chart root is ambiguous'
+    root=$(dirname "${roots[0]}")
+    # Helm aliases become the child .Chart.Name, including container names
+    # that standard nameOverride/fullnameOverride values cannot affect.
+    "$JQ" --slurpfile aliases "$scratch/aliases.json" '
+      .dependencies |= map(. as $dependency | ($dependency.alias // $dependency.name) as $alias
+        | if $aliases[0][$alias] then .alias=$aliases[0][$alias] else . end
+        | if (.condition|type)=="string" then
+            .condition |= (split(",") | map(reduce ($aliases[0]|to_entries[]) as $item (.;
+              if .==$item.key or startswith($item.key+".") then $item.value+ltrimstr($item.key) else . end)) | join(","))
+          else . end)
+    ' "$scratch/aliases.json.metadata" > "$scratch/chart.json" || die 'Cannot derive DNS-safe dependency aliases'
+    "$YQ" -P -p json -o yaml '.' "$scratch/chart.json" > "$root/Chart.yaml"
+    "$YQ" -p yaml -o json '.' "$root/values.yaml" > "$scratch/values.json"
+    "$JQ" --slurpfile aliases "$scratch/aliases.json" '
+      reduce ($aliases[0]|to_entries[]) as $item (.;
+        if has($item.key) then
+          if has($item.value) then error("Both original and normalized dependency values exist")
+          else .[$item.value]=.[$item.key] | del(.[$item.key]) end
+        else . end)
+    ' "$scratch/values.json" > "$scratch/normalized-values.json" || die 'Cannot move dependency values to DNS-safe alias'
+    "$YQ" -P -p json -o yaml '.' "$scratch/normalized-values.json" > "$root/values.yaml"
+    pack_chart "$root" "$destination"
+    printf 'RECIPE_CHART_NAMES_NORMALIZED %s\n' "$("$JQ" -c . "$scratch/aliases.json")"
+}
+
 validate_install_plan_structure() {
     "$JQ" -e '
         def id: if type == "string" then test("^[a-z]([a-z0-9-]{0,47}[a-z0-9])?$") else false end;
@@ -99,6 +154,7 @@ image_defaults() {
 
 recipe_values() {
     local defaults_yaml=$1 phase=$2 catalog=$3 output=$4 scratch=$5
+    local aliases=${6:-}
     local site mode phase_id
     site=$("$JQ" -r '.site_name' "$CONFIG")
     mode=$("$JQ" -r '.cert_manager_mode' "$STATE")
@@ -106,13 +162,19 @@ recipe_values() {
     "$YQ" -p yaml -o json '.' "$defaults_yaml" > "$scratch/defaults.json" || die "Cannot read Chart defaults"
     imported_defaults "$scratch/defaults.json" "$catalog" "$scratch/imported.json"
     image_defaults "$scratch/imported.json" "$scratch/imported.json" "$scratch/images.json"
-    "$JQ" --arg site "$site" --arg namespace "$NAMESPACE" --arg release "$RELEASE" --argjson phase "$phase" '
+    if [[ -z $aliases ]]; then aliases=$scratch/aliases.json; printf '{}\n' > "$aliases"; fi
+    "$JQ" --slurpfile aliases "$aliases" --arg site "$site" --arg namespace "$NAMESPACE" --arg release "$RELEASE" --argjson phase "$phase" '
+        (reduce ($aliases[0]|to_entries[]) as $item (($phase.values_inline // {});
+          if has($item.key) then
+            if has($item.value) then error("Phase defines both original and normalized dependency aliases")
+            else .[$item.value]=.[$item.key] | del(.[$item.key]) end
+          else . end)) as $inline |
         if $phase.id == "core" then
           .nicoCore["nico-api"].siteConfig.nicoApiSiteConfig |= gsub("\"@\\{site_name\\}\""; ($site | tojson))
         else . end |
         walk(if type == "string" then
           gsub("@\\{release_prefix\\}"; $release) | gsub("@\\{namespace\\}"; $namespace) | gsub("@\\{site_name\\}"; $site)
-        else . end) * ($phase.values_inline // {})
+        else . end) * $inline
     ' "$scratch/images.json" > "$scratch/substituted.json" || die "Cannot derive phase values: $phase_id"
     if [[ $mode == reuse ]]; then
         "$JQ" '
@@ -149,7 +211,7 @@ recipe_values() {
 }
 
 prepare_recipe() {
-    local root=$DEPLOY/recipe catalog=$DEPLOY/catalog.json temporary recipe plan mode phase phase_id chart_id record chart target digest name relative
+    local root=$DEPLOY/recipe catalog=$DEPLOY/catalog.json temporary recipe plan mode phase phase_id chart_id record chart target digest name relative provenance
     if [[ -e $root || -L $root ]]; then
         validate_recipe
         printf 'REUSE_RECIPE %s\n' "$root"
@@ -161,6 +223,8 @@ prepare_recipe() {
     refresh_catalog_images "$catalog"
     temporary=$(mktemp -d "$DEPLOY/.recipe-XXXXXXXX") || die "Cannot create recipe staging directory"
     recipe=$temporary/nico-recipe
+    provenance=$temporary/chart-provenance.json
+    printf '{}\n' > "$provenance"
     mkdir -p "$recipe/charts" "$recipe/values" "$temporary/pulled"
     mode=$("$JQ" -r '.cert_manager_mode' "$STATE")
     [[ $mode == install || $mode == reuse ]] || die "Missing cert-manager installation decision"
@@ -179,21 +243,26 @@ prepare_recipe() {
         pull_chart "$record" "$temporary/pulled/$phase_id"
         chart=$PULLED_CHART
         target=$recipe/charts/$chart_id.tgz
-        if [[ ! -e $target ]]; then cp "$chart" "$target"; fi
+        if [[ ! -e $target ]]; then
+            derive_recipe_chart "$chart" "$target" "$temporary/chart-$chart_id"
+            jq_atomic "$provenance" '.[$chart]={source:{oci:$source.oci,oci_digest:$source.oci_digest,sha256:$source.sha256},sha256:$digest,naming_policy:"dns-cert-manager-alias-v1",aliases:$aliases[0]}' \
+                --arg chart "charts/$chart_id.tgz" --argjson source "$record" --arg digest "$(sha "$target")" --slurpfile aliases "$temporary/chart-$chart_id/aliases.json"
+        fi
+        chart=$target
         hrun "$phase_id-defaults" show values "$chart" || die "Cannot read Chart defaults: $phase_id"
         mkdir -p "$temporary/values-$phase_id"
         cp "$RESULT" "$temporary/values-$phase_id/defaults.yaml"
-        recipe_values "$temporary/values-$phase_id/defaults.yaml" "$phase" "$catalog" "$recipe/values/$phase_id.yaml" "$temporary/values-$phase_id"
+        recipe_values "$temporary/values-$phase_id/defaults.yaml" "$phase" "$catalog" "$recipe/values/$phase_id.yaml" "$temporary/values-$phase_id" "$temporary/chart-$chart_id/aliases.json"
         jq_atomic "$plan" '.phases |= map(if .id == $id then del(.chart_id,.values_inline) + {chart:($chart),values:[$values],release:$release} else . end)' \
             --arg id "$phase_id" --arg chart "charts/$chart_id.tgz" --arg values "values/$phase_id.yaml" --arg release "$RELEASE"
         hrun "$phase_id-render" template "$RELEASE" "$chart" -n "$NAMESPACE" -f "$recipe/values/$phase_id.yaml" || die "Cannot render phase: $phase_id"
         check_images "$RESULT" "$catalog"
     done < <("$JQ" -c '.phases[]' "$plan")
     cp "$catalog" "$recipe/catalog.json"
-    "$JQ" --arg namespace "$NAMESPACE" --arg release "$RELEASE" --arg site "$("$JQ" -r '.site_name' "$CONFIG")" \
+    "$JQ" --slurpfile provenance "$provenance" --arg namespace "$NAMESPACE" --arg release "$RELEASE" --arg site "$("$JQ" -r '.site_name' "$CONFIG")" \
         --arg mode "$mode" --arg version "$("$JQ" -r '.bundle_version | tostring' "$catalog")" '
         walk(if type == "string" then gsub("@\\{release_prefix\\}"; $release) | gsub("@\\{namespace\\}"; $namespace) | gsub("@\\{site_name\\}"; $site) else . end) |
-        .version = $version | .name = "NICo offline onsite recipe" | .cert_manager_mode = $mode | .files = {}
+        .version = $version | .name = "NICo offline onsite recipe" | .cert_manager_mode = $mode | .chart_derivations=$provenance[0] | .files = {}
     ' "$plan" > "$recipe/deployment.json" || die "Cannot finalize deployment manifest"
     while IFS= read -r name; do
         relative=${name#"$recipe/"}
@@ -212,7 +281,7 @@ prepare_recipe() {
 }
 
 validate_recipe() {
-    local root=$DEPLOY/recipe expected name digest
+    local root=$DEPLOY/recipe expected name digest chart aliases alias_count
     RECIPE_MANIFEST=$root/deployment.json
     [[ -d $root && ! -L $root && -f $RECIPE_MANIFEST && ! -L $RECIPE_MANIFEST ]] || die "Missing or unsafe frozen recipe"
     [[ -z $(find "$root" -type l -print -quit) ]] || die "Frozen recipe contains a symlink"
@@ -224,6 +293,13 @@ validate_recipe() {
         [[ -f $root/$name && ! -L $root/$name ]] || die "Missing frozen recipe file: $name"
         [[ $digest =~ ^[0-9a-f]{64}$ && $(sha "$root/$name") == "$digest" ]] || die "Frozen recipe changed: $name"
     done < <("$JQ" -r '.files | to_entries[] | [.key,.value] | @tsv' "$RECIPE_MANIFEST")
+    while IFS= read -r chart; do
+        aliases=$(mktemp "$DEPLOY/private/frozen-chart-aliases-XXXXXX")
+        recipe_chart_alias_map "$root/$chart" "$aliases"
+        alias_count=$("$JQ" 'length' "$aliases")
+        rm -f -- "$aliases" "$aliases.yaml" "$aliases.metadata"
+        [[ $alias_count == 0 ]] || die 'Frozen recipe has a non-DNS cert-manager alias; inspect and archive only an unconsumed recipe before regenerating it'
+    done < <("$JQ" -r '[.phases[].chart]|unique[]' "$RECIPE_MANIFEST")
 }
 
 ui_package() {

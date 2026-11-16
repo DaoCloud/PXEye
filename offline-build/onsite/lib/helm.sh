@@ -131,7 +131,7 @@ check_pvcs() {
             (.spec.volumeName // null) == ($old.spec.volumeName // null)))' "$RESULT" >/dev/null || die 'Existing PVC identity/binding changed; stop and inspect'
 }
 
-verify_deployed() {
+verify_release_intent() {
     local root=$1 phase=$2 current value wanted="$DEPLOY/private/verify-values.yaml" metadata releases
     phase_arguments "$root" "$phase"
     hrun "$PHASE_ID-resume-values" get values "$PHASE_RELEASE" -n "$NAMESPACE" -o json || die 'Cannot read deployed Helm values'
@@ -151,11 +151,15 @@ verify_deployed() {
     "$JQ" -e --arg release "$PHASE_RELEASE" --slurpfile chart "$metadata" \
         '[.[] | select(.name == $release)] as $matches | ($matches|length) == 1 and
         $matches[0].chart == ($chart[0].name + "-" + ($chart[0].version|tostring))' "$releases" >/dev/null || die 'Deployed Chart differs from frozen intent'
-    check_health "$root" "$phase"
+}
+
+verify_deployed() {
+    verify_release_intent "$1" "$2"
+    check_health "$1" "$2"
 }
 
 recover_cert_manager_install() {
-    local root="$DEPLOY/recipe" phase intent release
+    local root="$DEPLOY/recipe" phase intent release status
     # This path runs during preflight, before namespace resource checks. It
     # must establish this run's completed Helm intent without re-entering
     # preflight or treating a newly appeared shared controller as ours.
@@ -172,10 +176,19 @@ recover_cert_manager_install() {
     "$JQ" -e --argjson intent "$intent" '.install_intents["cert-manager"] == $intent' "$STATE" >/dev/null ||
         die 'cert-manager installation intent differs from the frozen recipe; stop rather than adopting it'
     hrun cert-manager-recovery-status status "$release" -n "$NAMESPACE" -o json || die 'Cannot establish the interrupted cert-manager Helm release'
-    "$JQ" -e '.info.status == "deployed"' "$RESULT" >/dev/null || die 'Interrupted cert-manager Helm release is not deployed; inspect before recovery'
+    status=$("$JQ" -r '.info.status' "$RESULT")
+    [[ "$status" == deployed || "$status" == failed ]] || die 'Interrupted cert-manager Helm release is pending or requires operator review'
     check_ownership "$root" "$phase"
     check_pvcs cert-manager
-    verify_deployed "$root" "$phase"
+    verify_release_intent "$root" "$phase"
+    if [[ "$status" == failed ]]; then
+        # A failed Helm operation can leave healthy CRDs and unready Pods.
+        # Permit only this run's unchanged intent through preflight so the
+        # normal ordered phase retries it; do not mark it installed.
+        printf 'RETRY_OWN_FAILED_CERT_MANAGER; frozen intent and ownership verified\n'
+        return
+    fi
+    check_health "$root" "$phase"
     state_mark installed-cert-manager "$("$JQ" -cn --arg release "$release" --arg at "$(date -u +%FT%TZ)" '{release:$release,at:$at,recovered:true}')"
     printf 'RECOVERED_INSTALLED cert-manager\n'
 }

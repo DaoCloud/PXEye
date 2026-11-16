@@ -18,10 +18,12 @@ sha256sum、timeout、flock、sync；另需 curl。小工具包已携带锁定�
 
 目标集群需要可达的 API Server、具有安装权限的 kubeconfig、可调度的 amd64 节点、可用的默认
 StorageClass 和足够容量。节点已经能够从现场 Registry 拉镜像；Registry 支持镜像及 Helm OCI Chart
-推送和拉取。`31808` 未被其他 Service 占用。
+推送和拉取。默认 StorageClass 必须能够实际创建并挂载卷；默认标记本身不代表存储可用。
+`31808` 未被其他 Service 占用。
 
 `nico-system` 应为空，或仅包含 Kubernetes 默认对象和同一次执行创建的资源。健康的共享 cert-manager
-会复用；没有时安装包内版本，部分安装或异常状态会停止。执行器不接管其他安装的 Release、PVC 或数据。
+会复用；没有时安装包内版本。其他安装留下的部分安装或异常状态会停止；本次执行留下的失败阶段，
+只有冻结 intent 与归属核对一致才允许重试。执行器不接管其他安装的 Release、PVC 或数据。
 
 ## 执行命令
 
@@ -78,6 +80,8 @@ Registry 自动从已有工作负载镜像及 `local-registry-hosting` 信息发
 
 Caddy 只在本机 loopback 上为 relok8s 提供传输适配，随本次进程退出，不创建或保留 Registry 服务。
 原包里的 Python 文件属于历史包内容，保持原样但不会由 Shell 执行器调用。
+生成配方时会修正不符合 DNS 命名规则的 cert-manager 依赖别名，并记录来源 OCI 摘要、派生 Chart 摘要与别名映射；
+源码 Chart 和大包保持不变。
 
 ## 确认命令
 

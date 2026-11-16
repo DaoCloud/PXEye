@@ -46,14 +46,16 @@ resolve_cert_manager_mode() {
     elif "$JQ" -e 'all((.crds + .components)[]; .healthy == true)' "$inventory" >/dev/null; then
         detected=reuse
     else
-        die "cert-manager is partially installed or unhealthy; resolve it before installation (see $inventory)"
+        detected=partial
     fi
     saved=$("$JQ" -r '.cert_manager_mode // empty' "$STATE")
     if [[ -n "$saved" ]]; then
         case "$saved" in
             reuse) [[ "$detected" == reuse ]] || die 'Previously reused cert-manager is no longer healthy; stop and inspect it' ;;
             install)
-                if [[ "$detected" != install ]] && ! state_has installed-cert-manager; then
+                if state_has installed-cert-manager; then
+                    [[ "$detected" == reuse ]] || die 'Previously installed cert-manager is missing or unhealthy; stop and inspect it'
+                elif [[ "$detected" != install ]]; then
                     recover_cert_manager_install
                 fi ;;
             *) die 'Invalid saved cert-manager decision' ;;
@@ -61,6 +63,7 @@ resolve_cert_manager_mode() {
         CERT_MANAGER_MODE=$saved
         printf 'REUSE_CERT_MANAGER_DECISION %s\n' "$saved"
     else
+        [[ "$detected" != partial ]] || die "cert-manager is partially installed or unhealthy; resolve it before installation (see $inventory)"
         CERT_MANAGER_MODE=$detected
         jq_atomic "$STATE" '.cert_manager_mode = $mode' --arg mode "$detected"
         if [[ "$detected" == reuse ]]; then

@@ -20,11 +20,13 @@ It downloads no field dependencies and does not change the system Python.
 
 The existing cluster needs a reachable API server, installation permissions, schedulable amd64 nodes, a usable
 default StorageClass and sufficient capacity. Nodes must already pull from the site Registry, which must accept
-images and Helm OCI Chart push/pull. NodePort `31808` must be available.
+images and Helm OCI Chart push/pull. The default StorageClass must actually provision and mount volumes;
+its annotation alone does not establish storage health. NodePort `31808` must be available.
 
 `nico-system` must be empty except for Kubernetes defaults or resources created by this same run. A healthy shared
 cert-manager is reused; otherwise the bundled version is installed when none exists. Partial or unhealthy
-cert-manager stops the run. Other installations, Releases, PVCs and data are never adopted.
+cert-manager from another installation stops the run. A failed phase created by this run can be retried only
+after its frozen intent and ownership match. Other installations, Releases, PVCs and data are never adopted.
 
 ## Run
 
@@ -83,7 +85,8 @@ Directories derive from the archive filename:
 
 Caddy provides a process-owned loopback transport adapter for relok8s and exits with the runner. It does not
 create or retain a Registry service. Python files already inside an older delivery remain intact but are never
-called by the Shell installer.
+called by the Shell installer. Recipe Charts may normalize invalid cert-manager dependency aliases; the recipe
+records the source OCI digest, derived Chart hash and alias mapping. Source Charts and the delivery stay unchanged.
 
 ## Verify
 
