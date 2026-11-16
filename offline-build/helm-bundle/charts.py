@@ -32,9 +32,39 @@ def umbrella(root, repo, dependencies, values):
     dependency_root = root / 'dependencies'
     for name, child in dependencies.items():
         shutil.copytree(child, dependency_root / name)
+    pxe_shared_storage(dependency_root / 'nico/charts/nico-pxe', repo)
     root_values = yaml.safe_load((root / 'values.yaml').read_text()) or {}
     root_values = merge(root_values, values)
     write(root / 'values.yaml', yaml.safe_dump(root_values, sort_keys=False))
+
+
+def pxe_shared_storage(chart, repo):
+    """Add opt-in deployment wiring to the pinned PXE Chart, without a new image."""
+    template = chart / 'templates/deployment.yaml'
+    text = template.read_text()
+    if 'pxeye.pxe.materialMount' in text:
+        return
+    replacements = (
+        ('    type: RollingUpdate',
+         '    type: {{ if .Values.pxeyeStorage.enabled }}Recreate{{ else }}RollingUpdate{{ end }}'),
+        ('      labels:\n', '      labels:\n        {{- include "pxeye.pxe.storageLabel" . | nindent 8 }}\n'),
+        ('    spec:\n', '    spec:\n      {{- include "pxeye.pxe.affinity" . | nindent 6 }}\n'),
+        ('          volumeMounts:\n            - name: spiffe',
+         '          volumeMounts:\n            {{- include "pxeye.pxe.materialMount" . | nindent 12 }}\n            - name: spiffe'),
+        ('      volumes:\n',
+         '      volumes:\n        {{- include "pxeye.pxe.materialVolume" . | nindent 8 }}\n'),
+    )
+    for before, after in replacements:
+        if text.count(before) != 1:
+            raise ValueError('Unsupported pinned PXE storage template: ' + before.strip())
+        text = text.replace(before, after, 1)
+    write(template, text)
+    write(chart / 'templates/_pxeye-storage.tpl',
+          (repo / 'charts/pxeye/files/pxe-shared-storage.tpl').read_text())
+    defaults = chart / 'values.yaml'
+    values = yaml.safe_load(defaults.read_text()) or {}
+    values['pxeyeStorage'] = {'enabled': False, 'claimName': '', 'ownerRelease': ''}
+    write(defaults, yaml.safe_dump(values, sort_keys=False))
 
 
 def materials(root, images, publisher):

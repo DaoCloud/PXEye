@@ -2,7 +2,7 @@
 
 [English](README.md) · **简体中文**
 
-这是交付父 Chart。默认仅部署 PXEye Web 控制台及其 ServiceAccount、RBAC、ConfigMap、认证 Secret、数据和材料 PVC、Service。离线构建器会在此 Chart 下引入已锁定的 NICo 依赖、生成 `Chart.lock`，再对完整镜像闭包执行一次搬迁。
+这是交付父 Chart。默认仅部署 PXEye Web 控制台及其 ServiceAccount、RBAC、ConfigMap、认证 Secret、共享存储 PVC、Service。离线构建器会在此 Chart 下引入已锁定的 NICo 依赖、生成 `Chart.lock`，再对完整镜像闭包执行一次搬迁。
 
 依赖树包含 cert-manager、平台基础设施 Chart、该平台 Chart 的 Vault 初始化别名、NICo Core 和可选材料发布器。本轮镜像闭包 POC 中材料发布器保持关闭。
 
@@ -25,7 +25,7 @@ helm upgrade --install pxeye ./charts/pxeye \
 | --- | --- | --- |
 | `image` | 在 `values.yaml` 中固定 | PXEye 完整镜像引用；发布镜像后显式更新 |
 | `storageClass` | 空 | 使用集群默认 StorageClass |
-| `dataStorage` / `materialsStorage` | `2Gi` / `50Gi` | 数据和材料 PVC 容量 |
+| `dataStorage` / `materialsStorage` | `2Gi` / `50Gi` | 共享存储 PVC 容量 |
 | `service.type` / `service.port` / `service.nodePort` | `NodePort` / `80` / `31808` | 服务访问方式 |
 | `auth.existingSecret` | 空 | 复用含 `auth.json` 的已有 Secret；为空时首次生成密码，升级时保留原认证信息 |
 | `nico.enabled` | `true` | 启用控制台中的 NICo 部署配置 |
@@ -48,3 +48,5 @@ PVC 带有 Helm keep 策略。现场流程复用同一个父 Release：cert-mana
 当 PXEye 与 NICo 位于不同 namespace 且 `siteBootNetwork.namespace` 指向 NICo namespace 时，Chart 还会在该
 目标 namespace 创建 Role/RoleBinding，使 PXEye 能访问目标 namespace 的 namespaced 资源。
 该权限用于后续页面的“管理引导网络”，不授予集群级权限或 Secret 读取权限。
+
+目录初始化、ISO 复制命令、PXE 挂载与同节点亲和性见[共享存储](STORAGE.zh-CN.md)。

@@ -1,7 +1,11 @@
 image: 127.0.0.1:1027/pxeye:0.22.16-202611131948-1af3c46
 storageClass: ''
-dataStorage: 2Gi
-materialsStorage: 50Gi
+# Shared by PXEye (read/write) and NICo PXE (HTTP subtree, read-only).
+# RWO requires same-node multi-Pod support; PXE follows PXEye using Pod affinity.
+sharedStorage:
+  size: 200Gi
+  accessMode: ReadWriteOnce
+  existingClaim: ''
 service:
   type: NodePort
   port: 80

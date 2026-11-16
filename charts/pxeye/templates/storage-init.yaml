@@ -1,0 +1,13 @@
+{{- if .Values.components.pxeye.enabled }}
+{{- if not (has .Values.sharedStorage.accessMode (list "ReadWriteOnce" "ReadWriteMany")) }}
+{{- fail "sharedStorage.accessMode must be ReadWriteOnce or ReadWriteMany; shared storage cannot use ReadWriteOncePod" }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-storage-init
+  namespace: {{ .Release.Namespace }}
+data:
+  initialize-storage.py: |
+{{ .Files.Get "files/initialize-storage.py" | indent 4 }}
+{{- end }}
