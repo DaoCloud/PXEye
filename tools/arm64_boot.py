@@ -45,22 +45,14 @@ def build(owner):
                           'qemu-user-static && rm -rf /var/lib/apt/lists/*\n')
         assembly = owner.image('arm-mkosi-builder', recipe, owner.core)
     with owner.stage('arm64-rootfs-uefi'):
-        # The in-site Scout APT endpoint is unavailable while building its first
-        # image. It is not a build dependency: the .deb is staged directly.
-        forge = owner.core / 'pxe/mkosi.profiles/scout-oss-aarch64/mkosi.extra/etc/apt/sources.list.d/forge.list'
-        original = forge.read_bytes()
-        forge.write_text('')
         script = owner.repo / 'tools/arm64-mkosi.sh'
         owner.file('recipes/arm64-mkosi.sh', script)
-        try:
-            owner.run(*common, '--privileged',
-                      '-v', '/proc/sys/fs/binfmt_misc:/binfmt',
-                      '-v', f'{owner.public_ca}:/inputs/scout-ca.crt:ro',
-                      '-v', f'{script}:/inputs/build.sh:ro',
-                      '-e', 'ARM_BINFMT_NAME=pxeye-' + owner.run_id.lower(),
-                      assembly, 'bash', '/inputs/build.sh')
-        finally:
-            forge.write_bytes(original)
+        owner.run(*common, '--privileged',
+                  '-v', '/proc/sys/fs/binfmt_misc:/binfmt',
+                  '-v', f'{owner.public_ca}:/inputs/scout-ca.crt:ro',
+                  '-v', f'{script}:/inputs/build.sh:ro',
+                  '-e', 'ARM_BINFMT_NAME=pxeye-' + owner.run_id.lower(),
+                  assembly, 'bash', '/inputs/build.sh')
     with owner.stage('arm64-content-inspection'):
         inspector = owner.repo / 'tools/arm64-inspect.py'
         owner.file('recipes/arm64-inspect.py', inspector)
