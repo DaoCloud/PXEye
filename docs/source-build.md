@@ -45,7 +45,7 @@ Each invocation freezes all three full `main` commits before dependency checks a
 
 Source-build targets other than `images` push images only when `REGISTRY` is supplied. Every invocation freezes a fresh source set. Use one `make images` invocation for a matching Core/Scout/Boot/PXEye set; do not combine artifacts from separate invocations.
 
-This entry point builds **x86_64 control-plane and x86_64 target-host materials only**. Grace ARM64 Scout/iPXE and DPU BFB files require separate preparation and version records.
+The default entrypoint builds x86_64 control-plane images and x86_64 target-host materials. `INCLUDE_ARM64_MATERIALS=1 make images` also rebuilds Grace ARM64 Scout/rootfs/UEFI from the same source set. The independent entrypoint is `make nico-boot-arm64`; see [Grace materials](arm64-materials.md). DPU BFB is not produced here.
 
 ## Outputs and offline delivery
 
