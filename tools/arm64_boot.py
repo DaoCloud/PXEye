@@ -42,7 +42,7 @@ def build(owner):
         recipe = owner.root / 'Dockerfile.arm-mkosi-builder'
         recipe.write_text(f'FROM {pxe}\nRUN apt-get update && '
                           'DEBIAN_FRONTEND=noninteractive apt-get install -y '
-                          'qemu-user-static && rm -rf /var/lib/apt/lists/*\n')
+                          'qemu-user-static gcc-aarch64-linux-gnu && rm -rf /var/lib/apt/lists/*\n')
         assembly = owner.image('arm-mkosi-builder', recipe, owner.core)
     with owner.stage('arm64-rootfs-uefi'):
         script = owner.repo / 'tools/arm64-mkosi.sh'
