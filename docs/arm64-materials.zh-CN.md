@@ -23,6 +23,8 @@ ARM 构建依次执行交叉工具链准备、Scout Debian 包编译、mkosi 根
 
 模块检查只读取 `/usr/lib/modules/` 或 `/lib/modules/` 下的正式安装文件，不计入 DKMS 构建副本。[恢复失败的完整构建](source-build.zh-CN.md)时，若 ARM 组装已成功且组装脚本未变，可保留该组装结果；已有检查点按摘要校验，最终内容检查仍重新执行。旧构建若没有组装检查点，恢复时会记录当前文件摘要并标记 `checkpoint_origin=post-failure-recovery`，不会将恢复时的摘要冒充原组装阶段的记录。
 
+仅恢复检查时要求原 ARM 组装工具镜像仍在，不要求此前的编译工具镜像。已发布的 Core 或 x86 Boot 若从本地 Docker 缓存清除，恢复命令会从原 Registry 按已记录的不可变摘要拉回；Registry 内容缺失或所需工具镜像变化时停止。
+
 ## 输出目录
 
 成功后命令打印 `ARM64_MATERIALS_DIR`，并在对应 `build-lock.json` 的 `arm64_materials` 中记录目录和来源：

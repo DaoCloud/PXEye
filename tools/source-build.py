@@ -103,18 +103,31 @@ class Build:
             if not file.is_file() or file.stat().st_size != row['bytes'] or sha256(file) != row['sha256']:
                 raise RuntimeError('Retained build file changed: ' + name)
         self.builder = self.state['builders']['core-builder']['reference']
-        self.core_image = self.state['builders']['nico-core']['reference']
-        for name in ('core-builder', 'nico-core', 'pxe-builder'):
+        self.core_image = self.state['images']['core']['reference']
+        last_assembly = next((row for row in reversed(self.state['timings'])
+                              if row['stage'] == 'arm64-rootfs-uefi'), {})
+        previous_recipe = self.state['files'].get('recipes/arm64-mkosi.sh', {}).get('sha256')
+        self.arm64_reuse = (last_assembly.get('status') == 'completed'
+                            and previous_recipe == sha256(self.repo / 'tools/arm64-mkosi.sh'))
+        required = ('arm-mkosi-builder',) if self.arm64_reuse else ('core-builder', 'nico-core', 'pxe-builder')
+        for name in required:
             row = self.state['builders'][name]
             if self.run('docker', 'image', 'inspect', '--format', '{{.Id}}', row['reference'], quiet=True) != row['image_id']:
                 raise RuntimeError('Retained local image changed: ' + name)
         for name in ('core', 'boot-artifacts-x86_64'):
             row = self.state['images'][name]
+            if not row['reference'].startswith(self.args.registry.rstrip('/') + '/'):
+                raise RuntimeError('Resume must retain the original Registry.')
+            # A local image cache can be pruned independently of the Registry.
+            # Restore only the recorded immutable image; never resolve a new tag.
+            try:
+                self.run('docker', 'image', 'inspect', '--format', '{{.Id}}', row['reference'], quiet=True)
+            except RuntimeError:
+                self.run('docker', 'pull', row['immutable_reference'])
+                self.run('docker', 'tag', row['immutable_reference'], row['reference'])
             digests = json.loads(self.run('docker', 'image', 'inspect', '--format', '{{json .RepoDigests}}', row['reference'], quiet=True))
             if not row.get('published') or row['immutable_reference'] not in (digests or []):
                 raise RuntimeError('Retained published image changed: ' + name)
-            if not row['reference'].startswith(self.args.registry.rstrip('/') + '/'):
-                raise RuntimeError('Resume must retain the original Registry.')
         self.public_ca = self.root / 'scout-ca.crt'
         if sha256(self.args.scout_ca) != sha256(self.public_ca):
             raise RuntimeError('Resume must retain the original public CA.')
@@ -125,7 +138,7 @@ class Build:
             'at': datetime.now(timezone.utc).isoformat(), 'previous_lock': str(backup),
             'previous_lock_sha256': sha256(backup), 'driver_main_commit': revision,
             'driver_sha256': sha256(Path(__file__)),
-            'reused': ['core', 'x86-scout-boot'],
+            'reused': ['core', 'x86-scout-boot'] + (['arm64-rootfs-uefi'] if self.arm64_reuse else []),
         })
         self.state.update(status='running')
         self.state.pop('error', None)

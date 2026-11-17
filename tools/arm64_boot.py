@@ -11,6 +11,13 @@ def build(owner):
     target = owner.root / 'arm64-target'
     target.mkdir(exist_ok=True)
     owner.state['arm64_target_directory'] = str(target)
+    common = ['docker', 'run', '--rm', '--platform', 'linux/amd64',
+              '-e', 'GIT_CONFIG_COUNT=1', '-e', 'GIT_CONFIG_KEY_0=safe.directory',
+              '-e', 'GIT_CONFIG_VALUE_0=/code', '-e', f'VERSION={version}',
+              '-v', f'{owner.core}:/code', '-v', f'{target}:/code/target', '-w', '/code']
+    if getattr(owner, 'arm64_reuse', False):
+        finish(owner, version, common, owner.state['builders']['arm-mkosi-builder']['reference'])
+        return
     with owner.stage('arm64-cross-builder'):
         recipe = owner.root / 'Dockerfile.arm-cross-builder'
         recipe.write_text(
@@ -28,10 +35,6 @@ def build(owner):
             'ENV RUSTFLAGS="--cfg tokio_unstable -C link-arg=-Wl,-z,max-page-size=65536"\n'
         )
         cross = owner.image('arm-cross-builder', recipe, owner.core)
-    common = ['docker', 'run', '--rm', '--platform', 'linux/amd64',
-              '-e', 'GIT_CONFIG_COUNT=1', '-e', 'GIT_CONFIG_KEY_0=safe.directory',
-              '-e', 'GIT_CONFIG_VALUE_0=/code', '-e', f'VERSION={version}',
-              '-v', f'{owner.core}:/code', '-v', f'{target}:/code/target', '-w', '/code']
     with owner.stage('arm64-scout-compile-package'):
         owner.run(*common, cross, 'cargo', 'make', 'package-scout-aarch64-release-local')
         owner.dependencies()
@@ -49,6 +52,11 @@ def build(owner):
                           'DEBIAN_FRONTEND=noninteractive apt-get install -y '
                           'qemu-user-static gcc-aarch64-linux-gnu && rm -rf /var/lib/apt/lists/*\n')
         assembly = owner.image('arm-mkosi-builder', recipe, owner.core)
+    finish(owner, version, common, assembly)
+
+
+def finish(owner, version, common, assembly):
+    """Checkpoint assembly bytes and require full inspection before publication."""
     payload = owner.core / 'pxe/static/blobs/internal/aarch64'
     previous_recipe = owner.state['files'].get('recipes/arm64-mkosi.sh', {}).get('sha256')
     script = owner.snapshot_recipe('arm64-mkosi.sh', owner.arm_recipe_repo / 'tools/arm64-mkosi.sh')
