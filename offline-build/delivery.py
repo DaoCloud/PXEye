@@ -13,6 +13,10 @@ import tempfile
 import os
 import hashlib
 import platform
+from contextlib import contextmanager
+from datetime import datetime, timezone
+import time
+import uuid
 
 import yaml
 
@@ -25,6 +29,41 @@ import build_config
 import arm_materials
 sys.path.insert(0, str(HOME / 'helm-bundle'))
 import assembly
+
+
+TIMINGS = []
+TIMING_DIRECTORY = None
+
+
+@contextmanager
+def timed_stage(name):
+    """Keep failed and successful delivery stages with monotonic durations."""
+    started = time.monotonic()
+    row = {'stage': name, 'started_at': datetime.now(timezone.utc).isoformat(), 'status': 'running'}
+    TIMINGS.append(row)
+    save_timings()
+    print('START_STAGE', name, flush=True)
+    try:
+        yield
+    except BaseException as error:
+        row.update(status='failed', error=str(error) or type(error).__name__)
+        raise
+    else:
+        row['status'] = 'completed'
+    finally:
+        row.update(seconds=round(time.monotonic() - started, 3),
+                   ended_at=datetime.now(timezone.utc).isoformat())
+        save_timings()
+        print('END_STAGE', name, row['status'], str(row['seconds']) + 's', flush=True)
+
+
+def save_timings():
+    if TIMING_DIRECTORY is None:
+        return
+    target = TIMING_DIRECTORY / 'timings.json'
+    temporary = target.with_suffix('.tmp')
+    temporary.write_text(json.dumps({'stages': TIMINGS}, indent=2) + '\n')
+    temporary.replace(target)
 
 
 def load_packager():
@@ -358,8 +397,10 @@ def cache_images(path):
     # The material must exist before the first parent Chart render; otherwise
     # the generated closure would omit the initContainer image. PXEye itself is
     # deliberately published by the preceding ``make images`` step.
-    material_records = arm_material_record(package_value, registry, insecure)
-    image_list = chart_images(path, package_value, packager, material_records=material_records)
+    with timed_stage('arm64-materials'):
+        material_records = arm_material_record(package_value, registry, insecure)
+    with timed_stage('chart-image-closure'):
+        image_list = chart_images(path, package_value, packager, material_records=material_records)
     known = set(subprocess.run([options['ctr'], '--address', options['containerd_address'], '--namespace', options['containerd_namespace'], 'images', 'list', '-q'], capture_output=True, text=True, check=True).stdout.splitlines())
     material_images = {record['image'] for record in material_records}
     for source in [line.strip() for line in image_list.read_text().splitlines() if line.strip()]:
@@ -505,7 +546,8 @@ def run(path, plan, version, seed_cache=False):
         material_records = []
     else:
         registry, insecure = registry_settings()
-        material_records = arm_material_record(package_value, registry, insecure, allow_build=not plan)
+        with timed_stage('arm64-materials'):
+            material_records = arm_material_record(package_value, registry, insecure, allow_build=not plan)
     if seed_cache:
         print('DELIVERY_STAGE [cache-seed-image-closure]', flush=True)
         image_list = chart_images(path, package_value, packager, material_records=material_records)
@@ -522,7 +564,8 @@ def run(path, plan, version, seed_cache=False):
         return
     print('DELIVERY_STAGE [registry-input]', flush=True)
     original_work = package_value['work_directory']
-    registry_config, package_value = registry_input(path, package_value, packager, material_records=material_records)
+    with timed_stage('registry-oci-input'):
+        registry_config, package_value = registry_input(path, package_value, packager, material_records=material_records)
     if plan:
         print('DELIVERY_STAGE [package-plan]', flush=True)
         assembly.plan(package_value)
@@ -531,11 +574,13 @@ def run(path, plan, version, seed_cache=False):
     work = package_value['work_directory']
     work.mkdir(parents=True, exist_ok=True)
     print('DELIVERY_STAGE [package]', flush=True)
-    config = assembly.prepare(package_value, packager, material_records=material_records)
+    with timed_stage('prepare-package-inputs'):
+        config = assembly.prepare(package_value, packager, material_records=material_records)
     # Registry closure exports and bundle staging are cache entries.  Final
     # deliverables belong to the stable top-level output directory instead.
     config['output_root'] = original_work / 'output'
-    packager.run_build(config, argparse.Namespace(version=version, check_inputs=False))
+    with timed_stage('archive-and-verify'):
+        packager.run_build(config, argparse.Namespace(version=version, check_inputs=False))
     print('DELIVERY_COMPLETE', original_work / 'output', flush=True)
 
 
@@ -547,8 +592,14 @@ def main():
     parser.add_argument('--plan', action='store_true', help='Read local images and package inputs without creating outputs')
     parser.add_argument('--version', help='Optional delivery version')
     parser.add_argument('--seed-cache', action='store_true', help='Legacy containerd OCI export action')
+    parser.add_argument('--arm64-materials', action='store_true', help='Validate/publish the six Grace ARM64 files only; do not build an archive')
     parser.add_argument('--cache-images', action='store_true', help='Render Charts, pull missing source images, and push them to REGISTRY')
     args = parser.parse_args()
+    actions = (args.arm64_materials, args.cache_images, args.seed_cache)
+    if sum(actions) > 1:
+        parser.error('Choose only one material/cache action')
+    if (args.arm64_materials or args.cache_images) and (args.plan or args.version):
+        parser.error('Material/cache actions cannot be combined with --plan/--version')
     if args.write_config:
         if args.config or args.plan or args.version:
             raise SystemExit('--write-config cannot be combined with build options')
@@ -557,6 +608,23 @@ def main():
         return
     if not args.config:
         raise SystemExit('Pass --config or --write-config')
+    global TIMING_DIRECTORY
+    work = assembly.configuration(args.config)['work_directory']
+    run_id = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ') + '-' + uuid.uuid4().hex[:8]
+    TIMING_DIRECTORY = work / 'logs/delivery' / run_id
+    TIMING_DIRECTORY.mkdir(parents=True, exist_ok=False)
+    print('DELIVERY_TIMINGS', TIMING_DIRECTORY / 'timings.json', flush=True)
+    if args.arm64_materials:
+        if not arm_materials.enabled():
+            parser.error('--arm64-materials requires INCLUDE_ARM64_MATERIALS=1')
+        registry, insecure = registry_settings()
+        with timed_stage('arm64-materials'):
+            records = arm_material_record(assembly.configuration(args.config), registry, insecure)
+            target = work / 'generated/arm64-materials.json'
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(json.dumps(records, indent=2) + '\n')
+            print('ARM64_MATERIAL_MANIFEST', target, flush=True)
+        return
     if args.cache_images:
         if args.plan or args.version or args.seed_cache: raise SystemExit('--cache-images cannot be combined with build options')
         cache_images(args.config)

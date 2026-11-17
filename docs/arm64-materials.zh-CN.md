@@ -50,6 +50,7 @@ export REGISTRY=registry.example:5000
 export REGISTRY_INSECURE=true
 export INCLUDE_ARM64_MATERIALS=1
 export ARM64_MATERIALS_DIR=/srv/nico-materials/aarch64
+make arm64-materials
 make cache-images
 make bundles
 ```
@@ -63,3 +64,5 @@ make bundles
 当前外部 DHCP 通用小型启动 ISO 的构建入口仍为 x86_64；Grace 场景需提供 ARM64 兼容启动介质或使用已匹配的原生网络引导路径，不能直接复用 x86 小型 ISO。
 
 参考 NVIDIA [容器与启动材料构建](https://docs.nvidia.com/infra-controller/documentation/getting-started/building-nico-containers)和[Bootable Artifacts](https://docs.nvidia.com/infra-controller/documentation/reference/development/bootable-artifacts)。BFB 的 `BOOTSTRAP_CA_PATH` 属于 DPU 路径，与主机 Scout 的 `FORGE_CA_PATH` 分开。
+
+`make arm64-materials` 只校验并发布现有材料镜像，不重新编译 Scout，也不生成归档；生成记录位于 `outputs_/generated/arm64-materials.json`。`make bundles` 仍会检查并复用相同内容的镜像。阶段耗时保存在 `outputs_/logs/delivery/<运行ID>/timings.json`，归档细分阶段见对应 `progress.json`。

@@ -50,6 +50,7 @@ export REGISTRY=registry.example:5000
 export REGISTRY_INSECURE=true
 export INCLUDE_ARM64_MATERIALS=1
 export ARM64_MATERIALS_DIR=/srv/nico-materials/aarch64
+make arm64-materials
 make cache-images
 make bundles
 ```
@@ -63,3 +64,5 @@ Check delivered `manifests/materials.json`, `manifests/images-lock.json` and the
 The generic external-DHCP small boot ISO builder is still x86_64. Grace requires compatible ARM64 boot media or a matching native network-boot path; do not reuse the x86 small ISO.
 
 References: NVIDIA [container and boot-material builds](https://docs.nvidia.com/infra-controller/documentation/getting-started/building-nico-containers) and [Bootable Artifacts](https://docs.nvidia.com/infra-controller/documentation/reference/development/bootable-artifacts). BFB `BOOTSTRAP_CA_PATH` belongs to DPU provisioning, separate from host Scout `FORGE_CA_PATH`.
+
+`make arm64-materials` validates and publishes existing files only; it does not compile Scout or produce an archive. Its record is `outputs_/generated/arm64-materials.json`. `make bundles` still verifies and reuses matching content. Stage durations are written to `outputs_/logs/delivery/<run-id>/timings.json`; archive substages are recorded in the corresponding `progress.json`.

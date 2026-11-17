@@ -14,6 +14,8 @@ import shutil
 import subprocess
 import sys
 import tomllib
+import time
+from contextlib import contextmanager
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -49,7 +51,7 @@ class Build:
         self.state = {
             'schema_version': 1, 'run_id': self.run_id, 'target': args.target,
             'status': 'running', 'platform': PLATFORM, 'sources': {},
-            'images': {}, 'files': {}, 'builders': {},
+            'images': {}, 'files': {}, 'builders': {}, 'timings': [], 'commands': [],
             'scope': 'x86_64 Core/PXEye and optional x86_64 Scout/Boot; no ARM64 or DPU build',
         }
         self.save()
@@ -66,7 +68,27 @@ class Build:
         temporary.write_text(json.dumps(self.state, indent=2) + '\n')
         temporary.replace(self.lock_path)
 
+    @contextmanager
+    def stage(self, name):
+        started = time.monotonic()
+        row = {'stage': name, 'started_at': datetime.now(timezone.utc).isoformat(), 'status': 'running'}
+        self.state['timings'].append(row)
+        self.save()
+        try:
+            yield
+        except BaseException:
+            row['status'] = 'failed'
+            raise
+        else:
+            row['status'] = 'completed'
+        finally:
+            row.update(seconds=round(time.monotonic() - started, 3),
+                       ended_at=datetime.now(timezone.utc).isoformat())
+            self.save()
+            print(f'STAGE_TIME {name}: {row["seconds"]}s ({row["status"]})', flush=True)
+
     def run(self, *argv, cwd=None, quiet=False):
+        started = time.monotonic()
         argv = [str(value) for value in argv]
         line = f'+ [{cwd or self.repo}] {shlex.join(argv)}\n'
         print(line, end='', flush=True)
@@ -88,7 +110,11 @@ class Build:
                 else:
                     result.append(chunk)
             code = process.wait()
-            log.write(f'EXIT_CODE={code}\n')
+            seconds = round(time.monotonic() - started, 3)
+            self.state['commands'].append({'argv': argv, 'cwd': str(cwd or self.repo),
+                                           'seconds': seconds, 'exit_code': code})
+            self.save()
+            log.write(f'EXIT_CODE={code} SECONDS={seconds}\n')
             if code:
                 raise RuntimeError(f'Command failed ({code}): {shlex.join(argv)}')
         return ''.join(result).strip()
@@ -385,7 +411,8 @@ class Build:
 
     def execute(self):
         try:
-            self.sources()
+            with self.stage('sources'):
+                self.sources()
             if self.args.target != 'sources':
                 self.check_docker()
             if self.args.target in ('boot', 'images'):
@@ -395,14 +422,18 @@ class Build:
             if self.args.target == 'libredfish':
                 self.library()
             elif self.args.target == 'core':
-                self.build_core()
+                with self.stage('core'):
+                    self.build_core()
             elif self.args.target == 'scout':
                 self.scout()
             elif self.args.target in ('boot', 'images'):
-                self.build_core()
-                self.boot()
+                with self.stage('core'):
+                    self.build_core()
+                with self.stage('x86-scout-boot'):
+                    self.boot()
                 if self.args.target == 'images':
-                    self.build_pxeye()
+                    with self.stage('pxeye'):
+                        self.build_pxeye()
             self.state['status'] = 'complete'
             for name, source in self.state['sources'].items():
                 print(f'SOURCE {name}: main @ {source["commit"]}')

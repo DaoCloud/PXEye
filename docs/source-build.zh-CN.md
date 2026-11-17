@@ -101,3 +101,5 @@ Git submodule 则把“子仓库地址 + 固定提交指针”提交进父仓库
 这里不把两个 fork 注册为 PXEye 的 submodule；Core 自身已有的 mkosi/iPXE 子模块仍按其固定指针初始化。
 
 构建方式参考 NVIDIA [容器构建](https://docs.nvidia.com/infra-controller/documentation/getting-started/building-nico-containers)和[启动材料](https://docs.nvidia.com/infra-controller/documentation/reference/development/bootable-artifacts)，具体任务以所锁定的 fork 源码为准。
+
+源码构建各阶段和命令耗时写入 `build-lock.json` 的 `timings` 和 `commands`；失败尝试保留耗时及退出码。

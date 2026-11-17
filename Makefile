@@ -29,7 +29,7 @@ SOURCE_BUILD_DIRECTORY ?= $(REPO_ROOT)/outputs_/source-builds
 SCOUT_CA_FILE ?=
 SOURCE_BUILD_ARGS = --repo "$(REPO_ROOT)" --output "$(SOURCE_BUILD_DIRECTORY)" $(if $(REGISTRY),--registry "$(REGISTRY)",) $(if $(SCOUT_CA_FILE),--scout-ca "$(SCOUT_CA_FILE)",)
 
-.PHONY: syntax lint format-check test wheel image images pxeye-images nico-sources nico-core libredfish nico-scout nico-boot source-build-help ensure-build-config cache-images bundles dhcp-check dhcp-check-help
+.PHONY: syntax lint format-check test wheel image images pxeye-images nico-sources nico-core libredfish nico-scout nico-boot source-build-help arm64-materials ensure-build-config cache-images bundles dhcp-check dhcp-check-help
 syntax:
 	$(PYTHON) -m compileall -q src tests/unit
 	@find src/pxeye/web -name '*.js' -exec $(NODE) --check {} \;
@@ -106,6 +106,11 @@ ensure-build-config:
 bundles: ensure-build-config
 	@test -n "$(REGISTRY)" || { echo "Set REGISTRY=host:port" >&2; exit 1; }
 	REGISTRY="$(REGISTRY)" REGISTRY_INSECURE="$(REGISTRY_INSECURE)" REQUIRE_CLEAN_BUILD="$(REQUIRE_CLEAN_BUILD)" INCLUDE_ARM64_MATERIALS="$(INCLUDE_ARM64_MATERIALS)" ARM64_MATERIALS_DIR="$(ARM64_MATERIALS_DIR)" $(PYTHON) "$(DELIVERY_SCRIPT)" --config "$(BUILD_CONFIG)" $(VERSION_ARG)
+
+# Validate and publish only the existing Grace payload; bundles stays the archive entry.
+arm64-materials: ensure-build-config
+	@test -n "$(REGISTRY)" || { echo "Set REGISTRY=host:port" >&2; exit 1; }
+	REGISTRY="$(REGISTRY)" REGISTRY_INSECURE="$(REGISTRY_INSECURE)" INCLUDE_ARM64_MATERIALS=1 ARM64_MATERIALS_DIR="$(ARM64_MATERIALS_DIR)" $(PYTHON) "$(DELIVERY_SCRIPT)" --config "$(BUILD_CONFIG)" --arm64-materials
 
 cache-images: ensure-build-config
 	@test -n "$(REGISTRY)" || { echo "Set REGISTRY=host:port" >&2; exit 1; }

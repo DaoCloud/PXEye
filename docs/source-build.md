@@ -101,3 +101,5 @@ A Git submodule instead commits a child repository URL and fixed commit pointer 
 The two forks are not registered as PXEye submodules. Core retains its own mkosi/iPXE submodules, initialized at their pinned commits.
 
 See NVIDIA [container builds](https://docs.nvidia.com/infra-controller/documentation/getting-started/building-nico-containers) and [bootable artifacts](https://docs.nvidia.com/infra-controller/documentation/reference/development/bootable-artifacts); the frozen fork source determines the actual tasks.
+
+Source-build stage and command durations are recorded in `build-lock.json` under `timings` and `commands`, including failed commands and exit codes.
