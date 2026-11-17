@@ -10,19 +10,12 @@ Run on a Linux host with access to Kubernetes and the build image cache. Require
 
 ```bash
 cd /path/to/PXEye
-AUDIT=tools/version-audit/audit.py
-
-python3 "$AUDIT" package --repo "$PWD" \
-  --registry 127.0.0.1:1027 --registry-http --output /tmp/pxeye-audit/package.json
-
-python3 "$AUDIT" runtime --context kubernetes-admin@kubernetes \
-  --output /tmp/pxeye-audit/runtime.json
-
-python3 "$AUDIT" compare \
-  --package /tmp/pxeye-audit/package.json \
-  --runtime /tmp/pxeye-audit/runtime.json \
-  --output /tmp/pxeye-audit/comparison.json
+python3 audit.py package
+python3 audit.py runtime
+python3 audit.py compare
 ```
+
+Defaults use the script's Git checkout, the local HTTP Registry at `127.0.0.1:1027`, and the current kubectl context. Existing archives in the checkout's `outputs_/cache/charts` are reused automatically. Reports are written to the current directory: `package.json`, `runtime.json`, `comparison.json` and `comparison.txt`.
 
 Snapshots may be collected on different hosts and copied together for comparison. Consult `--help` and subcommand help for options.
 
@@ -54,7 +47,7 @@ Console output and `comparison.txt` group images and files, showing up to 12 fil
 ## Options and limits
 
 - `package --revision <commit>` defaults to `HEAD`. Chart values, patches, packaging code and recipes all come from that commit, ignoring dirty files and old bundle locks.
-- `package --registry <host:port>` uses the same cache hostname mapping as `make bundles`. It reads current Registry tag metadata instead of trusting stale local tags. Add `--registry-http` for HTTP; otherwise HTTPS uses system CA validation. Without a Registry, resolve local containerd records.
+- `package --registry <host:port>` uses the same cache hostname mapping as `make bundles`. It reads current Registry tag metadata instead of trusting stale local tags. The default loopback Registry uses HTTP; other hosts default to HTTPS with system CA validation. Use `--registry-http` for HTTP, `--no-registry-http` to force HTTPS, or `--registry ""` for local containerd records.
 - `package --chart-cache <directory>` reuses checksum-named archives from the build workspace's `cache/charts`, verifying hashes first. Missing pinned Helm sources may be downloaded. No prebuilt bundle is required.
 - `package --include-arm64` corresponds to `make bundles INCLUDE_ARM64_MATERIALS=1`. Default is disabled, matching Make. The material image digest is generated during an actual build; this audit exports the committed payload file identities.
 - `runtime --namespace <name>` is repeatable; defaults to `nico-system`, `mmzhou` and `cert-manager`. The default Pod name pattern is `nico|pxeye|os-install-console|cert-manager`, adjustable via `--name-pattern`. Finished and deleting Pods are excluded.

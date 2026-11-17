@@ -457,9 +457,12 @@ def compare(args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog='''Examples (run on a Linux build/control host):
-  python3 audit.py package --repo /path/to/PXEye --registry 127.0.0.1:1027 --registry-http --output package.json
-  python3 audit.py runtime --context kubernetes-admin@kubernetes --output runtime.json
-  python3 audit.py compare --package package.json --runtime runtime.json --output comparison.json
+  python3 audit.py package
+  python3 audit.py runtime
+  python3 audit.py compare
+
+Defaults: this script's Git checkout, local HTTP Registry 127.0.0.1:1027,
+current Kubernetes context, package.json/runtime.json/comparison.json in the working directory.
 
 Exit: 0 complete/matching; 2 differences or incomplete verification; 1 command failure.
 No images are built/pulled, no workloads/configuration are changed. package may download pinned Helm sources.
@@ -467,17 +470,17 @@ No images are built/pulled, no workloads/configuration are changed. package may 
     sub = parser.add_subparsers(dest='command', required=True)
     for name in ('package', 'runtime', 'compare'):
         p = sub.add_parser(name, help={'package': 'Export committed packaging inputs', 'runtime': 'Export active Pods and published files', 'compare': 'Compare two exported snapshots'}[name])
-        p.add_argument('--output', type=Path, required=True)
+        p.add_argument('--output', type=Path, default=Path('comparison.json' if name == 'compare' else name + '.json'))
         if name == 'compare':
-            p.add_argument('--package', type=Path, required=True)
-            p.add_argument('--runtime', type=Path, required=True)
+            p.add_argument('--package', type=Path, default=Path('package.json'))
+            p.add_argument('--runtime', type=Path, default=Path('runtime.json'))
             continue
         p.add_argument('--architecture', choices=('amd64', 'arm64'), default='amd64', help='Container platform; independent of the installed host architecture')
         p.add_argument('--ctr', default='ctr')
         p.add_argument('--containerd-namespace', default='k8s.io')
         p.add_argument('--content-dir', default='/var/lib/containerd/io.containerd.content.v1.content/blobs/sha256')
-        p.add_argument('--registry', default='', help='Cache hostname:port, same remapping as make bundles')
-        p.add_argument('--registry-http', action='store_true', help='Use HTTP for Registry metadata; default verifies HTTPS')
+        p.add_argument('--registry', default='127.0.0.1:1027' if name == 'package' else '', help='Cache hostname:port; package defaults to 127.0.0.1:1027')
+        p.add_argument('--registry-http', action=argparse.BooleanOptionalAction, default=None, help='Use HTTP for Registry metadata; automatic for the default loopback Registry')
         if name == 'package':
             p.add_argument('--repo', default=str(Path(__file__).resolve().parents[2]))
             p.add_argument('--revision', default='HEAD', help='Committed packaging revision (default HEAD); ignores dirty files')
@@ -485,7 +488,7 @@ No images are built/pulled, no workloads/configuration are changed. package may 
             p.add_argument('--chart-cache', help='Directory containing checksum-named Chart .tar.gz files; verified before reuse')
             p.add_argument('--include-arm64', action='store_true', help='Match make bundles INCLUDE_ARM64_MATERIALS=1')
         else:
-            p.add_argument('--context', required=True)
+            p.add_argument('--context', help='Defaults to the current kubectl context')
             p.add_argument('--namespace', action='append', help='Repeatable; default nico-system, mmzhou and cert-manager')
             p.add_argument('--name-pattern', default='nico|pxeye|os-install-console|cert-manager', help='Pod name regex scope')
             p.add_argument('--kubectl', default='kubectl')
@@ -493,6 +496,17 @@ No images are built/pulled, no workloads/configuration are changed. package may 
             p.add_argument('--include-site-files', action='store_true', help='Also hash uploaded ISO/BFB and other files under nico/; potentially slow')
     args = parser.parse_args()
     try:
+        if args.command in ('package', 'runtime'):
+            if args.registry_http is None:
+                args.registry_http = args.registry in ('127.0.0.1:1027', 'localhost:1027')
+        if args.command == 'package' and not args.chart_cache:
+            cache = Path(args.repo).resolve() / 'outputs_/cache/charts'
+            if cache.is_dir():
+                args.chart_cache = str(cache)
+        if args.command == 'runtime' and not args.context:
+            args.context = run([args.kubectl, 'config', 'current-context']).strip()
+            if not args.context:
+                raise ValueError('No current Kubernetes context; select one with kubectl config use-context')
         if args.command == 'compare':
             output = io.StringIO()
             with contextlib.redirect_stdout(output):

@@ -10,22 +10,12 @@
 
 ```bash
 cd /path/to/PXEye
-AUDIT=tools/version-audit/audit.py
-
-# 1. 导出当前提交对应的打包清单；忽略未提交的 Chart、脚本等修改。
-python3 "$AUDIT" package --repo "$PWD" \
-  --registry 127.0.0.1:1027 --registry-http --output /tmp/pxeye-audit/package.json
-
-# 2. 导出环境；请替换为实际 context。
-python3 "$AUDIT" runtime --context kubernetes-admin@kubernetes \
-  --output /tmp/pxeye-audit/runtime.json
-
-# 3. 展示对比，并生成 comparison.json 与易读的 comparison.txt。
-python3 "$AUDIT" compare \
-  --package /tmp/pxeye-audit/package.json \
-  --runtime /tmp/pxeye-audit/runtime.json \
-  --output /tmp/pxeye-audit/comparison.json
+python3 audit.py package
+python3 audit.py runtime
+python3 audit.py compare
 ```
+
+仓库路径自动使用脚本所在仓库；打包镜像缓存默认 `127.0.0.1:1027`（HTTP），环境使用 kubectl 当前 context，无需填写。自动复用仓库 `outputs_/cache/charts` 中已有的 Chart 归档。结果写在当前目录：`package.json`、`runtime.json`、`comparison.json` 和 `comparison.txt`。
 
 两份清单也可以在不同主机导出，复制到一起后比较。`--help` 和各子命令的 `--help` 提供参数说明。
 
@@ -55,7 +45,7 @@ python3 "$AUDIT" compare \
 ## 常用参数与范围
 
 - `package --revision <commit>`：默认 `HEAD`；仅使用该提交中的打包实现、Chart、补丁和材料配方，不读取旧包锁或未提交修改。
-- `package --registry <host:port>`：与 `make bundles REGISTRY=...` 的缓存地址映射一致；指定后从 Registry 读取当前标签摘要，避免采用过期本地标签。HTTP 必须显式加 `--registry-http`。不提供 Registry 时按本地 containerd 记录解析。
+- `package --registry <host:port>`：与 `make bundles REGISTRY=...` 的缓存地址映射一致；默认使用 `127.0.0.1:1027` 的 HTTP Registry；更换地址时默认校验 HTTPS，可显式使用 `--registry-http`。传入 `--registry ""` 可按本地 containerd 记录解析。
 - `package --chart-cache <目录>`：复用构建工作区 `cache/charts` 中的 SHA 命名归档，复用前重新校验。缺少时可能下载固定上游 Chart；不要求已有离线包。
 - `package --include-arm64`：对应 `make bundles INCLUDE_ARM64_MATERIALS=1`。默认关闭，与仓库 Make 默认一致；ARM 材料镜像在构建时生成，本脚本只导出配方中的文件身份。
 - `runtime --namespace <名称>`：可重复；默认 `nico-system`、`mmzhou`、`cert-manager`，Pod 名默认匹配 `nico|pxeye|os-install-console|cert-manager`，可用 `--name-pattern` 调整。已结束和正在删除的 Pod 不纳入。
