@@ -88,7 +88,7 @@ make cache-images
 make bundles
 ```
 
-检查 `outputs_/generated/resolved-images.txt` 是否包含本轮 PXEye/Core/Boot，再检查交付输出中的 `build-result.json`、归档中的 `manifests/images-lock.json` 与重定位后的父 Chart；镜像 digest 应与源码构建锁一致。构建锁暂作为交付旁文件保留，不会自动收入归档。无需修改生成的镜像缓存或历史 `materials-lock.json` 来冒充升级。
+检查 `outputs_/generated/resolved-images.txt` 是否包含本轮 PXEye/Core/Boot，再检查交付输出中的 `build-result.json`、归档中的 `manifests/images-lock.json` 与重定位后的父 Chart；镜像 digest 应与源码构建锁一致。设置 `SOURCE_BUILD_LOCK=/absolute/path/to/build-lock.json` 后，打包会校验 PXEye/Core/x86 Boot 的实际归档 digest 与该锁一致，并将锁收入 `manifests/source-build-lock.json`。这不会自动修改 Chart 镜像引用。无需修改生成的镜像缓存或历史 `materials-lock.json` 来冒充升级。
 
 Grace 的材料生成、固定配方和打包开关见 [Grace ARM64 启动材料](arm64-materials.zh-CN.md)。
 
@@ -107,3 +107,5 @@ Git submodule 则把“子仓库地址 + 固定提交指针”提交进父仓库
 Docker Hub 不可达时可设置 `BUILD_IMAGE_MIRROR=m.daocloud.io`。构建器仅替换 Dockerfile 的 Docker Hub `FROM` 地址，保留已有 digest，并记录原配方、改写配方和地址映射；不会改宿主机 Docker/集群配置。Dockerfile 内的软件源下载仍需可达。
 
 默认 `BUILD_JOBS=8` 限制构建镜像内 Cargo 并发，避免按宿主机全部 CPU 并发编译挤占运行服务内存。可按构建机资源调整；实际值和生成配方写入构建锁。
+
+推荐完整交付命令：`make bundles SOURCE_BUILD_LOCK=/absolute/path/to/build-lock.json`。任一源码构建镜像未被归档或摘要不一致时停止，不用旧镜像替代。

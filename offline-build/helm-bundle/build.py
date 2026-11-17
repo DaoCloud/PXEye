@@ -747,6 +747,13 @@ def build(config, args, progress=None):
                 shutil.copyfile(HOME / name, bundle / 'docs' / name)
             shutil.copyfile(HOME / 'toolchain-lock.json', bundle / 'manifests/toolchain-lock.json')
             shutil.copyfile(HOME / 'relok8s-LICENSE', bundle / 'docs/relok8s-LICENSE')
+            selected_source_build = source_build_lock()
+            if selected_source_build:
+                selected_hash = hashlib.sha256(json.dumps(selected_source_build, sort_keys=True).encode()).hexdigest()
+                b.require(selected_hash == progress.state['identity']['source_build_lock_sha256'],
+                          'SOURCE_BUILD_LOCK changed while packaging; use a new version')
+                verify_source_build_images(selected_source_build, image_records, staged_images)
+                b.dump(bundle / 'manifests/source-build-lock.json', selected_source_build)
             b.dump(bundle / 'manifests/images-lock.json', image_records)
             b.dump(bundle / 'manifests/materials.json', material_records)
             plan = json.loads((REPO / 'deploy/offline-core/deployment.json').read_text())
@@ -878,12 +885,54 @@ def registry_reference(address, reference):
     return address + '/' + reference
 
 
+def source_build_lock():
+    """Read an explicitly selected source build; never infer a recent run."""
+    raw = os.environ.get('SOURCE_BUILD_LOCK', '').strip()
+    if not raw:
+        return None
+    path = Path(raw).expanduser().resolve()
+    value = json.loads(path.read_text())
+    b.require(isinstance(value, dict) and value.get('status') == 'complete',
+              'SOURCE_BUILD_LOCK must name a completed source build')
+    b.require(value.get('platform') == 'linux/amd64', 'SOURCE_BUILD_LOCK needs linux/amd64 control images')
+    images = value.get('images', {})
+    b.require(isinstance(images, dict), 'Source build images must be an object')
+    for name in ('pxeye', 'core', 'boot-artifacts-x86_64'):
+        row = images.get(name, {})
+        immutable = row.get('immutable_reference', '')
+        b.require(row.get('published') is True and '@sha256:' in immutable
+                  and b.DIGEST.fullmatch(immutable.rsplit('@', 1)[-1]),
+                  'Source build lacks a published immutable image: ' + name)
+    return value
+
+
+def verify_source_build_images(value, records, inputs):
+    """Match immutable source manifests and their archived amd64 child graphs."""
+    for name in ('pxeye', 'core', 'boot-artifacts-x86_64'):
+        row = value['images'][name]
+        expected = row['immutable_reference'].rsplit('@', 1)[-1]
+        references = (row['reference'], row['immutable_reference'])
+        selected = [item for item in inputs
+                    if (item.get('source_image') or item.get('image')) in references]
+        b.require(selected, 'Archive lacks SOURCE_BUILD_LOCK image: ' + name)
+        for item in selected:
+            # Docker may publish an OCI index including provenance. The source
+            # root digest must match; relok8s transports its selected amd64 image.
+            b.require(item['digest'] == expected, 'Source manifest differs from SOURCE_BUILD_LOCK: ' + name)
+            actual = item.get('amd64_manifest') or item['digest']
+            matches = [record for record in records if record['source'] in references]
+            b.require(matches and all(record['digest'] == actual for record in matches),
+                      'Archived platform image differs from SOURCE_BUILD_LOCK: ' + name)
+
+
 def run_build(config, args):
     require_clean_build()
     snapshot = build_source_snapshot()
+    selected_source_build = source_build_lock()
     output = config['output_root']; output.mkdir(parents=True, exist_ok=True)
     identity = {'config': {k: str(v) if isinstance(v, Path) else v for k, v in config.items()},
                 'implementation': snapshot['sha256'],
+                'source_build_lock_sha256': hashlib.sha256(json.dumps(selected_source_build, sort_keys=True).encode()).hexdigest() if selected_source_build else None,
                 'input_inventory_sha256': b.sha(config['materials_bundle'] / ('manifests/files.json' if (config['materials_bundle'] / 'prepared.json').exists() else 'manifests/file-inventory.json'))}
     # Persist a default version per configuration. New deliveries use --version.
     key = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()[:24]

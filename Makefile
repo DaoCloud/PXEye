@@ -29,6 +29,7 @@ SOURCE_BUILD_DIRECTORY ?= $(REPO_ROOT)/outputs_/source-builds
 SCOUT_CA_FILE ?=
 BUILD_IMAGE_MIRROR ?=
 BUILD_JOBS ?= 8
+SOURCE_BUILD_LOCK ?=
 SOURCE_BUILD_ARGS = --jobs "$(BUILD_JOBS)" --repo "$(REPO_ROOT)" --output "$(SOURCE_BUILD_DIRECTORY)" $(if $(REGISTRY),--registry "$(REGISTRY)",) $(if $(SCOUT_CA_FILE),--scout-ca "$(SCOUT_CA_FILE)",) $(if $(BUILD_IMAGE_MIRROR),--image-mirror "$(BUILD_IMAGE_MIRROR)",)
 
 .PHONY: syntax lint format-check test wheel image images pxeye-images nico-sources nico-core libredfish nico-scout nico-boot source-build-help arm64-materials ensure-build-config cache-images bundles dhcp-check dhcp-check-help
@@ -107,7 +108,7 @@ ensure-build-config:
 
 bundles: ensure-build-config
 	@test -n "$(REGISTRY)" || { echo "Set REGISTRY=host:port" >&2; exit 1; }
-	REGISTRY="$(REGISTRY)" REGISTRY_INSECURE="$(REGISTRY_INSECURE)" REQUIRE_CLEAN_BUILD="$(REQUIRE_CLEAN_BUILD)" INCLUDE_ARM64_MATERIALS="$(INCLUDE_ARM64_MATERIALS)" ARM64_MATERIALS_DIR="$(ARM64_MATERIALS_DIR)" $(PYTHON) "$(DELIVERY_SCRIPT)" --config "$(BUILD_CONFIG)" $(VERSION_ARG)
+	REGISTRY="$(REGISTRY)" REGISTRY_INSECURE="$(REGISTRY_INSECURE)" REQUIRE_CLEAN_BUILD="$(REQUIRE_CLEAN_BUILD)" SOURCE_BUILD_LOCK="$(SOURCE_BUILD_LOCK)" INCLUDE_ARM64_MATERIALS="$(INCLUDE_ARM64_MATERIALS)" ARM64_MATERIALS_DIR="$(ARM64_MATERIALS_DIR)" $(PYTHON) "$(DELIVERY_SCRIPT)" --config "$(BUILD_CONFIG)" $(VERSION_ARG)
 
 # Validate and publish only the existing Grace payload; bundles stays the archive entry.
 arm64-materials: ensure-build-config
