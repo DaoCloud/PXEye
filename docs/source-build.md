@@ -113,3 +113,25 @@ For a source-built release, use `make bundles SOURCE_BUILD_LOCK=/absolute/path/t
 If Rust distribution downloads are unreachable, set `RUST_MIRROR=https://rsproxy.cn`. Only build images use this distribution source; rustup retains component checksum checks, and the URL and recipe are recorded.
 
 If the Cargo index is unreachable, set `CARGO_MIRROR=https://rsproxy.cn/index`. Only the builders use this sparse index and its download endpoint. Cargo retains package checksum checks; the build lock records the mirror and generated recipe.
+
+
+## Resume after an ARM-stage failure
+
+If a full ARM-inclusive build published Core and x86 Boot before failing, retain and verify those artifacts before continuing from ARM:
+
+```bash
+export INCLUDE_ARM64_MATERIALS=1
+export RESUME_SOURCE_BUILD_LOCK=/absolute/path/to/failed/build-lock.json
+export DEBIAN_MIRROR=https://mirrors.ustc.edu.cn
+make images
+```
+
+Retain the original REGISTRY, SCOUT_CA_FILE and build arguments. Only this recovery boundary is currently supported; other failures require a new build.
+The entrypoint verifies frozen checkouts, recorded file hashes and local image identities, rejecting running builds, changed payloads or missing images.
+Sources stay at the original frozen main commits. The corrected build driver must match committed, published PXEye main;
+its revision/hash, the previous lock and reused stages are recorded under `resumes`. The application image still uses its frozen source checkout.
+This is not automatic incremental caching across independent builds.
+
+`DEBIAN_MIRROR` changes only the ARM cross builder's Debian APT endpoints, preserving the release, architecture and signature verification.
+The mirror root must provide `/debian` and `/debian-security`. It does not replace Ubuntu, NVIDIA, Docker or Rust endpoints.
+The rendered recipe and mirror address are recorded in the source build lock.

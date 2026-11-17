@@ -113,3 +113,25 @@ Docker Hub 不可达时可设置 `BUILD_IMAGE_MIRROR=m.daocloud.io`。构建器�
 Rust 官方下载域名不可达时，可设置 `RUST_MIRROR=https://rsproxy.cn`，仅构建镜像使用该工具链分发源；rustup 继续校验组件摘要，实际地址和配方写入构建记录。
 
 Cargo 索引不可达时，可设置 `CARGO_MIRROR=https://rsproxy.cn/index`。仅构建器使用该 sparse 索引及其下载入口，Cargo 继续校验包摘要；实际地址与生成配方写入构建锁。
+
+
+## ARM 阶段失败后续跑
+
+若完整ARM构建已发布Core和x86 Boot，但随后失败，可校验并保留这些制品，从ARM阶段继续：
+
+```bash
+export INCLUDE_ARM64_MATERIALS=1
+export RESUME_SOURCE_BUILD_LOCK=/absolute/path/to/failed/build-lock.json
+export DEBIAN_MIRROR=https://mirrors.ustc.edu.cn
+make images
+```
+
+沿用原REGISTRY、SCOUT_CA_FILE及构建参数。当前只支持这一恢复边界；其他失败仍需重新启动构建。
+入口会校验冻结源码、已记录文件摘要及本地镜像身份，拒绝运行中任务、改过的材料或缺失镜像。
+源码仍是原轮次冻结的main提交，不重新选择版本；修复后的构建驱动必须来自已提交推送的PXEye main，
+其提交和摘要、恢复前构建锁、复用阶段记录在`resumes`中。应用镜像仍按冻结的应用源码构建。
+该功能不等同于不同轮次的自动增量缓存。
+
+`DEBIAN_MIRROR`仅替换ARM交叉构建器的Debian APT地址，保留发行版、架构和签名校验；
+主仓库、安全仓库分别使用该根地址下的`/debian`、`/debian-security`。
+它不会替换Ubuntu、NVIDIA、Docker或Rust下载地址。实际配方和源地址写入构建锁。

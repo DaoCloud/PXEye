@@ -32,7 +32,9 @@ BUILD_JOBS ?= 8
 CARGO_MIRROR ?=
 RUST_MIRROR ?=
 SOURCE_BUILD_LOCK ?=
-SOURCE_BUILD_ARGS = $(if $(CARGO_MIRROR),--cargo-mirror "$(CARGO_MIRROR)",) $(if $(RUST_MIRROR),--rust-mirror "$(RUST_MIRROR)",) --jobs "$(BUILD_JOBS)" --repo "$(REPO_ROOT)" --output "$(SOURCE_BUILD_DIRECTORY)" $(if $(REGISTRY),--registry "$(REGISTRY)",) $(if $(SCOUT_CA_FILE),--scout-ca "$(SCOUT_CA_FILE)",) $(if $(BUILD_IMAGE_MIRROR),--image-mirror "$(BUILD_IMAGE_MIRROR)",)
+RESUME_SOURCE_BUILD_LOCK ?=
+DEBIAN_MIRROR ?=
+SOURCE_BUILD_ARGS = $(if $(RESUME_SOURCE_BUILD_LOCK),--resume "$(RESUME_SOURCE_BUILD_LOCK)",) $(if $(DEBIAN_MIRROR),--debian-mirror "$(DEBIAN_MIRROR)",) $(if $(CARGO_MIRROR),--cargo-mirror "$(CARGO_MIRROR)",) $(if $(RUST_MIRROR),--rust-mirror "$(RUST_MIRROR)",) --jobs "$(BUILD_JOBS)" --repo "$(REPO_ROOT)" --output "$(SOURCE_BUILD_DIRECTORY)" $(if $(REGISTRY),--registry "$(REGISTRY)",) $(if $(SCOUT_CA_FILE),--scout-ca "$(SCOUT_CA_FILE)",) $(if $(BUILD_IMAGE_MIRROR),--image-mirror "$(BUILD_IMAGE_MIRROR)",)
 
 .PHONY: syntax lint format-check test wheel image images pxeye-images nico-sources nico-core libredfish nico-scout nico-boot nico-boot-arm64 source-build-help arm64-materials ensure-build-config cache-images bundles dhcp-check dhcp-check-help
 syntax:

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import fcntl
 import hashlib
 import importlib.util
 import json
@@ -45,6 +46,9 @@ class Build:
     def __init__(self, args):
         self.args = args
         self.repo = args.repo.resolve()
+        if args.resume:
+            self.restore(args.resume)
+            return
         self.run_id = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ') + '-' + uuid.uuid4().hex[:8]
         self.root = args.output.resolve() / self.run_id
         self.root.mkdir(parents=True, exist_ok=False)
@@ -63,6 +67,70 @@ class Build:
         self.docker_context = None
         self.public_ca = None
         print(f'BUILD_LOCK={self.lock_path}', flush=True)
+
+    def restore(self, path):
+        """Continue one frozen build, after verifying retained bytes and images."""
+        self.lock_path = path.resolve()
+        self.root = self.lock_path.parent
+        self.guard = (self.root / '.resume.lock').open('a')
+        fcntl.flock(self.guard, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        self.state = json.loads(self.lock_path.read_text())
+        if self.state.get('status') != 'failed' or self.state.get('target') != 'images':
+            raise RuntimeError('Resume requires a failed images build; never resume a running build.')
+        if self.state.get('platform') != PLATFORM or not self.args.with_arm64:
+            raise RuntimeError('Resume currently requires the amd64 + ARM64 images workflow.')
+        if not all(self.state.get('images', {}).get(name, {}).get('published')
+                   for name in ('core', 'boot-artifacts-x86_64')):
+            raise RuntimeError('Resume requires completed and published Core and x86 Boot stages.')
+        self.run_id = self.state['run_id']
+        self.core = self.root / 'sources/core'
+        self.pxeye = self.root / 'sources/pxeye'
+        self.docker_context = None
+        self.check_docker()
+        if self.run('git', 'status', '--porcelain', quiet=True):
+            raise RuntimeError('Resume driver must use a clean, committed main checkout.')
+        revision = self.run('git', 'rev-parse', 'HEAD', quiet=True)
+        remote = self.run('git', 'ls-remote', SOURCES['pxeye'], 'refs/heads/main', quiet=True).split()[0]
+        if revision != remote:
+            raise RuntimeError('Resume driver must match published PXEye main.')
+        for name, row in self.state['sources'].items():
+            directory = self.root / 'sources' / name
+            if self.run('git', 'rev-parse', 'HEAD', cwd=directory, quiet=True) != row['commit']:
+                raise RuntimeError('Frozen checkout changed: ' + name)
+            self.run('git', 'diff', '--exit-code', '--ignore-submodules', 'HEAD', cwd=directory, quiet=True)
+        for name, row in self.state['files'].items():
+            file = Path(row['path'])
+            if not file.is_file() or file.stat().st_size != row['bytes'] or sha256(file) != row['sha256']:
+                raise RuntimeError('Retained build file changed: ' + name)
+        self.builder = self.state['builders']['core-builder']['reference']
+        self.core_image = self.state['builders']['nico-core']['reference']
+        for name in ('core-builder', 'nico-core', 'pxe-builder'):
+            row = self.state['builders'][name]
+            if self.run('docker', 'image', 'inspect', '--format', '{{.Id}}', row['reference'], quiet=True) != row['image_id']:
+                raise RuntimeError('Retained local image changed: ' + name)
+        for name in ('core', 'boot-artifacts-x86_64'):
+            row = self.state['images'][name]
+            digests = json.loads(self.run('docker', 'image', 'inspect', '--format', '{{json .RepoDigests}}', row['reference'], quiet=True))
+            if not row.get('published') or row['immutable_reference'] not in (digests or []):
+                raise RuntimeError('Retained published image changed: ' + name)
+            if not row['reference'].startswith(self.args.registry.rstrip('/') + '/'):
+                raise RuntimeError('Resume must retain the original Registry.')
+        self.public_ca = self.root / 'scout-ca.crt'
+        if sha256(self.args.scout_ca) != sha256(self.public_ca):
+            raise RuntimeError('Resume must retain the original public CA.')
+        self.dependencies()
+        backup = self.root / ('build-lock.before-resume-' + uuid.uuid4().hex[:8] + '.json')
+        shutil.copyfile(self.lock_path, backup)
+        self.state.setdefault('resumes', []).append({
+            'at': datetime.now(timezone.utc).isoformat(), 'previous_lock': str(backup),
+            'previous_lock_sha256': sha256(backup), 'driver_main_commit': revision,
+            'driver_sha256': sha256(Path(__file__)),
+            'reused': ['core', 'x86-scout-boot'],
+        })
+        self.state.update(status='running')
+        self.state.pop('error', None)
+        self.save()
+        print(f'RESUMED_BUILD_LOCK={self.lock_path}; verified Core/x86 Boot retained; sources stay frozen.', flush=True)
 
     def save(self):
         temporary = self.lock_path.with_suffix('.tmp')
@@ -213,6 +281,20 @@ class Build:
         core_rev = self.state['sources']['core']['commit']
         reference = f'pxeye-build/{name}:{core_rev[:12]}-{self.run_id}'
         self.file('recipes/' + name, recipe)
+        if name == 'arm-cross-builder' and self.args.debian_mirror:
+            mirror = self.args.debian_mirror.rstrip('/')
+            if not re.fullmatch(r'https://[A-Za-z0-9./:_-]+', mirror):
+                raise RuntimeError('Debian mirror must be a plain HTTPS mirror root')
+            text = recipe.read_text()
+            setup = ("RUN sed -i -e 's|http://deb.debian.org/debian-security|" + mirror +
+                     "/debian-security|g' -e 's|http://deb.debian.org/debian|" + mirror +
+                     "/debian|g' /etc/apt/sources.list.d/debian.sources\n")
+            text = re.sub(r'(?m)^(FROM[^\n]*\n)', lambda m: m.group(0) + setup, text, count=1)
+            text = text.replace('apt-get update', 'apt-get -o APT::Update::Error-Mode=any update')
+            recipe = self.root / 'Dockerfile.arm-cross-builder.apt-mirror'
+            recipe.write_text(text)
+            self.state['debian_mirror'] = mirror
+            self.file('recipes/arm-cross-builder/apt-mirror', recipe)
         if name in ('core-builder', 'pxe-builder'):
             text = recipe.read_text()
             text = re.sub(r'(?m)^(FROM[^\n]*\n)',
@@ -497,13 +579,14 @@ class Build:
 
     def execute(self):
         try:
-            with self.stage('sources'):
-                self.sources()
+            if not self.args.resume:
+                with self.stage('sources'):
+                    self.sources()
             if self.args.target != 'sources':
                 self.check_docker()
-            if self.args.target in ('boot', 'images', 'boot-arm64'):
+            if not self.args.resume and self.args.target in ('boot', 'images', 'boot-arm64'):
                 self.prepare_ca()
-            if self.args.target == 'images':
+            if not self.args.resume and self.args.target == 'images':
                 self.prepare_tools()
             if self.args.target == 'libredfish':
                 self.library()
@@ -515,10 +598,11 @@ class Build:
             elif self.args.target == 'boot-arm64':
                 self.arm64()
             elif self.args.target in ('boot', 'images'):
-                with self.stage('core'):
-                    self.build_core()
-                with self.stage('x86-scout-boot'):
-                    self.boot()
+                if not self.args.resume:
+                    with self.stage('core'):
+                        self.build_core()
+                    with self.stage('x86-scout-boot'):
+                        self.boot()
                 if self.args.with_arm64:
                     self.arm64()
                 if self.args.target == 'images':
@@ -548,6 +632,8 @@ def main():
     )
     parser.add_argument('target', choices=('sources', 'core', 'libredfish', 'scout', 'boot', 'boot-arm64', 'images'))
     parser.add_argument('--repo', type=Path, default=Path(__file__).resolve().parents[1])
+    parser.add_argument('--resume', type=Path, help='Continue a failed full ARM-inclusive images build, retaining verified Core/x86 Boot and frozen sources')
+    parser.add_argument('--debian-mirror', default='', help='HTTPS mirror root for the ARM cross builder, e.g. https://mirrors.ustc.edu.cn')
     parser.add_argument('--output', type=Path, default=None)
     parser.add_argument('--registry', default='', help='Optional push destination; required for images')
     parser.add_argument('--scout-ca', type=Path, help='Public Core CA PEM embedded in Scout (boot/images)')
@@ -558,6 +644,8 @@ def main():
     parser.add_argument('--jobs', type=int, default=8, help='Maximum concurrent Cargo jobs in build images (default: 8)')
     parser.add_argument('--image-mirror', default='', help='Optional Docker Hub mirror prefix, e.g. m.daocloud.io; preserves pinned digests')
     args = parser.parse_args()
+    if args.resume and args.target != 'images':
+        parser.error('--resume currently supports images only')
     if args.jobs < 1:
         parser.error('--jobs must be positive')
     if args.target == 'images' and not args.registry:
