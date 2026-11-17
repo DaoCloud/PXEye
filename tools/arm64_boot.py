@@ -6,6 +6,11 @@ import shutil
 def build(owner):
     """Cross-compile Scout, rebuild ARM rootfs/UEFI, then inspect final bytes."""
     version = '0.0.0-main-' + owner.state['sources']['core']['commit'][:12]
+    # Cargo host build scripts are native executables. Ubuntu-built scripts
+    # cannot be reused in the Debian cross builder even with the same rustc.
+    target = owner.root / 'arm64-target'
+    target.mkdir(exist_ok=True)
+    owner.state['arm64_target_directory'] = str(target)
     with owner.stage('arm64-cross-builder'):
         recipe = owner.root / 'Dockerfile.arm-cross-builder'
         recipe.write_text(
@@ -26,14 +31,14 @@ def build(owner):
     common = ['docker', 'run', '--rm', '--platform', 'linux/amd64',
               '-e', 'GIT_CONFIG_COUNT=1', '-e', 'GIT_CONFIG_KEY_0=safe.directory',
               '-e', 'GIT_CONFIG_VALUE_0=/code', '-e', f'VERSION={version}',
-              '-v', f'{owner.core}:/code', '-w', '/code']
+              '-v', f'{owner.core}:/code', '-v', f'{target}:/code/target', '-w', '/code']
     with owner.stage('arm64-scout-compile-package'):
         owner.run(*common, cross, 'cargo', 'make', 'package-scout-aarch64-release-local')
         owner.dependencies()
         for name in ('forge-scout', 'mlx-firmware-supervisor'):
             owner.file('arm64/bin/' + name,
-                       owner.core / 'target/aarch64-unknown-linux-gnu/release' / name)
-        owner.file('arm64/scout.deb', owner.core / f'target/debs/forge-scout_{version}_arm64.deb')
+                       target / 'aarch64-unknown-linux-gnu/release' / name)
+        owner.file('arm64/scout.deb', target / f'debs/forge-scout_{version}_arm64.deb')
     with owner.stage('arm64-mkosi-builder'):
         owner.run('git', 'submodule', 'update', '--init', '--depth=1', '--',
                   'pxe/mkosi', 'pxe/ipxe/upstream', cwd=owner.core)
@@ -45,8 +50,7 @@ def build(owner):
                           'qemu-user-static gcc-aarch64-linux-gnu && rm -rf /var/lib/apt/lists/*\n')
         assembly = owner.image('arm-mkosi-builder', recipe, owner.core)
     with owner.stage('arm64-rootfs-uefi'):
-        script = owner.pxeye / 'tools/arm64-mkosi.sh'
-        owner.file('recipes/arm64-mkosi.sh', script)
+        script = owner.snapshot_recipe('arm64-mkosi.sh', owner.arm_recipe_repo / 'tools/arm64-mkosi.sh')
         owner.run(*common, '--privileged',
                   '-v', '/proc/sys/fs/binfmt_misc:/binfmt',
                   '-v', f'{owner.public_ca}:/inputs/scout-ca.crt:ro',
@@ -54,8 +58,7 @@ def build(owner):
                   '-e', 'ARM_BINFMT_NAME=pxeye-' + owner.run_id.lower(),
                   assembly, 'bash', '/inputs/build.sh')
     with owner.stage('arm64-content-inspection'):
-        inspector = owner.pxeye / 'tools/arm64-inspect.py'
-        owner.file('recipes/arm64-inspect.py', inspector)
+        inspector = owner.snapshot_recipe('arm64-inspect.py', owner.arm_recipe_repo / 'tools/arm64-inspect.py')
         owner.run(*common, '-v', f'{owner.public_ca}:/inputs/scout-ca.crt:ro',
                   '-v', f'{inspector}:/inputs/inspect.py:ro', assembly,
                   'python3', '/inputs/inspect.py', '--version', version,

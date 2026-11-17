@@ -135,3 +135,5 @@ This is not automatic incremental caching across independent builds.
 `DEBIAN_MIRROR` changes only the ARM cross builder's Debian APT endpoints, preserving the release, architecture and signature verification.
 The mirror root must provide `/debian` and `/debian-security`. It does not replace Ubuntu, NVIDIA, Docker or Rust endpoints.
 The rendered recipe and mirror address are recorded in the source build lock.
+
+Resume uses ARM recipe repairs from published main, saving immutable recipe snapshots while retaining frozen Core/lib/application sources. ARM compilation has a separate target directory so native build scripts cannot cross the Ubuntu/Debian glibc boundary.

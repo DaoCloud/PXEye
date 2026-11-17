@@ -570,12 +570,24 @@ class Build:
             self.file('pxeye/bin/' + name, destination)
 
     def arm64(self):
-        helper = self.pxeye / 'tools/arm64_boot.py'
-        self.file('recipes/arm64_boot.py', helper)
+        self.arm_recipe_repo = self.repo if self.args.resume else self.pxeye
+        helper = self.snapshot_recipe('arm64_boot.py', self.arm_recipe_repo / 'tools/arm64_boot.py')
         spec = importlib.util.spec_from_file_location('frozen_arm64_boot', helper)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         module.build(self)
+
+    def snapshot_recipe(self, name, source):
+        """Keep every recipe revision immutable across build-driver repairs."""
+        directory = self.root / 'recipes'
+        directory.mkdir(exist_ok=True)
+        path = directory / (sha256(source) + '-' + name)
+        if not path.exists():
+            shutil.copyfile(source, path)
+        if sha256(path) != sha256(source):
+            raise RuntimeError('Recipe snapshot changed: ' + str(path))
+        self.file('recipes/' + name, path)
+        return path
 
     def execute(self):
         try:

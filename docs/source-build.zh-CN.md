@@ -135,3 +135,5 @@ make images
 `DEBIAN_MIRROR`仅替换ARM交叉构建器的Debian APT地址，保留发行版、架构和签名校验；
 主仓库、安全仓库分别使用该根地址下的`/debian`、`/debian-security`。
 它不会替换Ubuntu、NVIDIA、Docker或Rust下载地址。实际配方和源地址写入构建锁。
+
+恢复使用已推送main的ARM构建配方修复，配方保存为不可变摘要副本；Core/lib和应用源码仍保持原轮次冻结。ARM编译目录与Ubuntu x86目录隔离，避免混用宿主构建脚本的glibc版本。
