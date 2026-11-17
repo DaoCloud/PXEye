@@ -918,7 +918,7 @@ def verify_source_build_images(value, records, inputs):
         for item in selected:
             # Docker may publish an OCI index including provenance. The source
             # root digest must match; relok8s transports its selected amd64 image.
-            b.require(item['digest'] == expected, 'Source manifest differs from SOURCE_BUILD_LOCK: ' + name)
+            b.require(item.get('source_descriptor', item['digest']) == expected, 'Source manifest differs from SOURCE_BUILD_LOCK: ' + name)
             actual = item.get('amd64_manifest') or item['digest']
             matches = [record for record in records if record['source'] in references]
             b.require(matches and all(record['digest'] == actual for record in matches),

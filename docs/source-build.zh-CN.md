@@ -71,13 +71,13 @@ outputs_/source-builds/<UTC时间>-<运行ID>/
 
 | 输入文件 | 字段 | 使用的构建结果 |
 | --- | --- | --- |
-| `charts/pxeye/values.yaml` | `image` | `images.pxeye.immutable_reference` 完整地址 |
+| `charts/pxeye/values.yaml` | `image` | `images.pxeye.reference` 的唯一 tag 地址 |
 | `deploy/offline-core/values/core.yaml` | `global.image.repository` / `tag` | 将 `images.core.reference` 拆成仓库和唯一 tag；API、迁移任务、DHCP、DNS、硬件健康、SSH console 等沿用全局镜像 |
 | 同上 | `nico-bmc-proxy.image.repository` / `tag` | 同一 Core 镜像，覆盖旧的独立镜像引用 |
 | 同上 | `nico-pxe.image.repository` / `tag` | 同一 Core 镜像，覆盖旧的独立镜像引用 |
-| 同上 | `nico-pxe.bootArtifactContainers` 中 x86 Boot 项的 `image` | `images.boot-artifacts-x86_64.immutable_reference`；复制命令同时包含 `/x86_64` 和 `/apt` |
+| 同上 | `nico-pxe.bootArtifactContainers` 中 x86 Boot 项的 `image` | `images.boot-artifacts-x86_64.reference` 的唯一 tag 地址；复制命令同时包含 `/x86_64` 和 `/apt` |
 
-当前 Core Chart 把 `repository:tag` 拼成引用，不支持单独的 `digest` 字段；使用本轮唯一 tag，并核对归档镜像摘要与构建锁一致，不要只补一个被模板忽略的 `digest`。修改的是上述仓库输入文件；最终父 Chart 会将 Core 设置放到 `nicoCore` 下，生成目录无需手工再改。没有启用的可选组件不因本次换镜像而自动启用。
+现有离线重定位流程使用带唯一 tag 的镜像引用，内容由构建锁校验；不要把 `@sha256:` 地址直接替换进该流程。当前 Core Chart 把 `repository:tag` 拼成引用，不支持单独的 `digest` 字段；使用本轮唯一 tag，并核对归档镜像摘要与构建锁一致，不要只补一个被模板忽略的 `digest`。修改的是上述仓库输入文件；最终父 Chart 会将 Core 设置放到 `nicoCore` 下，生成目录无需手工再改。没有启用的可选组件不因本次换镜像而自动启用。
 
 Chart 模板的版本另外由 `offline-build/helm-bundle/chart-sources.json` 的 `core.url`、`core.sha256`、`core.subdirectory` 固定。仅更新镜像可保留已验证的模板；升级模板时，选择固定 Core commit 的源码归档、计算归档 SHA256，并核对 `deploy/offline-core/patches/` 的兼容补丁和启动参数。不要把 URL 换成移动的 `main`，也不要只看 Chart 的 `version: 0.1.1` 判断源码是否一致。如果工作目录的 `build-config.json` 指向了自定义 `helm_bundle.chart_sources`，还要修改实际引用的那份文件。
 

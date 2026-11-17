@@ -187,10 +187,12 @@ def prepare(value, h, material_records=None):
                     b.require(digest == material['digest'],
                               'Registry export digest differs from material lock: ' + material['id'])
                     images.append({'image': row['image'], 'digest': digest,
-                                   'kind': 'material', 'material_id': material['id']})
+                                   'kind': 'material', 'material_id': material['id'],
+                                   'source_descriptor': row['source_descriptor']})
                 else:
                     kind = next((role for role, ref in roles.items() if ref == row['image']), 'core')
-                    images.append({'image': row['image'], 'digest': digest, 'kind': kind})
+                    images.append({'image': row['image'], 'digest': digest, 'kind': kind,
+                                   'source_descriptor': row['source_descriptor']})
             b.require(set(materials_by_image) <= {row['image'] for row in rows},
                       'Registry export omitted selected material image')
             shutil.copytree(charts / 'deployment', stage / 'deployment')
