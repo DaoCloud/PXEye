@@ -24,8 +24,12 @@ INCLUDE_ARM64_MATERIALS ?= 0
 ARM64_MATERIALS_DIR ?=
 DHCP_TIMEOUT ?= 15
 DHCP_ATTEMPTS ?= 3
+SOURCE_BUILD_SCRIPT := $(REPO_ROOT)/tools/source-build.py
+SOURCE_BUILD_DIRECTORY ?= $(REPO_ROOT)/outputs_/source-builds
+SCOUT_CA_FILE ?=
+SOURCE_BUILD_ARGS = --repo "$(REPO_ROOT)" --output "$(SOURCE_BUILD_DIRECTORY)" $(if $(REGISTRY),--registry "$(REGISTRY)",) $(if $(SCOUT_CA_FILE),--scout-ca "$(SCOUT_CA_FILE)",)
 
-.PHONY: syntax lint format-check test wheel image images ensure-build-config cache-images bundles dhcp-check dhcp-check-help
+.PHONY: syntax lint format-check test wheel image images pxeye-images nico-sources nico-core libredfish nico-scout nico-boot source-build-help ensure-build-config cache-images bundles dhcp-check dhcp-check-help
 syntax:
 	$(PYTHON) -m compileall -q src tests/unit
 	@find src/pxeye/web -name '*.js' -exec $(NODE) --check {} \;
@@ -53,15 +57,38 @@ image:
 	docker build --build-arg BASE_IMAGE="$(BASE_IMAGE)" --build-arg VCS_REF="$(VCS_REF)" --build-arg VERSION="$(VERSION)" -t "$(IMAGE)" .
 	@echo "BUILT_IMAGE=$(IMAGE)"
 
-# Build and publish a version/time/commit-tagged image. The operator updates
-# charts/pxeye/values.yaml explicitly before caching images or packaging.
-images:
+# PXEye-only fast path, using prepared local Linux CLI/Helm/grpcurl binaries.
+pxeye-images:
 	@test -n "$(REGISTRY)" || { echo "Set REGISTRY=host:port" >&2; exit 1; }
 	$(MAKE) --no-print-directory -f "$(REPO_ROOT)/Makefile" image IMAGE="$(PUBLISH_IMAGE)" VCS_REF="$(VCS_REF)" VERSION="$(VERSION)"
 	@case "$(REGISTRY_INSECURE)" in 1|true|yes) echo "HTTP Registry: Docker daemon must trust $(REGISTRY) as an insecure registry" ;; esac
 	docker push "$(PUBLISH_IMAGE)"
 	@echo "PUBLISHED_PXEYE_IMAGE=$(PUBLISH_IMAGE)"
 	@echo "Set image in charts/pxeye/values.yaml to $(PUBLISH_IMAGE) before make cache-images / make bundles"
+
+# Resolve each maintained main once, validate Cargo's libredfish revision,
+# and build Core + Scout/Boot + PXEye from that frozen source set.
+images:
+	$(PYTHON) "$(SOURCE_BUILD_SCRIPT)" images $(SOURCE_BUILD_ARGS) --base-image "$(BASE_IMAGE)"
+
+nico-sources:
+	$(PYTHON) "$(SOURCE_BUILD_SCRIPT)" sources $(SOURCE_BUILD_ARGS)
+
+nico-core:
+	$(PYTHON) "$(SOURCE_BUILD_SCRIPT)" core $(SOURCE_BUILD_ARGS)
+
+# A Rust library compiled in Core's locked workspace, not a deployed image.
+libredfish:
+	$(PYTHON) "$(SOURCE_BUILD_SCRIPT)" libredfish $(SOURCE_BUILD_ARGS)
+
+nico-scout:
+	$(PYTHON) "$(SOURCE_BUILD_SCRIPT)" scout $(SOURCE_BUILD_ARGS)
+
+nico-boot:
+	$(PYTHON) "$(SOURCE_BUILD_SCRIPT)" boot $(SOURCE_BUILD_ARGS)
+
+source-build-help:
+	@$(PYTHON) "$(SOURCE_BUILD_SCRIPT)" --help
 
 # Build a complete offline delivery from the locked PXEye parent Chart.
 # The cache-seed command is idempotent: it exports local containerd images only

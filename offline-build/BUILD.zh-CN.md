@@ -9,10 +9,10 @@ PXEye、NICo Core 及其所需的 Helm 依赖。现场导入和安装是独立�
 ## 前置条件
 
 在 Linux amd64 构建机执行，并具备 Docker、可通过 `ctr` 访问的本机 containerd 内容存储、
-Helm 3、Python 3.11+/PyYAML 及足够空间，用于 Registry 缓存和最终归档。执行 `make images`
+Helm 3、Python 3.11+/PyYAML 及足够空间，用于 Registry 缓存和最终归档。执行 `make pxeye-images`
 前必须提交 PXEye 源码；该目标会主动拒绝脏工作树。
 
-`make images` 自动生成版本、上海时间和源码 commit 组成的镜像 tag。在当前 shell 一次性设置构建 Registry；
+`make pxeye-images` 自动生成版本、上海时间和源码 commit 组成的镜像 tag。在当前 shell 一次性设置构建 Registry；
 它必须可被构建机访问并允许推送镜像。
 
 ```bash
@@ -26,10 +26,12 @@ Registry。
 
 ## 构建
 
+如需同时重建 Core、libredfish、Scout 和 Boot，先按[统一源码构建](../docs/source-build.zh-CN.md)执行 `make images`，再将构建锁中的全部对应镜像引用更新到交付配置，最后缓存和打包。下面的快捷步骤只更新 PXEye，沿用既有 NICo 镜像。
+
 先构建并推送 PXEye：
 
 ```bash
-make images
+make pxeye-images
 ```
 
 将成功输出的 `PUBLISHED_PXEYE_IMAGE` 完整地址手动填入父 Chart 的 `image` 字段，
@@ -42,7 +44,7 @@ make cache-images
 make bundles
 ```
 
-`make images` 使用 `<版本>-<YYYYMMDDHHmm>-<commit前7位>` 的 tag 构建并推送镜像，
+`make pxeye-images` 使用 `<版本>-<YYYYMMDDHHmm>-<commit前7位>` 的 tag 构建并推送镜像，
 不读取或更新 Chart 镜像引用；完整源码 commit 写入镜像元数据。同一分钟重复构建相同
 commit 时，已有本地 tag 会被拒绝覆盖。手动更新 Chart 后，`make cache-images`
 渲染父 Chart，得到完整镜像闭包，并将缺失镜像缓存到 `REGISTRY`。`make bundles` 使用
@@ -116,7 +118,7 @@ docs/                               # 交付文档和许可证
 ARM64 引导材料；不包含 REST、Temporal、Keycloak、DPF 服务或操作系统 ISO。
 
 现场执行器会使用包内 PXEye Chart 将 PXEye 接到同命名空间的 Core 客户端 Secret 和集群内 API；因此本次
-源码变更后必须先用 `make images` 发布新的 PXEye 镜像，再运行 `make bundles`。它不把物理 DNS/PXE/NTP
+源码变更后必须先用 `make pxeye-images` 发布新的 PXEye 镜像，再运行 `make bundles`。它不把物理 DNS/PXE/NTP
 端点或 HostInband 网络写入包。
 
 首次安装要求 `nico-system` 除 Kubernetes 自动生成的默认对象外为空。执行器会拒绝遗留 PVC、Secret、Service

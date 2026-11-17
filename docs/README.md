@@ -7,6 +7,7 @@ Public PXEye documentation is maintained in English and Simplified Chinese. Star
 | Document | English | 简体中文 | Purpose |
 | --- | --- | --- | --- |
 | External DHCP provisioning | [Read](external-dhcp.md) | [阅读](external-dhcp.zh-CN.md) | Fixed leases, BMC VirtualMedia, Core ownership and recovery. |
+| Unified source build | [Read](source-build.md) | [阅读](source-build.zh-CN.md) | Maintained main commits, Core/libredfish/Scout/Boot/PXEye and build locks. |
 | Offline delivery build | [Read](../offline-build/BUILD.md) | [阅读](../offline-build/BUILD.zh-CN.md) | Copyable build sequence, artifacts, scope and handoff boundary. |
 | Onsite offline deployment | [Read](../offline-build/onsite/README.md) | [阅读](../offline-build/onsite/README.zh-CN.md) | Import the verified delivery, freeze site values and install resumably. |
 | Pre-installation checklist | [Read](pre-installation-checklist.md) | [阅读](pre-installation-checklist.zh-CN.md) | One-sentence checks for discovery, host OS writing and managed DPUs. |

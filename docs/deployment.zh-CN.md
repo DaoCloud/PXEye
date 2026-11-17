@@ -14,9 +14,11 @@ PXEye 运行环境需要访问 Core 和硬件控制器。目标主机需要访�
 
 ## 2. 构建镜像
 
+整套 Core/libredfish/Scout/Boot/PXEye 使用[统一源码构建](source-build.zh-CN.md)。`make images` 现已切换到该流程；下面的 `make image` / `make pxeye-images` 保留只构建 PXEye 的方式。
+
 在仓库根目录准备[外部工具](../bin/README.zh-CN.md)：`bin/nico-admin-cli`、`bin/grpcurl`、`bin/helm`。工具必须是目标镜像架构的 Linux 二进制。常规 Dockerfile 需要可用的 Ubuntu 软件源和 Python 包源；离线材料打包不等于离线构建 PXEye。
 
-标准 `make image` / `make images` 还会下载 `tools/boot-media/build.sh` 固定提交的 iPXE，在独立 Docker 阶段编译通用 x86_64 UEFI 引导器。构建阶段需要访问 GitHub，并使用 GCC、Make、binutils、libc/liblzma 开发文件、mtools、xorriso 和 syslinux。运行镜像只保留引导器、FAT 模板、来源提交/摘要及上游许可证，路径为 `/usr/share/pxeye/boot-media/x86_64/`；其中不编入站点 URL 或设备 MAC。输入未变化时 Docker 可复用此阶段。
+标准 `make image` / `make pxeye-images` 还会下载 `tools/boot-media/build.sh` 固定提交的 iPXE，在独立 Docker 阶段编译通用 x86_64 UEFI 引导器。构建阶段需要访问 GitHub，并使用 GCC、Make、binutils、libc/liblzma 开发文件、mtools、xorriso 和 syslinux。运行镜像只保留引导器、FAT 模板、来源提交/摘要及上游许可证，路径为 `/usr/share/pxeye/boot-media/x86_64/`；其中不编入站点 URL 或设备 MAC。输入未变化时 Docker 可复用此阶段。
 
 外部 DHCP 模式下，运行时通过 mtools 的 `mcopy` 和 xorriso，将设备规划中的启动 MAC 及明确的 PXE HTTP 端点写入 FAT 模板副本的 `/autoexec.ipxe`，生成小型 ISO。文件以 `boot-media/<sha256>.iso` 发布在现有 `os_library.directory` 和 `public_base_url` 下；相同请求复用已发布文件。需要沿用 OS 材料的持久化发布挂载，并保证 BMC 能访问公开 URL；现场无需编译。介质生成成功不代表 BMC 兼容性或完整装机已经验证。
 

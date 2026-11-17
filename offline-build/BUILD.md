@@ -12,9 +12,9 @@ dependencies. Onsite import and installation are a separate step; see
 Run on a Linux amd64 builder with Docker, a local containerd content store
 available through `ctr`, Helm 3, Python 3.11+ with PyYAML, and enough free
 space for the Registry cache and the final archive. Commit the PXEye source
-before `make images`; that target deliberately refuses a dirty tree.
+before `make pxeye-images`; that target deliberately refuses a dirty tree.
 
-`make images` generates a tag from the version, Shanghai time and source commit. Set the
+`make pxeye-images` generates a tag from the version, Shanghai time and source commit. Set the
 build Registry once for this shell. It must contain images reachable by the
 builder and accept pushed images.
 
@@ -29,10 +29,12 @@ default `REGISTRY_INSECURE=true` is for an HTTP Registry.
 
 ## Build
 
+To rebuild Core, libredfish, Scout and Boot as well, first follow [unified source builds](../docs/source-build.md) with `make images`. Update all corresponding delivery image references from that build lock before caching and packaging. The PXEye-only shortcut below preserves existing NICo images.
+
 Build and push PXEye first:
 
 ```bash
-make images
+make pxeye-images
 ```
 
 Manually set the parent Chart's `image` field to the complete successful
@@ -46,7 +48,7 @@ make cache-images
 make bundles
 ```
 
-`make images` builds and pushes a `<version>-<YYYYMMDDHHmm>-<7-character commit>`
+`make pxeye-images` builds and pushes a `<version>-<YYYYMMDDHHmm>-<7-character commit>`
 tag without reading or updating the Chart image reference. The full source
 commit is recorded in image metadata. Rebuilding the same commit in the same
 minute refuses to overwrite an existing local tag. After manually updating
@@ -132,7 +134,7 @@ and Vault dependencies, plus optional ARM64 boot material. It does not include
 REST, Temporal, Keycloak, DPF services or an operating-system ISO.
 
 The onsite runner uses the bundled PXEye Chart to connect PXEye to the same-namespace Core client Secrets and
-in-cluster API. Therefore, after a PXEye source change, publish a new PXEye image with `make images` before running
+in-cluster API. Therefore, after a PXEye source change, publish a new PXEye image with `make pxeye-images` before running
 `make bundles`. It does not put physical DNS/PXE/NTP endpoints or a HostInband network into the delivery.
 
 The first install requires an empty `nico-system` namespace apart from Kubernetes-generated default objects. It rejects
