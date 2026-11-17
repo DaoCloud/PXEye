@@ -103,3 +103,5 @@ The two forks are not registered as PXEye submodules. Core retains its own mkosi
 See NVIDIA [container builds](https://docs.nvidia.com/infra-controller/documentation/getting-started/building-nico-containers) and [bootable artifacts](https://docs.nvidia.com/infra-controller/documentation/reference/development/bootable-artifacts); the frozen fork source determines the actual tasks.
 
 Source-build stage and command durations are recorded in `build-lock.json` under `timings` and `commands`, including failed commands and exit codes.
+
+If Docker Hub is unreachable, set `BUILD_IMAGE_MIRROR=m.daocloud.io`. The builder rewrites Docker Hub `FROM` addresses only, retaining pinned digests and recording both recipes and the mapping. It does not change host Docker or cluster settings; package downloads inside the Dockerfile still require connectivity.

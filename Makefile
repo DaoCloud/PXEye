@@ -27,7 +27,8 @@ DHCP_ATTEMPTS ?= 3
 SOURCE_BUILD_SCRIPT := $(REPO_ROOT)/tools/source-build.py
 SOURCE_BUILD_DIRECTORY ?= $(REPO_ROOT)/outputs_/source-builds
 SCOUT_CA_FILE ?=
-SOURCE_BUILD_ARGS = --repo "$(REPO_ROOT)" --output "$(SOURCE_BUILD_DIRECTORY)" $(if $(REGISTRY),--registry "$(REGISTRY)",) $(if $(SCOUT_CA_FILE),--scout-ca "$(SCOUT_CA_FILE)",)
+BUILD_IMAGE_MIRROR ?=
+SOURCE_BUILD_ARGS = --repo "$(REPO_ROOT)" --output "$(SOURCE_BUILD_DIRECTORY)" $(if $(REGISTRY),--registry "$(REGISTRY)",) $(if $(SCOUT_CA_FILE),--scout-ca "$(SCOUT_CA_FILE)",) $(if $(BUILD_IMAGE_MIRROR),--image-mirror "$(BUILD_IMAGE_MIRROR)",)
 
 .PHONY: syntax lint format-check test wheel image images pxeye-images nico-sources nico-core libredfish nico-scout nico-boot source-build-help arm64-materials ensure-build-config cache-images bundles dhcp-check dhcp-check-help
 syntax:

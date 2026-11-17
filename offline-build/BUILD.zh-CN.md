@@ -67,6 +67,7 @@ REQUIRE_CLEAN_BUILD=true make bundles
 ```bash
 export INCLUDE_ARM64_MATERIALS=1
 export ARM64_MATERIALS_DIR=/absolute/path/to/boot/aarch64
+make arm64-materials
 make cache-images
 make bundles
 ```

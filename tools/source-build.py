@@ -200,6 +200,31 @@ class Build:
         core_rev = self.state['sources']['core']['commit']
         reference = f'pxeye-build/{name}:{core_rev[:12]}-{self.run_id}'
         self.file('recipes/' + name, recipe)
+        if self.args.image_mirror:
+            text = recipe.read_text()
+            mappings = []
+            def mirrored(match):
+                original = match.group(2)
+                if '$' in original or original == 'scratch' or original.startswith('pxeye-build/'):
+                    return match.group(0)
+                parts = original.split('/')
+                if len(parts) == 1:
+                    path = 'docker.io/library/' + original
+                elif parts[0] in ('docker.io', 'index.docker.io'):
+                    path = 'docker.io/' + '/'.join(parts[1:])
+                elif '.' not in parts[0] and ':' not in parts[0]:
+                    path = 'docker.io/' + original
+                else:
+                    return match.group(0)
+                replacement = self.args.image_mirror.rstrip('/') + '/' + path
+                mappings.append({'source': original, 'mirror': replacement})
+                return match.group(1) + replacement
+            text = re.sub(r'(?m)^(FROM\s+)(\S+)', mirrored, text)
+            if mappings:
+                recipe = self.root / ('Dockerfile.' + name + '.mirrored')
+                recipe.write_text(text)
+                self.state.setdefault('base_image_mirrors', {})[name] = mappings
+                self.file('recipes/' + name + '/mirrored', recipe)
         self.run(
             'docker', 'build', '--platform', PLATFORM, '-f', recipe, '-t', reference,
             '--label', f'org.opencontainers.image.revision={core_rev}',
@@ -462,6 +487,7 @@ def main():
     parser.add_argument('--registry', default='', help='Optional push destination; required for images')
     parser.add_argument('--scout-ca', type=Path, help='Public Core CA PEM embedded in Scout (boot/images)')
     parser.add_argument('--base-image', default='ubuntu:24.04')
+    parser.add_argument('--image-mirror', default='', help='Optional Docker Hub mirror prefix, e.g. m.daocloud.io; preserves pinned digests')
     args = parser.parse_args()
     if args.target == 'images' and not args.registry:
         parser.error('images requires --registry (Make: REGISTRY=host:port)')
