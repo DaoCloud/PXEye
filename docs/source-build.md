@@ -109,3 +109,5 @@ If Docker Hub is unreachable, set `BUILD_IMAGE_MIRROR=m.daocloud.io`. The builde
 `BUILD_JOBS=8` limits Cargo concurrency inside build images by default, avoiding host-wide compiler concurrency beside running services. Adjust it for builder capacity; the actual value and generated recipe are recorded in the lock.
 
 For a source-built release, use `make bundles SOURCE_BUILD_LOCK=/absolute/path/to/build-lock.json`. Packaging stops if any rebuilt image is missing or has a different archived digest.
+
+If Rust distribution downloads are unreachable, set `RUST_MIRROR=https://rsproxy.cn`. Only build images use this distribution source; rustup retains component checksum checks, and the URL and recipe are recorded.

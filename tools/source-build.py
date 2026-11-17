@@ -218,6 +218,18 @@ class Build:
                           lambda match: match.group(0) + f'ENV CARGO_BUILD_JOBS={self.args.jobs}\n', text, count=1)
             recipe = self.root / ('Dockerfile.' + name + '.bounded')
             recipe.write_text(text)
+            if self.args.rust_mirror:
+                mirror = self.args.rust_mirror.rstrip('/')
+                if not re.fullmatch(r'https://[A-Za-z0-9./:_-]+', mirror):
+                    raise RuntimeError('Rust mirror must be a plain HTTPS base URL')
+                environment = (f'ENV RUSTUP_DIST_SERVER={mirror}\n'
+                               f'ENV RUSTUP_UPDATE_ROOT={mirror}/rustup\n')
+                text, count = re.subn(r'(?m)^(RUN (?:rustup |curl --proto))',
+                                     lambda match: environment + match.group(0), text, count=1)
+                if count != 1:
+                    raise RuntimeError('Cannot locate Rust setup in frozen builder recipe')
+                recipe.write_text(text)
+                self.state['rust_mirror'] = mirror
             self.state['cargo_build_jobs'] = self.args.jobs
             self.file('recipes/' + name + '/bounded', recipe)
         if self.args.image_mirror:
@@ -507,6 +519,7 @@ def main():
     parser.add_argument('--registry', default='', help='Optional push destination; required for images')
     parser.add_argument('--scout-ca', type=Path, help='Public Core CA PEM embedded in Scout (boot/images)')
     parser.add_argument('--base-image', default='ubuntu:24.04')
+    parser.add_argument('--rust-mirror', default='', help='Rust distribution mirror base, e.g. https://rsproxy.cn; rustup retains component hash checks')
     parser.add_argument('--jobs', type=int, default=8, help='Maximum concurrent Cargo jobs in build images (default: 8)')
     parser.add_argument('--image-mirror', default='', help='Optional Docker Hub mirror prefix, e.g. m.daocloud.io; preserves pinned digests')
     args = parser.parse_args()
