@@ -1,7 +1,7 @@
 global:
   image:
-    repository: docker.io/library/nico-api
-    tag: mmzhou-e703126e4
+    repository: 127.0.0.1:1027/core
+    tag: main-7c7788a8c7f1-20261117T054943Z-51c9e035
     pullPolicy: IfNotPresent
   certificate:
     useCertManager: false
@@ -137,8 +137,8 @@ nico-api:
 nico-bmc-proxy:
   replicas: 1
   image:
-    repository: docker.io/library/nico-bmc-proxy
-    tag: mmzhou-e703126e4
+    repository: 127.0.0.1:1027/core
+    tag: main-7c7788a8c7f1-20261117T054943Z-51c9e035
   envFrom:
     vaultApproleTokens:
       secretName: '@{release_prefix}-nico-vault-approle-tokens'
@@ -156,16 +156,16 @@ nico-bmc-proxy:
     spiffeServiceName: nico-bmc-proxy
 nico-pxe:
   image:
-    repository: docker.io/library/nico-pxe
-    tag: mmzhou-e703126e4
+    repository: 127.0.0.1:1027/core
+    tag: main-7c7788a8c7f1-20261117T054943Z-51c9e035
   replicas: 1
   bootArtifactContainers:
   - name: boot-artifacts-x86-64
-    image: docker.io/library/boot-artifacts-x86_64:mmzhou-e703126e4
+    image: 127.0.0.1:1027/boot-artifacts-x86_64:main-7c7788a8c7f1-20261117T054943Z-51c9e035
     command:
     - sh
-    - -c
-    - set -e; cp -r /x86_64 /forge-boot-artifacts/blobs/internal
+    - -ec
+    - cp -r /x86_64 /apt /forge-boot-artifacts/blobs/internal/
   nameOverride: '@{release_prefix}-nico-pxe'
   apiServiceName: '@{release_prefix}-nico-api'
   legacyAlias:
