@@ -21,9 +21,10 @@ CATALOG = (
     ("ssh-console", "SSH Console", "控制面", "BMC 串口访问与日志", r"ssh-console(?:-rs)?$"),
     ("postgres", "PostgreSQL", "基础服务", "NICo 资源与工作流数据", r"(?:postgres|postgresql)$"),
     ("vault", "Vault", "基础服务", "凭据存储与机器证书", r"vault$"),
-    ("cert-manager", "cert-manager", "基础服务", "服务证书签发与续期", r"cert-manager$"),
-    ("cert-cainjector", "CA Injector", "基础服务", "证书 CA 注入", r"cert-manager-cainjector$"),
-    ("cert-webhook", "Certificate Webhook", "基础服务", "证书资源校验", r"cert-manager-webhook$"),
+    # The parent Chart aliases upstream cert-manager as certmanager.
+    ("cert-manager", "cert-manager", "基础服务", "服务证书签发与续期", r"cert-?manager$"),
+    ("cert-cainjector", "CA Injector", "基础服务", "证书 CA 注入", r"cert-?manager-cainjector$"),
+    ("cert-webhook", "Certificate Webhook", "基础服务", "证书资源校验", r"cert-?manager-webhook$"),
     ("rest-api", "REST API", "REST 与工作流", "REST 资源接口", r"nico-rest-api$"),
     (
         "rest-cert-manager",
@@ -192,7 +193,9 @@ def project(objects, bindings=()):
         )
         # Core cert-manager and the REST manager use different identities.
         if not binding and key == "cert-manager":
-            selected = [o for o in selected if "rest-cert-manager" not in o["metadata"]["name"]]
+            selected = [
+                o for o in selected if not re.search(r"rest-cert-?manager$", o["metadata"]["name"])
+            ]
         # A simulator's release name may describe its lab rather than the executable.
         if not binding and key == "machine-a-tron":
             selected = [
