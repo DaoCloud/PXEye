@@ -111,3 +111,5 @@ Docker Hub 不可达时可设置 `BUILD_IMAGE_MIRROR=m.daocloud.io`。构建器�
 推荐完整交付命令：`make bundles SOURCE_BUILD_LOCK=/absolute/path/to/build-lock.json`。任一源码构建镜像未被归档或摘要不一致时停止，不用旧镜像替代。
 
 Rust 官方下载域名不可达时，可设置 `RUST_MIRROR=https://rsproxy.cn`，仅构建镜像使用该工具链分发源；rustup 继续校验组件摘要，实际地址和配方写入构建记录。
+
+Cargo 索引不可达时，可设置 `CARGO_MIRROR=https://rsproxy.cn/index`。仅构建器使用该 sparse 索引及其下载入口，Cargo 继续校验包摘要；实际地址与生成配方写入构建锁。

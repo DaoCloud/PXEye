@@ -230,6 +230,20 @@ class Build:
                     raise RuntimeError('Cannot locate Rust setup in frozen builder recipe')
                 recipe.write_text(text)
                 self.state['rust_mirror'] = mirror
+            if self.args.cargo_mirror:
+                mirror = self.args.cargo_mirror.rstrip('/')
+                if not re.fullmatch(r'https://[A-Za-z0-9./:_-]+', mirror):
+                    raise RuntimeError('Cargo mirror must be a plain HTTPS sparse-index URL')
+                config = ('[source.crates-io]\nreplace-with = "build-mirror"\n'
+                          '[source.build-mirror]\nregistry = "sparse+' + mirror + '/"\n')
+                command = ('RUN printf %s ' + shlex.quote(config) +
+                           ' >> "${CARGO_HOME:-/usr/local/cargo}/config.toml"\n')
+                text, count = re.subn(r'(?m)^(RUN cargo install )',
+                                     lambda match: command + match.group(0), text, count=1)
+                if count != 1:
+                    raise RuntimeError('Cannot locate Cargo setup in frozen builder recipe')
+                recipe.write_text(text)
+                self.state['cargo_mirror'] = mirror
             self.state['cargo_build_jobs'] = self.args.jobs
             self.file('recipes/' + name + '/bounded', recipe)
         if self.args.image_mirror:
@@ -519,6 +533,7 @@ def main():
     parser.add_argument('--registry', default='', help='Optional push destination; required for images')
     parser.add_argument('--scout-ca', type=Path, help='Public Core CA PEM embedded in Scout (boot/images)')
     parser.add_argument('--base-image', default='ubuntu:24.04')
+    parser.add_argument('--cargo-mirror', default='', help='HTTPS Cargo sparse-index mirror; Cargo retains package checksum checks')
     parser.add_argument('--rust-mirror', default='', help='Rust distribution mirror base, e.g. https://rsproxy.cn; rustup retains component hash checks')
     parser.add_argument('--jobs', type=int, default=8, help='Maximum concurrent Cargo jobs in build images (default: 8)')
     parser.add_argument('--image-mirror', default='', help='Optional Docker Hub mirror prefix, e.g. m.daocloud.io; preserves pinned digests')

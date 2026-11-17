@@ -111,3 +111,5 @@ If Docker Hub is unreachable, set `BUILD_IMAGE_MIRROR=m.daocloud.io`. The builde
 For a source-built release, use `make bundles SOURCE_BUILD_LOCK=/absolute/path/to/build-lock.json`. Packaging stops if any rebuilt image is missing or has a different archived digest.
 
 If Rust distribution downloads are unreachable, set `RUST_MIRROR=https://rsproxy.cn`. Only build images use this distribution source; rustup retains component checksum checks, and the URL and recipe are recorded.
+
+If the Cargo index is unreachable, set `CARGO_MIRROR=https://rsproxy.cn/index`. Only the builders use this sparse index and its download endpoint. Cargo retains package checksum checks; the build lock records the mirror and generated recipe.

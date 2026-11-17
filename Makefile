@@ -29,9 +29,10 @@ SOURCE_BUILD_DIRECTORY ?= $(REPO_ROOT)/outputs_/source-builds
 SCOUT_CA_FILE ?=
 BUILD_IMAGE_MIRROR ?=
 BUILD_JOBS ?= 8
+CARGO_MIRROR ?=
 RUST_MIRROR ?=
 SOURCE_BUILD_LOCK ?=
-SOURCE_BUILD_ARGS = $(if $(RUST_MIRROR),--rust-mirror "$(RUST_MIRROR)",) --jobs "$(BUILD_JOBS)" --repo "$(REPO_ROOT)" --output "$(SOURCE_BUILD_DIRECTORY)" $(if $(REGISTRY),--registry "$(REGISTRY)",) $(if $(SCOUT_CA_FILE),--scout-ca "$(SCOUT_CA_FILE)",) $(if $(BUILD_IMAGE_MIRROR),--image-mirror "$(BUILD_IMAGE_MIRROR)",)
+SOURCE_BUILD_ARGS = $(if $(CARGO_MIRROR),--cargo-mirror "$(CARGO_MIRROR)",) $(if $(RUST_MIRROR),--rust-mirror "$(RUST_MIRROR)",) --jobs "$(BUILD_JOBS)" --repo "$(REPO_ROOT)" --output "$(SOURCE_BUILD_DIRECTORY)" $(if $(REGISTRY),--registry "$(REGISTRY)",) $(if $(SCOUT_CA_FILE),--scout-ca "$(SCOUT_CA_FILE)",) $(if $(BUILD_IMAGE_MIRROR),--image-mirror "$(BUILD_IMAGE_MIRROR)",)
 
 .PHONY: syntax lint format-check test wheel image images pxeye-images nico-sources nico-core libredfish nico-scout nico-boot source-build-help arm64-materials ensure-build-config cache-images bundles dhcp-check dhcp-check-help
 syntax:
