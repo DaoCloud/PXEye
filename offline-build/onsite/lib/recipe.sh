@@ -198,11 +198,13 @@ recipe_values() {
             ((.firmware_global.autoupdate // false) | not)
         ' "$scratch/site.json" > /dev/null || die "Initial delivery must not define HostInband or enable discovery/firmware automation"
         "$JQ" -e '.nicoCore["nico-dhcp"].replicas == 0' "$scratch/core.json" > /dev/null || die "Initial delivery must keep nico-dhcp scaled to zero"
-        "$JQ" '
+        "$JQ" --arg owner "$NAMESPACE-pxeye" '
             .nicoCore["nico-dhcp"].externalService.enabled = false |
             .nicoCore["nico-dns"].externalService.enabled = false |
             .nicoCore["nico-pxe"].externalService.enabled = false |
-            .nicoCore["nico-ntp"].externalService.enabled = false
+            .nicoCore["nico-ntp"].externalService.enabled = false |
+            .nicoCore["nico-pxe"].pxeyeStorage = {
+              enabled:true, claimName:($owner+"-storage"), ownerRelease:$owner}
         ' "$scratch/core.json" > "$scratch/substituted.json" || die "Cannot disable initial external boot Services"
     fi
     "$JQ" -e '[.. | strings | select(test("@\\{[a-z_]+\\}"))] | length == 0' "$scratch/substituted.json" > /dev/null || die "Unresolved values variables in $phase_id"

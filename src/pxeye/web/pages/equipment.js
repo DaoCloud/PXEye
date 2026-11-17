@@ -143,8 +143,7 @@ function devicePage() {
       button("下载模板", "planning-template") +
       button("新增规划", "planning-new", true)
     : pending
-      ? button("刷新发现结果", "eq-refresh", true) +
-        button("导入规划", "planning-import")
+      ? button("刷新发现结果", "eq-refresh", true)
       : button("刷新数据", "eq-refresh") +
         button("导入设备", "eq-choose-import") +
         button("新增设备", "eq-choose-new", true) +

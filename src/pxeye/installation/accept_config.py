@@ -40,7 +40,7 @@ def validate_network(documents, result, device, task):
         )
     ):
         raise ValueError("NETPLAN_DEFAULT_ROUTE_MISMATCH")
-    expected_dns = plan.get("dns_servers") or [device["dns"]]
+    expected_dns = plan.get("dns_servers", [device["dns"]] if device.get("dns") else [])
     actual_dns = nic.get("nameservers", {}).get("addresses", [])
     if [str(ipaddress.ip_address(a)) for a in actual_dns] != [
         str(ipaddress.ip_address(a)) for a in expected_dns

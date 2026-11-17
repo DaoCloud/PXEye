@@ -26,7 +26,7 @@ Open **Configuration → Installation profiles (配置 → 安装方案)** to sh
 | --- | --- |
 | Profile name / description (方案名称 / 说明) | Required name, at most 100 characters; description at most 1000. |
 | Architecture (架构) | Select `x86_64` or `aarch64` when creating a profile from the built-in template. Existing and copied profiles retain their architecture. |
-| Default OS (默认 OS) | May be left empty in a draft. Publishing requires a registered, enabled Ubuntu Server OS matching the profile architecture. |
+| Default OS (默认 OS) | Publishing requires a registered, enabled Ubuntu Server OS matching the profile architecture. |
 | Selection rule / candidate scope (选择规则 / 候选范围) | Unique match, smallest or largest capacity; all disks or NVMe only. An explicit device disk takes precedence. |
 | Serial / model patterns (序列号 / 型号规则) | Optional; `*` matches any characters, `?` one character. Case-sensitive; all filters apply together. |
 | Minimum / maximum capacity (最小 / 最大容量) | Optional GiB values. Capacity rules require complete Scout size data; minimum must not exceed maximum. |
@@ -48,7 +48,7 @@ nico_endpoint: "http://192.0.2.100:8080"
 site: "site-a"
 ```
 
-Replace the address, save the draft, check and publish a new version, then select that version for the device. Target-system cloud-init writes the files on first boot after package and user initialization, creating parent directories if needed. Ordinary reboots do not rewrite them, and profile edits do not update installed hosts. After installation, inspect the file with `sudo cat /etc/nico/site.yaml`.
+Replace the address, click **Publish version**, then select that version for the device. Target-system cloud-init writes the files on first boot after package and user initialization, creating parent directories if needed. Ordinary reboots do not rewrite them, and profile edits do not update installed hosts. After installation, inspect the file with `sudo cat /etc/nico/site.yaml`.
 
 - Up to 32 files, 64 KiB of content per file and 256 KiB in total. UTF-8 content preserves indentation and newlines.
 - Duplicate or overlapping file/directory paths are rejected. Managed network, login, cloud-init, runtime and installation-receipt paths are protected; existing template files cannot be shadowed.
@@ -63,7 +63,7 @@ Expand **Advanced settings (高级设置)**:
 | Field | Requirement |
 | --- | --- |
 | Timezone (时区) | IANA timezone, such as `Asia/Shanghai`. |
-| NTP servers (NTP 服务器) | One reachable address or hostname per line; required when publishing. |
+| NTP servers (NTP 服务器) | Optional, one reachable address or hostname per line. If empty, cloud-init does not configure NTP and acceptance does not check NTP synchronization. No public server is added automatically. |
 | Extra packages (额外软件包) | One package name per line. Installation dependencies must exist on the ISO or configured repositories. |
 | APT primary / security URL (APT 软件源 / 安全更新源 URL) | Reachable repositories for the target architecture. Empty values use ISO materials for offline installation. |
 | DNS acceptance domains / HTTP acceptance URLs (DNS 验收域名 / HTTP 验收 URL) | One per line, checked during acceptance. DNS acceptance domains do not configure DNS servers. |
@@ -72,9 +72,9 @@ Expand **Advanced settings (高级设置)**:
 
 ## 3. Actions
 
-1. Click **New profile (新建方案)**, select an architecture and enter a name, or **Copy (复制)** an existing profile. **Save draft (保存草稿)** is available before OS, NTP and login credentials are complete.
-2. Reopen the draft and **Check profile (检查方案)**. Resolve missing OS, username, NTP or incompatible materials.
-3. Click **Publish version (发布版本)**. Select it in device **System configuration (系统配置)** and review the resolved login and disk settings.
+1. Click **New profile (新建方案)**, select an architecture and enter a name, or **Copy (复制)** an existing profile.
+2. Complete the configuration and click **Publish version (发布版本)** to save, validate and publish. Missing default OS, missing OS username and incompatible materials have separate messages; correct them and publish again. NTP is optional. **Close (关闭)** discards edits that have not been submitted.
+3. Select the published version in device **System configuration (系统配置)** and review the resolved login and disk settings.
 4. Use **View (查看)** for published versions. To change one, click **New version (新版本)**, edit and publish, then select that version for devices.
 5. **Disable (停用)** profiles for new installations and **Enable (启用)** them again as needed. Unreferenced drafts may be deleted.
 
@@ -111,4 +111,4 @@ Use pending/running/success/failed for overall and stage status. Supply a nonemp
 
 Success evidence is saved before normal reboot. Reboot acceptance uses that evidence rather than requiring the historical state file to match the new boot ID. Continue acceptance only observes again; it does not reinstall or rerun scripts. Final acceptance cannot pass without the required pre-reboot success evidence.
 
-Acceptance labels follow: Installer success → Host configuration → System disk and EFI partition verification → Network configuration → SSH connectivity → DNS / HTTP / NTP connectivity → GPU environment check (optional) → Reboot acceptance. System disk and EFI partition verification checks root/ESP placement rather than reconfiguring firmware. Existing required/advisory service policies are unchanged. This state file is a custom deployment protocol, not the standard cloud-init status.
+Acceptance labels follow: Installer success → Host configuration → System disk and EFI partition verification → Network configuration → SSH connectivity → DNS / HTTP / NTP connectivity → GPU environment check (optional) → Reboot acceptance. System disk and EFI partition verification checks root/ESP placement rather than reconfiguring firmware. Only configured DNS/HTTP acceptance targets and NTP are checked; existing required/advisory policies for configured services are unchanged. This state file is a custom deployment protocol, not the standard cloud-init status.

@@ -12,6 +12,25 @@ Use this optional mode when the network team supplies DHCP addresses but cannot 
 - A matching Core and Scout build implementing `SetHostBootIntent`, `GetHostBootIntent`, `AcknowledgeHostBoot`, `CancelHostBoot` and `ReleaseHostBootPolicy`. Old Core builds remain usable in Nico DHCP mode. Updating PXEye alone does not add the Core feature.
 - A PXEye image built through the normal `make images` entry point, including the pinned generic EFI/ESP assets. The image includes `mcopy` and `xorriso`; the site does not compile iPXE. See [image building](deployment.md).
 
+## Matching source versions
+
+Use the maintained [Core integration branch](https://github.com/SSmallMonster/infra-controller/tree/mmzhou/nico-site-fixes) when building this feature. Core and Scout are built from the same repository and must use the same source revision.
+
+| Component | Source revision |
+| --- | --- |
+| NICo Core and Scout | `SSmallMonster/infra-controller` at `ebaadc097c4c72af58bf30a934c3b086ed878778` |
+| Lenovo Redfish compatibility | `SSmallMonster/libredfish` at `b6b4fff7277276bb4d0724e7dd4dca9cea2abbd1`, pinned by Core's Cargo manifest and lockfile |
+
+```bash
+git clone --branch mmzhou/nico-site-fixes https://github.com/SSmallMonster/infra-controller.git
+cd infra-controller
+git checkout --detach ebaadc097c4c72af58bf30a934c3b086ed878778
+```
+
+A separate sibling `libredfish` checkout is unnecessary. Prepare Cargo's pinned Git dependency while the build environment has network access. Follow the Core repository's build instructions for Core and Scout artifacts.
+
+Merging source code does not update a cluster or offline package. The default Chart image pins remain unchanged; select the matching Core image and Scout files before building an external-DHCP delivery. Updating PXEye alone keeps existing Nico DHCP sites on their saved mode.
+
 ## Operator workflow
 
 1. Install the control plane using the existing onsite flow. External DHCP does not change the order of Helm installation.
@@ -31,7 +50,7 @@ Core is the only external-mode BMC writer. It performs BIOS preparation, selects
 
 Every intended network boot gets a new nonce, including later Scout cleanup boots in the same policy generation. A matching Scout registration or authenticated installer callback permits removal of **only the owned bootstrap medium**. A `Ready` state, HTTP response or consumed PXE flag cannot trigger ejection. Foreign mounted media blocks the operation.
 
-An installer callback carries the nonce from the current kernel command line. The installer runs independently of the small iPXE ISO; Core can then eject that ISO. The OS ISO remains a separate installation material. After installation completion evidence, PXEye requests local-disk handoff; Core applies it without issuing an extra reset.
+An installer callback carries the nonce from the current kernel command line. The installer runs independently of the small iPXE ISO; Core can then eject that ISO. The OS ISO remains a separate installation material. After installation completion evidence, PXEye requests local-disk handoff; Core applies it without issuing an extra reset. Local-disk handoff sets a one-time `Hdd` override; it does not reorder permanent UEFI boot entries. Keep the system disk ahead of network boot in the permanent firmware order. Otherwise a later ordinary reboot may try every enabled network adapter before falling back to disk and exceed the reboot acceptance window. Manually skipping that check does not certify ordinary reboot acceptance.
 
 On failure, preserve the task and inspect its Core phase/error. Repeat an identical intent to read or resume its recorded state, not to reset again. Closing a stopped external-mode task requests Core cancellation and waits for owned-media cleanup before releasing the task. This does not terminate an installer already running on the host. A cancelled policy remains stopped until explicitly replaced or released.
 

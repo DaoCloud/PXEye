@@ -66,7 +66,7 @@ helm upgrade --install nico-system ./chart.tgz \
   -n nico-system -f values.yaml --wait --wait-for-jobs --timeout 900s
 ```
 
-Actual commands use the current Pod identity and the PXEye naming/mount renderer, and appear in deployment progress. In this fireseed rehearsal PXEye and NICo Helm workloads both run in `nico-system`. The Core Chart receives the shared materials PVC; set `nico_deployment.materials_claim` for another PVC. A successful individual Chart means Helm completed, while full services, Boot and site connection are checked separately.
+Actual commands use the current Pod identity and the PXEye naming/mount renderer, and appear in the deployment confirmation dialog. In this fireseed rehearsal PXEye and NICo Helm workloads both run in `nico-system`. The Core Chart receives the shared materials PVC; set `nico_deployment.materials_claim` for another PVC. A successful individual Chart means Helm completed, while full services, Boot and site connection are checked separately.
 
 ## 3. Complete Helm recipe (optional)
 
@@ -196,7 +196,7 @@ The base manifest grants application installation permissions in the current nam
 
 ## 6. Deploy and verify in the page
 
-Follow the [page guide](user-guide/nico-cluster.md). **Deployment workflow → Operations and commands** displays commands and exit codes by phase. Raw Helm output, which may contain credentials, is retained only in restricted files under `/data/nico-deployment/`.
+Follow the [page guide](user-guide/nico-cluster.md). Preview commands in the confirmation dialog before deployment, follow status and phase counts in the page header, and inspect components in **Services**. Phases, commands and exit codes remain in `/data/nico-deployment/current.json` and the corresponding `<operation-id>.json`. Raw Helm output, which may contain credentials, remains in restricted `<operation-id>/*.private.log` files under that directory.
 
 After required services and initialization are ready, verify the physical machine's DHCP/PXE path. Preserve PVCs and Secrets on failure; do not delete the database to retry. Back up the Vault recovery Secret through a restricted channel.
 

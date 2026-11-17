@@ -142,7 +142,7 @@ function profileOSOptions(architecture, current = "") {
       o.architecture === architecture &&
       o.installer === "ubuntu-server",
   );
-  const options = [["", "稍后选择OS"], ...os.map((o) => [o.id, o.name])];
+  const options = [["", "请选择 OS"], ...os.map((o) => [o.id, o.name])];
   if (current && !options.some((o) => o[0] === current))
     options.push([current, "当前 OS（需检查可用性）"]);
   return options;
@@ -185,7 +185,7 @@ async function profileEditor(id, copy = false) {
           p.architecture,
         )
       : ""
-  }${selectField("profile-os", "默认 OS", options, s.os_id)}</div><p class="live-small">${id ? esc(p.architecture) + " · " : ""}Ubuntu autoinstall · UEFI；可先保存草稿，发布前补齐配置。</p></section><section class="subsection"><h3>安装设置</h3><h4>系统盘选择</h4><div class="live-editor-grid">${selectField(
+  }${selectField("profile-os", "默认 OS", options, s.os_id)}</div><p class="live-small">${id ? esc(p.architecture) + " · " : ""}Ubuntu autoinstall · UEFI；发布时自动保存并检查配置。</p></section><section class="subsection"><h3>安装设置</h3><h4>系统盘选择</h4><div class="live-editor-grid">${selectField(
     "profile-disk-selection",
     "选择规则",
     [
@@ -226,26 +226,22 @@ async function profileEditor(id, copy = false) {
       ["clear", "清除密码"],
     ],
     "keep",
-  )}${multiline("profile-keys", "SSH 公钥（每行一个）", s.authorized_keys)}</div><p class="live-small">使用密码登录时，需在此处或设备规划中设置密码。</p></section>${profileFilesSection(s.custom_files || [], readonly)}<section class="subsection"><h3>安装验收</h3><label class="live-check"><input id="profile-gpu-check" type="checkbox" ${s.gpu_environment_check ? "checked" : ""}> GPU 环境检查</label><p class="live-small">仅在最终验收读取 /var/lib/metal-deployer/state.json；部署成功后才进入重启验收。最长等待 60 分钟，不执行 GPU 测试或部署脚本；未勾选时跳过。</p></section><details class="subsection"><summary>高级设置</summary>${p.network_mode === "flat" ? `<h4>实例网络</h4><div class="live-editor-grid">${inputField("profile-vpc", "Flat VPC ID（可稍后填写）", p.vpc_id || "")}${inputField("profile-tenant", "租户 ID（可稍后填写）", p.tenant_organization_id || "")}</div><p class="live-small">填写已有 Flat VPC 及其所属租户；可先留空，安装前补齐。</p>` : ""}<div class="live-editor-grid">${inputField("profile-timezone", "时区", s.timezone)}${multiline("profile-ntp", "NTP 服务器（每行一个）", s.ntp)}${multiline("profile-packages", "额外软件包（每行一个）", s.packages)}${inputField("profile-apt", "APT 软件源 URL", s.apt?.primary?.[0]?.uri || "")}${inputField("profile-security", "APT 安全更新源 URL", s.apt?.security?.[0]?.uri || "")}${multiline("profile-dns-checks", "DNS 验收域名（每行一个）", s.dns_checks)}${multiline("profile-http-checks", "HTTP 验收 URL（每行一个）", s.http_checks)}</div><p class="live-small">留空时仅使用 ISO 内材料；需要额外软件时填写可达的站点内 APT 源。当前不支持自定义脚本、多盘分区或 LVM。</p>${defs(
+  )}${multiline("profile-keys", "SSH 公钥（每行一个）", s.authorized_keys)}</div><p class="live-small">使用密码登录时，需在此处或设备规划中设置密码。</p></section>${profileFilesSection(s.custom_files || [], readonly)}<section class="subsection"><h3>安装验收</h3><label class="live-check"><input id="profile-gpu-check" type="checkbox" ${s.gpu_environment_check ? "checked" : ""}> GPU 环境检查</label><p class="live-small">仅在最终验收读取 /var/lib/metal-deployer/state.json；部署成功后才进入重启验收。最长等待 60 分钟，不执行 GPU 测试或部署脚本；未勾选时跳过。</p></section><details class="subsection"><summary>高级设置</summary>${p.network_mode === "flat" ? `<h4>实例网络</h4><div class="live-editor-grid">${inputField("profile-vpc", "Flat VPC ID（可稍后填写）", p.vpc_id || "")}${inputField("profile-tenant", "租户 ID（可稍后填写）", p.tenant_organization_id || "")}</div><p class="live-small">填写已有 Flat VPC 及其所属租户；可先留空，安装前补齐。</p>` : ""}<div class="live-editor-grid">${inputField("profile-timezone", "时区", s.timezone)}${multiline("profile-ntp", "NTP 服务器（可选，每行一个）", s.ntp)}${multiline("profile-packages", "额外软件包（每行一个）", s.packages)}${inputField("profile-apt", "APT 软件源 URL", s.apt?.primary?.[0]?.uri || "")}${inputField("profile-security", "APT 安全更新源 URL", s.apt?.security?.[0]?.uri || "")}${multiline("profile-dns-checks", "DNS 验收域名（每行一个）", s.dns_checks)}${multiline("profile-http-checks", "HTTP 验收 URL（每行一个）", s.http_checks)}</div><p class="live-small">NTP 留空时不配置或验收时间同步。软件源留空时仅使用 ISO 内材料；需要额外软件时填写可达的站点内 APT 源。当前不支持自定义脚本、多盘分区或 LVM。</p>${defs(
     [
       ["网络模式", esc(p.network_mode)],
       ["验证范围", esc(p.evidence)],
     ],
   )}</details></fieldset><div id="resource-error" class="live-error" role="alert"></div>`;
   let foot = button("关闭", "close");
-  if (!readonly) foot += button("保存草稿", "profile-save", true);
-  if (!isNew && !readonly)
-    foot +=
-      button("检查方案", "profile-check") +
-      button("发布版本", "profile-publish");
+  if (!readonly) foot += button("发布版本", "profile-publish", true);
   modal(
     readonly ? "查看安装方案" : isNew ? "新建安装方案" : "编辑安装方案",
-    `${p.name} · ${isNew ? "新草稿" : "v" + p.version}`,
+    `${p.name} · ${isNew ? "新方案" : "v" + p.version}`,
     body,
     foot,
   );
 }
-async function profileSave() {
+async function profileSave({ action } = {}) {
   return busy(async () => {
     const w = state.wizard,
       p = w.profile;
@@ -312,6 +308,7 @@ async function profileSave() {
       config,
     });
     await profileEditor(saved.id);
+    if (action) return await busy(() => profileAction(action, saved.id));
     toast(saved.export_error || "草稿已保存。");
   });
 }
@@ -589,9 +586,9 @@ registerActions(
         case "profile-save":
           return await profileSave();
         case "profile-check":
-          return await profileAction("check");
+          return await profileSave({ action: "check" });
         case "profile-publish":
-          return await profileAction("publish");
+          return await profileSave({ action: "publish" });
         case "profile-version":
           return await profileAction("new-version", el.dataset.id);
         case "profile-active":

@@ -2,7 +2,7 @@
 
 **English** · [简体中文](README.zh-CN.md)
 
-This is the delivery parent Chart. By default it deploys only the PXEye web console with its ServiceAccount, RBAC, ConfigMap, authentication Secret, data/material PVCs and Service. The offline builder vendors the locked NICo dependencies under this Chart, resolves `Chart.lock`, and relocates one complete image closure.
+This is the delivery parent Chart. By default it deploys only the PXEye web console with its ServiceAccount, RBAC, ConfigMap, authentication Secret, a shared storage PVC and Service. The offline builder vendors the locked NICo dependencies under this Chart, resolves `Chart.lock`, and relocates one complete image closure.
 
 The dependency tree is cert-manager, the platform infrastructure Chart, a separate Vault-bootstrap alias of that Chart, NICo Core, and the optional material publisher. The material publisher is disabled in the current image-only delivery.
 
@@ -25,7 +25,8 @@ For a source-tree deployment, first use the offline builder to download and vend
 | --- | --- | --- |
 | `image` | Pinned in `values.yaml` | Complete PXEye image reference; update it explicitly after publishing an image |
 | `storageClass` | Empty | Use the cluster default StorageClass |
-| `dataStorage` / `materialsStorage` | `2Gi` / `50Gi` | Data and material PVC sizes |
+| `sharedStorage.size` / `sharedStorage.accessMode` | `200Gi` / `ReadWriteOnce` | Shared PVC capacity and access mode |
+| `sharedStorage.existingClaim` | empty | Reuse an existing PVC instead of creating one |
 | `service.type` / `service.port` / `service.nodePort` | `NodePort` / `80` / `31808` | Service access |
 | `auth.existingSecret` | Empty | Reuse a Secret containing `auth.json`; otherwise generate credentials on first install and retain them on upgrade |
 | `nico.enabled` | `true` | Enable console NICo deployment configuration |
@@ -49,3 +50,5 @@ and physical-network validation.
 When PXEye and NICo use different namespaces and `siteBootNetwork.namespace` names the NICo namespace, the Chart also
 creates a namespace-scoped Role/RoleBinding there. It grants PXEye access to namespaced resources in that target
 namespace for the later **Manage boot network** page; it grants neither cluster-scoped access nor Secret reads.
+
+See [Shared storage](STORAGE.md) for directory initialization, ISO copy commands, PXE mounts and same-node affinity.

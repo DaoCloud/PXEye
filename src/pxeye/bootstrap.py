@@ -567,6 +567,9 @@ class Application:
                 ),
             ],
             "components": components,
+            "material_http_probe": (
+                self.os_library or OSLibrary(self.adapter)
+            ).public_http_status(),
             "checked_at": time.time(),
             "dns_maintenance": {
                 "page": "network",

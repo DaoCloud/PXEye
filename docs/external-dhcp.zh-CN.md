@@ -12,6 +12,25 @@
 - 配套 Core 和 Scout 实现 `SetHostBootIntent`、`GetHostBootIntent`、`AcknowledgeHostBoot`、`CancelHostBoot`、`ReleaseHostBootPolicy`。旧 Core 继续使用 Nico DHCP 模式；只更新 PXEye 不会增加 Core 能力。
 - 按正常 `make images` 入口构建 PXEye，包含固定版本的通用 EFI/ESP。镜像提供 `mcopy`、`xorriso`，现场无需编译 iPXE。见[镜像构建](deployment.zh-CN.md)。
 
+## 配套源码版本
+
+构建此功能时使用维护中的 [Core 集成分支](https://github.com/SSmallMonster/infra-controller/tree/mmzhou/nico-site-fixes)。Core 与 Scout 来自同一个仓库，必须使用同一源码版本。
+
+| 组件 | 源码版本 |
+| --- | --- |
+| NICo Core 与 Scout | `SSmallMonster/infra-controller` 的 `ebaadc097c4c72af58bf30a934c3b086ed878778` |
+| 联想 Redfish 兼容补丁 | `SSmallMonster/libredfish` 的 `b6b4fff7277276bb4d0724e7dd4dca9cea2abbd1`，由 Core 的 Cargo 清单和锁文件固定 |
+
+```bash
+git clone --branch mmzhou/nico-site-fixes https://github.com/SSmallMonster/infra-controller.git
+cd infra-controller
+git checkout --detach ebaadc097c4c72af58bf30a934c3b086ed878778
+```
+
+无需另外准备同级 `libredfish` 目录。构建环境联网时提前获取 Cargo 固定的 Git 依赖，再按 Core 仓库的构建说明生成 Core 和 Scout 制品。
+
+合并源码不会更新集群或离线包。默认 Chart 镜像引用保持原样；准备外部 DHCP 交付时，需要选择配套 Core 镜像和 Scout 文件。仅更新 PXEye 会保留已有 Nico DHCP 站点保存的模式。
+
 ## 操作流程
 
 1. 按原现场流程安装控制面；Helm 安装顺序不变。
@@ -31,7 +50,7 @@ Core 是外部模式下唯一执行 BMC 写操作的组件。它完成 BIOS 准�
 
 每次明确的网络启动都会生成新随机标识，包括同一策略代次中后续的 Scout 清理启动。匹配本次标识的 Scout 注册或认证安装器回执，才允许清理**本轮拥有的小型引导介质**。`Ready`、HTTP 响应或已消费的 PXE 标记不能触发卸载；发现其他已挂载介质时停止操作。
 
-安装器回执携带当前内核命令行中的启动标识。安装器已脱离小型 iPXE ISO 运行，Core 才可弹出该 ISO；操作系统 ISO 属于另一份安装材料。收到安装完成证据后，PXEye 请求本地盘交接，由 Core 应用启动设置，不额外发送重启。
+安装器回执携带当前内核命令行中的启动标识。安装器已脱离小型 iPXE ISO 运行，Core 才可弹出该 ISO；操作系统 ISO 属于另一份安装材料。收到安装完成证据后，PXEye 请求本地盘交接，由 Core 应用启动设置，不额外发送重启。本地盘交接设置的是单次 `Hdd` 启动，不会修改永久 UEFI 启动顺序。永久顺序应让系统盘优先于网络启动；否则后续普通重启可能逐个尝试已启用的网卡，再回退硬盘，从而超过重启验收等待时间。手动跳过该检查不代表普通重启验收通过。
 
 失败时保留原任务，查看 Core 阶段和错误。同代次的相同意图用于读取或继续已记录进度，不代表再次重启。结束已停止的外部模式任务时，请求 Core 取消并等待本轮介质清理后释放占用；不会终止主机上已运行的安装器。取消的策略保持停止，直到显式替换或释放。
 

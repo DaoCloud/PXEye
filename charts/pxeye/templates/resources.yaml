@@ -139,40 +139,25 @@ subjects:
   name: {{ .Release.Name }}
   namespace: {{ .Release.Namespace }}
 ---
+{{- if not .Values.sharedStorage.existingClaim }}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: {{ .Release.Name }}-data
+  name: {{ .Release.Name }}-storage
   namespace: {{ .Release.Namespace }}
   annotations:
     helm.sh/resource-policy: keep
 spec:
   accessModes:
-  - ReadWriteOnce
+  - {{ .Values.sharedStorage.accessMode | quote }}
   resources:
     requests:
-      storage: '{{ .Values.dataStorage }}'
+      storage: {{ .Values.sharedStorage.size | quote }}
   {{- with .Values.storageClass }}
   storageClassName: {{ . | quote }}
   {{- end }}
 ---
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: {{ .Release.Name }}-materials
-  namespace: {{ .Release.Namespace }}
-  annotations:
-    helm.sh/resource-policy: keep
-spec:
-  accessModes:
-  - ReadWriteOnce
-  resources:
-    requests:
-      storage: '{{ .Values.materialsStorage }}'
-  {{- with .Values.storageClass }}
-  storageClassName: {{ . | quote }}
-  {{- end }}
----
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -191,7 +176,17 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/instance: {{ .Release.Name }}
+        pxeye.io/storage-owner: {{ .Release.Name | quote }}
     spec:
+      affinity:
+        podAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  pxeye.io/storage-reader: {{ default (printf "%s-storage" .Release.Name) .Values.sharedStorage.existingClaim | quote }}
+              topologyKey: kubernetes.io/hostname
       serviceAccountName: {{ .Release.Name }}
       automountServiceAccountToken: true
       securityContext:
@@ -202,6 +197,23 @@ spec:
         fsGroupChangePolicy: OnRootMismatch
         seccompProfile:
           type: RuntimeDefault
+      initContainers:
+      - name: initialize-storage
+        image: {{ required "Set image to the PXEye image reference" .Values.image | quote }}
+        imagePullPolicy: IfNotPresent
+        command: [python3, /storage-init/initialize-storage.py]
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: [ALL]
+        resources:
+          requests: {cpu: 10m, memory: 32Mi}
+          limits: {cpu: '1', memory: 128Mi}
+        volumeMounts:
+        - {name: storage, mountPath: /storage}
+        - {name: storage-init, mountPath: /storage-init, readOnly: true}
+        - {name: config, mountPath: /config, readOnly: true}
       containers:
       - name: pxeye
         image: {{ required "Set image to the PXEye image reference" .Values.image | quote }}
@@ -244,22 +256,33 @@ spec:
           initialDelaySeconds: 10
           periodSeconds: 15
         volumeMounts:
-        - name: data
+        - name: storage
           mountPath: /data
+          subPath: data
         - name: config
           mountPath: /config
           readOnly: true
         - name: secrets
           mountPath: /secrets
           readOnly: true
-        - name: materials
+        - name: storage
           mountPath: /materials
+          subPath: http/nico/os-library
+        - name: storage
+          mountPath: /iso-sources
+          subPath: iso-sources
+        - name: storage
+          mountPath: /staging
+          subPath: staging
         - name: temporary
           mountPath: /tmp
       volumes:
-      - name: data
+      - name: storage
         persistentVolumeClaim:
-          claimName: {{ .Release.Name }}-data
+          claimName: {{ default (printf "%s-storage" .Release.Name) .Values.sharedStorage.existingClaim | quote }}
+      - name: storage-init
+        configMap:
+          name: {{ .Release.Name }}-storage-init
       - name: config
         configMap:
           name: {{ .Release.Name }}
@@ -267,9 +290,6 @@ spec:
         secret:
           secretName: '{{ default .Release.Name .Values.auth.existingSecret }}'
           defaultMode: 288
-      - name: materials
-        persistentVolumeClaim:
-          claimName: {{ .Release.Name }}-materials
       - name: temporary
         emptyDir:
           sizeLimit: 256Mi

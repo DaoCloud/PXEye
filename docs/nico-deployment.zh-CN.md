@@ -74,7 +74,7 @@ helm upgrade --install nico-system ./chart.tgz \
   -n nico-system -f values.yaml --wait --wait-for-jobs --timeout 900s
 ```
 
-实际命令还使用当前 Pod 的 Kubernetes 身份和 PXEye 的命名/挂载适配器，在部署流程中展示。本火种机 PXEye 与 NICo Helm 工作负载均运行在 `nico-system`。自定义材料 PVC 名称可在 `nico_deployment.materials_claim` 中指定。单个 Chart 成功表示本次 Helm 完成；完整服务、Boot、站点连接仍分别核对。
+实际命令还使用当前 Pod 的 Kubernetes 身份和 PXEye 的命名/挂载适配器，在部署确认窗口中展示。本火种机 PXEye 与 NICo Helm 工作负载均运行在 `nico-system`。自定义材料 PVC 名称可在 `nico_deployment.materials_claim` 中指定。单个 Chart 成功表示本次 Helm 完成；完整服务、Boot、站点连接仍分别核对。
 
 ## 3. 完整 Helm 部署包（可选）
 
@@ -220,7 +220,7 @@ kubectl --context "$SITE_CONTEXT" -n nico-system rollout status deployment/nico-
 
 ## 6. 在页面部署和确认
 
-按 [页面指南](user-guide/nico-cluster.zh-CN.md) 检查、部署和应用站点。命令与退出码在**部署流程 → 操作与命令**按阶段显示；可能包含凭据的 Helm 原始输出仅保留在 `/data/nico-deployment/` 受限文件中。
+按 [页面指南](user-guide/nico-cluster.zh-CN.md) 检查、部署和应用站点。部署前在确认窗口查看命令，部署状态和阶段计数在页面顶部显示，组件运行情况在**服务总览**查看。阶段、命令及退出码保存在 `/data/nico-deployment/current.json` 和对应的 `<operation-id>.json` 中；可能包含凭据的 Helm 原始输出保留在 `<operation-id>/*.private.log` 受限文件中。
 
 包内服务和初始化全部就绪后，再验证物理机到 DHCP/PXE 的路径。部署失败时保留 PVC 与 Secret，不删除数据库重试；Vault 的恢复 Secret 需要另行受限备份。
 

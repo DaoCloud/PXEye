@@ -348,6 +348,20 @@ function sitePage() {
     bootValues = boot.values || {},
     externalDhcp = bootValues.dhcp_mode === "external",
     materialHttpEndpoint = boot.material_http_endpoint || "",
+    materialProbe = s.material_http_probe || {},
+    materialState =
+      materialProbe.state ||
+      (materialHttpEndpoint ? "unverified" : "unconfigured"),
+    materialTone =
+      materialState === "reachable"
+        ? "ok"
+        : materialState === "unverified"
+          ? "warn"
+          : "bad",
+    materialLabel =
+      materialProbe.label || (materialHttpEndpoint ? "待验证材料" : "需要配置"),
+    materialDetail =
+      materialProbe.detail || "尚未从 PXEye 验证材料 HTTP 访问。",
     bootTone =
       boot.state === "applied"
         ? "green"
@@ -368,8 +382,8 @@ function sitePage() {
     ) +
     `<section class="site-overview"><div class="site-overview-main"><span class="site-eyebrow">当前站点</span><h2>${esc(s.site.name)}</h2><div class="site-overview-meta"><span>${esc(s.site.namespace)} / ${esc(s.site.deployment)}</span><span class="live-code">${esc(s.core_url)}</span><span>新建安装批次默认并发 ${esc(s.default_install_concurrency || 5)} 台</span></div></div><div class="site-health"><span class="site-status-dot ${healthy ? "ok" : "bad"}"></span><div><strong>${healthy ? "Core 连接正常" : "Core 连接异常"}</strong><span>${esc(core.detail || "尚未获得连接状态")}</span><small>检查于 ${when(s.checked_at)}</small></div></div></section>` +
     `<div class="site-layout"><section class="site-panel"><header class="site-panel-header"><div><span class="site-eyebrow">安全连接</span><h2>连接身份</h2></div></header><dl class="site-identity"><div><dt>客户端身份</dt><dd>${esc(identity.subject || identity.error || "未提供")}</dd></div><div><dt>签发者</dt><dd>${esc(identity.issuer || "—")}</dd></div><div><dt>有效期</dt><dd>${esc(identity.valid_from || "—")}<span>至 ${esc(identity.valid_until || "—")}</span></dd></div></dl></section><section class="site-panel"><header class="site-panel-header"><div><span class="site-eyebrow">本地存储</span><h2>数据目录</h2></div></header><div class="site-storage-list">${storage}</div></section></div>` +
-    `<section class="site-panel site-services-panel"><header class="site-panel-header"><div><span class="site-eyebrow">运行依赖</span><h2>网络与基础服务</h2></div>${button("管理 OS DNS", "site-network")}</header><div class="site-services">${services}</div><p class="site-panel-note">${esc(s.dns_maintenance.detail)}</p></section>` +
-    `<section class="site-panel site-services-panel"><header class="site-panel-header"><div><span class="site-eyebrow">物理引导网络</span><h2>DHCP / PXE / DNS / NTP</h2></div>${button("管理引导网络", "site-boot-network", true)}</header><div class="site-services"><div class="site-service-row"><span class="site-service-dot ${bootTone === "green" ? "ok" : bootTone === "red" ? "bad" : "set"}"></span><div class="site-service-name"><strong>${externalDhcp ? "外部 DHCP / BMC 引导" : "DHCP / PXE 引导地址"}</strong><span>${externalDhcp ? "本站点 Kea 保持关闭，外部 DHCP 提供固定租约" : "保存后将写入 Kea 并滚动 DHCP"}</span></div><span class="site-service-endpoint live-code">${esc(externalDhcp ? bootValues.pxe_http_endpoint || "未配置" : (bootValues.dhcp_address || "未配置") + " / " + (bootValues.pxe_address || "未配置"))}</span><div class="site-service-state ${bootTone === "green" ? "ok" : bootTone === "red" ? "bad" : "set"}"><strong>${bootLabel}</strong><span>${esc(boot.detail || "尚未配置物理引导服务地址。")}</span></div></div><div class="site-service-row"><span class="site-service-dot ${materialHttpEndpoint ? "set" : "bad"}"></span><div class="site-service-name"><strong>安装材料 HTTP 端点</strong><span>新建 OS 版本的 ISO、kernel、initrd 发布基址</span></div><span class="site-service-endpoint live-code">${esc(materialHttpEndpoint || "未配置")}</span><div class="site-service-state ${materialHttpEndpoint ? "set" : "bad"}"><strong>${materialHttpEndpoint ? "已配置" : "需要配置"}</strong><span>既有 OS 保持各自不可变的材料 URL。</span></div></div></div><p class="site-panel-note">Nico DHCP 模式将服务地址写入 Kea；外部 DHCP 模式使用明确的引导 HTTP 端点。安装材料 HTTP 端点供 OS 下载使用。PXEye 不管理客户 DHCP、Service 或既有 OS。</p></section>`
+    `<section class="site-panel site-services-panel"><header class="site-panel-header"><div><span class="site-eyebrow">运行依赖</span><h2>网络与基础服务</h2></div></header><div class="site-services">${services}</div><p class="site-panel-note">${esc(s.dns_maintenance.detail)}</p></section>` +
+    `<section class="site-panel site-services-panel"><header class="site-panel-header"><div><span class="site-eyebrow">物理引导网络</span><h2>DHCP / PXE / DNS / NTP</h2></div>${button("管理引导网络", "site-boot-network", true)}</header><div class="site-services"><div class="site-service-row"><span class="site-service-dot ${bootTone === "green" ? "ok" : bootTone === "red" ? "bad" : "set"}"></span><div class="site-service-name"><strong>${externalDhcp ? "外部 DHCP / BMC 引导" : "DHCP / PXE 引导地址"}</strong><span>${externalDhcp ? "本站点 Kea 保持关闭，外部 DHCP 提供固定租约" : "保存后将写入 Kea 并滚动 DHCP"}</span></div><span class="site-service-endpoint live-code">${esc(externalDhcp ? bootValues.pxe_http_endpoint || "未配置" : (bootValues.dhcp_address || "未配置") + " / " + (bootValues.pxe_address || "未配置"))}</span><div class="site-service-state ${bootTone === "green" ? "ok" : bootTone === "red" ? "bad" : "set"}"><strong>${bootLabel}</strong><span>${esc(boot.detail || "尚未配置物理引导服务地址。")}</span></div></div><div class="site-service-row"><span class="site-service-dot ${materialTone}"></span><div class="site-service-name"><strong>安装材料 HTTP 端点</strong><span>新建 OS 版本的 ISO、kernel、initrd 发布基址</span></div><span class="site-service-endpoint live-code">${esc(materialHttpEndpoint || "未配置")}</span><div class="site-service-state ${materialTone}"><strong>${esc(materialLabel)}</strong><span>${esc(materialDetail)}</span>${materialProbe.checked_at ? `<span>检查于 ${when(materialProbe.checked_at)}${materialProbe.latency_ms != null ? " · " + esc(materialProbe.latency_ms) + " ms" : ""}</span>` : ""}</div></div></div><p class="site-panel-note">PXE 引导地址只更新 Kea。材料 HTTP 端点独立管理，必须是装机网络可访问的完整地址和端口；PXEye 不会修改外部 Service、DHCP 地址池或既有 OS。</p></section>`
   );
 }
 function editSite() {
@@ -439,7 +453,7 @@ async function bootNetworkDialog() {
   modal(
     "管理引导网络",
     "选择引导方式，维护引导与材料 HTTP 端点",
-    `<div class="live-form"><fieldset id="boot-dhcp-mode" class="site-dhcp-modes"><legend>DHCP 模式</legend><div class="site-dhcp-options"><label class="site-dhcp-option"><input type="radio" name="boot-dhcp-mode" value="nico"${values.dhcp_mode !== "external" ? " checked" : ""}><span>Nico DHCP</span></label><label class="site-dhcp-option"><input type="radio" name="boot-dhcp-mode" value="external"${values.dhcp_mode === "external" ? " checked" : ""}><span>外部 DHCP</span></label></div></fieldset><div id="boot-nico-fields" class="live-form site-boot-fields"${values.dhcp_mode === "external" ? " hidden" : ""}>${inputField("boot-dhcp-address", "Nico DHCP 地址", values.dhcp_address || "", 'placeholder="例如 192.0.2.10"')}${inputField("boot-pxe-address", "PXE 引导服务器 IP", values.pxe_address || "", 'placeholder="例如 192.0.2.11"')}<p class="live-small">DHCP 地址用于识别 Nico DHCP 服务；PXE 引导服务器 IP 通过 DHCP 下发，不含协议或端口。应用后启动或更新本站点 Nico DHCP。</p></div><div id="boot-external-fields" class="live-form site-boot-fields"${values.dhcp_mode === "external" ? "" : " hidden"}>${inputField("boot-pxe-http-endpoint", "引导 HTTP 端点", values.pxe_http_endpoint || "", 'placeholder="http://boot.example.com:8080"')}<p class="live-small">填写包含协议和端口的地址。BMC 引导介质中的 iPXE 从这里获取 Nico 启动脚本。</p><p class="live-note">应用后停止本站点 Nico DHCP。请为设备规划中的启动 MAC 配置固定租约，保证 iPXE、Scout、安装器使用同一 IP。仅支持 x86_64、无 DPU、Flat 网络，以及具备 VirtualMedia 能力的 BMC。</p></div>${inputField("boot-material-http-address", "安装材料 HTTP 地址", values.material_http_address || "", 'placeholder="例如 192.0.2.11"')}${inputField("boot-material-http-port", "安装材料 HTTP 端口", values.material_http_port || 80, 'type="number" min="1" max="65535" step="1"')}${inputField("boot-dns-address", "DNS 地址", values.dns_address || "", 'placeholder="例如 192.0.2.12"')}${inputField("boot-ntp-address", "NTP 地址", values.ntp_address || "", 'placeholder="例如 192.0.2.13"')}<p class="live-small">当前材料发布基址：<code>${esc(status.material_http_endpoint || "未配置")}</code>。保存后仅供后续新建 OS 版本使用，既有 OS 不修改。</p><p class="live-small">Nico DHCP 模式更新 Kea 下发参数并滚动 DHCP；外部 DHCP 模式保持 Kea 为 0 副本，使用引导 HTTP 端点下载启动脚本。不会检查或修改外部 Service、代理、HostInband、地址池、设备规划或现有安装任务。</p>${status.cluster_ready ? `<p class="live-small">目标命名空间：${esc(status.namespace)}；DHCP：${esc(status.dhcp_deployment || "等待发现")}。</p>` : `<div class="live-error">${esc(status.cluster_error || "当前集群目标不可用。")}</div>`}<div id="resource-error" class="live-error"></div></div>`,
+    `<div class="live-form"><fieldset id="boot-dhcp-mode" class="site-dhcp-modes"><legend>DHCP 模式</legend><div class="site-dhcp-options"><label class="site-dhcp-option"><input type="radio" name="boot-dhcp-mode" value="nico"${values.dhcp_mode !== "external" ? " checked" : ""}><span>Nico DHCP</span></label><label class="site-dhcp-option"><input type="radio" name="boot-dhcp-mode" value="external"${values.dhcp_mode === "external" ? " checked" : ""}><span>外部 DHCP</span></label></div></fieldset><div id="boot-nico-fields" class="live-form site-boot-fields"${values.dhcp_mode === "external" ? " hidden" : ""}>${inputField("boot-dhcp-address", "Nico DHCP 地址", values.dhcp_address || "", 'placeholder="例如 192.0.2.10"')}${inputField("boot-pxe-address", "PXE 引导服务器 IP", values.pxe_address || "", 'placeholder="例如 192.0.2.11"')}<p class="live-small">DHCP 地址用于识别 Nico DHCP 服务；PXE 引导服务器 IP 通过 DHCP 下发，不含协议或端口。应用后启动或更新本站点 Nico DHCP。</p></div><div id="boot-external-fields" class="live-form site-boot-fields"${values.dhcp_mode === "external" ? "" : " hidden"}>${inputField("boot-pxe-http-endpoint", "引导 HTTP 端点", values.pxe_http_endpoint || "", 'placeholder="http://boot.example.com:8080"')}<p class="live-small">填写包含协议和端口的地址。BMC 引导介质中的 iPXE 从这里获取 Nico 启动脚本。</p><p class="live-note">应用后停止本站点 Nico DHCP。请为设备规划中的启动 MAC 配置固定租约，保证 iPXE、Scout、安装器使用同一 IP。仅支持 x86_64、无 DPU、Flat 网络，以及具备 VirtualMedia 能力的 BMC。</p></div>${inputField("boot-material-http-address", "安装材料 HTTP 地址", values.material_http_address || "", 'placeholder="例如 192.0.2.11"')}${inputField("boot-material-http-port", "安装材料 HTTP 端口", values.material_http_port || 80, 'type="number" min="1" max="65535" step="1"')}${inputField("boot-dns-address", "DNS 地址（可选）", values.dns_address || "", 'placeholder="例如 192.0.2.12"')}${inputField("boot-ntp-address", "NTP 地址（可选）", values.ntp_address || "", 'placeholder="例如 192.0.2.13"')}<p class="live-small">DNS、NTP 可留空，不配置对应的 DHCP 服务地址；使用域名的材料或软件源仍需可用的 DNS。</p><p class="live-small">当前材料发布基址：<code>${esc(status.material_http_endpoint || "未配置")}</code>。保存后仅供后续新建 OS 版本使用，既有 OS 不修改。</p><p class="live-small">Nico DHCP 模式更新 Kea 下发参数并滚动 DHCP；外部 DHCP 模式保持 Kea 为 0 副本，使用引导 HTTP 端点下载启动脚本。不会检查或修改外部 Service、代理、HostInband、地址池、设备规划或现有安装任务。</p>${status.cluster_ready ? `<p class="live-small">目标命名空间：${esc(status.namespace)}；DHCP：${esc(status.dhcp_deployment || "等待发现")}。</p>` : `<div class="live-error">${esc(status.cluster_error || "当前集群目标不可用。")}</div>`}<div id="resource-error" class="live-error"></div></div>`,
     button("取消", "close") + button("预览变更", "site-boot-preview", true),
   );
 }
@@ -464,7 +478,14 @@ async function previewBootNetwork() {
             ["PXE 引导服务器 IP", esc(values.pxe_address)],
           ]),
       ["材料 HTTP", esc(preview.material_http_endpoint)],
-      ["DNS / NTP", esc(values.dns_address + " / " + values.ntp_address)],
+      [
+        "DNS / NTP",
+        esc(
+          (values.dns_address || "未配置") +
+            " / " +
+            (values.ntp_address || "未配置"),
+        ),
+      ],
       ["受控资源", Object.values(preview.resources).map(esc).join("、")],
       ["Kea ConfigMap", esc(preview.dhcp_configmap)],
       ["DHCP Deployment", esc(preview.dhcp_deployment)],
@@ -1085,7 +1106,6 @@ registerActions(
   [
     "site-edit",
     "site-save",
-    "site-network",
     "site-boot-network",
     "site-boot-preview",
     "site-boot-apply",
@@ -1145,8 +1165,6 @@ registerActions(
           return editSite();
         case "site-save":
           return await saveSite();
-        case "site-network":
-          return await navigate("network");
         case "site-boot-network":
           return await bootNetworkDialog();
         case "site-boot-preview":
@@ -1653,12 +1671,12 @@ function networkPage() {
         "前缀 / 网关",
         "地址策略 / DHCP 范围",
         "MTU / 保留地址",
-        "NICo 状态 / 配置同步",
+        "NICo 状态",
         "操作",
       ],
       data.networks.map(
         (n) =>
-          `<tr><td>${esc(n.name)}<span class="live-small">${esc(n.segment_type)} · ${n.interface_count} 个接口</span></td><td>${n.prefixes.map((p) => `${esc(p.prefix)}<span class="live-small">网关 ${esc(p.gateway || "—")}</span>`).join("")}<span class="live-small">OS DNS：${esc((n.services?.dns_servers || []).join(", ") || "待配置")} · ${esc(n.services?.source)}</span></td><td title="${esc(networkPolicyDisplay(n).note)}">${esc(networkPolicyDisplay(n).label)}<span class="live-small">${networkDhcpRangeLabel(n, data.dhcp_ranges_supported)}</span></td><td>${esc(n.mtu)} / ${n.prefixes.map((p) => esc(p.reserveFirst ?? 0)).join(", ")}</td><td>${badge(n.state, n.state === "READY" ? "green" : "gray")}<span class="live-small">${n.deletion ? esc(networkDeletionLabel(n.deletion.status)) : "NICo 当前配置"}</span></td><td>${n.name === "static-assignments" ? "系统地址段" : button("查看", "network-edit", false, `data-id="${esc(n.id)}"`) + " " + button("删除", "network-delete", false, `data-id="${esc(n.id)}" ${n.delete_allowed ? "" : "disabled"} title="${esc(n.delete_reason || "删除前重新检查占用和设备规划")}"`) + (!n.delete_allowed ? `<span class="live-small">${esc(n.delete_reason)}</span>` : "")}</td></tr>`,
+          `<tr><td>${esc(n.name)}<span class="live-small">${esc(n.segment_type)} · ${n.interface_count} 个接口</span></td><td>${n.prefixes.map((p) => `${esc(p.prefix)}<span class="live-small">网关 ${esc(p.gateway || "—")}</span>`).join("")}</td><td title="${esc(networkPolicyDisplay(n).note)}">${esc(networkPolicyDisplay(n).label)}<span class="live-small">${networkDhcpRangeLabel(n, data.dhcp_ranges_supported)}</span></td><td>${esc(n.mtu)} / ${n.prefixes.map((p) => esc(p.reserveFirst ?? 0)).join(", ")}</td><td>${badge(n.state, n.state === "READY" ? "green" : "gray")}${n.deletion ? `<span class="live-small">${esc(networkDeletionLabel(n.deletion.status))}</span>` : ""}</td><td>${n.name === "static-assignments" ? "系统地址段" : button("查看", "network-edit", false, `data-id="${esc(n.id)}"`) + " " + button("删除", "network-delete", false, `data-id="${esc(n.id)}" ${n.delete_allowed ? "" : "disabled"} title="${esc(n.delete_reason || "删除前重新检查占用和设备规划")}"`) + (!n.delete_allowed ? `<span class="live-small">${esc(n.delete_reason)}</span>` : "")}</td></tr>`,
       ),
     );
   if (data.drafts.length)

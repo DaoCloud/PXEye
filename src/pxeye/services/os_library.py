@@ -10,10 +10,18 @@ import subprocess
 import threading
 import time
 import uuid
+import urllib.error
 import urllib.request
+from http.client import HTTPException
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from pxeye.common import atomic_json, digest, value_id
+
+
+class _NoProbeRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
 
 
 def ubuntu_boot_parameters(iso_url, *, serial_console=True, host_boot=True):
@@ -64,6 +72,138 @@ class OSLibrary:
 
     def public(self, row):
         return {k: v for k, v in row.items() if k != "owner"} | {"revision": digest(row)}
+
+    def public_http_status(self):
+        """Probe the current public endpoint without RPCs or downloading material bodies."""
+        settings = self.adapter.config.get("os_library") or {}
+        base = str(settings.get("public_base_url") or "").rstrip("/")
+        result = {
+            "state": "unconfigured",
+            "label": "需要配置",
+            "detail": "PXEye 尚未配置安装材料 HTTP 发布地址。",
+            "checked_at": time.time(),
+            "sample": "",
+        }
+        if not base:
+            return result
+        try:
+            parsed = urlsplit(base)
+            if (
+                parsed.scheme not in {"http", "https"}
+                or not parsed.hostname
+                or parsed.username is not None
+                or parsed.password is not None
+                or parsed.query
+                or parsed.fragment
+            ):
+                raise ValueError("Invalid public material URL")
+            parsed.port
+        except ValueError:
+            return result | {
+                "state": "unreachable",
+                "label": "配置无效",
+                "detail": "PXEye 未发起探测：材料地址须为不含认证信息、查询参数或片段的 HTTP(S) URL。",
+            }
+
+        expected_size = None
+        for path in sorted(self.directory.glob("*.json")):
+            try:
+                key = str(uuid.UUID(path.stem))
+                row = json.loads(path.read_text())
+                if not isinstance(row, dict) or row.get("id") != key:
+                    continue
+                materials = row.get("materials")
+                if not isinstance(materials, list):
+                    continue
+                for name, filename in (
+                    ("kernel", "kernel"),
+                    ("initrd", "initrd"),
+                    ("iso", "install.iso"),
+                ):
+                    material = next(
+                        (m for m in materials if isinstance(m, dict) and m.get("name") == name),
+                        {},
+                    )
+                    size = material.get("size")
+                    if type(size) is int and size > 0 and (self.root / key / filename).is_file():
+                        result["sample"] = key + "/" + filename
+                        expected_size = size
+                        break
+                if result["sample"]:
+                    break
+            except (OSError, ValueError):
+                continue
+
+        url = base + "/" + result["sample"]
+        result["url"] = url
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoProbeRedirect())
+        started = time.monotonic()
+        response = None
+        try:
+            try:
+                response = opener.open(urllib.request.Request(url, method="HEAD"), timeout=2.0)
+            except urllib.error.HTTPError as error:
+                response = error
+            status = response.code
+            result["status_code"] = status
+            if not result["sample"]:
+                result.update(
+                    state="unverified",
+                    label="待验证材料",
+                    detail=f"从 PXEye 发起目录 HEAD，HTTP {status}；暂无已发布材料可验证，目录可能不提供列表。",
+                )
+            elif 300 <= status < 400:
+                result.update(
+                    state="unverified",
+                    label="待验证材料",
+                    detail=f"从 PXEye 发起材料 HEAD，HTTP {status}；未跟随重定向，无法确认材料可下载。",
+                )
+            elif status in {405, 501}:
+                result.update(
+                    state="unverified",
+                    label="待验证材料",
+                    detail=f"从 PXEye 发起材料 HEAD，HTTP {status}；服务未支持 HEAD，尚未验证材料可下载。",
+                )
+            elif not 200 <= status < 300:
+                result.update(
+                    state="unreachable",
+                    label="材料访问失败",
+                    detail=f"从 PXEye 发起材料 HEAD，返回 HTTP {status}；材料当前无法访问。",
+                )
+            else:
+                try:
+                    length = int(response.headers.get("Content-Length", ""))
+                except (TypeError, ValueError):
+                    length = None
+                if length is None:
+                    result.update(
+                        state="unverified",
+                        label="待验证材料",
+                        detail=f"从 PXEye 发起材料 HEAD，HTTP {status}；未提供有效材料长度，尚未确认材料可下载。",
+                    )
+                elif length != expected_size:
+                    result.update(
+                        state="unreachable",
+                        label="材料长度不符",
+                        detail=f"从 PXEye 发起材料 HEAD，HTTP {status}；响应长度与发布记录不符。",
+                    )
+                else:
+                    result.update(
+                        state="reachable",
+                        label="材料可达",
+                        detail=f"从 PXEye 发起材料 HEAD，HTTP {status} 且长度匹配；仍需从装机网络验证。",
+                    )
+        except (OSError, ValueError, HTTPException):
+            result.update(
+                state="unreachable",
+                label="探测失败",
+                detail="从 PXEye 发起的材料 HTTP 探测失败；请检查端点、连接及 TLS 配置。",
+            )
+        finally:
+            result["latency_ms"] = round((time.monotonic() - started) * 1000)
+            if response is not None:
+                response.close()
+        return result
 
     def list(self):
         ids = self.adapter.rpc("FindOperatingSystemIds", {}).get("ids", [])

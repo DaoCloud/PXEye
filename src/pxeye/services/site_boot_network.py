@@ -85,11 +85,11 @@ class SiteBootNetwork:
             "pxe_address",
             "material_http_address",
             "material_http_port",
-            "dns_address",
-            "ntp_address",
         }
+        optional = {"dns_address", "ntp_address"}
         # Accept obsolete fields from an already-open older client without using them.
-        if set(body) - {"topology", "relay_address", "dhcp_mode", "pxe_http_endpoint"} != required:
+        fields = set(body) - {"topology", "relay_address", "dhcp_mode", "pxe_http_endpoint"}
+        if not required <= fields or fields - required - optional:
             raise ValueError("引导网络配置字段无效。")
         mode = body.get("dhcp_mode", "nico")
         if mode not in ("nico", "external"):
@@ -128,8 +128,8 @@ class SiteBootNetwork:
             "pxe_address": cls._ipv4(body["pxe_address"], "PXE 引导地址", required=mode == "nico"),
             "material_http_address": cls._ipv4(body["material_http_address"], "材料 HTTP 地址"),
             "material_http_port": port,
-            "dns_address": cls._ipv4(body["dns_address"], "DNS 地址"),
-            "ntp_address": cls._ipv4(body["ntp_address"], "NTP 地址"),
+            "dns_address": cls._ipv4(body.get("dns_address"), "DNS 地址", required=False),
+            "ntp_address": cls._ipv4(body.get("ntp_address"), "NTP 地址", required=False),
         }
 
     def _discover(self):
@@ -269,6 +269,8 @@ class SiteBootNetwork:
         parameters = hook.setdefault("parameters", {})
         for key in ("nico-provisioning-server-ipv4", "carbide-provisioning-server-ipv4"):
             parameters[key] = values["pxe_address"]
+        # Explicit empty lists clear the hook configuration; removing these keys
+        # would restore the NICo library's built-in service defaults.
         for key in ("nico-nameservers", "carbide-nameservers"):
             parameters[key] = values["dns_address"]
         for key in ("nico-ntpserver", "carbide-ntpserver"):

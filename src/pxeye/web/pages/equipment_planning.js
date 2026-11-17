@@ -180,7 +180,7 @@ function equipmentPlanningTable() {
       .includes(state.equipmentPlanningSearch.toLowerCase()),
   );
   return (
-    `<div class="equipment-planning-toolbar"><span class="live-small">${rows.length} 条规划</span><div class="equipment-planning-search"><label for="planning-search">搜索设备规划</label><input id="planning-search" type="search" placeholder="SN、IP、MAC 或机柜" value="${esc(state.equipmentPlanningSearch)}"></div></div>` +
+    `<div class="equipment-planning-toolbar"><span class="live-small">${rows.length} 条规划</span><div class="equipment-planning-search"><label for="planning-search">搜索设备</label><input class="input" id="planning-search" type="search" placeholder="SN、IP、MAC 或机柜" value="${esc(state.equipmentPlanningSearch)}"></div></div>` +
     table(
       [
         "设备 SN",
