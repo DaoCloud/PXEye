@@ -71,7 +71,7 @@ Image builds and Chart selection are separate. `make bundles` renders configured
 
 | Input file | Field | Build result |
 | --- | --- | --- |
-| `charts/pxeye/values.yaml` | `image` | Complete `images.pxeye.immutable_reference` |
+| `charts/pxeye/values.yaml` | `image` | The unique tag in `images.pxeye.reference` |
 | `deploy/offline-core/values/core.yaml` | `global.image.repository` / `tag` | Split `images.core.reference` into repository and unique tag; API, migrations, DHCP, DNS, hardware health and SSH console inherit this image |
 | Same file | `nico-bmc-proxy.image.repository` / `tag` | Same Core image, replacing the old explicit image |
 | Same file | `nico-pxe.image.repository` / `tag` | Same Core image, replacing the old explicit image |
