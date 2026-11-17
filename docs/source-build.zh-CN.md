@@ -63,7 +63,7 @@ outputs_/source-builds/<UTC时间>-<运行ID>/
 
 只使用 `status: complete` 的锁文件。失败时保留日志、源码及可能已经发布的部分镜像，状态标为 `failed`；不会退回旧镜像。Core/Boot tag 带源码提交和唯一运行 ID，PXEye tag 另带应用版本；部署引用使用锁文件里的 `immutable_reference`。
 
-**构建不会自动改 Chart、打离线包或部署。** 将锁文件中的 PXEye、Core 各服务和 Boot 镜像引用更新到交付 Chart/构建配置，再按[离线交付构建](../offline-build/BUILD.zh-CN.md)执行 `make cache-images`、`make bundles`。Core 多个服务可使用同一个整合镜像，保留各自的启动命令；Boot 镜像包含 `/x86_64`、`/apt`，作为 PXE 的材料 init container 使用；保留镜像默认命令，或显式使用 `sh -ec 'cp -r /x86_64 /apt /forge-boot-artifacts/blobs/internal/'`，不要遗漏 `/apt`。现有打包器不会自动消费此构建锁；未更新的 Chart 仍会打入旧版本。ISO 等外部材料继续按交付清单准备。
+**构建不会自动改 Chart、打离线包或部署。** 将锁文件中的 PXEye、Core 各服务和 Boot 镜像引用更新到交付 Chart/构建配置，再按[离线交付构建](../offline-build/BUILD.zh-CN.md)执行 `make cache-images`、`make bundles`。Core 多个服务可使用同一个整合镜像，保留各自的启动命令；Boot 镜像包含 `/x86_64`、`/apt`，作为 PXE 的材料 init container 使用；保留镜像默认命令，或显式使用 `sh -ec 'cp -r /x86_64 /apt /forge-boot-artifacts/blobs/internal/'`，不要遗漏 `/apt`。设置 `SOURCE_BUILD_LOCK` 可让打包器校验并归档指定构建锁；它不会自动更新 Chart，未更新的 Chart 仍指向旧版本。ISO 等外部材料继续按交付清单准备。
 
 ## 构建后同步哪些 Chart 配置
 
