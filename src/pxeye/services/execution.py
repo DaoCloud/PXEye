@@ -36,7 +36,18 @@ class Adapter(CoreClient, RedfishClient, SSHClient):
         elif not (self.identity / "ssh_key").exists():
             from pxeye.clients.process import run
 
-            run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(self.identity / "ssh_key")])
+            run(
+                [
+                    "ssh-keygen",
+                    "-q",
+                    "-t",
+                    "ed25519",
+                    "-N",
+                    "",
+                    "-f",
+                    str(self.identity / "ssh_key"),
+                ]
+            )
         (self.identity / "ssh_key").chmod(0o600)
 
     def device(self, serial, *, bind_intent=True):
@@ -366,6 +377,17 @@ print(json.dumps({'serial':Path('/sys/class/dmi/id/product_serial').read_text().
 
         plan = check("设备规划、已接管接口、子网与地址占用", lambda: self.installation_plan(serial))
 
+        def boot_transport_check():
+            from pxeye.services.boot_transport import BootTransport, site_boot_snapshot
+
+            if site_boot_snapshot(self)["dhcp_mode"] != "external":
+                return
+            transport = BootTransport(self, self.resources.store)
+            transport.check(transport.row(serial), target)
+            transport.check_os(target)
+
+        check("站点引导模式与固定租约规划", boot_transport_check)
+
         def core_check():
             nonlocal disk_selection, hardware_checked_at
             if native_observation is None:
@@ -384,6 +406,21 @@ print(json.dumps({'serial':Path('/sys/class/dmi/id/product_serial').read_text().
                 if len(instances) != 1:
                     raise RuntimeError("未找到唯一匹配的既有 Instance。")
                 instance = instances[0]
+            from pxeye.services.boot_transport import BootTransport, site_boot_snapshot
+
+            if site_boot_snapshot(self)["dhcp_mode"] == "external":
+                key = target.get("first_install_profile") or target.get("profile")
+                profile = self.profiles.get(key) if self.profiles and key else None
+                if profile is None:
+                    profile = next(
+                        (
+                            p
+                            for p in self.config.get("first_install_profiles", [])
+                            if p["id"] == key
+                        ),
+                        target,
+                    )
+                BootTransport.check_scope(profile, machine)
             if machine["state"] != "Assigned/Ready":
                 raise RuntimeError("Machine 当前不是 Assigned/Ready。")
             if instance["config"]["os"].get("run_provisioning_instructions_on_every_boot"):

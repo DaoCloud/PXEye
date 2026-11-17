@@ -16,6 +16,10 @@ The PXEye runtime needs routes to Core and hardware controllers. Target hosts ne
 
 Prepare the [external tools](../bin/README.md) at the repository root: `bin/nico-admin-cli`, `bin/grpcurl`, and `bin/helm`. Supply Linux binaries for the target image architecture. The standard Dockerfile requires reachable Ubuntu and Python package sources; offline material packaging does not make the PXEye build offline.
 
+The standard `make image` / `make images` build also fetches iPXE at the revision pinned in `tools/boot-media/build.sh` and compiles a generic x86_64 UEFI loader in a separate Docker stage. That stage requires GitHub access plus GCC, Make, binutils, libc/liblzma development files, mtools, xorriso and syslinux. Only the loader, its FAT template, source revision/checksums and upstream license files enter the runtime under `/usr/share/pxeye/boot-media/x86_64/`; no site URL or device MAC is compiled in. Docker reuses this stage when its inputs are unchanged.
+
+For external DHCP, the runtime uses `mcopy` from mtools and xorriso to insert the planned boot MAC and explicit PXE HTTP endpoint into `/autoexec.ipxe` inside a copy of that FAT template. It publishes the small ISO as `boot-media/<sha256>.iso` beneath the existing `os_library.directory` and `public_base_url`. Repeated identical requests reuse the published file. This requires the same persistent publication mount as OS materials, and a route from the BMC to its public URL; PXEye performs no site compilation. Media generation alone does not establish BMC or full installation compatibility.
+
 ### Image name and tag
 
 The default repository is `mmzhou-os-install-console`. Tags follow `<pyproject.toml version>-<YYYYMMDDHHmm>`, using `Asia/Shanghai` (UTC+8), to the minute; for example, `mmzhou-os-install-console:0.22.16-202611121830`. The application version excludes the timestamp. OCI labels record the full Git commit in `org.opencontainers.image.revision` and the application version in `org.opencontainers.image.version`. Retain existing SHA-based tags unchanged.

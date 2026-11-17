@@ -24,12 +24,17 @@ class _NoProbeRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def ubuntu_boot_parameters(iso_url, *, serial_console=True):
+def ubuntu_boot_parameters(iso_url, *, serial_console=True, host_boot=True):
     value = (
         "ip=dhcp BOOTIF=01-${netX/mac:hexhyp} autoinstall cloud-config-url=/dev/null url="
         + iso_url
         + " ds=nocloud-net;s=${tenant-cloudinit-url}"
     )
+    if host_boot:
+        value += (
+            " host_boot_expected_machine_id=${host_boot_expected_machine_id}"
+            " host_boot_generation=${host_boot_generation} host_boot_token=${host_boot_token}"
+        )
     # The generic kernel-initrd template defines ${console} from Core's hardware value.
     return value + (
         " console=tty0 console=${console},115200n8 initrd=initrd" if serial_console else ""
@@ -706,10 +711,13 @@ class OSLibrary:
             [
                 {
                     "name": "kernel_params",
-                    "value": ubuntu_boot_parameters(iso["url"], serial_console=serial),
+                    "value": ubuntu_boot_parameters(
+                        iso["url"], serial_console=serial, host_boot=host_boot
+                    ),
                 }
             ]
             for serial in (True, False)
+            for host_boot in (True, False)
         ]
         if (
             native.get("name") != row["name"]

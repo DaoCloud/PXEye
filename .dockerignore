@@ -17,6 +17,8 @@ node_modules
 tests
 tools/*
 !tools/import-oci-bundle.py
+!tools/boot-media/
+!tools/boot-media/**
 deploy/local
 build
 dist

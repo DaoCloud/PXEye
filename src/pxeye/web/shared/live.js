@@ -279,21 +279,23 @@ const taskStatus = (t) =>
   t.status === "needs_attention" && t.acceptance_summary?.state === "pending"
     ? { label: "待继续验收", tone: "amber" }
     : t.automatic_recovery &&
-  !["completed", "blocked", "unknown"].includes(t.automatic_recovery.state)
-    ? { label: "自动修复中", tone: "amber" }
-    : t.recovery_observing
-      ? { label: "等待安装结果", tone: "amber" }
-      : {
-          label: statuses[t.status],
-          tone:
-            t.status === "completed"
-              ? "green"
-              : t.status === "cancelled"
-                ? "gray"
-                : t.status === "needs_attention"
-                  ? "red"
-                  : "amber",
-        };
+        !["completed", "blocked", "unknown"].includes(
+          t.automatic_recovery.state,
+        )
+      ? { label: "自动修复中", tone: "amber" }
+      : t.recovery_observing
+        ? { label: "等待安装结果", tone: "amber" }
+        : {
+            label: statuses[t.status],
+            tone:
+              t.status === "completed"
+                ? "green"
+                : t.status === "cancelled"
+                  ? "gray"
+                  : t.status === "needs_attention"
+                    ? "red"
+                    : "amber",
+          };
 function taskRows() {
   return state.tasks.map((t) => {
     const status = taskStatus(t);
@@ -344,19 +346,28 @@ function sitePage() {
     .join("");
   const boot = s.boot_network || {},
     bootValues = boot.values || {},
+    externalDhcp = bootValues.dhcp_mode === "external",
     materialHttpEndpoint = boot.material_http_endpoint || "",
     materialProbe = s.material_http_probe || {},
     materialState =
-      materialProbe.state || (materialHttpEndpoint ? "unverified" : "unconfigured"),
+      materialProbe.state ||
+      (materialHttpEndpoint ? "unverified" : "unconfigured"),
     materialTone =
       materialState === "reachable"
         ? "ok"
         : materialState === "unverified"
           ? "warn"
           : "bad",
-    materialLabel = materialProbe.label || (materialHttpEndpoint ? "待验证材料" : "需要配置"),
-    materialDetail = materialProbe.detail || "尚未从 PXEye 验证材料 HTTP 访问。",
-    bootTone = boot.state === "applied" ? "green" : boot.state === "needs_attention" ? "red" : "gray",
+    materialLabel =
+      materialProbe.label || (materialHttpEndpoint ? "待验证材料" : "需要配置"),
+    materialDetail =
+      materialProbe.detail || "尚未从 PXEye 验证材料 HTTP 访问。",
+    bootTone =
+      boot.state === "applied"
+        ? "green"
+        : boot.state === "needs_attention"
+          ? "red"
+          : "gray",
     bootLabel =
       boot.state === "applied"
         ? "已应用，待链路验证"
@@ -372,7 +383,7 @@ function sitePage() {
     `<section class="site-overview"><div class="site-overview-main"><span class="site-eyebrow">当前站点</span><h2>${esc(s.site.name)}</h2><div class="site-overview-meta"><span>${esc(s.site.namespace)} / ${esc(s.site.deployment)}</span><span class="live-code">${esc(s.core_url)}</span><span>新建安装批次默认并发 ${esc(s.default_install_concurrency || 5)} 台</span></div></div><div class="site-health"><span class="site-status-dot ${healthy ? "ok" : "bad"}"></span><div><strong>${healthy ? "Core 连接正常" : "Core 连接异常"}</strong><span>${esc(core.detail || "尚未获得连接状态")}</span><small>检查于 ${when(s.checked_at)}</small></div></div></section>` +
     `<div class="site-layout"><section class="site-panel"><header class="site-panel-header"><div><span class="site-eyebrow">安全连接</span><h2>连接身份</h2></div></header><dl class="site-identity"><div><dt>客户端身份</dt><dd>${esc(identity.subject || identity.error || "未提供")}</dd></div><div><dt>签发者</dt><dd>${esc(identity.issuer || "—")}</dd></div><div><dt>有效期</dt><dd>${esc(identity.valid_from || "—")}<span>至 ${esc(identity.valid_until || "—")}</span></dd></div></dl></section><section class="site-panel"><header class="site-panel-header"><div><span class="site-eyebrow">本地存储</span><h2>数据目录</h2></div></header><div class="site-storage-list">${storage}</div></section></div>` +
     `<section class="site-panel site-services-panel"><header class="site-panel-header"><div><span class="site-eyebrow">运行依赖</span><h2>网络与基础服务</h2></div></header><div class="site-services">${services}</div><p class="site-panel-note">${esc(s.dns_maintenance.detail)}</p></section>` +
-    `<section class="site-panel site-services-panel"><header class="site-panel-header"><div><span class="site-eyebrow">物理引导网络</span><h2>DHCP / PXE / DNS / NTP</h2></div>${button("管理引导网络", "site-boot-network", true)}</header><div class="site-services"><div class="site-service-row"><span class="site-service-dot ${bootTone === "green" ? "ok" : bootTone === "red" ? "bad" : "set"}"></span><div class="site-service-name"><strong>DHCP / PXE 引导地址</strong><span>保存后将写入 Kea 并滚动 DHCP</span></div><span class="site-service-endpoint live-code">${esc(bootValues.dhcp_address || "未配置")} / ${esc(bootValues.pxe_address || "未配置")}</span><div class="site-service-state ${bootTone === "green" ? "ok" : bootTone === "red" ? "bad" : "set"}"><strong>${bootLabel}</strong><span>${esc(boot.detail || "尚未配置物理引导服务地址。")}</span></div></div><div class="site-service-row"><span class="site-service-dot ${materialTone}"></span><div class="site-service-name"><strong>安装材料 HTTP 端点</strong><span>新建 OS 版本的 ISO、kernel、initrd 发布基址</span></div><span class="site-service-endpoint live-code">${esc(materialHttpEndpoint || "未配置")}</span><div class="site-service-state ${materialTone}"><strong>${esc(materialLabel)}</strong><span>${esc(materialDetail)}</span>${materialProbe.checked_at ? `<span>检查于 ${when(materialProbe.checked_at)}${materialProbe.latency_ms != null ? " · " + esc(materialProbe.latency_ms) + " ms" : ""}</span>` : ""}</div></div></div><p class="site-panel-note">PXE 引导地址只更新 Kea。材料 HTTP 端点独立管理，必须是装机网络可访问的完整地址和端口；PXEye 不会修改外部 Service、DHCP 地址池或既有 OS。</p></section>`
+    `<section class="site-panel site-services-panel"><header class="site-panel-header"><div><span class="site-eyebrow">物理引导网络</span><h2>DHCP / PXE / DNS / NTP</h2></div>${button("管理引导网络", "site-boot-network", true)}</header><div class="site-services"><div class="site-service-row"><span class="site-service-dot ${bootTone === "green" ? "ok" : bootTone === "red" ? "bad" : "set"}"></span><div class="site-service-name"><strong>${externalDhcp ? "外部 DHCP / BMC 引导" : "DHCP / PXE 引导地址"}</strong><span>${externalDhcp ? "本站点 Kea 保持关闭，外部 DHCP 提供固定租约" : "保存后将写入 Kea 并滚动 DHCP"}</span></div><span class="site-service-endpoint live-code">${esc(externalDhcp ? bootValues.pxe_http_endpoint || "未配置" : (bootValues.dhcp_address || "未配置") + " / " + (bootValues.pxe_address || "未配置"))}</span><div class="site-service-state ${bootTone === "green" ? "ok" : bootTone === "red" ? "bad" : "set"}"><strong>${bootLabel}</strong><span>${esc(boot.detail || "尚未配置物理引导服务地址。")}</span></div></div><div class="site-service-row"><span class="site-service-dot ${materialTone}"></span><div class="site-service-name"><strong>安装材料 HTTP 端点</strong><span>新建 OS 版本的 ISO、kernel、initrd 发布基址</span></div><span class="site-service-endpoint live-code">${esc(materialHttpEndpoint || "未配置")}</span><div class="site-service-state ${materialTone}"><strong>${esc(materialLabel)}</strong><span>${esc(materialDetail)}</span>${materialProbe.checked_at ? `<span>检查于 ${when(materialProbe.checked_at)}${materialProbe.latency_ms != null ? " · " + esc(materialProbe.latency_ms) + " ms" : ""}</span>` : ""}</div></div></div><p class="site-panel-note">PXE 引导地址只更新 Kea。材料 HTTP 端点独立管理，必须是装机网络可访问的完整地址和端口；PXEye 不会修改外部 Service、DHCP 地址池或既有 OS。</p></section>`
   );
 }
 function editSite() {
@@ -404,10 +415,31 @@ async function saveSite() {
   toast(result.detail);
   if (!previouslyConnected && state.readiness.business_available) await load();
 }
+function bootNetworkMode() {
+  return $("#boot-dhcp-mode input:checked").value;
+}
+function updateBootNetworkFields() {
+  const external = bootNetworkMode() === "external";
+  $("#boot-nico-fields").hidden = external;
+  $("#boot-external-fields").hidden = !external;
+}
 function bootNetworkBody() {
+  const mode = bootNetworkMode(),
+    saved = state.wizard.status.values || {};
   return {
-    dhcp_address: $("#boot-dhcp-address").value.trim(),
-    pxe_address: $("#boot-pxe-address").value.trim(),
+    dhcp_mode: mode,
+    pxe_http_endpoint:
+      mode === "external"
+        ? $("#boot-pxe-http-endpoint").value.trim()
+        : saved.pxe_http_endpoint || "",
+    dhcp_address:
+      mode === "nico"
+        ? $("#boot-dhcp-address").value.trim()
+        : saved.dhcp_address || "",
+    pxe_address:
+      mode === "nico"
+        ? $("#boot-pxe-address").value.trim()
+        : saved.pxe_address || "",
     material_http_address: $("#boot-material-http-address").value.trim(),
     material_http_port: Number($("#boot-material-http-port").value),
     dns_address: $("#boot-dns-address").value.trim(),
@@ -420,28 +452,47 @@ async function bootNetworkDialog() {
   state.wizard = { resource: "site-boot-network", status };
   modal(
     "管理引导网络",
-    "修改物理网 DHCP、PXE、DNS 与 NTP 服务地址",
-    `<div class="live-form">${inputField("boot-dhcp-address", "DHCP 地址", values.dhcp_address || "", 'placeholder="例如 192.0.2.10"')}${inputField("boot-pxe-address", "PXE 引导地址", values.pxe_address || "", 'placeholder="例如 192.0.2.11"')}${inputField("boot-material-http-address", "安装材料 HTTP 地址", values.material_http_address || "", 'placeholder="例如 192.0.2.11"')}${inputField("boot-material-http-port", "安装材料 HTTP 端口", values.material_http_port || 80, 'type="number" min="1" max="65535" step="1"')}${inputField("boot-dns-address", "DNS 地址（可选）", values.dns_address || "", 'placeholder="例如 192.0.2.12"')}${inputField("boot-ntp-address", "NTP 地址（可选）", values.ntp_address || "", 'placeholder="例如 192.0.2.13"')}<p class="live-small">DNS、NTP 可留空，不配置对应的 DHCP 服务地址；使用域名的材料或软件源仍需可用的 DNS。</p><p class="live-small">当前材料发布基址：<code>${esc(status.material_http_endpoint || "未配置")}</code>。保存后仅供后续新建 OS 版本使用，既有 OS 不修改。</p><p class="live-small">PXEye 将按填写值更新 Kea 下发参数并滚动 DHCP；不会检查或修改外部 Service、代理、HostInband、地址池、设备规划或现有安装任务。</p>${status.cluster_ready ? `<p class="live-small">目标命名空间：${esc(status.namespace)}；DHCP：${esc(status.dhcp_deployment || "等待发现")}。</p>` : `<div class="live-error">${esc(status.cluster_error || "当前集群目标不可用。")}</div>`}<div id="resource-error" class="live-error"></div></div>`,
+    "选择引导方式，维护引导与材料 HTTP 端点",
+    `<div class="live-form"><fieldset id="boot-dhcp-mode" class="site-dhcp-modes"><legend>DHCP 模式</legend><div class="site-dhcp-options"><label class="site-dhcp-option"><input type="radio" name="boot-dhcp-mode" value="nico"${values.dhcp_mode !== "external" ? " checked" : ""}><span>Nico DHCP</span></label><label class="site-dhcp-option"><input type="radio" name="boot-dhcp-mode" value="external"${values.dhcp_mode === "external" ? " checked" : ""}><span>外部 DHCP</span></label></div></fieldset><div id="boot-nico-fields" class="live-form site-boot-fields"${values.dhcp_mode === "external" ? " hidden" : ""}>${inputField("boot-dhcp-address", "Nico DHCP 地址", values.dhcp_address || "", 'placeholder="例如 192.0.2.10"')}${inputField("boot-pxe-address", "PXE 引导服务器 IP", values.pxe_address || "", 'placeholder="例如 192.0.2.11"')}<p class="live-small">DHCP 地址用于识别 Nico DHCP 服务；PXE 引导服务器 IP 通过 DHCP 下发，不含协议或端口。应用后启动或更新本站点 Nico DHCP。</p></div><div id="boot-external-fields" class="live-form site-boot-fields"${values.dhcp_mode === "external" ? "" : " hidden"}>${inputField("boot-pxe-http-endpoint", "引导 HTTP 端点", values.pxe_http_endpoint || "", 'placeholder="http://boot.example.com:8080"')}<p class="live-small">填写包含协议和端口的地址。BMC 引导介质中的 iPXE 从这里获取 Nico 启动脚本。</p><p class="live-note">应用后停止本站点 Nico DHCP。请为设备规划中的启动 MAC 配置固定租约，保证 iPXE、Scout、安装器使用同一 IP。仅支持 x86_64、无 DPU、Flat 网络，以及具备 VirtualMedia 能力的 BMC。</p></div>${inputField("boot-material-http-address", "安装材料 HTTP 地址", values.material_http_address || "", 'placeholder="例如 192.0.2.11"')}${inputField("boot-material-http-port", "安装材料 HTTP 端口", values.material_http_port || 80, 'type="number" min="1" max="65535" step="1"')}${inputField("boot-dns-address", "DNS 地址（可选）", values.dns_address || "", 'placeholder="例如 192.0.2.12"')}${inputField("boot-ntp-address", "NTP 地址（可选）", values.ntp_address || "", 'placeholder="例如 192.0.2.13"')}<p class="live-small">DNS、NTP 可留空，不配置对应的 DHCP 服务地址；使用域名的材料或软件源仍需可用的 DNS。</p><p class="live-small">当前材料发布基址：<code>${esc(status.material_http_endpoint || "未配置")}</code>。保存后仅供后续新建 OS 版本使用，既有 OS 不修改。</p><p class="live-small">Nico DHCP 模式更新 Kea 下发参数并滚动 DHCP；外部 DHCP 模式保持 Kea 为 0 副本，使用引导 HTTP 端点下载启动脚本。不会检查或修改外部 Service、代理、HostInband、地址池、设备规划或现有安装任务。</p>${status.cluster_ready ? `<p class="live-small">目标命名空间：${esc(status.namespace)}；DHCP：${esc(status.dhcp_deployment || "等待发现")}。</p>` : `<div class="live-error">${esc(status.cluster_error || "当前集群目标不可用。")}</div>`}<div id="resource-error" class="live-error"></div></div>`,
     button("取消", "close") + button("预览变更", "site-boot-preview", true),
   );
 }
 async function previewBootNetwork() {
-  const values = bootNetworkBody(), preview = await api("/api/site/boot-network/preview", values);
+  const values = bootNetworkBody(),
+    preview = await api("/api/site/boot-network/preview", values);
   state.wizard = { resource: "site-boot-network-apply", values, preview };
   modal(
     "确认应用引导网络",
     "仅修改预览中列出的 Kubernetes 资源",
     defs([
-      ["DHCP 地址", esc(values.dhcp_address)],
-      ["PXE 引导地址", esc(values.pxe_address)],
+      [
+        "DHCP 模式",
+        values.dhcp_mode === "external"
+          ? "外部 DHCP · 停止本站点 Kea"
+          : "Nico DHCP",
+      ],
+      ...(values.dhcp_mode === "external"
+        ? [["引导 HTTP 端点", esc(values.pxe_http_endpoint)]]
+        : [
+            ["Nico DHCP 地址", esc(values.dhcp_address)],
+            ["PXE 引导服务器 IP", esc(values.pxe_address)],
+          ]),
       ["材料 HTTP", esc(preview.material_http_endpoint)],
-      ["DNS / NTP", esc((values.dns_address || "未配置") + " / " + (values.ntp_address || "未配置"))],
+      [
+        "DNS / NTP",
+        esc(
+          (values.dns_address || "未配置") +
+            " / " +
+            (values.ntp_address || "未配置"),
+        ),
+      ],
       ["受控资源", Object.values(preview.resources).map(esc).join("、")],
       ["Kea ConfigMap", esc(preview.dhcp_configmap)],
       ["DHCP Deployment", esc(preview.dhcp_deployment)],
     ]) +
       `<div class="live-note">${preview.effects.map(esc).join("<br>")}</div><label class="live-check"><input id="boot-confirm" type="checkbox">确认在维护窗口应用服务地址；现有活动安装任务不会被修改。</label><div id="resource-error" class="live-error"></div>`,
-    button("返回编辑", "site-boot-network") + button("保存并应用", "site-boot-apply", true),
+    button("返回编辑", "site-boot-network") +
+      button("保存并应用", "site-boot-apply", true),
   );
 }
 async function applyBootNetwork() {
@@ -680,9 +731,16 @@ function detail(id) {
     status = taskStatus(t),
     acceptance =
       t.status === "completed"
-        ? (t.acceptance_completion === "manual" ? t.receipt?.installation_checks : null) || after || t.initial || t.installation_checks
+        ? (t.acceptance_completion === "manual"
+            ? t.receipt?.installation_checks
+            : null) ||
+          after ||
+          t.initial ||
+          t.installation_checks
         : t.installation_checks ||
-          (t.status === "running" && t.stage === "firstboot" ? null : after || t.initial),
+          (t.status === "running" && t.stage === "firstboot"
+            ? null
+            : after || t.initial),
     checks = acceptance?.checks || {};
   let body = `<div class="live-task-title"><div>${badge(status.label, status.tone)} <strong>${esc(stages[t.stage])}</strong></div><span class="live-small">${when(t.created_at)} · ${esc(t.actor)}</span></div>${defs(
     [
@@ -759,10 +817,16 @@ function detail(id) {
   )
     .map(([k, v]) => {
       const skip = t.acceptance_skips?.[k];
-      const canSkip = !skip && ["running", "needs_attention"].includes(t.status) &&
+      const canSkip =
+        !skip &&
+        ["running", "needs_attention"].includes(t.status) &&
         ["firstboot", "gpu_check", "reboot"].includes(t.stage);
-      const skipButton = button("手动通过", "acceptance-skip", false,
-        `data-id="${esc(t.id)}" data-check="${k}" ${canSkip ? "" : "disabled"}`);
+      const skipButton = button(
+        "手动通过",
+        "acceptance-skip",
+        false,
+        `data-id="${esc(t.id)}" data-check="${k}" ${canSkip ? "" : "disabled"}`,
+      );
       const row = (content, tone = "") =>
         `<div class="acceptance-check-row ${tone}"><div class="acceptance-check-content">${content}</div>${skipButton}</div>`;
       if (skip) return row(`— ${v} · 已跳过`, "live-small");
@@ -778,7 +842,10 @@ function detail(id) {
               success: "已通过",
               failed: "需处理",
             }[gpu?.status] || "";
-        return row(`${gpu?.status === "success" ? "✓" : !enabled ? "—" : "○"} ${v}${label ? ` · ${label}` : ""}${enabled && gpu?.current_stage ? ` · ${esc(gpu.current_stage)}` : ""}`, !enabled ? "live-small" : gpu?.status === "success" ? "good" : "");
+        return row(
+          `${gpu?.status === "success" ? "✓" : !enabled ? "—" : "○"} ${v}${label ? ` · ${label}` : ""}${enabled && gpu?.current_stage ? ` · ${esc(gpu.current_stage)}` : ""}`,
+          !enabled ? "live-small" : gpu?.status === "success" ? "good" : "",
+        );
       }
       const errors = acceptance?.check_errors?.[k] || [];
       const failed = errors.length > 0 || checks[k] === false;
@@ -789,12 +856,16 @@ function detail(id) {
           : failed
             ? "未通过"
             : k === "normal_reboot" &&
-                (t.stage === "firstboot" || Object.keys(acceptance?.check_errors || {}).length)
+                (t.stage === "firstboot" ||
+                  Object.keys(acceptance?.check_errors || {}).length)
               ? "等待基础检查通过"
               : t.status === "running" && t.stage === "firstboot" && !acceptance
                 ? "检查中"
                 : "";
-      return row(`${checks[k] ? "✓" : failed ? "×" : "○"} ${v}${label ? ` · ${label}` : ""}${errors.length ? `<span class="live-small">：${errors.map(esc).join("；")}</span>` : ""}`, checks[k] ? "good" : failed ? "live-error" : "");
+      return row(
+        `${checks[k] ? "✓" : failed ? "×" : "○"} ${v}${label ? ` · ${label}` : ""}${errors.length ? `<span class="live-small">：${errors.map(esc).join("；")}</span>` : ""}`,
+        checks[k] ? "good" : failed ? "live-error" : "",
+      );
     })
     .join("")}</div></section>`;
   if (t.gpu_environment_check && t.gpu_check) {
@@ -811,6 +882,34 @@ function detail(id) {
         : ""
     }</section>`;
   }
+  if (t.boot_network?.dhcp_mode === "external") {
+    const boot = t.host_boot_status || {};
+    const phase = String(boot.phase || "PENDING").replace(
+      "HOST_BOOT_PHASE_",
+      "",
+    );
+    const labels = {
+      PENDING: "等待 Core 启动阶段",
+      INSPECTING: "核对 BMC 能力",
+      MOUNTING: "挂载引导介质",
+      MOUNTED: "介质已挂载",
+      SETTING_BOOT: "设置本轮启动目标",
+      ARMED: "等待启动",
+      RESETTING: "启动结果待核对",
+      AWAITING_ACKNOWLEDGEMENT: "等待本轮 Scout / 安装器回执",
+      DETACHING: "清理本轮介质",
+      COMPLETED: "本轮启动与清理已完成",
+      CANCELLED: "已取消并清理",
+      FAILED: "需要处理",
+    };
+    body += `<section class="live-card"><h3>外部 DHCP / BMC 引导</h3>${defs([
+      ["引导 HTTP", esc(t.boot_network.pxe_http_endpoint)],
+      ["Core 阶段", esc(labels[phase] || phase)],
+      ["请求代次", esc(boot.generation || "等待提交")],
+      ["介质清理", boot.cleanup_complete ? "已确认" : "待 Core 确认"],
+      ["详情", esc(boot.last_error || "Core 统一管理挂载、启动和介质清理。")],
+    ])}</section>`;
+  }
   if (after)
     body += `<section class="live-card">${defs([
       ["主机名", esc(after.hostname)],
@@ -820,7 +919,10 @@ function detail(id) {
         "SSH 指纹",
         `<span class="live-code">${esc(after.hostkey_fingerprint)}</span>`,
       ],
-      [t.acceptance_skips?.normal_reboot ? "系统 boot ID" : "普通重启 boot ID", esc(after.boot_id)],
+      [
+        t.acceptance_skips?.normal_reboot ? "系统 boot ID" : "普通重启 boot ID",
+        esc(after.boot_id),
+      ],
       [
         "UI 安装来源",
         esc(after.task_receipt?.source || "—") +
@@ -907,7 +1009,7 @@ function closeTaskDialog(id) {
   modal(
     "结束任务",
     task.device,
-    `<p>结束后释放设备占用，任务历史和日志仍会保留。</p><div class="live-note">此操作不会停止物理机上可能仍在运行的安装程序，也不会修改 NICo Instance、Machine、BMC、启动顺序或磁盘。</div><label class="live-check"><input id="close-task-confirm" type="checkbox">确认现场已经停止处理，并结束此任务。</label><div id="resource-error" class="live-error"></div>`,
+    `<p>结束后释放设备占用，任务历史和日志仍会保留。</p><div class="live-note">${task.boot_network?.dhcp_mode === "external" ? "此操作请求 Core 停止本轮引导并清理本轮拥有的虚拟介质，确认清理后释放设备占用。不会强行停止正在运行的安装器或擦除磁盘。" : "此操作不会停止物理机上可能仍在运行的安装程序，也不会修改 NICo Instance、Machine、BMC、启动顺序或磁盘。"}</div><label class="live-check"><input id="close-task-confirm" type="checkbox">确认现场已经停止处理，并结束此任务。</label><div id="resource-error" class="live-error"></div>`,
     button("取消", "close") + button("确认结束", "task-close-confirm", true),
   );
 }
@@ -1166,7 +1268,9 @@ registerActions(
         case "acceptance-skip":
           el.disabled = true;
           try {
-            await api("/api/tasks/" + el.dataset.id + "/skip-acceptance", { check: el.dataset.check });
+            await api("/api/tasks/" + el.dataset.id + "/skip-acceptance", {
+              check: el.dataset.check,
+            });
             await refreshTasks();
             return detail(el.dataset.id);
           } catch (error) {
@@ -2070,6 +2174,7 @@ observeUI(
   "change",
   "live.js",
   (e) => {
+    if (e.target.name === "boot-dhcp-mode") updateBootNetworkFields();
     if (e.target.id === "restart-install-confirm")
       $("#restart-install-submit").disabled = !e.target.checked;
   },

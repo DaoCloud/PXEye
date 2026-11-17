@@ -1,6 +1,6 @@
 """PXEye-owned application of physical boot-service endpoints.
 
-NICo retains DHCP allocation and PXE behavior. This service persists the
+NICo retains DHCP allocation and PXE behavior in managed DHCP mode. This service persists the
 operator-selected physical endpoint addresses and applies only the Kea values
 that advertise them. External Service and relay ownership remains outside PXEye.
 """
@@ -14,6 +14,8 @@ from urllib.parse import urlsplit, urlunsplit
 
 from pxeye.common import atomic_json
 from pxeye.deployment.kubernetes import ClusterError
+from pxeye.services.boot_media import boot_base_url
+from pxeye.services.boot_transport import BootTransport
 
 
 class SiteBootNetwork:
@@ -26,6 +28,15 @@ class SiteBootNetwork:
         self.lock = threading.RLock()
         self.state = self._load()
         self._restore_material_http_endpoint()
+        if self._saved_values().get("dhcp_mode") == "external":
+            threading.Thread(
+                target=self._keep_external_dhcp_disabled,
+                daemon=True,
+                name="pxeye-external-dhcp",
+            ).start()
+
+    def _saved_values(self):
+        return (self.state.get("current") or {}).get("values") or {}
 
     def _load(self):
         try:
@@ -77,15 +88,44 @@ class SiteBootNetwork:
         }
         optional = {"dns_address", "ntp_address"}
         # Accept obsolete fields from an already-open older client without using them.
-        fields = set(body) - {"topology", "relay_address"}
+        fields = set(body) - {"topology", "relay_address", "dhcp_mode", "pxe_http_endpoint"}
         if not required <= fields or fields - required - optional:
             raise ValueError("引导网络配置字段无效。")
+        mode = body.get("dhcp_mode", "nico")
+        if mode not in ("nico", "external"):
+            raise ValueError("DHCP 模式必须为 Nico DHCP 或外部 DHCP。")
+        endpoint = str(body.get("pxe_http_endpoint") or "").strip().rstrip("/")
+        if endpoint:
+            endpoint = boot_base_url(endpoint)
+            parsed = urlsplit(endpoint)
+            try:
+                valid_port = parsed.port is None or 1 <= parsed.port <= 65535
+            except ValueError:
+                valid_port = False
+            if (
+                parsed.scheme not in ("http", "https")
+                or not parsed.hostname
+                or parsed.username
+                or parsed.password
+                or parsed.query
+                or parsed.fragment
+                or parsed.path
+                or not valid_port
+                or any(c.isspace() for c in endpoint)
+            ):
+                raise ValueError("引导 HTTP 端点必须是包含协议和可选端口的地址，不含路径或凭据。")
+        elif mode == "external":
+            raise ValueError(
+                "外部 DHCP 模式需要明确的引导 HTTP 端点，例如 http://boot.example.com:8080。"
+            )
         port = body["material_http_port"]
         if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
             raise ValueError("材料 HTTP 端口应为 1–65535。")
         return {
-            "dhcp_address": cls._ipv4(body["dhcp_address"], "DHCP 地址"),
-            "pxe_address": cls._ipv4(body["pxe_address"], "PXE 引导地址"),
+            "dhcp_mode": mode,
+            "pxe_http_endpoint": endpoint,
+            "dhcp_address": cls._ipv4(body["dhcp_address"], "DHCP 地址", required=mode == "nico"),
+            "pxe_address": cls._ipv4(body["pxe_address"], "PXE 引导地址", required=mode == "nico"),
             "material_http_address": cls._ipv4(body["material_http_address"], "材料 HTTP 地址"),
             "material_http_port": port,
             "dns_address": cls._ipv4(body.get("dns_address"), "DNS 地址", required=False),
@@ -102,14 +142,18 @@ class SiteBootNetwork:
         deployments = self.cluster.list("deployments", namespace)
         mounts = []
         for deployment in deployments:
-            volumes = deployment.get("spec", {}).get("template", {}).get("spec", {}).get("volumes", [])
+            volumes = (
+                deployment.get("spec", {}).get("template", {}).get("spec", {}).get("volumes", [])
+            )
             if any(
                 item.get("configMap", {}).get("name") == configmap["metadata"]["name"]
                 for item in volumes
             ):
                 mounts.append(deployment)
         if len(mounts) != 1:
-            raise ValueError("无法唯一识别挂载 Kea ConfigMap 的 DHCP Deployment；未修改任何运行配置。")
+            raise ValueError(
+                "无法唯一识别挂载 Kea ConfigMap 的 DHCP Deployment；未修改任何运行配置。"
+            )
         return {
             "namespace": namespace,
             "configmap": configmap,
@@ -124,7 +168,11 @@ class SiteBootNetwork:
             raise ValueError("Kea ConfigMap 格式无效；无法读取当前引导网络地址。") from None
 
         option = next(
-            (row for row in dhcp.get("option-data", []) if row.get("name") == "dhcp-server-identifier"),
+            (
+                row
+                for row in dhcp.get("option-data", [])
+                if row.get("name") == "dhcp-server-identifier"
+            ),
             {},
         )
         hook = next(
@@ -184,6 +232,7 @@ class SiteBootNetwork:
                 "",
             )
         )
+
     def _set_material_http_endpoint(self, values):
         endpoint = self._material_http_endpoint_for(values)
         self.app.config.setdefault("os_library", {})["public_base_url"] = endpoint
@@ -228,16 +277,47 @@ class SiteBootNetwork:
             parameters[key] = values["ntp_address"]
         return json.dumps(config, ensure_ascii=False, indent=2) + "\n"
 
-    def _wait_for_dhcp(self, deployment):
+    def _wait_for_dhcp(self, deployment, replicas=1):
         name = deployment["metadata"]["name"]
         deadline = time.monotonic() + 75
         while time.monotonic() < deadline:
             row = self.cluster.get("deployments", name, self.namespace()) or {}
             status = row.get("status", {})
-            if status.get("availableReplicas", 0) >= 1 and status.get("updatedReplicas", 0) >= 1:
+            if replicas == 0:
+                if (
+                    row.get("spec", {}).get("replicas") == 0
+                    and status.get("observedGeneration", 0)
+                    >= row.get("metadata", {}).get("generation", 1)
+                    and all(
+                        status.get(key, 0) == 0
+                        for key in ("replicas", "readyReplicas", "availableReplicas")
+                    )
+                ):
+                    return row
+            elif status.get("availableReplicas", 0) >= 1 and status.get("updatedReplicas", 0) >= 1:
                 return row
             time.sleep(3)
-        raise ValueError("DHCP Deployment 未在限定时间内恢复 Ready；请查看 Pod 事件和 Kea 日志。")
+        raise ValueError("DHCP Deployment 未在限定时间内达到目标副本数；请查看 Pod 事件。")
+
+    def _keep_external_dhcp_disabled(self):
+        """Reassert the saved mode after startup without touching DHCP configuration."""
+        with self.lock:
+            if self._saved_values().get("dhcp_mode") != "external":
+                return
+            try:
+                discovered = self._discover()
+                deployment = discovered["deployment"]
+                if deployment.get("spec", {}).get("replicas") != 0:
+                    self.cluster.patch(
+                        "deployments",
+                        deployment["metadata"]["name"],
+                        {"spec": {"replicas": 0}},
+                        discovered["namespace"],
+                    )
+                self._wait_for_dhcp(deployment, 0)
+            except (ClusterError, ValueError) as error:
+                self.state["current"].update(status="needs_attention", detail=str(error))
+                self._save()
 
     def summary(self):
         current = self.state.get("current") or {}
@@ -255,7 +335,14 @@ class SiteBootNetwork:
         result["material_http_endpoint"] = self._material_http_endpoint()
         try:
             discovered = self._discover()
-            result["values"] = self._values_from_kea(discovered["configmap"])
+            saved = self._saved_values()
+            result["values"] = (
+                dict(saved)
+                if saved.get("dhcp_mode") == "external"
+                else self._values_from_kea(discovered["configmap"])
+                | {"dhcp_mode": "nico", "pxe_http_endpoint": saved.get("pxe_http_endpoint", "")}
+            )
+            result["dhcp_replicas"] = discovered["deployment"].get("spec", {}).get("replicas", 1)
             result["dhcp_configmap"] = discovered["configmap"]["metadata"]["name"]
             result["dhcp_deployment"] = discovered["deployment"]["metadata"]["name"]
             result["cluster_ready"] = True
@@ -271,6 +358,7 @@ class SiteBootNetwork:
             "configmap": discovered["configmap"]["metadata"]["name"],
             "deployment": discovered["deployment"]["metadata"]["name"],
         }
+        external = values["dhcp_mode"] == "external"
         return {
             "values": values,
             "material_http_endpoint": self._material_http_endpoint_for(values),
@@ -278,20 +366,33 @@ class SiteBootNetwork:
             "resources": resources,
             "dhcp_configmap": discovered["configmap"]["metadata"]["name"],
             "dhcp_deployment": discovered["deployment"]["metadata"]["name"],
-            "effects": [
-                "按用户填写的地址更新 Kea DHCP 下发参数；不检查或修改外部 Service。",
-                "更新 Kea DHCP Option 54、PXE 引导地址、DNS 与 NTP 下发参数。",
-                "将 DHCP Deployment 缩放至 1 并执行一次受控滚动更新。",
-                "不会修改 HostInband 网段、DHCP 地址池、设备规划或已有安装任务。",
-                "保存材料 HTTP 地址与端口，供后续新建 OS 版本使用；不会改写既有 OS 定义。",
-            ],
+            "effects": (
+                [
+                    "停止本站点 Nico DHCP（Kea 缩放至 0），读回确认；不修改 Kea 分配参数。",
+                    "外部 DHCP 必须为设备规划中的启动 MAC 配置固定租约，保证 iPXE、Scout、安装器使用同一 IP。",
+                    "使用 BMC 虚拟介质进入明确的引导 HTTP 端点；需要配套 Core 的 HostBootIntent 接口。",
+                    "保存端点供后续任务使用；不修改外部 DHCP、Service、设备规划或既有 OS。",
+                ]
+                if external
+                else [
+                    "按用户填写的地址更新 Kea DHCP 下发参数；不检查或修改外部 Service。",
+                    "更新 Kea DHCP Option 54、PXE 引导地址、DNS 与 NTP 下发参数。",
+                    "将 DHCP Deployment 缩放至 1 并执行一次受控滚动更新。",
+                    "不会修改 HostInband 网段、DHCP 地址池、设备规划或已有安装任务。",
+                    "保存材料 HTTP 地址与端口，供后续新建 OS 版本使用；不会改写既有 OS 定义。",
+                    "切回 Nico DHCP 后，新任务仅在旧外部引导介质清理完成时释放该设备的 Core 启动策略。",
+                ]
+            ),
         }
 
     def apply(self, body, actor):
+        if self._saved_values().get("dhcp_mode") == "external" and "dhcp_mode" not in body:
+            raise ValueError("页面版本已变化；请刷新后明确选择 DHCP 模式。")
         values = self.normalize(body)
         if self.app.store.incomplete():
             raise ValueError("存在活动安装任务；请在维护窗口完成或结束任务后再修改引导服务地址。")
         with self.lock:
+            BootTransport(self.app.adapter, self.app.store).check_standalone_admissions()
             discovered = self._discover()
             preview = self.preview(values)
             revision = uuid.uuid4().hex
@@ -309,21 +410,23 @@ class SiteBootNetwork:
             self.state["current"] = event
             self._save()
             try:
-                configmap = discovered["configmap"]
-                rendered = self._patch_kea(configmap, values)
-                self.cluster.patch(
-                    "configmaps",
-                    configmap["metadata"]["name"],
-                    {"data": {"kea_config.json": rendered}},
-                    discovered["namespace"],
-                )
+                external = values["dhcp_mode"] == "external"
+                if not external:
+                    configmap = discovered["configmap"]
+                    rendered = self._patch_kea(configmap, values)
+                    self.cluster.patch(
+                        "configmaps",
+                        configmap["metadata"]["name"],
+                        {"data": {"kea_config.json": rendered}},
+                        discovered["namespace"],
+                    )
                 deployment = discovered["deployment"]
                 self.cluster.patch(
                     "deployments",
                     deployment["metadata"]["name"],
                     {
                         "spec": {
-                            "replicas": 1,
+                            "replicas": 0 if external else 1,
                             "template": {
                                 "metadata": {
                                     "annotations": {
@@ -335,12 +438,16 @@ class SiteBootNetwork:
                     },
                     discovered["namespace"],
                 )
-                ready = self._wait_for_dhcp(deployment)
+                ready = self._wait_for_dhcp(deployment, 0 if external else 1)
                 material_endpoint = self._set_material_http_endpoint(values)
                 event.update(
                     status="applied",
                     applied_at=time.time(),
-                    detail="已应用 Kea 配置并保存材料 HTTP 端点；仍需从引导网络完成 DHCP/PXE 验证。",
+                    detail=(
+                        "外部 DHCP 模式已保存，本站点 Kea 已停止；请核对固定租约并验证 BMC 引导。"
+                        if external
+                        else "已应用 Kea 配置并保存材料 HTTP 端点；仍需从引导网络完成 DHCP/PXE 验证。"
+                    ),
                     dhcp_deployment_generation=ready.get("metadata", {}).get("generation"),
                     material_http_endpoint=material_endpoint,
                 )

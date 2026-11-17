@@ -36,7 +36,20 @@ product_version: "0.22.16"
 
 ## 3. 引导网络服务地址
 
-站点页将 **DHCP / PXE 引导地址** 与 **安装材料 HTTP 端点** 分开显示。前者从 Kea 读取 DHCP、PXE、DNS 和 NTP 的当前 IPv4 地址，并可在**管理引导网络**中修改；PXEye 按填写值更新 Kea ConfigMap 的 DHCP Option 54、PXE、DNS、NTP 下发参数并滚动 DHCP。PXEye 不检查、创建、修改或接管外部 Service、代理或 Relay。
+站点页将 **DHCP / PXE 引导地址** 与 **安装材料 HTTP 端点** 分开显示。**管理引导网络**是这些地址与 DHCP 模式的统一入口。默认 **Nico DHCP** 模式从 Kea 读取当前值；应用时更新 DHCP Option 54、PXE、DNS、NTP 下发参数并滚动 DHCP。**外部 DHCP** 模式使用完整的引导 HTTP 端点，要求为规划中的启动 MAC/IP 配置固定租约；PXEye 保持 Kea 停止，不改写其分配参数。PXEye 不检查、创建、修改或接管外部 Service、代理或 Relay。配套 Core/Scout 与硬件前提见[外部 DHCP 装机](../external-dhcp.zh-CN.md)。
+
+DHCP 模式采用 **Nico DHCP / 外部 DHCP** 二选一。选择 Nico DHCP 时显示 **Nico DHCP 地址**和 **PXE 引导服务器 IP**；选择外部 DHCP 时显示 **引导 HTTP 端点**及固定租约要求。切换选项本身不会应用配置，未选模式的已保存地址会保留；预览仅列出当前模式使用的引导字段。
+
+该模式是站点级默认值，因为应用外部模式会停止本站点共享的 Kea 服务；新任务保存创建时的模式。逐机启动 MAC/IP 仍在设备规划维护。
+
+| 引导字段 | 格式与作用 |
+| --- | --- |
+| Nico DHCP 地址 | IPv4；作为 DHCP Server Identifier（Option 54）下发。 |
+| PXE 引导服务器 IP | IPv4，不带协议或端口；Nico DHCP 下发的 next-server/引导服务器地址。 |
+| 引导 HTTP 端点 | 完整 `http://主机:端口` 或 `https://主机:端口`；写入外部模式的小型引导介质，用于请求 `/api/v0/pxe/boot`。 |
+| 安装材料 HTTP 地址与端口 | 发布小型引导 ISO 和新 OS 版本的 ISO、kernel、initrd；两种模式共用。 |
+
+引导 HTTP 端点仅控制小型介质进入 Nico 的首段请求，不会修改 Core/PXE 服务自身的端口或后续脚本中的服务地址。那些地址仍须由现有服务配置提供并对主机可达；它不是全局 PXE 端口开关。
 
 DNS、NTP 地址均可留空；填写时须为有效 IPv4 地址。留空会清空对应的 NICo DHCP hook 服务地址配置，不使用其内置默认地址。此处不修改安装方案的 NTP 设置；引用域名的材料或软件源仍需可用的 DNS，离线环境可使用内网服务和 IP URL。
 
@@ -48,7 +61,7 @@ DNS、NTP 地址均可留空；填写时须为有效 IPv4 地址。留空会清�
 
 该操作不修改 HostInband 网段、DHCP 地址池、设备规划或现有安装任务。HostInband 是 NICo 为主机启动口选择 DHCP 网段和地址分配的网络对象，仍在网络管理和设备/安装预检中维护，不是服务地址。
 
-应用前应处于维护窗口：存在活动安装任务时 PXEye 会阻止改址。应用成功只说明 Kubernetes 与 Kea 已完成受控更新；还需从实际引导 VLAN 完成 DHCP Offer 和材料 HTTP 验证。PXEye 当前不会自动改写已有 OS 定义中的材料 URL；材料入口变化后，应创建新的 OS 版本并由新的安装方案引用。
+应用前应处于维护窗口：存在活动安装任务时 PXEye 会阻止改址。应用成功只说明 Kubernetes 已完成受控更新并保存模式，不代表装机验证通过；还需从实际引导 VLAN 完成 DHCP Offer 和材料 HTTP 验证。PXEye 当前不会自动改写已有 OS 定义中的材料 URL；材料入口变化后，应创建新的 OS 版本并由新的安装方案引用。
 
 DHCP 拓扑与 Relay 地址无需在 PXEye 填写。跨子网时，在实际中继设备上配置 DHCP Relay；NICo 根据收到报文中的 `giaddr` 及子网规则处理请求。
 
@@ -73,7 +86,7 @@ DHCP 拓扑与 Relay 地址无需在 PXEye 填写。跨子网时，在实际中�
 
 - 页面显示的 Core 连接正常主要来自 TCP 检查，不代表完整 API、DHCP 或装机流程通过。
 - 存储容量显示所在文件系统的使用量，不是某个目录独占的容量。
-- 证书、私钥、材料目录、来源目录和 HTTP 发布 URL 通过部署配置及挂载维护，本页不上传或修改这些文件。
+- 证书、私钥、材料目录和来源目录通过部署配置及挂载维护；材料 HTTP 发布端点在**管理引导网络**维护。本页不上传或修改证书或材料文件。
 - 更换 Core 不会自动迁移设备规划、方案和任务历史；切换前核对资源引用及数据归属。
 
 相关：[部署指南](../deployment.zh-CN.md) · [网络管理](network-management.zh-CN.md) · [安装任务](installation-tasks.zh-CN.md)
