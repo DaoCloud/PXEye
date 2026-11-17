@@ -128,9 +128,9 @@ def enabled(environ: Mapping[str, str] | None = None) -> bool:
     return value == '1'
 
 
-def _recipe_rows() -> tuple[list[dict], str]:
-    _require(RECIPE.is_file() and not RECIPE.is_symlink(), 'Missing material recipe: ' + str(RECIPE))
-    recipe_bytes = RECIPE.read_bytes()
+def _recipe_rows(recipe_path: Path = RECIPE) -> tuple[list[dict], str]:
+    _require(recipe_path.is_file() and not recipe_path.is_symlink(), 'Missing material recipe: ' + str(recipe_path))
+    recipe_bytes = recipe_path.read_bytes()
     recipe = json.loads(recipe_bytes)
     rows = [row for row in recipe.get('materials', []) if row.get('group') == 'aarch64']
     _require(len(rows) == len(EXPECTED_TARGETS), 'ARM material recipe must contain exactly six aarch64 files')
@@ -242,8 +242,22 @@ def prepare(work_directory: Path | str, environ: Mapping[str, str] | None = None
     work = Path(work_directory).expanduser()
     _require(work.is_absolute(), 'work_directory must be absolute for ARM material preparation')
     work = work.resolve()
-    rows, recipe_sha256 = _recipe_rows()
     source = _source_dir(env)
+    generated = source / 'MATERIAL-RECIPE.json'
+    rows, recipe_sha256 = _recipe_rows(generated if generated.exists() else RECIPE)
+    selected_lock = env.get('SOURCE_BUILD_LOCK', '').strip()
+    if selected_lock:
+        build = json.loads(Path(selected_lock).read_text())
+        arm = build.get('arm64_materials', {})
+        _require(build.get('status') == 'complete' and arm,
+                 'Selected source build must contain completed ARM64 materials')
+        _require(arm.get('core_commit') == build['sources']['core']['commit'] and
+                 arm.get('libredfish_commit') == build['sources']['libredfish']['commit'],
+                 'ARM materials must match the selected Core/libredfish source set')
+        for row in rows:
+            record = build.get('files', {}).get('arm64/' + row['target'], {})
+            _require(record.get('sha256') == row['sha256'] and record.get('bytes') == row['bytes'],
+                     'ARM recipe differs from SOURCE_BUILD_LOCK: ' + row['target'])
     cache_root = work / 'cache/materials' / MATERIAL_ID
     files, reused = _validated_source(cache_root, source, rows, recipe_sha256)
     source_content_id = _stable_hash({

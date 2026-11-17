@@ -2,67 +2,61 @@
 
 [English](arm64-materials.md) · **简体中文** · [文档中心](README.zh-CN.md)
 
-控制面运行在 x86 K8s，不代表被安装的 Grace 主机可以执行 x86 引导程序。Grace 需要 ARM64 iPXE、Scout 引导系统及 ARM64 目标 OS。BlueField DPU 的 BFB 是另一套材料，不能替代 Grace 主机材料。
+Grace 主机需要 ARM64 iPXE、Scout 引导系统及 ARM64 目标 OS。控制面运行在 x86 K8s，不代表被安装的主机可以执行 x86 引导程序。BlueField DPU 的 BFB 是另一套材料。
 
-当前已有固定配方的**校验、镜像封装和离线交付流程**；`make images` 只构建 x86 Boot，尚未统一生成新版本 Grace 材料。ARM 源码构建需要单独的构建环境与材料检查。
+## 从 main 重建
 
-## 材料目录
+在 Linux x86_64 构建机准备本机 Docker、构建依赖和公开 Core CA，见[统一源码构建](source-build.zh-CN.md)。完整构建使用同一份冻结的 main：
 
-`ARM64_MATERIALS_DIR` 必须是绝对路径，直接包含六个普通文件：
+```bash
+export REGISTRY=registry.example:5000
+export SCOUT_CA_FILE=/private/core-ca.crt
+export INCLUDE_ARM64_MATERIALS=1
+make images
+```
+
+这会重建 Core、x86 Boot、Grace ARM64 Scout/rootfs/UEFI 和 PXEye。libredfish 按 Core 锁定的相同 main 提交编译。只重建 ARM 的独立入口为 `make nico-boot-arm64`；每次独立调用会重新冻结 main，不要把不同 Core 提交的结果混用。
+
+ARM 构建依次执行交叉工具链准备、Scout Debian 包编译、mkosi 根文件系统与 UEFI 组装、最终内容检查。QEMU 解释 ARM 用户空间；构建容器需要 `--privileged`，临时注册本轮专用 binfmt 条目，退出时清理该条目。它不操作真实主机或运行 GPU 测试。
+
+构建检查 ARM64 EFI/ELF、两个 Scout 二进制与根文件系统内文件的摘要一致性、64 KiB 页兼容性、CA、Scout 版本、包配置状态及关键模块 ABI。检查通过不能代替真实 Grace 引导验收。
+
+## 输出目录
+
+成功后命令打印 `ARM64_MATERIALS_DIR`，并在对应 `build-lock.json` 的 `arm64_materials` 中记录目录和来源：
 
 ```text
-/srv/nico-materials/aarch64/
+outputs_/source-builds/<运行ID>/arm64-materials/
 ├── ipxe.efi
 ├── golan.efi
 ├── scout.efi
 ├── scout.squashfs
 ├── BUILD-INFO.json
-└── ROOTFS-PACKAGES.json
+├── ROOTFS-PACKAGES.json
+└── MATERIAL-RECIPE.json
 ```
 
-| 文件 | 作用 |
-| --- | --- |
-| `ipxe.efi`、`golan.efi` | ARM64 UEFI 网络引导器及网卡适配变体 |
-| `scout.efi` | Scout 引导内核与 loader |
-| `scout.squashfs` | Scout 根文件系统，包含 `forge-scout`、`mlx-firmware-supervisor`、驱动和依赖 |
-| `BUILD-INFO.json` | 构建来源、版本、架构及启动文件大小/摘要 |
-| `ROOTFS-PACKAGES.json` | 从最终根文件系统导出的实际包名、版本及架构 |
+前四个是引导材料；`BUILD-INFO.json` 记录源码和内容检查，`ROOTFS-PACKAGES.json` 记录实际安装包，`MATERIAL-RECIPE.json` 锁定交付六文件的大小和 SHA256。这些 JSON 是本项目审计材料，不是 NICo 主机导入格式。
 
-后两个文件是本项目的交付审计材料，不是 NICo 规定的主机装机输入格式。最终 OS 的 ARM64 ISO 由安装流程另行导入；从该 ISO 提取 kernel/initrd，不能用 Scout 文件替代它们。
+## 接入离线包
 
-## 新版本材料如何准备
-
-1. **冻结版本。** 使用与本轮 Core 一致的 `infra-controller` 完整提交及其 Cargo/libredfish 锁；记录 Rust 工具链、mkosi/iPXE 子模块提交、基础系统、内核、NVIDIA 驱动和公开 CA。不能把旧 Scout 改文件名作为新版本。
-2. **准备 ARM 构建环境。** 优先使用原生 Linux ARM64 构建机；交叉编译和 QEMU 也可作为构建方案，但需额外处理 ARM 软件包安装、内核模块构建和 mkosi 的运行条件。x86 控制机不会自动提供这些能力。
-3. **编译并组装。** 源码入口是 `package-scout-aarch64-release-local`、`pxe/Makefile.toml` 的 `ipxe-aarch64`、`create-ephemeral-image-arm-host-ci` 和 `setup-apt-repo-arm64`。后者需要已生成的 Scout 包；生产组装显式提供 `FORGE_CA_PATH`，不要误用开发 CA。完整 `build-boot-artifacts-arm-host` 还混有 DPU 构建任务，源码注明本地 ARM 路径存在限制，不能直接视为本项目已验证的一键命令。
-4. **检查最终内容。** 核对 EFI 和两个 Scout ELF 均为 AArch64；验证 Grace 使用的 64 KiB 页兼容性、内核与驱动模块 ABI、动态库和软件包完整性、Core CA 与 Secure Boot 策略。Core 自带 `scripts/check-aarch64-pagesize.sh` 可检查 ELF；检查通过不等于真实 Grace 已能启动。
-5. **生成记录和配方。** 从最终文件生成上述两个 JSON，记录实际 SHA256、源提交与检查结果；同步 `offline-build/material-prepare/recipe-e703.json` 的六个 `group: aarch64` 条目的 `bytes` / `sha256`，保留其文件名、顺序及目标路径。文件名里的 `e703` 是现有配方名，不表示新材料仍来自该提交。完成评审并提交后再打包。
-6. **交付验证。** 完成下述离线封装，部署后检查 PXE HTTP 全量下载、摘要及真实 Grace 的 UEFI → iPXE → Scout 回报，再验证 ARM64 OS 安装。内容检查、Pod Ready 和真实装机分别记录。
-
-这些是材料生产要求与现有源码入口；仓库尚无覆盖这六步的一键 ARM 生成脚本。不能把旧材料封装成功描述为本轮 ARM 重新编译或硬件验收通过。
-
-## 纳入离线包
-
-准备好与已提交配方匹配的六个文件后，在 Linux x86_64 打包机执行：
+将同一次成功完整构建的输出用于打包，并先按构建锁更新 Chart 镜像引用：
 
 ```bash
-export REGISTRY=registry.example:5000
 export REGISTRY_INSECURE=true
-export INCLUDE_ARM64_MATERIALS=1
-export ARM64_MATERIALS_DIR=/srv/nico-materials/aarch64
+export SOURCE_BUILD_LOCK=/absolute/path/to/build-lock.json
+export ARM64_MATERIALS_DIR=/absolute/path/to/arm64-materials
 make arm64-materials
 make cache-images
 make bundles
 ```
 
-此阶段**不重新编译 Scout**。打包器校验六个文件的大小/SHA256，构建或复用内容寻址的 ARM 材料镜像，并记录镜像 digest。镜像由 x86 控制面上的 init container 运行，内含 ARM64 文件；容器镜像架构可以是 amd64，文件架构必须是 AArch64。
+`make arm64-materials` 校验并发布材料镜像；它不重新编译，也不生成归档。`make bundles` 仍是最终归档入口。生成配方优先于历史 `recipe-e703.json`；指定 `SOURCE_BUILD_LOCK` 时，六文件必须与其中记录的 ARM 材料摘要一致，且 ARM、Core/libredfish 来源一致。
 
-最终 Chart 自动追加 `nicoCore.nico-pxe.bootArtifactContainers` 的 `boot-artifacts-aarch64` 项。它校验并复制文件到 `/forge-boot-artifacts/blobs/internal/aarch64`，由 NICo PXE 发布到 `/public/blobs/internal/aarch64/`。保留材料镜像 ENTRYPOINT，不配置 `command` / `args` 覆盖，不需再搭建 HTTP 服务。
+最终 Chart 自动追加 `boot-artifacts-aarch64` init container，将材料复制到 NICo PXE 的 `/forge-boot-artifacts/blobs/internal/aarch64`，由 `/public/blobs/internal/aarch64/` 发布。材料镜像由 x86 控制面运行，容器架构为 amd64，内含 AArch64 文件；保留其 ENTRYPOINT，不覆盖 command/args，也无需另建 HTTP 服务。
 
-核对交付中的 `manifests/materials.json`、`manifests/images-lock.json` 和最终 Chart 的 ARM init container。新文件与固定配方不一致时会失败；设置环境变量不会使任意 ARM 材料自动被接受。这条六文件流程不额外交付 ARM APT 仓库或 DPU BFB，如需使用它们必须单独纳入材料规划。
+核对归档中的 `manifests/source-build-lock.json`、`manifests/materials.json` 和 `manifests/images-lock.json`。阶段耗时见源码构建锁、`outputs_/logs/delivery/<运行ID>/timings.json` 及归档 `progress.json`。
 
-当前外部 DHCP 通用小型启动 ISO 的构建入口仍为 x86_64；Grace 场景需提供 ARM64 兼容启动介质或使用已匹配的原生网络引导路径，不能直接复用 x86 小型 ISO。
+目标 OS 的 ARM64 ISO 另行导入；从中提取的 kernel/initrd 与 Scout 是不同材料。当前外部 DHCP 通用小型启动 ISO 仍是 x86，Grace 需要 ARM64 兼容介质或原生网络引导路径。本入口不生产 DPU BFB/固件，也不单独交付 ARM APT 仓库。
 
-参考 NVIDIA [容器与启动材料构建](https://docs.nvidia.com/infra-controller/documentation/getting-started/building-nico-containers)和[Bootable Artifacts](https://docs.nvidia.com/infra-controller/documentation/reference/development/bootable-artifacts)。BFB 的 `BOOTSTRAP_CA_PATH` 属于 DPU 路径，与主机 Scout 的 `FORGE_CA_PATH` 分开。
-
-`make arm64-materials` 只校验并发布现有材料镜像，不重新编译 Scout，也不生成归档；生成记录位于 `outputs_/generated/arm64-materials.json`。`make bundles` 仍会检查并复用相同内容的镜像。阶段耗时保存在 `outputs_/logs/delivery/<运行ID>/timings.json`，归档细分阶段见对应 `progress.json`。
+参考 NVIDIA [容器与启动材料构建](https://docs.nvidia.com/infra-controller/documentation/getting-started/building-nico-containers)和[Bootable Artifacts](https://docs.nvidia.com/infra-controller/documentation/reference/development/bootable-artifacts)。

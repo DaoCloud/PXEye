@@ -34,7 +34,7 @@ RUST_MIRROR ?=
 SOURCE_BUILD_LOCK ?=
 SOURCE_BUILD_ARGS = $(if $(CARGO_MIRROR),--cargo-mirror "$(CARGO_MIRROR)",) $(if $(RUST_MIRROR),--rust-mirror "$(RUST_MIRROR)",) --jobs "$(BUILD_JOBS)" --repo "$(REPO_ROOT)" --output "$(SOURCE_BUILD_DIRECTORY)" $(if $(REGISTRY),--registry "$(REGISTRY)",) $(if $(SCOUT_CA_FILE),--scout-ca "$(SCOUT_CA_FILE)",) $(if $(BUILD_IMAGE_MIRROR),--image-mirror "$(BUILD_IMAGE_MIRROR)",)
 
-.PHONY: syntax lint format-check test wheel image images pxeye-images nico-sources nico-core libredfish nico-scout nico-boot source-build-help arm64-materials ensure-build-config cache-images bundles dhcp-check dhcp-check-help
+.PHONY: syntax lint format-check test wheel image images pxeye-images nico-sources nico-core libredfish nico-scout nico-boot nico-boot-arm64 source-build-help arm64-materials ensure-build-config cache-images bundles dhcp-check dhcp-check-help
 syntax:
 	$(PYTHON) -m compileall -q src tests/unit
 	@find src/pxeye/web -name '*.js' -exec $(NODE) --check {} \;
@@ -74,7 +74,7 @@ pxeye-images:
 # Resolve each maintained main once, validate Cargo's libredfish revision,
 # and build Core + Scout/Boot + PXEye from that frozen source set.
 images:
-	$(PYTHON) "$(SOURCE_BUILD_SCRIPT)" images $(SOURCE_BUILD_ARGS) --base-image "$(BASE_IMAGE)"
+	$(PYTHON) "$(SOURCE_BUILD_SCRIPT)" images $(SOURCE_BUILD_ARGS) $(if $(filter 1,$(INCLUDE_ARM64_MATERIALS)),--with-arm64,) --base-image "$(BASE_IMAGE)"
 
 nico-sources:
 	$(PYTHON) "$(SOURCE_BUILD_SCRIPT)" sources $(SOURCE_BUILD_ARGS)
@@ -91,6 +91,10 @@ nico-scout:
 
 nico-boot:
 	$(PYTHON) "$(SOURCE_BUILD_SCRIPT)" boot $(SOURCE_BUILD_ARGS)
+
+# Rebuild Grace Scout/rootfs/UEFI; package its output later with make bundles.
+nico-boot-arm64:
+	$(PYTHON) "$(SOURCE_BUILD_SCRIPT)" boot-arm64 $(SOURCE_BUILD_ARGS)
 
 source-build-help:
 	@$(PYTHON) "$(SOURCE_BUILD_SCRIPT)" --help

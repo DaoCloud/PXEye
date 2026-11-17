@@ -52,7 +52,7 @@ class Build:
             'schema_version': 1, 'run_id': self.run_id, 'target': args.target,
             'status': 'running', 'platform': PLATFORM, 'sources': {},
             'images': {}, 'files': {}, 'builders': {}, 'timings': [], 'commands': [],
-            'scope': 'x86_64 Core/PXEye and optional x86_64 Scout/Boot; no ARM64 or DPU build',
+            'scope': 'x86_64 Core/PXEye and x86_64 Boot; optional ARM64 source build; no DPU build',
         }
         self.save()
         self.core = self.root / 'sources/core'
@@ -487,7 +487,7 @@ class Build:
                 self.sources()
             if self.args.target != 'sources':
                 self.check_docker()
-            if self.args.target in ('boot', 'images'):
+            if self.args.target in ('boot', 'images', 'boot-arm64'):
                 self.prepare_ca()
             if self.args.target == 'images':
                 self.prepare_tools()
@@ -498,11 +498,17 @@ class Build:
                     self.build_core()
             elif self.args.target == 'scout':
                 self.scout()
+            elif self.args.target == 'boot-arm64':
+                import arm64_boot
+                arm64_boot.build(self)
             elif self.args.target in ('boot', 'images'):
                 with self.stage('core'):
                     self.build_core()
                 with self.stage('x86-scout-boot'):
                     self.boot()
+                if self.args.with_arm64:
+                    import arm64_boot
+                    arm64_boot.build(self)
                 if self.args.target == 'images':
                     with self.stage('pxeye'):
                         self.build_pxeye()
@@ -528,11 +534,12 @@ def main():
                'Every invocation resolves a fresh set of maintained main revisions. '
                'Does not update Charts, build an offline archive, or deploy services.',
     )
-    parser.add_argument('target', choices=('sources', 'core', 'libredfish', 'scout', 'boot', 'images'))
+    parser.add_argument('target', choices=('sources', 'core', 'libredfish', 'scout', 'boot', 'boot-arm64', 'images'))
     parser.add_argument('--repo', type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument('--output', type=Path, default=None)
     parser.add_argument('--registry', default='', help='Optional push destination; required for images')
     parser.add_argument('--scout-ca', type=Path, help='Public Core CA PEM embedded in Scout (boot/images)')
+    parser.add_argument('--with-arm64', action='store_true', help='Also rebuild Grace ARM64 Scout/rootfs/UEFI from the same frozen source set')
     parser.add_argument('--base-image', default='ubuntu:24.04')
     parser.add_argument('--cargo-mirror', default='', help='HTTPS Cargo sparse-index mirror; Cargo retains package checksum checks')
     parser.add_argument('--rust-mirror', default='', help='Rust distribution mirror base, e.g. https://rsproxy.cn; rustup retains component hash checks')
@@ -543,7 +550,7 @@ def main():
         parser.error('--jobs must be positive')
     if args.target == 'images' and not args.registry:
         parser.error('images requires --registry (Make: REGISTRY=host:port)')
-    if args.target in ('boot', 'images') and (not args.scout_ca or not args.scout_ca.is_file()):
+    if args.target in ('boot', 'images', 'boot-arm64') and (not args.scout_ca or not args.scout_ca.is_file()):
         parser.error('boot/images requires --scout-ca (Make: SCOUT_CA_FILE=/path/to/core-ca.crt)')
     args.output = args.output or args.repo / 'outputs_/source-builds'
     try:

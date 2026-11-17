@@ -45,7 +45,7 @@ make images
 
 除 `images` 外，源码构建目标只在提供 `REGISTRY` 时推送镜像。每次命令独立冻结一套源码；要保证 Core/Scout/Boot/PXEye 完全配套，使用一次 `make images`，不要组合多次独立命令的产物。
 
-当前入口只构建 **x86_64 控制面和 x86_64 目标主机材料**。Grace ARM64 Scout/iPXE 与 DPU BFB 不在本入口生成范围，需单独准备并记录版本。
+默认构建 x86_64 控制面和 x86_64 目标主机材料；设置 `INCLUDE_ARM64_MATERIALS=1 make images` 会从同一份源码重建 Grace ARM64 Scout/rootfs/UEFI。独立入口为 `make nico-boot-arm64`，见[Grace ARM64 材料](arm64-materials.zh-CN.md)。DPU BFB 不在本入口生产。
 
 ## 输出与离线包
 
