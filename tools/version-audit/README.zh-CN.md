@@ -15,7 +15,7 @@ python3 audit.py runtime
 python3 audit.py compare
 ```
 
-仓库路径自动使用脚本所在仓库；打包镜像缓存默认 `127.0.0.1:1027`（HTTP），环境使用 kubectl 当前 context，无需填写。自动复用仓库 `outputs_/cache/charts` 中已有的 Chart 归档。结果写在当前目录：`package.json`、`runtime.json`、`comparison.json` 和 `comparison.txt`。
+仓库路径自动使用脚本所在仓库；打包镜像缓存默认 `127.0.0.1:1027`（HTTP），环境使用 kubectl 当前 context，无需填写。自动复用仓库 `outputs_/cache/charts` 中已有的 Chart 归档。结果统一写入仓库的 `outputs_/version-audit/`：`package.json`、`runtime.json`、`comparison.json` 和 `comparison.txt`，不覆盖项目根目录自带的 `package.json`。
 
 两份清单也可以在不同主机导出，复制到一起后比较。`--help` 和各子命令的 `--help` 提供参数说明。
 

@@ -15,7 +15,7 @@ python3 audit.py runtime
 python3 audit.py compare
 ```
 
-Defaults use the script's Git checkout, the local HTTP Registry at `127.0.0.1:1027`, and the current kubectl context. Existing archives in the checkout's `outputs_/cache/charts` are reused automatically. Reports are written to the current directory: `package.json`, `runtime.json`, `comparison.json` and `comparison.txt`.
+Defaults use the script's Git checkout, the local HTTP Registry at `127.0.0.1:1027`, and the current kubectl context. Existing archives in the checkout's `outputs_/cache/charts` are reused automatically. Reports are written under the checkout's `outputs_/version-audit/`: `package.json`, `runtime.json`, `comparison.json` and `comparison.txt`. The project's existing root `package.json` is preserved.
 
 Snapshots may be collected on different hosts and copied together for comparison. Consult `--help` and subcommand help for options.
 

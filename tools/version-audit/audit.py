@@ -21,6 +21,7 @@ import urllib.request
 
 DIGEST = re.compile(r"sha256:[0-9a-f]{64}$")
 ROOT = "/forge-boot-artifacts/blobs/internal"
+REPORT_DIRECTORY = Path(__file__).resolve().parents[2] / 'outputs_/version-audit'
 FILE_TEST = ("-name '*.efi' -o -name '*.squashfs' -o -name '*.iso' "
              "-o -name '*.bfb' -o -name '*.deb' -o -name 'vmlinuz*' "
              "-o -name 'initrd*' -o -name 'BUILD-INFO.json' -o -name 'ROOTFS-PACKAGES.json' "
@@ -462,7 +463,7 @@ def main():
   python3 audit.py compare
 
 Defaults: this script's Git checkout, local HTTP Registry 127.0.0.1:1027,
-current Kubernetes context, package.json/runtime.json/comparison.json in the working directory.
+current Kubernetes context, reports under the checkout's outputs_/version-audit/.
 
 Exit: 0 complete/matching; 2 differences or incomplete verification; 1 command failure.
 No images are built/pulled, no workloads/configuration are changed. package may download pinned Helm sources.
@@ -470,10 +471,10 @@ No images are built/pulled, no workloads/configuration are changed. package may 
     sub = parser.add_subparsers(dest='command', required=True)
     for name in ('package', 'runtime', 'compare'):
         p = sub.add_parser(name, help={'package': 'Export committed packaging inputs', 'runtime': 'Export active Pods and published files', 'compare': 'Compare two exported snapshots'}[name])
-        p.add_argument('--output', type=Path, default=Path('comparison.json' if name == 'compare' else name + '.json'))
+        p.add_argument('--output', type=Path, default=REPORT_DIRECTORY / ('comparison.json' if name == 'compare' else name + '.json'))
         if name == 'compare':
-            p.add_argument('--package', type=Path, default=Path('package.json'))
-            p.add_argument('--runtime', type=Path, default=Path('runtime.json'))
+            p.add_argument('--package', type=Path, default=REPORT_DIRECTORY / 'package.json')
+            p.add_argument('--runtime', type=Path, default=REPORT_DIRECTORY / 'runtime.json')
             continue
         p.add_argument('--architecture', choices=('amd64', 'arm64'), default='amd64', help='Container platform; independent of the installed host architecture')
         p.add_argument('--ctr', default='ctr')
