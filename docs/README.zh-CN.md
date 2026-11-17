@@ -7,6 +7,7 @@ PXEye 公开项目文档均提供内容对应的中英文版本。首次使用�
 | 文档 | English | 简体中文 | 用途 |
 | --- | --- | --- | --- |
 | 外部 DHCP 装机 | [Read](external-dhcp.md) | [阅读](external-dhcp.zh-CN.md) | 固定租约、BMC 虚拟介质、Core 启动管理与恢复。 |
+| Grace ARM64 启动材料 | [Read](arm64-materials.md) | [阅读](arm64-materials.zh-CN.md) | 材料生产要求、固定配方、封装与真实硬件验收边界。 |
 | 统一源码构建 | [Read](source-build.md) | [阅读](source-build.zh-CN.md) | 固定维护 main、Core/libredfish/Scout/Boot/PXEye 与构建锁。 |
 | 离线交付构建 | [Read](../offline-build/BUILD.md) | [阅读](../offline-build/BUILD.zh-CN.md) | 可复制的构建步骤、交付物、范围和交接边界。 |
 | 离线包现场部署 | [Read](../offline-build/onsite/README.md) | [阅读](../offline-build/onsite/README.zh-CN.md) | 导入已校验交付包、冻结站点参数并支持断点安装。 |

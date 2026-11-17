@@ -65,6 +65,33 @@ Use only a lock with `status: complete`. Failure preserves logs, source and any 
 
 **Building does not update Charts, create an offline archive or deploy.** Update PXEye, Core-service and Boot references in the delivery Chart/build configuration from the lock, then follow [offline delivery](../offline-build/BUILD.md) with `make cache-images` and `make bundles`. Multiple Core services can share the integrated image while retaining their individual commands. The Boot image contains `/x86_64` and `/apt` for the PXE material init container. Retain its default command, or explicitly use `sh -ec 'cp -r /x86_64 /apt /forge-boot-artifacts/blobs/internal/'`; include `/apt`. The existing packager does not consume this lock automatically; unchanged Charts still package old versions. Prepare ISO and other external materials through the delivery checklist.
 
+## Synchronize Chart inputs after a build
+
+Image builds and Chart selection are separate. `make bundles` renders configured references; it never searches the Registry for the newest tag. Use one successful `build-lock.json`:
+
+| Input file | Field | Build result |
+| --- | --- | --- |
+| `charts/pxeye/values.yaml` | `image` | Complete `images.pxeye.immutable_reference` |
+| `deploy/offline-core/values/core.yaml` | `global.image.repository` / `tag` | Split `images.core.reference` into repository and unique tag; API, migrations, DHCP, DNS, hardware health and SSH console inherit this image |
+| Same file | `nico-bmc-proxy.image.repository` / `tag` | Same Core image, replacing the old explicit image |
+| Same file | `nico-pxe.image.repository` / `tag` | Same Core image, replacing the old explicit image |
+| Same file | x86 Boot entry's `image` in `nico-pxe.bootArtifactContainers` | `images.boot-artifacts-x86_64.immutable_reference`; copy both `/x86_64` and `/apt` |
+
+The current Core Chart concatenates `repository:tag`; it does not support a separate `digest` field. Use the build's unique tag and compare the archived image digest with the build lock. Adding a `digest` ignored by the template does not pin the image. Edit the repository inputs above; generated parent Charts place Core settings under `nicoCore` and do not need a second manual edit. Updating images does not enable disabled optional services.
+
+Chart templates have a separate source pin in `offline-build/helm-bundle/chart-sources.json`: `core.url`, `core.sha256` and `core.subdirectory`. Image-only updates can retain validated templates. Template upgrades require a fixed Core commit's source archive, its SHA256, and compatibility review of `deploy/offline-core/patches/` and service arguments. Do not select a moving `main` URL or infer source identity from the unchanged Chart `version: 0.1.1`. If the work directory's `build-config.json` selects custom `helm_bundle.chart_sources`, update that referenced file too.
+
+Commit the release inputs, then run:
+
+```bash
+make cache-images
+make bundles
+```
+
+Check that `outputs_/generated/resolved-images.txt` contains this build's PXEye/Core/Boot references, then inspect output `build-result.json`, archived `manifests/images-lock.json` and the relocated parent Chart. Image digests should match the source build lock. Retain that lock beside the delivery; it is not automatically archived. Editing generated caches or historical `materials-lock.json` is not an upgrade procedure.
+
+See [Grace ARM64 boot materials](arm64-materials.md) for generation, recipe pins and packaging switches.
+
 ## Why independent source directories
 
 The directories are independent Git repositories under ignored `outputs_`, not source vendored into PXEye. The build lock records exact cross-repository commits; Cargo's lock records the compiled dependency.

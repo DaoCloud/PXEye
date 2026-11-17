@@ -7,6 +7,7 @@ Public PXEye documentation is maintained in English and Simplified Chinese. Star
 | Document | English | 简体中文 | Purpose |
 | --- | --- | --- | --- |
 | External DHCP provisioning | [Read](external-dhcp.md) | [阅读](external-dhcp.zh-CN.md) | Fixed leases, BMC VirtualMedia, Core ownership and recovery. |
+| Grace ARM64 boot materials | [Read](arm64-materials.md) | [阅读](arm64-materials.zh-CN.md) | Generation requirements, pinned payload, packaging and hardware acceptance. |
 | Unified source build | [Read](source-build.md) | [阅读](source-build.zh-CN.md) | Maintained main commits, Core/libredfish/Scout/Boot/PXEye and build locks. |
 | Offline delivery build | [Read](../offline-build/BUILD.md) | [阅读](../offline-build/BUILD.zh-CN.md) | Copyable build sequence, artifacts, scope and handoff boundary. |
 | Onsite offline deployment | [Read](../offline-build/onsite/README.md) | [阅读](../offline-build/onsite/README.zh-CN.md) | Import the verified delivery, freeze site values and install resumably. |
