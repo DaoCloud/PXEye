@@ -20,7 +20,7 @@ Core's `Cargo.toml` and `Cargo.lock` must pin libredfish to the full library `ma
 
 Prepare Linux amd64 `bin/helm` and `bin/grpcurl`. The unified build extracts `nico-admin-cli` from its newly built Core image instead of using an old local CLI. The PXEye-only shortcut still requires all three prepared tools; see [runtime tools](../bin/README.md).
 
-Provide the target NICo Core's **public CA PEM** for Scout to trust Core; do not include private keys. This is separate from skipping BMC self-signed certificate checks. Boot materials apply to environments trusting that CA.
+Provide the target NICo Core's **public CA PEM** for Scout to trust Core; do not include private keys. This is separate from skipping BMC self-signed certificate checks. The CA is recorded as a build input. Before starting Scout, the current boot script also retrieves the site bootstrap CA from `/api/v0/tls/root_ca` at the PXE service selected by the kernel `pxe_uri` parameter. Ensure that endpoint is reachable and serves the correct site certificate.
 
 ## Commands
 
@@ -91,6 +91,22 @@ make bundles
 Check that `outputs_/generated/resolved-images.txt` contains this build's PXEye/Core/Boot references, then inspect output `build-result.json`, archived `manifests/images-lock.json` and the relocated parent Chart. Image digests should match the source build lock. Set `SOURCE_BUILD_LOCK=/absolute/path/to/build-lock.json` to verify the selected image manifests and archived amd64 payloads, and include the lock as `manifests/source-build-lock.json`. This does not update Chart references. Editing generated caches or historical `materials-lock.json` is not an upgrade procedure.
 
 See [Grace ARM64 boot materials](arm64-materials.md) for generation, recipe pins and packaging switches.
+
+## Routine PXEye-only updates
+
+Once Core, Boot and Grace materials are pinned, build PXEye updates with:
+
+```bash
+make pxeye-images REGISTRY=registry.example:5000
+```
+
+Set `image` in `charts/pxeye/values.yaml` to the reported `PUBLISHED_PXEYE_IMAGE` and commit it. Keep Core/Boot references in `deploy/offline-core/values/core.yaml`, Chart template sources and the existing ARM material directory unchanged. This target builds only PXEye: it does not fetch Core/libredfish, compile Scout, or assemble root filesystems and UEFI. Keep the matching tools from the pinned Core release in `bin/`.
+
+Use `make cache-images` and `make bundles` to create another offline delivery, retaining the ARM switches and material directory when Grace support is required. The ARM material container currently uses the PXEye image as its base. Changing that base repackages the container without rebuilding its ARM boot files.
+
+A full source-build lock binds the exact PXEye/Core/Boot combination. After changing PXEye, the previous `SOURCE_BUILD_LOCK` no longer matches; do not rewrite historical locks to impersonate the original build. Record the new PXEye commit and image digest alongside the retained baseline's provenance. `make pxeye-images` does not currently generate that combined lock automatically.
+
+Rebuild the affected baseline materials when upgrading Core/libredfish, changing Scout/driver/boot recipes, or changing the embedded CA or bootstrap trust mechanism. The source-build target `make images` still runs the full workflow.
 
 ## Why independent source directories
 

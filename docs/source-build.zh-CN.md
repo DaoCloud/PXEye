@@ -20,7 +20,7 @@ Core 的 `Cargo.toml` 和 `Cargo.lock` 必须将 libredfish 固定到本轮解�
 
 准备 `bin/helm`、`bin/grpcurl` 两个 Linux amd64 二进制。统一构建会从本轮 Core 镜像提取 `nico-admin-cli`，不使用本地旧 CLI。只构建 PXEye 的快捷入口仍需自行准备三个工具，见[运行工具](../bin/README.zh-CN.md)。
 
-准备目标 NICo Core 的**公开 CA PEM**，供 Scout 验证 Core；文件不能包含私钥。这与跳过 BMC 自签名证书检查不同。构建的 Boot 材料只适用于信任该 CA 的环境。
+准备目标 NICo Core 的**公开 CA PEM**，供 Scout 验证 Core；文件不能包含私钥。这与跳过 BMC 自签名证书检查不同。此 CA 作为构建输入被记录在材料中。当前 Scout 启动前还会通过内核参数 `pxe_uri` 指向的 PXE 服务 `/api/v0/tls/root_ca` 获取站点的引导 CA；现场需确保该地址可达、返回当前站点的正确证书。
 
 ## 执行命令
 
@@ -91,6 +91,22 @@ make bundles
 检查 `outputs_/generated/resolved-images.txt` 是否包含本轮 PXEye/Core/Boot，再检查交付输出中的 `build-result.json`、归档中的 `manifests/images-lock.json` 与重定位后的父 Chart；镜像 digest 应与源码构建锁一致。设置 `SOURCE_BUILD_LOCK=/absolute/path/to/build-lock.json` 后，打包会校验 PXEye/Core/x86 Boot 的实际归档 digest 与该锁一致，并将锁收入 `manifests/source-build-lock.json`。这不会自动修改 Chart 镜像引用。无需修改生成的镜像缓存或历史 `materials-lock.json` 来冒充升级。
 
 Grace 的材料生成、固定配方和打包开关见 [Grace ARM64 启动材料](arm64-materials.zh-CN.md)。
+
+## 日常只更新 PXEye
+
+Core、Boot 和 Grace 材料固定后，PXEye 功能更新使用：
+
+```bash
+make pxeye-images REGISTRY=registry.example:5000
+```
+
+使用输出的 `PUBLISHED_PXEYE_IMAGE` 更新 `charts/pxeye/values.yaml` 的 `image` 并提交。保留 `deploy/offline-core/values/core.yaml` 的 Core/Boot 引用、Chart 模板来源和已有 ARM 材料目录。此入口只构建 PXEye，不拉取 Core/libredfish 源码，不编译 Scout，也不组装根文件系统和 UEFI；`bin/` 应继续使用已固定 Core 版本的配套工具。
+
+重新制作离线包仍使用 `make cache-images`、`make bundles`，需要 Grace 时保留 ARM 开关与材料目录。ARM 材料容器目前使用 PXEye 镜像作底座；底座变化会重新封装材料容器，但不会重建其中的 ARM 启动文件。
+
+完整构建锁绑定当轮 PXEye/Core/Boot 的精确组合。PXEye 镜像更新后，旧 `SOURCE_BUILD_LOCK` 不再匹配新组合，不能修改历史锁冒充原构建；应另外记录本次 PXEye 的提交、镜像摘要和所沿用的基础材料来源。`make pxeye-images` 目前不自动生成这样的组合锁。
+
+只有升级 Core/libredfish、修改 Scout/驱动/启动配方，或更改镜像内置 CA/引导信任方式时，才需要重建相关基础材料。源码构建目标 `make images` 仍会执行全量流程。
 
 ## 为什么使用独立源码目录
 
