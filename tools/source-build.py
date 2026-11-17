@@ -236,8 +236,9 @@ class Build:
                     raise RuntimeError('Cargo mirror must be a plain HTTPS sparse-index URL')
                 config = ('[source.crates-io]\nreplace-with = "build-mirror"\n'
                           '[source.build-mirror]\nregistry = "sparse+' + mirror + '/"\n')
+                cargo_home = '/root/.cargo' if name == 'pxe-builder' else '/usr/local/cargo'
                 command = ("RUN printf '%s\\n' " + ' '.join(shlex.quote(line) for line in config.splitlines()) +
-                           ' >> "${CARGO_HOME:-/usr/local/cargo}/config.toml"\n')
+                           ' >> "${CARGO_HOME:-' + cargo_home + '}/config.toml"\n')
                 text, count = re.subn(r'(?m)^(RUN cargo install )',
                                      lambda match: command + match.group(0), text, count=1)
                 if count != 1:
