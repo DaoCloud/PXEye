@@ -908,6 +908,9 @@ def source_build_lock():
 
 def verify_source_build_images(value, records, inputs):
     """Match immutable source manifests and their archived amd64 child graphs."""
+    if value.get('arm64_materials'):
+        b.require(any(item.get('material_id') == 'boot-aarch64' for item in inputs),
+                  'SOURCE_BUILD_LOCK contains ARM64 materials; enable INCLUDE_ARM64_MATERIALS=1')
     for name in ('pxeye', 'core', 'boot-artifacts-x86_64'):
         row = value['images'][name]
         expected = row['immutable_reference'].rsplit('@', 1)[-1]
