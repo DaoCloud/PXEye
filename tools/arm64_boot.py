@@ -49,14 +49,38 @@ def build(owner):
                           'DEBIAN_FRONTEND=noninteractive apt-get install -y '
                           'qemu-user-static gcc-aarch64-linux-gnu && rm -rf /var/lib/apt/lists/*\n')
         assembly = owner.image('arm-mkosi-builder', recipe, owner.core)
-    with owner.stage('arm64-rootfs-uefi'):
-        script = owner.snapshot_recipe('arm64-mkosi.sh', owner.arm_recipe_repo / 'tools/arm64-mkosi.sh')
-        owner.run(*common, '--privileged',
-                  '-v', '/proc/sys/fs/binfmt_misc:/binfmt',
-                  '-v', f'{owner.public_ca}:/inputs/scout-ca.crt:ro',
-                  '-v', f'{script}:/inputs/build.sh:ro',
-                  '-e', 'ARM_BINFMT_NAME=pxeye-' + owner.run_id.lower(),
-                  assembly, 'bash', '/inputs/build.sh')
+    payload = owner.core / 'pxe/static/blobs/internal/aarch64'
+    previous_recipe = owner.state['files'].get('recipes/arm64-mkosi.sh', {}).get('sha256')
+    script = owner.snapshot_recipe('arm64-mkosi.sh', owner.arm_recipe_repo / 'tools/arm64-mkosi.sh')
+    recipe_sha = owner.state['files']['recipes/arm64-mkosi.sh']['sha256']
+    last_assembly = next((row for row in reversed(owner.state['timings'])
+                          if row['stage'] == 'arm64-rootfs-uefi'), {})
+    completed = last_assembly.get('status') == 'completed'
+    reuse = bool(owner.args.resume and completed and previous_recipe == recipe_sha)
+    if reuse:
+        # restore() already checked frozen sources and every existing checkpoint.
+        # Older failed builds have no assembly checkpoint: capture their bytes
+        # now, explicitly recording that origin, then run full content inspection.
+        with owner.stage('arm64-rootfs-reuse'):
+            print('Reusing completed ARM assembly; full content inspection remains required.', flush=True)
+    else:
+        with owner.stage('arm64-rootfs-uefi'):
+            owner.run(*common, '--privileged',
+                      '-v', '/proc/sys/fs/binfmt_misc:/binfmt',
+                      '-v', f'{owner.public_ca}:/inputs/scout-ca.crt:ro',
+                      '-v', f'{script}:/inputs/build.sh:ro',
+                      '-e', 'ARM_BINFMT_NAME=pxeye-' + owner.run_id.lower(),
+                      assembly, 'bash', '/inputs/build.sh')
+    prior = owner.state.get('arm64_assembly', {})
+    origin = prior.get('checkpoint_origin') if reuse and prior else (
+        'post-failure-recovery' if reuse else 'assembly-completion')
+    for name in ('ipxe.efi', 'golan.efi', 'scout.efi', 'scout.squashfs'):
+        owner.file('checkpoints/arm64/' + name, payload / name)
+    owner.state['arm64_assembly'] = {
+        'recipe_sha256': recipe_sha, 'checkpoint_origin': origin,
+        'reused_on_this_attempt': reuse,
+    }
+    owner.save()
     with owner.stage('arm64-content-inspection'):
         inspector = owner.snapshot_recipe('arm64-inspect.py', owner.arm_recipe_repo / 'tools/arm64-inspect.py')
         owner.run(*common, '-v', f'{owner.public_ca}:/inputs/scout-ca.crt:ro',
@@ -64,7 +88,6 @@ def build(owner):
                   'python3', '/inputs/inspect.py', '--version', version,
                   '--core', owner.state['sources']['core']['commit'],
                   '--libredfish', owner.state['sources']['libredfish']['commit'])
-        payload = owner.core / 'pxe/static/blobs/internal/aarch64'
         destination = owner.root / 'arm64-materials'
         destination.mkdir()
         names = ('BUILD-INFO.json', 'ROOTFS-PACKAGES.json', 'golan.efi',

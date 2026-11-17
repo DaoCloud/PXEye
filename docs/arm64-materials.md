@@ -21,6 +21,8 @@ ARM stages prepare the cross toolchain, compile Scout's Debian package, assemble
 
 Inspection checks ARM64 EFI/ELF, exact embedded Scout binary hashes, 64 KiB page compatibility, CA, Scout version, configured packages and key kernel-module ABIs. These checks do not prove a real Grace boot.
 
+Module checks examine installed files under `/usr/lib/modules/` or `/lib/modules/`; DKMS build copies are excluded. When [resuming a failed full build](source-build.md), a completed ARM assembly can be retained if its assembly recipe is unchanged. Retained checkpoints are hash-checked and final content inspection runs again. For older builds without an assembly checkpoint, the recovery records current file hashes with `checkpoint_origin=post-failure-recovery`; these are recovery-time hashes, not hashes recorded by the original assembly.
+
 ## Outputs
 
 The command prints `ARM64_MATERIALS_DIR`; `build-lock.json` records its path and sources under `arm64_materials`:

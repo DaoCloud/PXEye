@@ -78,7 +78,9 @@ def main():
     modules = []
     for name in ('nvidia.ko.zst', 'mlx5_ib.ko.zst'):
         paths = {line.split('squashfs-root/', 1)[1] for line in listing.splitlines()
-                 if 'squashfs-root/' in line and line.endswith('/' + name)}
+                 if 'squashfs-root/' in line and line.endswith('/' + name)
+                 and line.split('squashfs-root/', 1)[1].startswith(
+                     ('usr/lib/modules/', 'lib/modules/'))}
         if len(paths) != 1:
             raise ValueError('Expected exactly one kernel module: ' + name)
         path = paths.pop()
