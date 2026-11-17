@@ -200,6 +200,14 @@ class Build:
         core_rev = self.state['sources']['core']['commit']
         reference = f'pxeye-build/{name}:{core_rev[:12]}-{self.run_id}'
         self.file('recipes/' + name, recipe)
+        if name in ('core-builder', 'pxe-builder'):
+            text = recipe.read_text()
+            text = re.sub(r'(?m)^(FROM[^\n]*\n)',
+                          lambda match: match.group(0) + f'ENV CARGO_BUILD_JOBS={self.args.jobs}\n', text, count=1)
+            recipe = self.root / ('Dockerfile.' + name + '.bounded')
+            recipe.write_text(text)
+            self.state['cargo_build_jobs'] = self.args.jobs
+            self.file('recipes/' + name + '/bounded', recipe)
         if self.args.image_mirror:
             text = recipe.read_text()
             mappings = []
@@ -487,8 +495,11 @@ def main():
     parser.add_argument('--registry', default='', help='Optional push destination; required for images')
     parser.add_argument('--scout-ca', type=Path, help='Public Core CA PEM embedded in Scout (boot/images)')
     parser.add_argument('--base-image', default='ubuntu:24.04')
+    parser.add_argument('--jobs', type=int, default=8, help='Maximum concurrent Cargo jobs in build images (default: 8)')
     parser.add_argument('--image-mirror', default='', help='Optional Docker Hub mirror prefix, e.g. m.daocloud.io; preserves pinned digests')
     args = parser.parse_args()
+    if args.jobs < 1:
+        parser.error('--jobs must be positive')
     if args.target == 'images' and not args.registry:
         parser.error('images requires --registry (Make: REGISTRY=host:port)')
     if args.target in ('boot', 'images') and (not args.scout_ca or not args.scout_ca.is_file()):

@@ -105,3 +105,5 @@ See NVIDIA [container builds](https://docs.nvidia.com/infra-controller/documenta
 Source-build stage and command durations are recorded in `build-lock.json` under `timings` and `commands`, including failed commands and exit codes.
 
 If Docker Hub is unreachable, set `BUILD_IMAGE_MIRROR=m.daocloud.io`. The builder rewrites Docker Hub `FROM` addresses only, retaining pinned digests and recording both recipes and the mapping. It does not change host Docker or cluster settings; package downloads inside the Dockerfile still require connectivity.
+
+`BUILD_JOBS=8` limits Cargo concurrency inside build images by default, avoiding host-wide compiler concurrency beside running services. Adjust it for builder capacity; the actual value and generated recipe are recorded in the lock.

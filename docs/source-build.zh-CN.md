@@ -105,3 +105,5 @@ Git submodule 则把“子仓库地址 + 固定提交指针”提交进父仓库
 源码构建各阶段和命令耗时写入 `build-lock.json` 的 `timings` 和 `commands`；失败尝试保留耗时及退出码。
 
 Docker Hub 不可达时可设置 `BUILD_IMAGE_MIRROR=m.daocloud.io`。构建器仅替换 Dockerfile 的 Docker Hub `FROM` 地址，保留已有 digest，并记录原配方、改写配方和地址映射；不会改宿主机 Docker/集群配置。Dockerfile 内的软件源下载仍需可达。
+
+默认 `BUILD_JOBS=8` 限制构建镜像内 Cargo 并发，避免按宿主机全部 CPU 并发编译挤占运行服务内存。可按构建机资源调整；实际值和生成配方写入构建锁。
