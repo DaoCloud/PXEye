@@ -149,7 +149,19 @@ class Build:
             directory.mkdir(parents=True)
             self.run('git', 'init', directory)
             self.run('git', 'remote', 'add', 'origin', source['url'], cwd=directory)
-            self.run('git', 'fetch', '--depth=1', 'origin', source['commit'], cwd=directory)
+            # Reuse only immutable Git objects for the exact remotely frozen main.
+            # Never copy a previous working tree, branch choice or build output.
+            cached = next((candidate for candidate in sorted(self.args.output.resolve().glob('*/sources/' + name))
+                           if candidate != directory and not candidate.is_symlink()
+                           and (candidate / '.git/HEAD').is_file()
+                           and (candidate / '.git/HEAD').read_text().strip() == source['commit']), None)
+            if cached:
+                self.run('git', 'fetch', '--depth=1', '--update-shallow', cached,
+                         source['commit'], cwd=directory)
+                self.state['sources'][name]['git_object_cache'] = str(cached)
+                self.save()
+            else:
+                self.run('git', 'fetch', '--depth=1', 'origin', source['commit'], cwd=directory)
             self.run('git', 'checkout', '--detach', source['commit'], cwd=directory)
         self.dependencies()
         print('SOURCE_SET: all three maintained main revisions frozen; libredfish pin matches.')
