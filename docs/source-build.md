@@ -88,7 +88,7 @@ make cache-images
 make bundles
 ```
 
-Check that `outputs_/generated/resolved-images.txt` contains this build's PXEye/Core/Boot references, then inspect output `build-result.json`, archived `manifests/images-lock.json` and the relocated parent Chart. Image digests should match the source build lock. Retain that lock beside the delivery; it is not automatically archived. Editing generated caches or historical `materials-lock.json` is not an upgrade procedure.
+Check that `outputs_/generated/resolved-images.txt` contains this build's PXEye/Core/Boot references, then inspect output `build-result.json`, archived `manifests/images-lock.json` and the relocated parent Chart. Image digests should match the source build lock. Set `SOURCE_BUILD_LOCK=/absolute/path/to/build-lock.json` to verify the selected image manifests and archived amd64 payloads, and include the lock as `manifests/source-build-lock.json`. This does not update Chart references. Editing generated caches or historical `materials-lock.json` is not an upgrade procedure.
 
 See [Grace ARM64 boot materials](arm64-materials.md) for generation, recipe pins and packaging switches.
 

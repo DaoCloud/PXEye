@@ -22,7 +22,6 @@ import tempfile
 import time
 import urllib.request
 import urllib.error
-import uuid
 from zoneinfo import ZoneInfo
 
 import yaml
@@ -899,8 +898,9 @@ def source_build_lock():
     b.require(isinstance(images, dict), 'Source build images must be an object')
     for name in ('pxeye', 'core', 'boot-artifacts-x86_64'):
         row = images.get(name, {})
+        b.require(isinstance(row, dict), 'Source build image must be an object: ' + name)
         immutable = row.get('immutable_reference', '')
-        b.require(row.get('published') is True and '@sha256:' in immutable
+        b.require(isinstance(immutable, str) and row.get('published') is True and '@sha256:' in immutable
                   and b.DIGEST.fullmatch(immutable.rsplit('@', 1)[-1]),
                   'Source build lacks a published immutable image: ' + name)
     return value
