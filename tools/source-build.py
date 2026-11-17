@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 import platform
@@ -426,10 +427,15 @@ class Build:
         else:
             reference = f'{self.args.registry.rstrip("/")}/{name}:{tag}'
             self.run('docker', 'tag', image, reference)
-            self.run('docker', 'push', reference)
+            pushed = self.run('docker', 'push', reference, quiet=True)
+            pushed_digests = set(re.findall(r'\bdigest: (sha256:[0-9a-f]{64})\s+size:', pushed))
+            if len(pushed_digests) != 1:
+                raise RuntimeError(f'Cannot resolve the digest returned by Docker push: {reference}')
+            pushed_digest = pushed_digests.pop()
             digests = json.loads(self.run('docker', 'image', 'inspect', '--format',
                                           '{{json .RepoDigests}}', reference, quiet=True))
-            matches = [item for item in digests or [] if item.startswith(reference.rsplit(':', 1)[0] + '@sha256:')]
+            matches = [item for item in digests or []
+                       if item == reference.rsplit(':', 1)[0] + '@' + pushed_digest]
             if len(matches) != 1:
                 raise RuntimeError(f'Cannot resolve pushed digest for {reference}')
             self.state['images'][name] = {
@@ -481,6 +487,14 @@ class Build:
             shutil.copyfile(source, destination)
             self.file('pxeye/bin/' + name, destination)
 
+    def arm64(self):
+        helper = self.pxeye / 'tools/arm64_boot.py'
+        self.file('recipes/arm64_boot.py', helper)
+        spec = importlib.util.spec_from_file_location('frozen_arm64_boot', helper)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        module.build(self)
+
     def execute(self):
         try:
             with self.stage('sources'):
@@ -499,16 +513,14 @@ class Build:
             elif self.args.target == 'scout':
                 self.scout()
             elif self.args.target == 'boot-arm64':
-                import arm64_boot
-                arm64_boot.build(self)
+                self.arm64()
             elif self.args.target in ('boot', 'images'):
                 with self.stage('core'):
                     self.build_core()
                 with self.stage('x86-scout-boot'):
                     self.boot()
                 if self.args.with_arm64:
-                    import arm64_boot
-                    arm64_boot.build(self)
+                    self.arm64()
                 if self.args.target == 'images':
                     with self.stage('pxeye'):
                         self.build_pxeye()

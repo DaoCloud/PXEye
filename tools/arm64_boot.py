@@ -45,7 +45,7 @@ def build(owner):
                           'qemu-user-static gcc-aarch64-linux-gnu && rm -rf /var/lib/apt/lists/*\n')
         assembly = owner.image('arm-mkosi-builder', recipe, owner.core)
     with owner.stage('arm64-rootfs-uefi'):
-        script = owner.repo / 'tools/arm64-mkosi.sh'
+        script = owner.pxeye / 'tools/arm64-mkosi.sh'
         owner.file('recipes/arm64-mkosi.sh', script)
         owner.run(*common, '--privileged',
                   '-v', '/proc/sys/fs/binfmt_misc:/binfmt',
@@ -54,7 +54,7 @@ def build(owner):
                   '-e', 'ARM_BINFMT_NAME=pxeye-' + owner.run_id.lower(),
                   assembly, 'bash', '/inputs/build.sh')
     with owner.stage('arm64-content-inspection'):
-        inspector = owner.repo / 'tools/arm64-inspect.py'
+        inspector = owner.pxeye / 'tools/arm64-inspect.py'
         owner.file('recipes/arm64-inspect.py', inspector)
         owner.run(*common, '-v', f'{owner.public_ca}:/inputs/scout-ca.crt:ro',
                   '-v', f'{inspector}:/inputs/inspect.py:ro', assembly,
