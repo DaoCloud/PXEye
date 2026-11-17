@@ -13,6 +13,7 @@ from pxeye.installation.executor import terminal_installer_failure
 from pxeye.domain.workflow import installation_impact, authorize_impact
 from pxeye.services.device_plans import bmc_choice
 from pxeye.services.instances import check_release_pending
+from pxeye.services.boot_transport import BootTransport, external_boot, site_boot_snapshot
 
 
 class TaskCoordinator:
@@ -40,9 +41,7 @@ class TaskCoordinator:
                 task.get("native_reinstall_requests") == 1
                 or task.get("native_allocation_requests") == 1
             )
-            and (
-                Path(self.adapter.data) / "tasks" / task["id"] / "event-binding.json"
-            ).exists()
+            and (Path(self.adapter.data) / "tasks" / task["id"] / "event-binding.json").exists()
         )
 
     def recover(self):
@@ -74,9 +73,10 @@ class TaskCoordinator:
             if task["status"] == "queued" and task.get("batch_id"):
                 continue
             if task["status"] in ("running", "queued"):
-                if self.recovery_observation_active(task) or recovery.get(
-                    "state"
-                ) == "config_requesting":
+                if (
+                    self.recovery_observation_active(task)
+                    or recovery.get("state") == "config_requesting"
+                ):
                     auto_continue.append(task["id"])
                 task["status"] = "needs_attention"
                 try:
@@ -107,9 +107,10 @@ class TaskCoordinator:
                 task["retry_available"] = self.executor.can_retry_install(task)
                 task["restart_available"] = self.executor.can_restart_preinstall(task)
                 self.store.save(task)
-                if self.recovery_observation_active(task) or recovery.get(
-                    "state"
-                ) == "config_requesting":
+                if (
+                    self.recovery_observation_active(task)
+                    or recovery.get("state") == "config_requesting"
+                ):
                     auto_continue.append(task["id"])
             if self.executor.can_start_automatic_recovery(task):
                 auto_repair.append(task["id"])
@@ -127,9 +128,9 @@ class TaskCoordinator:
         result = dict(task)
         result["resume_available"] = self.executor.can_resume(result)
         result["retry_available"] = self.executor.can_retry_install(result)
-        result["recovery_observing"] = (
-            not result["resume_available"] and self.recovery_observation_active(result)
-        )
+        result["recovery_observing"] = not result[
+            "resume_available"
+        ] and self.recovery_observation_active(result)
         recovery = result.get("automatic_recovery") or {}
         if recovery.get("state") in (
             "config_requesting",
@@ -159,6 +160,31 @@ class TaskCoordinator:
         ):
             return task
         try:
+            # Core may be slow or unavailable. Read it before taking SQLite's write
+            # lock; query reconciliation must never submit a new boot policy.
+            observed = self.store.get(task["id"]) or task
+            observed_request = copy.deepcopy(
+                observed.get("host_boot_intents", {}).get(
+                    observed.get("active_host_boot_intent"), {}
+                )
+            )
+            boot_status, boot_error = None, None
+            if (
+                external_boot(observed)
+                and acceptance_summary(
+                    observed,
+                    services_required=self.adapter.config.get(
+                        "service_connectivity_required", False
+                    ),
+                )["state"]
+                == "completed"
+            ):
+                try:
+                    boot_status = BootTransport(self.adapter, self.store).completion_status(
+                        observed
+                    )
+                except (ValueError, RuntimeError, OSError) as error:
+                    boot_error = str(error)
             with self.store.db() as db:
                 db.execute("BEGIN IMMEDIATE")
                 row = db.execute("SELECT data FROM tasks WHERE id=?", (task["id"],)).fetchone()
@@ -177,7 +203,22 @@ class TaskCoordinator:
                         "service_connectivity_required", False
                     ),
                 )
-                if current.get("acceptance_summary") == summary:
+                if summary["state"] == "completed" and external_boot(current):
+                    current_request = current.get("host_boot_intents", {}).get(
+                        current.get("active_host_boot_intent"), {}
+                    )
+                    if not external_boot(observed) or current_request != observed_request:
+                        boot_error = "本轮引导意图已变化；请重新读取 Core 交接状态。"
+                        boot_status = None
+                    if boot_error or boot_status is None:
+                        boot_error = boot_error or "尚未读回本轮 Core 本地盘交接状态。"
+                        summary.update(state="pending", boot_handoff=boot_error)
+                        current["error"] = boot_error
+                    else:
+                        BootTransport._record(current, boot_status)
+                if current.get("acceptance_summary") == summary and not (
+                    external_boot(current) and summary["state"] == "completed"
+                ):
                     return current
                 current["acceptance_summary"] = summary
                 if summary["state"] == "completed":
@@ -236,7 +277,8 @@ class TaskCoordinator:
             self.worker_lock.release()
 
     def close_task(self, task_id, body, actor):
-        """Close a stopped incident without issuing any device or NICo operation."""
+        """Close a stopped incident after Core releases any owned boot medium."""
+
         def claim():
             task = self.store.get(task_id)
             if task is None:
@@ -263,6 +305,7 @@ class TaskCoordinator:
                 "waiting_standard_pxe_retry",
             ):
                 raise ValueError("自动修复仍在执行，请等待它停止后再结束任务。")
+            BootTransport(self.adapter, self.store).cancel(task)
             now = time.time()
             task.update(
                 status="cancelled",
@@ -282,7 +325,9 @@ class TaskCoordinator:
                     "at": now,
                     "stage": "cancelled",
                     "message": (
-                        "操作员结束任务并释放设备占用；保留任务历史和 NICo 资源，"
+                        "Core 已取消本轮引导并确认介质清理；释放设备占用，保留任务与 NICo 资源。"
+                        if external_boot(task)
+                        else "操作员结束任务并释放设备占用；保留任务历史和 NICo 资源，"
                         "未向设备、BMC 或 NICo 下发操作。"
                     ),
                 }
@@ -339,10 +384,9 @@ class TaskCoordinator:
                             0, task.get("observation_deadline", time.time()) - time.time()
                         )
                         deadline = max(deadline, time.monotonic() + remaining)
-                        if (
-                            not task.get("automatic_recovery")
-                            and self.executor.can_start_automatic_recovery(task)
-                        ):
+                        if not task.get(
+                            "automatic_recovery"
+                        ) and self.executor.can_start_automatic_recovery(task):
                             try:
                                 self.executor.automatic_boot_recovery(task)
                             except RuntimeError as error:
@@ -598,9 +642,12 @@ class TaskCoordinator:
                     ),
                     "current_management_ip": plan.get("current_management_ip"),
                     "installation_plan": plan,
+                    "boot_network": site_boot_snapshot(self.adapter),
                     "impact_authorization": impact | {"confirmed_at": time.time(), "actor": actor},
                     "execution_device": device,
-                    "gpu_environment_check": bool((device or {}).get("gpu_environment_check", False)),
+                    "gpu_environment_check": bool(
+                        (device or {}).get("gpu_environment_check", False)
+                    ),
                     "deferred_bootstrap": bool(c.get("deferred_first_install")),
                     "source": "nico-ui",
                     "executor": {
@@ -652,7 +699,11 @@ class TaskCoordinator:
                     batch = self.store.batch(batch_id)
                     batch_tasks = [task for task in queued if task.get("batch_id") == batch_id]
                     limit = (batch or {}).get("max_concurrency", 1)
-                    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 50:
+                    if (
+                        isinstance(limit, bool)
+                        or not isinstance(limit, int)
+                        or not 1 <= limit <= 50
+                    ):
                         limit = 1
                     with ThreadPoolExecutor(
                         max_workers=min(limit, len(batch_tasks)),
@@ -757,8 +808,11 @@ class TaskCoordinator:
                     "management_ip": device["management_ip"],
                     "current_management_ip": plan["current_management_ip"],
                     "installation_plan": plan,
+                    "boot_network": site_boot_snapshot(self.adapter),
                     "execution_device": device,
-                    "gpu_environment_check": bool((device or {}).get("gpu_environment_check", False)),
+                    "gpu_environment_check": bool(
+                        (device or {}).get("gpu_environment_check", False)
+                    ),
                     "executor": {
                         "namespace": os.environ.get("POD_NAMESPACE")
                         or self.config.get("site", {}).get("namespace"),

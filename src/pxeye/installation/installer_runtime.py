@@ -50,6 +50,14 @@ def emit(stage, completed=False):
         boot_id=Path("/proc/sys/kernel/random/boot_id").read_text().strip(),
         console=console_device(),
     )
+    boot_args = dict(
+        item.split("=", 1)
+        for item in Path("/proc/cmdline").read_text().split()
+        if item.startswith("host_boot_") and "=" in item
+    )
+    names = ("expected_machine_id", "generation", "token")
+    if all(boot_args.get("host_boot_" + name) for name in names):
+        event["host_boot"] = {name: boot_args["host_boot_" + name] for name in names}
     key = Path("/target/etc/ssh/ssh_host_ed25519_key.pub")
     if not key.exists():
         key = Path("/run/nico-ui-host-key")

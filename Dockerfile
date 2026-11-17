@@ -1,4 +1,13 @@
 ARG BASE_IMAGE=ubuntu:24.04
+FROM ${BASE_IMAGE} AS boot-media-builder
+ARG DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates git gcc make binutils libc6-dev liblzma-dev python3 \
+    mtools xorriso isolinux syslinux-common \
+    && rm -rf /var/lib/apt/lists/*
+COPY tools/boot-media/ /build-tools/
+RUN bash /build-tools/build.sh --output /boot-media
+
 FROM ${BASE_IMAGE}
 ARG DEBIAN_FRONTEND=noninteractive
 ARG VCS_REF=unknown
@@ -9,12 +18,13 @@ LABEL org.opencontainers.image.title="PXEye" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.licenses="Apache-2.0"
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 python3-pip python3-venv openssh-client ipmitool ca-certificates libgcc-s1 xorriso openssl sshpass skopeo \
+    python3 python3-pip python3-venv openssh-client ipmitool ca-certificates libgcc-s1 xorriso mtools openssl sshpass skopeo \
     && rm -rf /var/lib/apt/lists/* \
     && (getent passwd 1000 >/dev/null || useradd --uid 1000 --create-home console)
 COPY bin/nico-admin-cli /usr/local/bin/nico-admin-cli
 COPY bin/grpcurl /usr/local/bin/grpcurl
 COPY bin/helm /usr/local/bin/helm
+COPY --from=boot-media-builder /boot-media/ /usr/share/pxeye/boot-media/x86_64/
 COPY tools/import-oci-bundle.py /usr/local/bin/pxeye-import-oci-bundle
 RUN chmod 0755 /usr/local/bin/pxeye-import-oci-bundle
 COPY pyproject.toml README.md LICENSE /app/

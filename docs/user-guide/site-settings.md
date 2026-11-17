@@ -36,7 +36,20 @@ Other information is read-only:
 
 ## 3. Boot-network service addresses
 
-The site page displays **DHCP / PXE boot addresses** separately from the **installation-material HTTP endpoint**. The first is read from Kea for DHCP, PXE, DNS and NTP and can be changed through **Manage boot network (管理引导网络)**. PXEye writes the entered values to Kea DHCP Option 54 plus PXE/DNS/NTP advertisement settings and rolls DHCP; it does not inspect, create, modify or take ownership of external Services, proxies or relays.
+The site page displays **DHCP / PXE boot addresses** separately from the **installation-material HTTP endpoint**. Use **Manage boot network (管理引导网络)** as the single entry for these settings and the DHCP mode. In the default **Nico DHCP** mode, values are read from Kea; applying them updates DHCP Option 54 and PXE/DNS/NTP advertisement settings, then rolls DHCP. In **External DHCP** mode, enter the complete boot HTTP endpoint and configure a fixed lease for the planned boot MAC/IP. PXEye keeps Kea stopped and leaves its allocation settings unchanged. It does not inspect, create, modify or take ownership of external Services, proxies or relays. See [external DHCP provisioning](../external-dhcp.md) for Core/Scout and hardware requirements.
+
+Choose one of the two radio options: **Nico DHCP** or **External DHCP**. Nico mode shows **Nico DHCP address** and **PXE boot server IP**; external mode shows the **Boot HTTP endpoint** and fixed-lease requirements. Selecting an option does not apply it. Previously saved addresses for the inactive mode are retained, and the preview shows only the active mode's boot fields.
+
+This is a site default because applying external mode stops the site's shared Kea service. New tasks freeze the selected mode at creation. Per-host boot MAC/IP settings remain in Device planning.
+
+| Boot field | Format and purpose |
+| --- | --- |
+| Nico DHCP address | IPv4 advertised as the DHCP Server Identifier (Option 54). |
+| PXE boot server IP | IPv4 without a scheme or port; the next-server/boot server address advertised by Nico DHCP. |
+| Boot HTTP endpoint | Complete `http://host:port` or `https://host:port`; embedded in external-mode bootstrap media to request `/api/v0/pxe/boot`. |
+| Installation materials HTTP address and port | Publishes the bootstrap ISO and new OS versions' ISO/kernel/initrd; shared by both modes. |
+
+The boot HTTP endpoint controls only the bootstrap medium's first request into Nico. It does not update the Core/PXE service's own ports or the service URLs in subsequent scripts. Existing service configuration must still provide reachable URLs; this setting is not a global PXE port override.
 
 DNS and NTP addresses are optional; entered values must be valid IPv4 addresses. Leaving them blank clears the corresponding NICo DHCP hook service configuration without restoring its built-in defaults. This does not change NTP settings in installation profiles. Material or package URLs containing hostnames still require working DNS; offline sites can use internal services and IP URLs.
 
@@ -48,7 +61,7 @@ The check originates from PXEye and only affects the displayed status, not addre
 
 This does not change HostInband segments, DHCP pools, device plans or existing installation tasks. HostInband is NICo's network object for choosing a host boot interface's DHCP segment and allocating its address; it remains in network management and device/installation checks, not in this address form.
 
-Use a maintenance window: PXEye blocks an address change while installation tasks are active. A successful apply proves only the controlled Kubernetes and Kea update. Validate DHCP Offer and material HTTP access from the actual boot VLAN separately. PXEye does not rewrite existing OS-definition material URLs automatically; after a material-endpoint change, create a new OS version and reference it from a new installation-plan version.
+Use a maintenance window: PXEye blocks an address change while installation tasks are active. A successful apply proves only the controlled Kubernetes update and saved mode; it is not an installation result. Validate DHCP Offer and material HTTP access from the actual boot VLAN separately. PXEye does not rewrite existing OS-definition material URLs automatically; after a material-endpoint change, create a new OS version and reference it from a new installation-plan version.
 
 PXEye does not require DHCP topology or relay address inputs. For routed clients, configure DHCP relay on the relay device; NICo processes requests using the received `giaddr` and subnet rules.
 
@@ -73,7 +86,7 @@ New batches run at most three devices concurrently. Existing batches retain thei
 
 - A healthy Core indicator primarily reflects TCP reachability, not complete API, DHCP or installation validation.
 - Storage figures cover the filesystem, rather than space used exclusively by one directory.
-- Maintain certificates, private keys, material/source directories and HTTP publication URLs through deployment configuration and mounts; this page does not upload or modify those files.
+- Maintain certificates, private keys and material/source directories through deployment configuration and mounts. Set the materials HTTP publication endpoint through **Manage boot network**; the page does not upload or modify certificate or material files.
 - Switching Core does not migrate plans, profiles or history. Verify resource references and data ownership before switching.
 
 Related: [Deployment](../deployment.md) · [Network management](network-management.md) · [Installation tasks](installation-tasks.md)

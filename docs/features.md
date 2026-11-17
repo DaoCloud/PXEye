@@ -69,6 +69,9 @@ Inspect Instances and associated Machines, OS definitions and lifecycle state. R
 
 Site settings display Core connectivity, the mTLS client identity, storage and configured service endpoints. Limited name/Core edits are validated using the current identity. Service indicators distinguish TCP reachability, configuration presence and protocol checks.
 
+
+External DHCP is an optional mode for fixed-lease x86_64/Flat hosts without a DPU. The matching Core/Scout build owns VirtualMedia boot and cleanup; PXEye keeps Kea stopped and uses an explicit boot HTTP endpoint. Native Nico DHCP remains the default. See [requirements and validation boundaries](external-dhcp.md).
+
 ## Current operating envelope
 
 - One site, one service replica, one operator and serial installation execution.
