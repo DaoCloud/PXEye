@@ -296,10 +296,20 @@ const taskStatus = (t) =>
                     ? "red"
                     : "amber",
           };
+function endTaskButton(task) {
+  if (task.status !== "needs_attention") return "";
+  const reason = task.close_block_reason;
+  return button(
+    "结束任务",
+    "task-close-dialog",
+    false,
+    `data-id="${esc(task.id)}"${reason ? ` disabled title="${esc(reason)}"` : ""}`,
+  );
+}
 function taskRows() {
   return state.tasks.map((t) => {
     const status = taskStatus(t);
-    return `<tr><td><button class="link-button" data-task="${esc(t.id)}">${esc(t.id)}</button><span class="live-small">${when(t.created_at)}</span></td><td>${esc(t.device)}<span class="live-small">${esc(t.management_ip)}</span></td><td>${esc(t.hostname)}</td><td>${badge(status.label, status.tone)}<span class="live-small">${esc(stages[t.stage])}</span></td><td>${bmcLink(state.resources?.devices.find((d) => d.serial === t.device)?.bmc_ip)}</td><td><button class="link-button" data-task="${esc(t.id)}">实时日志 / 记录</button></td></tr>`;
+    return `<tr><td><button class="link-button" data-task="${esc(t.id)}">${esc(t.id)}</button><span class="live-small">${when(t.created_at)}</span></td><td>${esc(t.device)}<span class="live-small">${esc(t.management_ip)}</span></td><td>${esc(t.hostname)}</td><td>${badge(status.label, status.tone)}<span class="live-small">${esc(stages[t.stage])}</span></td><td>${bmcLink(state.resources?.devices.find((d) => d.serial === t.device)?.bmc_ip)}</td><td><div class="live-tools"><button class="link-button" data-task="${esc(t.id)}">实时日志 / 记录</button>${endTaskButton(t)}</div></td></tr>`;
   });
 }
 function sitePage() {
@@ -990,25 +1000,20 @@ function problemFooter(task, { refresh = false, end = false } = {}) {
           `data-id="${esc(task.id)}"`,
         )
       : "") +
-    (end
-      ? button(
-          "结束任务",
-          "task-close-dialog",
-          false,
-          `data-id="${esc(task.id)}"`,
-        )
-      : "") +
+    (end ? endTaskButton(task) : "") +
     `<div class="actions">${button("开始验收", "resume", true, `data-resume-id="${esc(task.id)}"`)}${button("关闭", "close")}</div>`
   );
 }
 
 function closeTaskDialog(id) {
   const task = state.tasks.find((item) => item.id === id);
-  if (!task || task.status !== "needs_attention") return;
+  if (!task || task.status !== "needs_attention" || task.close_block_reason)
+    return;
+  state.detail = null;
   state.wizard = { resource: "close-task", id, serial: task.device };
   modal(
     "结束任务",
-    task.device,
+    `${task.device} · ${task.id}`,
     `<p>结束后释放设备占用，任务历史和日志仍会保留。</p><div class="live-note">${task.boot_network?.dhcp_mode === "external" ? "此操作请求 Core 停止本轮引导并清理本轮拥有的虚拟介质，确认清理后释放设备占用。不会强行停止正在运行的安装器或擦除磁盘。" : "此操作不会停止物理机上可能仍在运行的安装程序，也不会修改 NICo Instance、Machine、BMC、启动顺序或磁盘。"}</div><label class="live-check"><input id="close-task-confirm" type="checkbox">确认现场已经停止处理，并结束此任务。</label><div id="resource-error" class="live-error"></div>`,
     button("取消", "close") + button("确认结束", "task-close-confirm", true),
   );

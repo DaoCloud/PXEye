@@ -50,7 +50,7 @@ Click **Handle problem (处理问题)** and use the action offered for the curre
 | Start acceptance (开始验收) | Click at the lower right of the failure dialog, confirm the SN and permit boot/reboot verification to start acceptance for the original task. Recovery progress does not hide this entry. The current attempt must still have a trusted identity; all acceptance checks remain enforced and the disk is not rewritten. |
 | Continue preparing device (继续准备设备) | Uses current device plans to resume onboarding preparation. Confirm the dialog's cleanup scope. |
 | Retry installation / Recheck and continue (重试安装 / 重新检查并继续) | Reuses the original Instance and task plan. Review the new preflight and confirmation; continuing installation may overwrite the system disk again. |
-| End task (结束任务) | Releases the PXEye task reservation and keeps history. It does not stop the physical installer or release the NICo Instance. |
+| End task (结束任务) | For a stopped task marked **Needs attention**, select **Actions → End task** in the installation task list, check the device and task ID, then confirm. Closing releases the device reservation and retains history and logs. It does not stop the physical installer or release the NICo Instance. The action is unavailable during result observation or automatic recovery. |
 
 ## 4. Example
 

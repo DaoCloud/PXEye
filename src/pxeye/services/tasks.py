@@ -123,6 +123,8 @@ class TaskCoordinator:
     def task_view(self, task):
         """Reconcile operator waivers and refresh available recovery actions."""
         task = self.reconcile_acceptance_skips(task)
+        if task.get("status") == "needs_attention":
+            task = dict(task, close_block_reason=self.close_block_reason(task))
         if task.get("status") != "needs_attention" or not task.get("execution_device"):
             return task
         result = dict(task)
@@ -276,6 +278,29 @@ class TaskCoordinator:
         finally:
             self.worker_lock.release()
 
+    def close_block_reason(self, task):
+        if task["status"] != "needs_attention":
+            return "只有已经停止并等待处理的任务可以结束。"
+        if self.recovery_observation_active(task):
+            return "任务仍在等待本轮安装结果，请等待观察结束后再结束任务。"
+        if (task.get("automatic_recovery") or {}).get("state") in (
+            "diagnosing",
+            "config_requesting",
+            "reset_requesting",
+            "observing",
+            "waiting_reboot",
+            "waiting_installation",
+            "fallback_config_requesting",
+            "fallback_reset_requesting",
+            "waiting_installation_retry",
+            "standard_pxe_override_requesting",
+            "standard_pxe_reset_requesting",
+            "waiting_standard_pxe_retry",
+            "failed_bios_reset_requesting",
+        ):
+            return "自动修复仍在执行，请等待它停止后再结束任务。"
+        return None
+
     def close_task(self, task_id, body, actor):
         """Close a stopped incident after Core releases any owned boot medium."""
 
@@ -285,26 +310,9 @@ class TaskCoordinator:
                 raise ValueError("任务不存在。")
             if set(body) != {"confirm_serial"} or body["confirm_serial"] != task["device"]:
                 raise ValueError("请确认要结束任务的设备序列号。")
-            if task["status"] != "needs_attention":
-                raise ValueError("只有已经停止并等待处理的任务可以结束。")
-            if self.recovery_observation_active(task):
-                raise ValueError("任务仍在等待本轮安装结果，请等待观察结束后再结束任务。")
-            recovery = task.get("automatic_recovery") or {}
-            if recovery.get("state") in (
-                "diagnosing",
-                "config_requesting",
-                "reset_requesting",
-                "observing",
-                "waiting_reboot",
-                "waiting_installation",
-                "fallback_config_requesting",
-                "fallback_reset_requesting",
-                "waiting_installation_retry",
-                "standard_pxe_override_requesting",
-                "standard_pxe_reset_requesting",
-                "waiting_standard_pxe_retry",
-            ):
-                raise ValueError("自动修复仍在执行，请等待它停止后再结束任务。")
+            blocked = self.close_block_reason(task)
+            if blocked:
+                raise ValueError(blocked)
             BootTransport(self.adapter, self.store).cancel(task)
             now = time.time()
             task.update(
