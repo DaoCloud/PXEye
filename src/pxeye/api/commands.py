@@ -288,6 +288,13 @@ class CommandRoutes:
             return self.respond(
                 200, self.app.configure(lambda: self.app.site_explorer.enable(body))
             )
+        if path == "/api/site/discovery/enable-machine-creation":
+            return self.respond(
+                200,
+                self.app.configure(
+                    lambda: self.app.site_explorer.enable(body, setting="create_machines")
+                ),
+            )
         if path == "/api/site/credentials/initialize":
             return self.respond(
                 200, self.app.configure(lambda: self.app.site_credentials.initialize(body))

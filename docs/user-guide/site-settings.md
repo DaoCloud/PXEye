@@ -26,6 +26,8 @@ For a genuinely new estate, pass `--new-site` to `install.sh` for one-time initi
 
 For an existing paused site with automatic creation off, choose **Enable site discovery**. Confirmation updates the mounted Core site ConfigMap and rolls Core; a single-replica API may be briefly unavailable. The discovery row in the site overview shows **Enabling** during the rollout and checks the live switch automatically afterwards. Do not resubmit while it is updating. If Helm or GitOps still supplies older values, set `[site_explorer].enabled` to `true` there as well to retain the change on future deployments. Saving unrelated site settings does not resume a paused site.
 
+When discovery is enabled and automatic machine creation is off, choose **Enable automatic machine creation (开启自动建机)** on the same row. This applies site-wide: other released devices may start onboarding. Confirm to persist only `site_explorer.create_machines=true` and roll Core. The action cannot be submitted again during the rollout. Wait for the live status to show automatic creation is on before continuing the original installation task. Refreshing alone does not enable it. Update any external Helm/GitOps values to keep the policy on future deployments.
+
 **Edit site (编辑站点)** changes three fields:
 
 | Field | Requirement |

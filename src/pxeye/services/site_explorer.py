@@ -10,27 +10,29 @@ from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlsplit
 
 
-def enabled_config(text):
+def enabled_config(text, setting="enabled"):
     original = tomllib.loads(text)
     explorer = original.get("site_explorer", {})
-    if (
-        explorer.get("create_machines") is not False
-        or original.get("firmware_global", {}).get("autoupdate") is not False
-    ):
-        raise ValueError("请先在 Core 站点配置中明确关闭自动建机和固件自动更新。")
-    if explorer.get("enabled") is True:
+    if original.get("firmware_global", {}).get("autoupdate") is not False:
+        raise ValueError("请先核对 Core 站点配置，固件自动更新须保持关闭。")
+    if setting == "create_machines":
+        if explorer.get("enabled") is not True:
+            raise ValueError("站点发现尚未持久启用，请先核对 Core 站点配置。")
+    elif setting != "enabled" or explorer.get("create_machines") is not False:
+        raise ValueError("启用发现前须在 Core 站点配置中明确关闭自动建机。")
+    if explorer.get(setting) is True:
         return text
     section = re.search(r"(?ms)^\s*\[site_explorer\][ \t]*(?:#[^\n]*)?\n(.*?)(?=^\s*\[|\Z)", text)
     if not section:
         raise ValueError("无法识别 Core 的 site_explorer 配置段。")
-    block, count = re.subn(r"(?m)^([ \t]*enabled\s*=\s*)false\b", r"\g<1>true", section[1])
+    block, count = re.subn(rf"(?m)^([ \t]*{setting}\s*=\s*)false\b", r"\g<1>true", section[1])
     if not count:
-        block = "enabled = true\n" + block
+        block = f"{setting} = true\n" + block
     updated = text[: section.start(1)] + block + text[section.end(1) :]
     expected = copy.deepcopy(original)
-    expected["site_explorer"]["enabled"] = True
+    expected["site_explorer"][setting] = True
     if tomllib.loads(updated) != expected:
-        raise ValueError("无法仅修改站点发现开关。")
+        raise ValueError("无法仅修改指定的站点开关。")
     return updated
 
 
@@ -138,12 +140,17 @@ class SiteExplorer:
         generation = dep["metadata"]["generation"]
         if annotations.get("pxeye.io/discovery-generation") != str(generation):
             return None
+        action = annotations.get("pxeye.io/discovery-setting", "enabled")
         observed = status.get("observedGeneration") == generation
         if observed and any(
             c.get("reason") == "ProgressDeadlineExceeded" and c.get("status") == "False"
             for c in status.get("conditions", [])
         ):
-            return {"state": "failed", "detail": "Core 滚动更新超时，请检查 Pod 事件。"}
+            return {
+                "state": "failed",
+                "action": action,
+                "detail": "Core 滚动更新超时，请检查 Pod 事件。",
+            }
         desired = spec.get("replicas", 1)
         if (
             not observed
@@ -153,7 +160,11 @@ class SiteExplorer:
                 for k in ("replicas", "updatedReplicas", "availableReplicas", "readyReplicas")
             )
         ):
-            return {"state": "applying", "detail": "配置已保存，正在等待新版 Core 副本就绪。"}
+            return {
+                "state": "applying",
+                "action": action,
+                "detail": "配置已保存，正在等待新版 Core 副本就绪。",
+            }
         return None
 
     def view(self):
@@ -171,16 +182,20 @@ class SiteExplorer:
         except (ValueError, KeyError, OSError, http.client.HTTPException) as error:
             return {"state": "unknown", "detail": str(error), "checked_at": time.time()}
 
-    def enable(self, body):
+    def enable(self, body, *, setting="enabled"):
         if not isinstance(body, dict) or set(body) != {"confirm"} or body["confirm"] is not True:
-            raise ValueError("请确认启用本站点发现并滚动更新 Core。")
+            raise ValueError("请确认变更本站点策略并滚动更新 Core。")
         ns, selector, name = self.target()
         dep = self.deployment(ns, selector)
         transition = self.activation(dep)
         if transition and transition["state"] == "applying":
-            return {"status": "applying"}
+            if transition["action"] != setting:
+                raise ValueError("另一项站点策略正在更新，请等待完成后重试。")
+            return {"status": "applying", "action": setting}
         enabled, auto_create = self.observe(ns, name)
-        if auto_create:
+        if setting == "create_machines" and not enabled:
+            raise ValueError("请先启用站点发现并等待 Core 确认。")
+        if setting == "enabled" and auto_create:
             raise ValueError("当前 Core 已启用自动建机，请先核对站点策略。")
         if dep.get("status", {}).get("observedGeneration") != dep["metadata"].get("generation"):
             raise ValueError("Core 更新尚未被控制器确认，请稍后刷新。")
@@ -199,15 +214,15 @@ class SiteExplorer:
         if not config:
             raise ValueError("未找到 Core 站点配置。")
         data = {
-            k: enabled_config(v)
+            k: enabled_config(v, setting)
             for k, v in config.get("data", {}).items()
             if k in ("nico-api-site-config.toml", "carbide-api-site-config.toml")
         }
         if not data:
             raise ValueError("找不到可维护的 Core 站点 TOML。")
         changed = any(v != config["data"][k] for k, v in data.items())
-        if enabled and not changed:
-            return {"status": "enabled"}
+        if (auto_create if setting == "create_machines" else enabled) and not changed:
+            return {"status": "enabled", "action": setting}
         if any(t["status"] in ("running", "queued") for t in self.app.store.incomplete()):
             raise ValueError("存在正在执行或排队的安装任务，请稍后启用。")
         if changed:
@@ -231,6 +246,7 @@ class SiteExplorer:
                             "metadata": {
                                 "annotations": {
                                     "pxeye.io/discovery-enabled-at": str(time.time_ns()),
+                                    "pxeye.io/discovery-setting": setting,
                                     "pxeye.io/discovery-generation": str(
                                         dep["metadata"]["generation"] + 1
                                     ),
@@ -243,6 +259,6 @@ class SiteExplorer:
             )
         except ValueError as error:
             raise ValueError(
-                f"发现启动配置已保存，但未能发起 Core 更新；请刷新后重试：{error}"
+                f"站点启动配置已保存，但未能发起 Core 更新；请刷新后重试：{error}"
             ) from None
-        return {"status": "applying"}
+        return {"status": "applying", "action": setting}

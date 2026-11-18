@@ -324,7 +324,11 @@ function credentialSummary(creds = {}, scan = {}) {
 function siteDiscoveryLine(discovery = {}) {
   const { state: phase, create_machines: auto } = discovery;
   const labels = { enabled: "已启用", paused: "已暂停", applying: "启用中…", failed: "更新失败" };
-  return `<div class="site-discovery-line" role="status"><strong>站点发现</strong>${badge(labels[phase] || "无法读取", phase === "enabled" ? "green" : phase === "failed" ? "red" : "amber")}${typeof auto === "boolean" ? `<span>自动建机：${auto ? "开" : "关"}</span>` : ""}${phase === "paused" && auto === false ? '<button class="link-button" data-live="site-discovery-open">启用</button>' : ""}${discovery.detail && phase !== "applying" ? `<span>${esc(discovery.detail)}</span>` : ""}${credentialSummary(state.siteInfo?.site_credentials, state.siteInfo?.last_site_scan)}</div>`;
+  const creationUpdate = discovery.action === "create_machines" && ["applying", "failed"].includes(phase);
+  const autoLabel = creationUpdate ? labels[phase] : typeof auto === "boolean" ? (auto ? "开" : "关") : "待核对";
+  const discoverAction = phase === "paused" && auto === false ? '<button class="link-button" data-live="site-discovery-open">启用站点发现</button>' : "";
+  const createAction = phase === "enabled" && auto === false ? '<button class="link-button" data-live="site-creation-open">开启自动建机</button>' : "";
+  return `<div class="site-discovery-line" role="status"><strong>站点发现</strong>${badge(creationUpdate ? "待核对" : labels[phase] || "无法读取", phase === "enabled" ? "green" : "amber")}${discoverAction}<span>自动建机：${esc(autoLabel)}</span>${createAction}${discovery.detail && phase !== "applying" ? `<span>${esc(discovery.detail)}</span>` : ""}${credentialSummary(state.siteInfo?.site_credentials, state.siteInfo?.last_site_scan)}</div>`;
 }
 function sitePage() {
   const s = state.siteInfo;
@@ -1146,6 +1150,7 @@ registerActions(
     "site-edit",
     "site-save",
     "site-discovery-open",
+    "site-creation-open",
     "site-credentials-open",
     "site-credentials-apply",
     "site-discovery-settings",
@@ -1212,15 +1217,28 @@ registerActions(
           close();
           return await navigate("site");
         case "site-discovery-open":
-          state.wizard = { resource: "site-discovery" };
-          return modal("启用站点发现", "站点级操作", '<p>保存发现配置并滚动更新本站点 Core。站点 API 可能短暂不可用。此操作不会开启自动建机或批准设备接管。</p><div id="resource-error" class="live-error"></div>', button("取消", "close") + button("确认启用", "site-discovery-enable", true));
+        case "site-creation-open": {
+          const creation = el.dataset.live === "site-creation-open";
+          state.wizard = { resource: "site-discovery", creation };
+          const description = creation
+            ? "开启后，Core 将为全站符合条件的设备创建主机记录。其他已放行设备也可能开始接管，不限于当前安装任务。"
+            : "此操作不会开启自动建机或批准设备接管。";
+          return modal(creation ? "开启自动建机" : "启用站点发现", state.siteInfo.site.name,
+            `<p>${description}</p><p>保存后将滚动更新本站点 Core，站点 API 可能短暂不可用。</p><div id="resource-error" class="live-error"></div>`,
+            button("取消", "close") + button("确认启用", "site-discovery-enable", true));
+        }
         case "site-discovery-enable":
           return await busy(async () => {
-            const result = await api("/api/site/discovery/enable", { confirm: true });
-            state.siteInfo.site_explorer = { ...state.siteInfo.site_explorer, state: result.status };
+            if (state.wizard?.resource !== "site-discovery") return;
+            const creation = state.wizard.creation;
+            const label = creation ? "自动建机" : "站点发现";
+            const result = await api(creation ? "/api/site/discovery/enable-machine-creation" : "/api/site/discovery/enable", { confirm: true });
+            state.siteInfo.site_explorer = result.status === "applying"
+              ? { state: "applying", action: result.action }
+              : { ...state.siteInfo.site_explorer, state: "enabled", ...(creation ? { create_machines: true } : {}) };
             close();
             render();
-            toast(result.status === "enabled" ? "站点发现已启用。" : "正在启用站点发现，状态会自动更新。");
+            toast(result.status === "enabled" ? `${label}已启用。` : `正在启用${label}，状态会自动更新。`);
           });
         case "site-credentials-open": {
           const creds = state.siteInfo?.site_credentials;
@@ -2051,7 +2069,7 @@ async function prepareResumeDialog(id) {
   modal(
     "继续准备设备",
     check.device,
-    (taskError ? `<div class="live-error">${esc(taskError)}${taskError.includes("Site Explorer") ? ' <a href="#site" data-live="site-discovery-settings">查看站点发现状态</a>' : ""}</div>` : "") + defs([
+    (taskError ? `<div class="live-error">${esc(taskError)}${/Site Explorer|自动建机/.test(taskError) ? ' <a href="#site" data-live="site-discovery-settings">查看站点设置</a>' : ""}</div>` : "") + defs([
       ["主机名", esc(check.hostname)],
       ["管理地址", esc(check.scope.management_ip)],
       ["系统盘", esc(check.disk_serial || "硬件回报后唯一匹配；多盘需选择")],
