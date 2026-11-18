@@ -62,7 +62,7 @@ nico-api:
 
       [site_explorer]
 
-      enabled = false
+      enabled = true
 
       create_machines = false
 

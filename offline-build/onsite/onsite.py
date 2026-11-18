@@ -591,8 +591,8 @@ class Onsite:
                 'Initial delivery must keep nico-dhcp scaled to zero until physical boot settings are configured')
         for component in ('nico-dhcp', 'nico-dns', 'nico-pxe', 'nico-ntp'):
             values.setdefault(component, {}).setdefault('externalService', {})['enabled'] = False
-        require(not parsed.get('site_explorer', {}).get('enabled', False) and not parsed.get('firmware_global', {}).get('autoupdate', False),
-                'Initial delivery must not enable discovery or firmware automation')
+        require(parsed.get('site_explorer', {}).get('create_machines') is False and not parsed.get('firmware_global', {}).get('autoupdate', False),
+                'Initial delivery must disable automatic machine creation and firmware updates')
 
     def prepare_recipe(self):
         self.preflight()

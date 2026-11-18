@@ -284,6 +284,10 @@ class CommandRoutes:
             return self.respond(
                 200, self.app.configure(lambda: self.app.resources.save_network_services(body))
             )
+        if path == "/api/site/discovery/enable":
+            return self.respond(
+                200, self.app.configure(lambda: self.app.site_explorer.enable(body))
+            )
         if path == "/api/site":
             return self.respond(200, self.app.save_site(body))
         if path == "/api/site/boot-network/preview":

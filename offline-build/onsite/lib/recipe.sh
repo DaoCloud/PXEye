@@ -196,9 +196,9 @@ recipe_values() {
         "$JQ" -e '
             ((.networks // {}) | type) == "object" and
             all((.networks // {})[]; .type != "hostinband") and
-            ((.site_explorer.enabled // false) | not) and
+            (.site_explorer.create_machines == false) and
             ((.firmware_global.autoupdate // false) | not)
-        ' "$scratch/site.json" > /dev/null || die "Initial delivery must not define HostInband or enable discovery/firmware automation"
+        ' "$scratch/site.json" > /dev/null || die "Initial delivery must not define HostInband or enable automatic machine creation/firmware updates"
         "$JQ" -e '.nicoCore["nico-dhcp"].replicas == 0' "$scratch/core.json" > /dev/null || die "Initial delivery must keep nico-dhcp scaled to zero"
         "$JQ" --arg owner "$NAMESPACE-pxeye" '
             .nicoCore["nico-dhcp"].externalService.enabled = false |

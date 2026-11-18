@@ -312,6 +312,12 @@ function taskRows() {
     return `<tr><td><button class="link-button" data-task="${esc(t.id)}">${esc(t.id)}</button><span class="live-small">${when(t.created_at)}</span></td><td>${esc(t.device)}<span class="live-small">${esc(t.management_ip)}</span></td><td>${esc(t.hostname)}</td><td>${badge(status.label, status.tone)}<span class="live-small">${esc(stages[t.stage])}</span></td><td>${bmcLink(state.resources?.devices.find((d) => d.serial === t.device)?.bmc_ip)}</td><td><div class="live-tools"><button class="link-button" data-task="${esc(t.id)}">实时日志 / 记录</button>${endTaskButton(t)}</div></td></tr>`;
   });
 }
+function siteDiscoveryPanel(discovery = {}) {
+  const enabled = discovery.state === "enabled", paused = discovery.state === "paused";
+  const label = enabled ? "已启用" : paused ? "已暂停" : "无法读取";
+  const auto = discovery.create_machines;
+  return `<section class="site-panel"><header class="site-panel-header"><h2>站点发现</h2>${paused && auto === false ? button("启用站点发现", "site-discovery-open") : ""}</header><div class="site-services"><div class="site-service-row"><span class="site-service-dot ${enabled ? "ok" : paused ? "set" : "bad"}"></span><div class="site-service-name"><strong>${label}</strong><span>${esc(discovery.detail || "Core Site Explorer 运行状态")}</span></div><div class="site-service-state"><strong>自动建机：${auto === true ? "已启用" : auto === false ? "已关闭" : "未知"}</strong><span>检查于 ${when(discovery.checked_at)}</span></div></div></div></section>`;
+}
 function sitePage() {
   const s = state.siteInfo;
   if (!s)
@@ -390,6 +396,7 @@ function sitePage() {
       "查看和维护 NICo 控制面。",
       button("刷新数据", "refresh") + button("编辑站点", "site-edit", true),
     ) +
+    siteDiscoveryPanel(s.site_explorer) +
     `<section class="site-overview"><div class="site-overview-main"><span class="site-eyebrow">当前站点</span><h2>${esc(s.site.name)}</h2><div class="site-overview-meta"><span>${esc(s.site.namespace)} / ${esc(s.site.deployment)}</span><span class="live-code">${esc(s.core_url)}</span><span>新建安装批次默认并发 ${esc(s.default_install_concurrency || 5)} 台</span></div></div><div class="site-health"><span class="site-status-dot ${healthy ? "ok" : "bad"}"></span><div><strong>${healthy ? "Core 连接正常" : "Core 连接异常"}</strong><span>${esc(core.detail || "尚未获得连接状态")}</span><small>检查于 ${when(s.checked_at)}</small></div></div></section>` +
     `<div class="site-layout"><section class="site-panel"><header class="site-panel-header"><div><span class="site-eyebrow">安全连接</span><h2>连接身份</h2></div></header><dl class="site-identity"><div><dt>客户端身份</dt><dd>${esc(identity.subject || identity.error || "未提供")}</dd></div><div><dt>签发者</dt><dd>${esc(identity.issuer || "—")}</dd></div><div><dt>有效期</dt><dd>${esc(identity.valid_from || "—")}<span>至 ${esc(identity.valid_until || "—")}</span></dd></div></dl></section><section class="site-panel"><header class="site-panel-header"><div><span class="site-eyebrow">本地存储</span><h2>数据目录</h2></div></header><div class="site-storage-list">${storage}</div></section></div>` +
     `<section class="site-panel site-services-panel"><header class="site-panel-header"><div><span class="site-eyebrow">运行依赖</span><h2>网络与基础服务</h2></div></header><div class="site-services">${services}</div><p class="site-panel-note">${esc(s.dns_maintenance.detail)}</p></section>` +
@@ -1111,6 +1118,9 @@ registerActions(
   [
     "site-edit",
     "site-save",
+    "site-discovery-open",
+    "site-discovery-settings",
+    "site-discovery-enable",
     "site-boot-network",
     "site-boot-preview",
     "site-boot-apply",
@@ -1168,6 +1178,20 @@ registerActions(
       switch (el.dataset.live) {
         case "site-edit":
           return editSite();
+        case "site-discovery-settings":
+          e.preventDefault();
+          close();
+          return await navigate("site");
+        case "site-discovery-open":
+          state.wizard = { resource: "site-discovery" };
+          return modal("启用站点发现", "站点级操作", '<p>保存发现配置并滚动更新本站点 Core。站点 API 可能短暂不可用。此操作不会开启自动建机或批准设备接管。</p><div id="resource-error" class="live-error"></div>', button("取消", "close") + button("确认启用", "site-discovery-enable", true));
+        case "site-discovery-enable":
+          return await busy(async () => {
+            const result = await api("/api/site/discovery/enable", { confirm: true });
+            close();
+            toast(result.status === "enabled" ? "站点发现已启用。" : "已提交 Core 更新，请刷新查看实际运行状态。");
+            await refreshPage("site");
+          });
         case "site-save":
           return await saveSite();
         case "site-boot-network":
@@ -1977,10 +2001,11 @@ async function prepareResumeDialog(id) {
   if (state.wizard !== w) return;
   w.check = check;
   const d = state.resources.devices.find((d) => d.serial === check.device);
+  const taskError = state.tasks.find((t) => t.id === id)?.error;
   modal(
     "继续准备设备",
     check.device,
-    defs([
+    (taskError ? `<div class="live-error">${esc(taskError)}${taskError.includes("Site Explorer") ? ' <a href="#site" data-live="site-discovery-settings">查看站点发现状态</a>' : ""}</div>` : "") + defs([
       ["主机名", esc(check.hostname)],
       ["管理地址", esc(check.scope.management_ip)],
       ["系统盘", esc(check.disk_serial || "硬件回报后唯一匹配；多盘需选择")],

@@ -18,13 +18,24 @@ from pxeye.services.boot_transport import BootTransport, external_boot, site_boo
 
 class TaskCoordinator:
     def __init__(
-        self, *, config, adapter, store, executor, resources, onboarding, device_config, os_library
+        self,
+        *,
+        config,
+        adapter,
+        store,
+        executor,
+        resources,
+        onboarding,
+        device_config,
+        os_library,
+        discovery_status=None,
     ):
         self.config, self.adapter, self.store = config, adapter, store
         self.executor, self.resources = executor, resources
         self.onboarding, self.device_config = onboarding, device_config
         self.os_library = os_library
         self.worker_lock = threading.Lock()
+        self.discovery_status = discovery_status
 
     def install_concurrency(self):
         value = self.config.get("default_install_concurrency", 5)
@@ -485,6 +496,7 @@ class TaskCoordinator:
 
         def check_all():
             checks = []
+            discovery = None
             observations = self.onboarding.observed(
                 [self.onboarding.inventory_row(d["serial"]) for d in devices]
             )
@@ -521,7 +533,27 @@ class TaskCoordinator:
                                 self.onboarding.check_scout_boot_guard(
                                     declared, observed["machine"]
                                 )
-                                self.onboarding.probe(declared, managed=bool(observed["machine"]))
+                                probe, _ = self.onboarding.probe(
+                                    declared, managed=bool(observed["machine"])
+                                )
+                                if not observed["machine"] and self.discovery_status:
+                                    if discovery is None:
+                                        discovery = self.discovery_status()
+                                    if discovery["state"] == "paused":
+                                        gate = self.adapter.rpc(
+                                            "DetermineMachineIngestionState",
+                                            {
+                                                "ip_address": probe["bmc_ip"],
+                                                "mac_address": declared["bmc_mac_address"],
+                                            },
+                                        )
+                                        if (
+                                            gate.get("machineIngestionState", "NotDiscovered")
+                                            == "NotDiscovered"
+                                        ):
+                                            raise ValueError(
+                                                "站点发现已暂停，此 BMC 尚未被发现。请在“站点设置 → 站点发现”启用后重试。"
+                                            )
                                 check["checks"].append(
                                     {
                                         "name": "BMC身份、启动网络配置及Scout保护",

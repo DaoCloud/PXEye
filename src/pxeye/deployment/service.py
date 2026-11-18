@@ -571,12 +571,11 @@ class NicoDeployment:
                             site = tomllib.loads(content)
                             explorer = site.get("site_explorer", {})
                             if (
-                                explorer.get("enabled")
-                                or explorer.get("create_machines")
+                                explorer.get("create_machines") is not False
                                 or site.get("firmware_global", {}).get("autoupdate")
                             ):
                                 raise ValueError(
-                                    "初始部署必须关闭自动发现接管与固件自动更新，避免启动真实设备流程。"
+                                    "初始部署必须显式关闭自动建机，并关闭固件自动更新。"
                                 )
                 metadata = obj.setdefault("metadata", {})
                 cluster_scoped = obj["kind"] in CLUSTER_KINDS

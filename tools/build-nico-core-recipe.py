@@ -201,7 +201,7 @@ type = "integer"
 ranges = [{{ start = "200000", end = "200999" }}]
 
 [site_explorer]
-enabled = false
+enabled = true
 create_machines = false
 dpu_policy = "ignore"
 [firmware_global]

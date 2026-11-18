@@ -6,6 +6,7 @@ import posixpath
 import re
 import shutil
 import tarfile
+import tomllib
 import urllib.request
 import uuid
 import zipfile
@@ -25,6 +26,31 @@ DEFAULT_CHART_URL = (
     "https://github.com/dsx-ai-factory/infra-controller/archive/"
     "e703126e4a7a2fe1d4dab5f96cba9bdf055e0921.tar.gz"
 )
+
+
+def discovery_defaults(text):
+    settings = tomllib.loads(text)
+    for section, defaults in (
+        ("site_explorer", {"enabled": True, "create_machines": False}),
+        ("firmware_global", {"autoupdate": False}),
+    ):
+        missing = {
+            key: value for key, value in defaults.items() if key not in settings.get(section, {})
+        }
+        if not missing:
+            continue
+        lines = "".join(f"{key} = {str(value).lower()}\n" for key, value in missing.items())
+        if section not in settings:
+            text = text.rstrip() + f"\n\n[{section}]\n" + lines
+        else:
+            header = re.search(rf"(?m)^[ \t]*\[{section}\][ \t]*(?:#[^\n]*)?$", text)
+            if not header:
+                raise ValueError(f"请在 Core TOML 的 [{section}] 段明确设置 {', '.join(missing)}。")
+            text = text[: header.end()] + "\n" + lines + text[header.end() :]
+        settings.setdefault(section, {}).update(missing)
+    if tomllib.loads(text) != settings:
+        raise ValueError("Core 站点配置无法应用发现默认值。")
+    return text
 
 
 def source_url(value, *, oci=False):
@@ -283,6 +309,14 @@ class Sources:
             # Apply namespace conventions as normal Helm values, without rewriting templates.
             if metadata.get("name") == "nico":
                 values = yaml.safe_load(settings.get("values_yaml") or "{}")
+                base_values = yaml.safe_load((content / "values.yaml").read_text()) or {}
+                initial = base_values.get("nico-api", {}).get("siteConfig", {})
+                site = values.setdefault("nico-api", {}).setdefault("siteConfig", {})
+                if site.get("enabled", initial.get("enabled", True)) is False:
+                    raise ValueError("部署 NICo Core 需要启用站点配置以保存发现和接管策略。")
+                site["nicoApiSiteConfig"] = discovery_defaults(
+                    site.get("nicoApiSiteConfig", initial.get("nicoApiSiteConfig", ""))
+                )
                 for dependency in metadata.get("dependencies", []):
                     name = dependency["name"]
                     values.setdefault(name, {}).setdefault(

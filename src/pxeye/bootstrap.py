@@ -30,6 +30,7 @@ from pxeye.services.current_systems import CurrentSystems
 from pxeye.services.equipment import Equipment
 from pxeye.services.addresses import ManagementAddresses
 from pxeye.services.site_boot_network import SiteBootNetwork
+from pxeye.services.site_explorer import SiteExplorer
 from pxeye.deployment.service import NicoDeployment
 from pxeye.clients.process import run
 from pxeye.common import atomic_text
@@ -79,6 +80,7 @@ class Application:
             threading.Thread(target=self._refresh_inventory, daemon=True).start()
         self.nico_deployment = NicoDeployment(self)
         self.site_boot_network = SiteBootNetwork(self)
+        self.site_explorer = SiteExplorer(self)
         if config.get("core_identity_source"):
             threading.Thread(target=self._maintain_core_identity, daemon=True).start()
         else:
@@ -132,6 +134,7 @@ class Application:
             onboarding=self.onboarding,
             device_config=self.device_config,
             os_library=self.os_library,
+            discovery_status=lambda: self.site_explorer.view(),
         )
 
     def _refresh_inventory(self):
@@ -576,6 +579,7 @@ class Application:
                 "detail": "OS DNS 在网络管理的 HostInband 子网中维护",
             },
             "boot_network": self.site_boot_network.view(),
+            "site_explorer": self.site_explorer.view(),
         }
 
     def save_site(self, body):
