@@ -141,6 +141,6 @@ Fireseed: Linux amd64, Bash 4+, kubectl, curl and standard GNU utilities, an ava
 /srv/nico/              # onsite delivery files, runner, derived extraction and runtime records
 ```
 
-The pinned e703 profile covers single-node Core/PXEye, without REST/Temporal/Keycloak, DPF services or Ubuntu ISOs. It does not discover current running images. Step one only exports images. Step two wraps optional binary materials as images; existing prepared / nico-materials inputs remain compatible. Material HTTP readiness does not establish consumer URLs or physical connectivity.
+The standard bundle does not discover live cluster images. Core/PXEye is installed by default; REST, Site Agent, Temporal and Keycloak are [required offline materials with optional installation](../charts/pxeye/files/management/README.md). DPF services and Ubuntu ISOs remain outside this profile. Old Core-only archives are unchanged; new builds must pass the complete image-inventory check.
 
 Compatibility-format maintenance is documented in [legacy material preparation](legacy-materials.md) and [legacy deployment configuration](CONFIGURE.md). Those input formats and entry points are separate from this workflow.

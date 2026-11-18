@@ -96,18 +96,16 @@ def chart_images(path, package_value, packager, ui=None, material_records=None):
         )['pxeye']
         settings = {'release_prefix': 'nico', 'namespace': 'nico-system', 'site_name': 'Build validation',
                     'dns_ip': '10.96.40.10', 'pxe_ip': '10.96.40.11', 'ntp_ip': '10.96.40.12'}
-        values = packager.b.substitute((root / 'values.yaml').read_text(), settings)
-        value_path = temporary / 'values.yaml'; value_path.write_text(values)
-        result = packager.command([package_value['tools']['helm'], 'template', 'pxeye', root, '--namespace', 'nico-system', '-f', value_path],
-                                  temporary / 'render.log')
+        defaults = yaml.safe_load(packager.b.substitute((root / 'values.yaml').read_text(), settings))
         images = set()
-        def walk(value):
-            if isinstance(value, dict):
-                if isinstance(value.get('image'), str): images.add(value['image'])
-                for child in value.values(): walk(child)
-            elif isinstance(value, list):
-                for child in value: walk(child)
-        walk(list(yaml.safe_load_all(result.stdout)))
+        for mode, overrides in packager.management.profiles().items():
+            values = packager.charts.merge(defaults, overrides)
+            value_path = temporary / (mode + '.yaml'); value_path.write_text(yaml.safe_dump(values))
+            result = packager.command([package_value['tools']['helm'], 'template', 'pxeye', root, '--namespace', 'nico-system', '-f', value_path],
+                                      temporary / (mode + '.log'))
+            objects = list(yaml.safe_load_all(result.stdout))
+            packager.management.check_profile(mode, values, objects)
+            images.update(packager.management.images(objects))
     if not images:
         raise ValueError('Parent Chart render did not produce image references')
     target = work / 'generated' / 'resolved-images.txt'

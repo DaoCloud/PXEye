@@ -1,0 +1,4 @@
+\set ON_ERROR_STOP on
+CREATE DATABASE :"rest_database" OWNER :"rest_owner";
+CREATE DATABASE :"temporal_database" OWNER :"temporal_owner";
+CREATE DATABASE :"visibility_database" OWNER :"temporal_owner";

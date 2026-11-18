@@ -52,3 +52,45 @@ components:
   # first umbrella delivery. It is not part of the current image-only POC.
   materials:
     enabled: false
+  rest:
+    enabled: false
+  siteagent:
+    enabled: false
+  temporal:
+    enabled: false
+  keycloak:
+    enabled: false
+rest:
+  nico-rest-common:
+    secrets:
+      create: false
+  nico-rest-api:
+    image: {offlineReference: 'docker.io/nico-local/nico-rest-api:e703126e4'}
+  nico-rest-cert-manager:
+    image: {offlineReference: 'docker.io/nico-local/nico-rest-cert-manager:e703126e4'}
+  nico-rest-db:
+    image: {offlineReference: 'docker.io/nico-local/nico-rest-db:e703126e4'}
+    waitForPostgres: {image: 'docker.io/library/postgres:14.4-alpine'}
+  nico-rest-site-manager:
+    image: {offlineReference: 'docker.io/nico-local/nico-rest-site-manager:e703126e4'}
+    rbac: {create: false}
+  nico-rest-workflow:
+    image: {offlineReference: 'docker.io/nico-local/nico-rest-workflow:e703126e4'}
+siteagent:
+  image: {offlineReference: 'docker.io/nico-local/nico-rest-site-agent:e703126e4'}
+  bootstrap: {enabled: false, image: 'docker.io/alpine/k8s:1.29.4'}
+  envConfig: {CORE_GRPC_SEC_OPT: '2', FLOW_GRPC_ENABLED: 'false'}
+temporal:
+  server:
+    image: {repository: m.daocloud.io/docker.io/temporalio/server, tag: '1.26.2'}
+  admintools:
+    enabled: true
+    image: {repository: m.daocloud.io/docker.io/temporalio/admin-tools, tag: '1.26.2'}
+  web: {enabled: false}
+  cassandra: {enabled: false}
+  elasticsearch: {enabled: false, external: false}
+  prometheus: {enabled: false}
+  grafana: {enabled: false}
+  schema: {setup: {enabled: true}, update: {enabled: true}}
+keycloak:
+  image: {repository: m.daocloud.io/quay.io/keycloak/keycloak, tag: '24.0'}

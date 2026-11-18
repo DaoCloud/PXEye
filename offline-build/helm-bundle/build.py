@@ -32,6 +32,7 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, str(HOME))
 import charts
 import chart_sources
+import management
 sys.path.insert(0, str(HOME.parent / 'onsite'))
 from relocation import prepare_intermediate
 from progress import Progress, atomic_json, transcript, install_signal_handlers
@@ -48,7 +49,7 @@ BUILD_SOURCE_PATHS = (
     'offline-build/onsite', 'offline-build/helm-bundle', 'offline-build/build.py',
     'offline-build/arm_materials.py', 'offline-build/arm-material-init.py',
     'deploy/bootstrap-kubernetes.yaml', 'deploy/nico-platform', 'deploy/offline-core',
-    'deploy/nico-cluster-permissions.yaml', 'charts/pxeye',
+    'deploy/nico-cluster-permissions.yaml', 'charts/pxeye', 'charts/pxeye-keycloak', 'charts/nico-materials',
     'offline-build/build_config.py', 'offline-build/build-config.example.json',
 )
 
@@ -476,6 +477,24 @@ def stage_charts(bundle, source, mapping, material_images, bootstrap, core_refer
     material_values = yaml.safe_load((materials / 'values.yaml').read_text()) or {}
     b.write(materials / 'values.yaml', yaml.safe_dump(material_values, sort_keys=False))
 
+    optional = {'pxeye-keycloak': REPO / 'charts/pxeye-keycloak'}
+    archives = Path(chart_directory) if chart_directory else source / 'deployment/charts'
+    for name, version in management.dependencies(REPO).items():
+        dest = trees / ('optional-' + name)
+        dest.mkdir()
+        package = archives / f'{name}-{version}.tgz'
+        b.require(package.is_file(), 'Missing required offline management Chart: ' + str(package))
+        b.extract_chart(package, dest)
+        child = dest / name
+        metadata = yaml.safe_load((child / 'Chart.yaml').read_text())
+        b.require((metadata['name'], str(metadata['version'])) == (name, version), 'Unexpected Chart: ' + name)
+        if name == 'nico-rest':
+            for subchart in management.REST_IMAGES:
+                management.bind_rest_helper(child / 'charts' / subchart, subchart)
+        elif name == 'nico-rest-site-agent':
+            management.bind_rest_helper(child, name)
+        optional[name] = child
+
     root = trees / 'pxeye'
     child_values = {
         'image': mapping['__ui__'],
@@ -492,9 +511,10 @@ def stage_charts(bundle, source, mapping, material_images, bootstrap, core_refer
     }
     charts.umbrella(root, REPO, {
         'cert-manager': prepared['cert-manager'], 'platform': prepared['platform'],
-        'vault-bootstrap': vault, 'nico': prepared['core'], 'materials': materials,
+        'vault-bootstrap': vault, 'nico': prepared['core'], 'materials': materials, **optional,
     }, child_values)
-    command([helm, 'dependency', 'build', root], root / 'dependency-build.log')
+    shutil.copytree(archives.parent / 'management-files', root / 'files/management', dirs_exist_ok=True)
+    command([helm, 'dependency', 'build', '--skip-refresh', root], root / 'dependency-build.log')
     # The source directories are only inputs for Helm dependency build; delivery
     # carries its deterministic packaged children and generated Chart.lock.
     shutil.rmtree(root / 'dependencies')
@@ -527,22 +547,18 @@ def validate_charts(roots, helm, mapping, material_images, directory, material_r
     report = []
     for key, root in roots.items():
         expected = hinted_images(root)
-        modes = ['default']
-        for mode in modes:
-            values = b.substitute((root / 'values.yaml').read_text(), settings)
-            path = directory / (key + '-' + mode + '.yaml'); path.write_text(values)
-            args = [helm, 'template', 'nico' if key in ('core', 'platform') else key, root,
+        defaults = yaml.safe_load(b.substitute((root / 'values.yaml').read_text(), settings))
+        for mode, overrides in management.profiles().items():
+            values = charts.merge(defaults, overrides)
+            path = directory / (key + '-' + mode + '.yaml'); path.write_text(yaml.safe_dump(values))
+            args = [helm, 'template', '--include-crds', 'nico' if key in ('core', 'platform') else key, root,
                     '--namespace', 'nico-system', '-f', path]
-            objects = list(yaml.safe_load_all(command(args, directory / (key + '-' + mode + '.log')).stdout))
-            images = set()
-            def walk(value):
-                if isinstance(value, dict):
-                    if isinstance(value.get('image'), str):
-                        images.add(value['image'])
-                    for child in value.values(): walk(child)
-                elif isinstance(value, list):
-                    for child in value: walk(child)
-            walk(objects)
+            objects = [obj for obj in yaml.safe_load_all(command(args, directory / (key + '-' + mode + '.log')).stdout) if obj]
+            images = management.images(objects)
+            management.check_profile(mode, values, objects)
+            has_site_crd = any(obj and obj['kind'] == 'CustomResourceDefinition' and
+                               obj['metadata']['name'] == 'sites.forge.nvidia.io' for obj in objects)
+            b.require(has_site_crd == (mode == 'rest-materials'), 'Unexpected Site CRD coverage in ' + mode)
             b.require(images <= known, 'Rendered image is outside the archive closure: ' + ', '.join(sorted(images - known)))
             b.require(images <= expected, 'Rendered image is absent from this Chart hints: ' + ', '.join(sorted(images - expected)))
             native_boot = [v for k, v in mapping.items() if 'boot-artifacts-x86' in k]
@@ -712,6 +728,7 @@ def build(config, args, progress=None):
                     metadata = yaml.safe_load((root / 'Chart.yaml').read_text())
                     chart_path = bundle / 'charts' / (key + '.tgz')
                     b.pack_tree(root, chart_path, metadata['name'])
+                    managed_materials = management.check_archived_materials(chart_path, REPO)
                     relocation = bundle / 'relocation' / (key + '.tar')
                     with progress.stage('04-relocate-' + key, 'Package Chart ' + key) as checkpoint:
                         expected = hinted_images(root)
@@ -732,7 +749,8 @@ def build(config, args, progress=None):
                         checkpoint.update(chart_sha256=chart_hash, relocation_sha256=b.sha(relocation))
                     packages.append({'id': key, 'name': metadata['name'], 'version': metadata['version'],
                         'chart': chart_path.relative_to(bundle).as_posix(), 'relocation': relocation.relative_to(bundle).as_posix(),
-                        'images': sorted(expected), 'image_count': count})
+                        'images': sorted(expected), 'image_count': count,
+                        'management_materials': {'installed_by_default': False, 'files': managed_materials}})
             # Only transport artifacts are delivered; transient Registry data,
             # Docker contexts and source OCI archives are not duplicated.
             shutil.copyfile(relok, bundle / 'tools/relok8s')

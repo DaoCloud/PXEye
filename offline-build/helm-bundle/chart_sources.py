@@ -11,6 +11,7 @@ import urllib.parse
 import urllib.request
 
 import yaml
+import management
 
 HOME = Path(__file__).resolve().parent
 
@@ -98,7 +99,7 @@ def prepare(work, overrides, b, helm='helm'):
     implementation = {str(p.relative_to(b.REPO)): b.sha(p) for root in local
                       for p in sorted(root.rglob('*')) if p.is_file()}
     implementation.update({str(p.relative_to(b.REPO)): b.sha(p) for p in
-                           [Path(__file__), HOME.parent / 'build.py']})
+                           [Path(__file__), Path(management.__file__), HOME.parent / 'build.py']})
     identity = hashlib.sha256(json.dumps({'sources': configured, 'implementation': implementation}, sort_keys=True).encode()).hexdigest()
     root = Path(work) / 'charts' / identity[:24]
     if root.exists():
@@ -160,6 +161,9 @@ def prepare(work, overrides, b, helm='helm'):
         (deployment / 'charts').mkdir(parents=True); (deployment / 'patches').mkdir()
         scratch = stage / '.patch'; scratch.mkdir()
         b.patch_core(raw, deployment, scratch, expected_charts=expected)
+        core = configured['core']
+        management.prepare_archives(cache / (core['sha256'] + '.tar.gz'), core['subdirectory'],
+                                    deployment, b.REPO, extract, b.pack_tree)
         b.dump(deployment / 'upstream-sources.json', configured)
         shutil.rmtree(scratch)
         for filename, key in [('nico-0.1.1.tgz', 'core'), ('cert-manager-v1.17.1.tgz', 'cert-manager'), ('pxeye-nico-platform-0.1.0.tgz', 'platform')]:

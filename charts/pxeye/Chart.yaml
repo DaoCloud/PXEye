@@ -29,3 +29,22 @@ dependencies:
     version: 0.1.0
     repository: file://dependencies/materials
     condition: components.materials.enabled
+  - name: nico-rest
+    alias: rest
+    version: 0.1.13
+    repository: file://dependencies/nico-rest
+    condition: components.rest.enabled
+  - name: nico-rest-site-agent
+    alias: siteagent
+    version: 0.1.9
+    repository: file://dependencies/nico-rest-site-agent
+    condition: components.siteagent.enabled
+  - name: temporal
+    version: 0.35.0
+    repository: file://dependencies/temporal
+    condition: components.temporal.enabled
+  - name: pxeye-keycloak
+    alias: keycloak
+    version: 0.1.0
+    repository: file://dependencies/pxeye-keycloak
+    condition: components.keycloak.enabled

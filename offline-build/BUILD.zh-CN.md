@@ -115,8 +115,7 @@ tools/                              # Helm、relok8s、校验器和现场工具
 docs/                               # 交付文档和许可证
 ```
 
-当前配方覆盖 PXEye / NICo Core 及必需的 cert-manager、platform、Vault 依赖，并可选包含
-ARM64 引导材料；不包含 REST、Temporal、Keycloak、DPF 服务或操作系统 ISO。
+默认安装覆盖 PXEye / NICo Core、cert-manager、platform 和 Vault。**标准包必带、现场默认不装** REST、Site Agent、Temporal、Keycloak 及迁移/注册辅助镜像。打包器取默认和 `rest-materials` 两次渲染的镜像并集，检查迁移/注册 Hook，并逐项锁定制品；构建机必须能读取所选 REST 镜像，不能因缺镜像而跳过归档。完整条件见[管理面材料](../charts/pxeye/files/management/README.zh-CN.md)。ARM64 引导材料仍需显式选择；不包含 DPF 服务或操作系统 ISO。
 
 现场执行器会使用包内 PXEye Chart 将 PXEye 接到同命名空间的 Core 客户端 Secret 和集群内 API；因此本次
 源码变更后必须先用 `make pxeye-images` 发布新的 PXEye 镜像，再运行 `make bundles`。它不把物理 DNS/PXE/NTP
