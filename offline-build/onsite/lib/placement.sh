@@ -30,21 +30,23 @@ place_chart_tree() {
         "$YQ" -P -p=json -o=yaml '.' "$scratch/placed.json" > "$root/values.yaml"
     fi
     # Dependencies may be directories or packaged charts. Preserve their format.
-    while IFS= read -r -d '' archive; do
-        temporary=$(mktemp -d "$scratch/dependency.XXXXXX")
-        safe_extract "$archive" "$temporary/tree" 268435456
-        local roots=()
-        while IFS= read -r -d '' child; do roots+=("$child"); done < <(find "$temporary/tree" -mindepth 2 -maxdepth 2 -name Chart.yaml -type f -print0)
-        ((${#roots[@]} == 1)) || die 'Cannot determine dependency Chart root for node placement'
-        child=$(dirname "${roots[0]}")
-        place_chart_tree "$child" "$temporary/nested"
-        pack_chart "$child" "$temporary/chart.tgz"
-        mv "$temporary/chart.tgz" "$archive"
-        rm -rf -- "$temporary"
-    done < <(find "$root/charts" -maxdepth 1 -type f -name '*.tgz' -print0 2>/dev/null)
-    while IFS= read -r -d '' child; do
-        place_chart_tree "$(dirname "$child")" "$scratch/directory-$(basename "$(dirname "$child")")"
-    done < <(find "$root/charts" -mindepth 2 -maxdepth 2 -type f -name Chart.yaml -print0 2>/dev/null)
+    if [[ -d $root/charts ]]; then
+        while IFS= read -r -d '' archive; do
+            temporary=$(mktemp -d "$scratch/dependency.XXXXXX")
+            safe_extract "$archive" "$temporary/tree" 268435456
+            local roots=()
+            while IFS= read -r -d '' child; do roots+=("$child"); done < <(find "$temporary/tree" -mindepth 2 -maxdepth 2 -name Chart.yaml -type f -print0)
+            ((${#roots[@]} == 1)) || die 'Cannot determine dependency Chart root for node placement'
+            child=$(dirname "${roots[0]}")
+            place_chart_tree "$child" "$temporary/nested"
+            pack_chart "$child" "$temporary/chart.tgz"
+            mv "$temporary/chart.tgz" "$archive"
+            rm -rf -- "$temporary"
+        done < <(find "$root/charts" -maxdepth 1 -type f -name '*.tgz' -print0)
+        while IFS= read -r -d '' child; do
+            place_chart_tree "$(dirname "$child")" "$scratch/directory-$(basename "$(dirname "$child")")"
+        done < <(find "$root/charts" -mindepth 2 -maxdepth 2 -type f -name Chart.yaml -print0)
+    fi
     [[ -d $root/templates ]] || return 0
     while IFS= read -r -d '' file; do
         # Native selector settings are supplied through placement_values.
