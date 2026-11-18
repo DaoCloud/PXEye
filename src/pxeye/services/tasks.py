@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from contextlib import nullcontext
 from pxeye.installation.executor import terminal_installer_failure
-from pxeye.domain.workflow import installation_impact, authorize_impact
+from pxeye.domain.workflow import installation_impact, authorize_impact, require_machine_creation
 from pxeye.services.device_plans import bmc_choice
 from pxeye.services.instances import check_release_pending
 from pxeye.services.boot_transport import BootTransport, external_boot, site_boot_snapshot
@@ -539,7 +539,11 @@ class TaskCoordinator:
                                 if not observed["machine"] and self.discovery_status:
                                     if discovery is None:
                                         discovery = self.discovery_status()
-                                    if discovery["state"] == "paused":
+                                    credential_state = discovery.get("credential_state", "ready")
+                                    if (
+                                        discovery["state"] == "paused"
+                                        or credential_state != "ready"
+                                    ):
                                         gate = self.adapter.rpc(
                                             "DetermineMachineIngestionState",
                                             {
@@ -551,9 +555,14 @@ class TaskCoordinator:
                                             gate.get("machineIngestionState", "NotDiscovered")
                                             == "NotDiscovered"
                                         ):
+                                            if credential_state != "ready":
+                                                raise ValueError(
+                                                    "本站点接管凭据尚未就绪或无法核验，请先在站点设置检查。"
+                                                )
                                             raise ValueError(
                                                 "站点发现已暂停，此 BMC 尚未被发现。请在“站点设置 → 站点发现”启用后重试。"
                                             )
+                                    require_machine_creation(discovery)
                                 check["checks"].append(
                                     {
                                         "name": "BMC身份、启动网络配置及Scout保护",

@@ -116,6 +116,7 @@ class CoreClient:
 
     def rpc(self, method, body):
         self.check_core_certificate()
+        limit = 4 if method in ("GetSiteCredentialReadiness", "GetSiteExplorerLastRun") else 45
         endpoint = self.config["core_url"].removeprefix("https://")
         env = {
             k: v
@@ -125,9 +126,9 @@ class CoreClient:
         argv = [
             self.config.get("grpcurl", "/usr/local/bin/grpcurl"),
             "-connect-timeout",
-            "5",
+            str(min(5, limit)),
             "-max-time",
-            "45",
+            str(limit),
             "-cacert",
             str(self.core_secrets / "ca.crt"),
             "-cert",
@@ -139,4 +140,4 @@ class CoreClient:
             endpoint,
             "forge.Forge/" + method,
         ]
-        return json.loads(run(argv, text=json.dumps(body), timeout=55, env=env))
+        return json.loads(run(argv, text=json.dumps(body), timeout=limit + 10, env=env))

@@ -3,6 +3,13 @@
 from pxeye.common import digest
 
 
+def require_machine_creation(discovery):
+    if discovery.get("create_machines") is False:
+        raise ValueError(
+            "站点自动建机已关闭，逐机放行不会创建 Machine。请管理员核对站点接管范围后启用建机，再继续原任务。"
+        )
+
+
 def installation_impact(check, config):
     pending = bool(check.get("deferred_first_install"))
     settings = config.get("site_explorer_settings", {})

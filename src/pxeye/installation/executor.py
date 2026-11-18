@@ -247,6 +247,7 @@ class Executor:
     def __init__(self, adapter, store):
         self.adapter, self.store = adapter, store
         self.boot_transport = BootTransport(adapter, store)
+        self.discovery_status = None
 
     def event(self, task, stage, message, **extra):
         task["stage"] = stage
@@ -1615,6 +1616,10 @@ class Executor:
             raise RuntimeError("设备已有 Instance；本次首次安装停止，请核对关联。")
         if not observed["machine"]:
             endpoint = {"ip_address": probe["bmc_ip"], "mac_address": row["bmc_mac_address"]}
+            if self.discovery_status:
+                from pxeye.domain.workflow import require_machine_creation
+
+                require_machine_creation(self.discovery_status())
             gate = self.adapter.rpc("DetermineMachineIngestionState", endpoint).get(
                 "machineIngestionState"
             )

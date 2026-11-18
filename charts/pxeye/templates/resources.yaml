@@ -265,6 +265,11 @@ spec:
         - name: secrets
           mountPath: /secrets
           readOnly: true
+        {{- with (.Values.siteCredentials | default dict).existingSecret }}
+        - name: site-credential-input
+          mountPath: /site-credential-input
+          readOnly: true
+        {{- end }}
         - name: storage
           mountPath: /materials
           subPath: http/nico/os-library
@@ -290,6 +295,13 @@ spec:
         secret:
           secretName: '{{ default .Release.Name .Values.auth.existingSecret }}'
           defaultMode: 288
+      {{- with (.Values.siteCredentials | default dict).existingSecret }}
+      - name: site-credential-input
+        secret:
+          secretName: {{ . | quote }}
+          optional: true
+          defaultMode: 288
+      {{- end }}
       - name: temporary
         emptyDir:
           sizeLimit: 256Mi

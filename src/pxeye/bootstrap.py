@@ -31,6 +31,7 @@ from pxeye.services.equipment import Equipment
 from pxeye.services.addresses import ManagementAddresses
 from pxeye.services.site_boot_network import SiteBootNetwork
 from pxeye.services.site_explorer import SiteExplorer
+from pxeye.services.site_credentials import SiteCredentials
 from pxeye.deployment.service import NicoDeployment
 from pxeye.clients.process import run
 from pxeye.common import atomic_text
@@ -81,6 +82,8 @@ class Application:
         self.nico_deployment = NicoDeployment(self)
         self.site_boot_network = SiteBootNetwork(self)
         self.site_explorer = SiteExplorer(self)
+        self.executor.discovery_status = self.site_explorer.view
+        self.site_credentials = SiteCredentials(self)
         if config.get("core_identity_source"):
             threading.Thread(target=self._maintain_core_identity, daemon=True).start()
         else:
@@ -134,7 +137,7 @@ class Application:
             onboarding=self.onboarding,
             device_config=self.device_config,
             os_library=self.os_library,
-            discovery_status=lambda: self.site_explorer.view(),
+            discovery_status=lambda: self.site_explorer.view() | {"credential_state": self.site_credentials.view()["state"]},
         )
 
     def _refresh_inventory(self):
@@ -309,6 +312,7 @@ class Application:
         with self.connection_lock:
             if self.store.incomplete():
                 raise ValueError("存在未完成安装任务，未切换 Core。")
+            first_connection = not (self.adapter.data / 'config' / 'deployment-site.json').exists()
             core_url = self._service_url(core_url, schemes=("https",), label="Core")
             external_pxe = (
                 self._service_url(pxe_url, schemes=("http", "https"), label="PXE")
@@ -420,6 +424,8 @@ class Application:
             )
             self.config.update(persisted)
             self.adapter.core_secrets = directory
+            if first_connection:
+                self.site_credentials.first_connection(core_url)
             if self.os_library:
                 # The library holds a settings reference; refresh it after the site handoff.
                 self.os_library.settings = self.config["os_library"]
@@ -580,9 +586,15 @@ class Application:
             },
             "boot_network": self.site_boot_network.view(),
             "site_explorer": self.site_explorer.view(),
+            "site_credentials": self.site_credentials.view(),
+            "last_site_scan": self.site_credentials.last_scan(),
         }
 
     def save_site(self, body):
+        with self.connection_lock:
+            return self._save_site_locked(body)
+
+    def _save_site_locked(self, body):
         if set(body) != {"name", "core_url", "default_install_concurrency"}:
             raise ValueError("站点设置字段无效。")
         name, core_url = str(body["name"]).strip(), str(body["core_url"]).strip()

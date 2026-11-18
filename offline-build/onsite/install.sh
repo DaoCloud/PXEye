@@ -28,6 +28,8 @@ Install PXEye/NICo into an existing cluster without host Python.
   --archive PATH  Absolute offline archive path (required)
   --mode MODE     kind (default), or k8s using the current kubeconfig context
   --node NODE     Schedule all new delivery workloads and hooks on this node
+  --new-site        Generate missing defaults on first Core connection (new hardware estate only)
+  --site-credentials-secret NAME  Use approved site passwords from a Secret in the PXEye namespace
   -h, --help      Show this help
 
 If Registry discovery is ambiguous, set NICO_REGISTRY_URL=http(s)://host[:port].
@@ -35,10 +37,12 @@ Rerun the same command after fixing a failure to resume this installation.
 HELP
 }
 
-ARCHIVE= MODE=kind NODE_NAME= NODE_SELECTOR='{}'
+ARCHIVE= MODE=kind NODE_NAME= NODE_SELECTOR='{}' NEW_SITE=false SITE_CREDENTIALS_SECRET=
 while (($#)); do
     case $1 in
         --archive) (($# >= 2)) || die '--archive needs a path'; ARCHIVE=$2; shift 2 ;;
+        --new-site) NEW_SITE=true; shift ;;
+        --site-credentials-secret) (($# >= 2)) && [[ $2 =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ ]] || die 'Expected a Secret name'; SITE_CREDENTIALS_SECRET=$2; shift 2 ;;
         --mode) (($# >= 2)) || die '--mode needs kind or k8s'; MODE=$2; shift 2 ;;
         --node) (($# >= 2)) && [[ -n $2 ]] || die '--node needs a Kubernetes node name'; NODE_NAME=$2; shift 2 ;;
         -h|--help) usage; exit 0 ;;
@@ -99,8 +103,8 @@ ARCHIVE_ID=$("$JQ" -nc --arg name "$_name" --argjson bytes "$(stat -c %s -- "$AR
     --arg modified "$(stat -c %y -- "$ARCHIVE")" '{name:$name,bytes:$bytes,modified:$modified}')
 _implementation=$({ find "$KIT_DIR" -type f -name '*.sh' -print0; find "$BIN_DIR" -maxdepth 1 -type f -print0; } | \
     LC_ALL=C sort -z | xargs -0 sha256sum | sed "s|$KIT_DIR/||g; s|$BIN_DIR/|bin/|g" | sha256sum | awk '{print $1}')
-IDENTITY=$("$JQ" -nc --argjson archive "$ARCHIVE_ID" --arg mode "$MODE" --arg context "$CONTEXT" --arg implementation "$_implementation" --arg node "$NODE_NAME" \
-    '{installer:"pxeye-onsite-shell-v1",archive:$archive,cluster_mode:$mode,context:$context,implementation:$implementation} + (if $node=="" then {} else {node:$node} end)')
+IDENTITY=$("$JQ" -nc --argjson archive "$ARCHIVE_ID" --arg mode "$MODE" --arg context "$CONTEXT" --arg implementation "$_implementation" --arg node "$NODE_NAME" --argjson fresh "$NEW_SITE" --arg input "$SITE_CREDENTIALS_SECRET" \
+    '{installer:"pxeye-onsite-shell-v1",archive:$archive,cluster_mode:$mode,context:$context,implementation:$implementation} + (if $node=="" then {} else {node:$node} end) + (if $fresh or $input!="" then {new_site:$fresh,credential_secret:$input} else {} end)')
 if [[ -f $PROGRESS ]]; then
     "$JQ" -e --argjson identity "$IDENTITY" '(.identity|del(.implementation))==($identity|del(.implementation))' "$PROGRESS" >/dev/null || \
         die 'Archive, installer format, mode or context changed; resume the original target or use a different archive name. Python-run progress is not adopted.'

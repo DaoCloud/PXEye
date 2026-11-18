@@ -351,7 +351,8 @@ bootstrap_pxeye() {
     fi
     [[ "$chart" == "$DEPLOY/"* ]] || die 'Bootstrap Chart must remain inside this deployment directory'
     values="$directory/values.yaml"
-    "$JQ" -n --arg release "$RELEASE" --arg ns "$NAMESPACE" --arg site "$("$JQ" -r '.site_name' "$CONFIG")" '{
+    "$JQ" -n --arg release "$RELEASE" --arg ns "$NAMESPACE" --arg site "$("$JQ" -r '.site_name' "$CONFIG")" --argjson fresh "${NEW_SITE:-false}" --arg input "${SITE_CREDENTIALS_SECRET:-}" '{
+        siteCredentials:{newSite:$fresh,existingSecret:$input},
         nico:{enabled:true, allowClusterResources:true}, service:{type:"NodePort",nodePort:31808},
         components:{pxeye:{enabled:true},certManager:{enabled:false},platform:{enabled:false},vaultBootstrap:{enabled:false},core:{enabled:false},materials:{enabled:false}},
         siteBootstrap:{enabled:true,siteName:$site,coreUrl:("https://"+$release+"-nico-api."+$ns+".svc.cluster.local:1079"),namespace:$ns,
@@ -405,6 +406,10 @@ check_pxeye_core() {
         # Python runs inside the existing PXEye image; the fireseed host does
         # not need a Python interpreter or any Python packages.
         if run pxeye-core-connection timeout 30s kubectl --context "$CONTEXT" -n "$NAMESPACE" exec "deployment/$release" -- python3 -c "$program"; then
+            if [[ ${NEW_SITE:-false} == true || -n ${SITE_CREDENTIALS_SECRET:-} ]]; then
+                run pxeye-site-defaults timeout 60s kubectl --context "$CONTEXT" -n "$NAMESPACE" exec "deployment/$release" -- python3 -c 'from pxeye.services.site_credentials import verify_installed; raise SystemExit(0 if verify_installed() else 1)' || die 'Core connected but site credentials are not ready. Check Site settings, then resume; existing values are preserved.'
+                printf 'SITE_CREDENTIALS_READY\n'
+            fi
             state_mark pxeye-core-connected "$("$JQ" -cn --arg release "$release" --arg at "$(date -u +%FT%TZ)" '{release:$release,at:$at}')"
             printf 'PXEYE_CORE_CONNECTED\n'
             return

@@ -312,10 +312,19 @@ function taskRows() {
     return `<tr><td><button class="link-button" data-task="${esc(t.id)}">${esc(t.id)}</button><span class="live-small">${when(t.created_at)}</span></td><td>${esc(t.device)}<span class="live-small">${esc(t.management_ip)}</span></td><td>${esc(t.hostname)}</td><td>${badge(status.label, status.tone)}<span class="live-small">${esc(stages[t.stage])}</span></td><td>${bmcLink(state.resources?.devices.find((d) => d.serial === t.device)?.bmc_ip)}</td><td><div class="live-tools"><button class="link-button" data-task="${esc(t.id)}">实时日志 / 记录</button>${endTaskButton(t)}</div></td></tr>`;
   });
 }
+const siteCredentialNames = { SiteWideBmcRoot: "BMC", HostUefi: "主机 UEFI", DpuUefi: "DPU UEFI" };
+function credentialSummary(creds = {}, scan = {}) {
+  const missing = Object.entries(creds.items || {}).filter(([, state]) => state !== "ready").map(([kind]) => siteCredentialNames[kind]).join("、");
+  const text = { ready: "已就绪", missing: `缺少 ${missing}`, recovery: `需恢复 ${missing}` }[creds.state] || "无法读取";
+  const scanLabel = { success: "成功", failed: "失败", none: "尚未扫描" }[scan.state] || "未知";
+  const scanTime = scan.finished_at ? new Date(scan.finished_at).toLocaleString("zh-CN", { hour12: false }) : "";
+  const action = creds.state === "missing" ? `<button class="link-button" data-live="site-credentials-open">${creds.supplied ? "补录缺失凭据" : "生成缺失凭据"}</button>` : "";
+  return `<span title="${esc(creds.detail || (creds.state === "recovery" ? "请核对现有凭据来源并恢复原值" : "BMC、主机 UEFI、DPU UEFI"))}">接管凭据：${esc(text)}</span>${action}<span title="${esc(scanTime)}">最近扫描：${esc(scanLabel)}${scan.category ? `（${esc(scan.category === "missing_credentials" ? "缺少凭据" : scan.category)}）` : ""}</span>`;
+}
 function siteDiscoveryLine(discovery = {}) {
   const { state: phase, create_machines: auto } = discovery;
   const labels = { enabled: "已启用", paused: "已暂停", applying: "启用中…", failed: "更新失败" };
-  return `<div class="site-discovery-line" role="status"><strong>站点发现</strong>${badge(labels[phase] || "无法读取", phase === "enabled" ? "green" : phase === "failed" ? "red" : "amber")}${typeof auto === "boolean" ? `<span>自动建机：${auto ? "开" : "关"}</span>` : ""}${phase === "paused" && auto === false ? '<button class="link-button" data-live="site-discovery-open">启用</button>' : ""}${discovery.detail && phase !== "applying" ? `<span>${esc(discovery.detail)}</span>` : ""}</div>`;
+  return `<div class="site-discovery-line" role="status"><strong>站点发现</strong>${badge(labels[phase] || "无法读取", phase === "enabled" ? "green" : phase === "failed" ? "red" : "amber")}${typeof auto === "boolean" ? `<span>自动建机：${auto ? "开" : "关"}</span>` : ""}${phase === "paused" && auto === false ? '<button class="link-button" data-live="site-discovery-open">启用</button>' : ""}${discovery.detail && phase !== "applying" ? `<span>${esc(discovery.detail)}</span>` : ""}${credentialSummary(state.siteInfo?.site_credentials, state.siteInfo?.last_site_scan)}</div>`;
 }
 function sitePage() {
   const s = state.siteInfo;
@@ -1137,6 +1146,8 @@ registerActions(
     "site-edit",
     "site-save",
     "site-discovery-open",
+    "site-credentials-open",
+    "site-credentials-apply",
     "site-discovery-settings",
     "site-discovery-enable",
     "site-boot-network",
@@ -1210,6 +1221,22 @@ registerActions(
             close();
             render();
             toast(result.status === "enabled" ? "站点发现已启用。" : "正在启用站点发现，状态会自动更新。");
+          });
+        case "site-credentials-open": {
+          const creds = state.siteInfo?.site_credentials;
+          if (creds?.state !== "missing") return;
+          const names = Object.entries(creds.items).filter(([, status]) => status === "missing").map(([kind]) => siteCredentialNames[kind]);
+          state.wizard = { resource: "site-credentials", revision: creds.revision };
+          return modal(creds.supplied ? "补录站点凭据" : "生成站点凭据", state.siteInfo.site.name,
+            `<p>仅补齐：${esc(names.join("、"))}。</p><p>${creds.supplied ? "使用本站点已挂载 Secret 中的原值。" : "确认这些凭据从未用于现有硬件后，再生成新值。恢复旧站点请使用原凭据。"}已有值保持不变，密码由 Core 托管，不会显示在页面。</p><div id="resource-error" class="live-error"></div>`,
+            button("取消", "close") + button(creds.supplied ? "确认补录" : "确认生成", "site-credentials-apply", true));
+        }
+        case "site-credentials-apply":
+          return await busy(async () => {
+            const result = await api("/api/site/credentials/initialize", { confirm: true, revision: state.wizard.revision });
+            state.siteInfo.site_credentials = result;
+            close(); render(); toast("站点接管凭据已就绪。");
+            await refreshPage("site");
           });
         case "site-save":
           return await saveSite();

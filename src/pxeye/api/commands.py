@@ -288,6 +288,10 @@ class CommandRoutes:
             return self.respond(
                 200, self.app.configure(lambda: self.app.site_explorer.enable(body))
             )
+        if path == "/api/site/credentials/initialize":
+            return self.respond(
+                200, self.app.configure(lambda: self.app.site_credentials.initialize(body))
+            )
         if path == "/api/site":
             return self.respond(200, self.app.save_site(body))
         if path == "/api/site/boot-network/preview":

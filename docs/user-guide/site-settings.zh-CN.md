@@ -18,6 +18,10 @@ product_version: "0.22.16"
 
 ## 2. 字段填写
 
+“当前站点”摘要分别显示**站点发现、接管凭据、最近扫描**。接管凭据是站点级的 BMC 目标密码、主机 UEFI 和 DPU UEFI 默认密码，与 PXEye 登录和逐设备 BMC 当前密码无关。三项就绪时无须操作；只有 Core 确认缺项时才出现**生成缺失凭据**。确认这些值从未用于已有硬件后即可生成；已存在的值不会重写。若出现“需恢复”，请先恢复原值或配置站点输入 Secret。读取失败或 Core 版本不支持时显示“无法读取”，此时不提供生成按钮。
+
+全新现场可在 `install.sh` 增加 `--new-site`，在 PXEye 首次连接 Core 后自动初始化并检查结果；不要将重装同一机房当作新站点。需使用指定值或恢复旧值时，预先在 PXEye 命名空间准备 Secret，使用 `--site-credentials-secret <名称>`；键为 `bmc_password`、`host_uefi_password`、`dpu_uefi_password`（分别保存原始密码字节，不带换行）。直接使用 Helm 时对应 `siteCredentials.newSite`、`siteCredentials.existingSecret`，并设置匹配的 `siteBootstrap.coreUrl`。已连接站点通过摘要中的**补录缺失凭据**读取挂载的 Secret。密码不返回给浏览器；新生成值由 Core 的凭据存储托管，应纳入该存储的站点备份。仅更新 PXEye 不足以提供新接口，须配套升级 Core。
+
 **站点发现**显示当前站点所有就绪 Core 副本的实际开关：已启用、已暂停或无法读取。自动建机单独显示。新站点的默认配置随 Core 启动发现，自动建机和固件自动更新保持关闭；这不代表已发现某台 BMC，扫描仍需管理网络和站点凭据就绪。
 
 旧站点显示“已暂停”且自动建机关闭时，可点击**启用站点发现**。确认后更新 Core 挂载的站点 ConfigMap 并滚动更新 Core，单副本站点的 API 可能短暂不可用。“当前站点”中的发现状态会显示**启用中**，就绪后自动复查实际开关；滚动期间无需重复点击。使用旧 Helm values 或 GitOps 管理该站点时，同步将其 `[site_explorer].enabled` 设为 `true`，避免后续部署恢复旧值。普通保存站点设置不会重新打开已暂停的发现。
