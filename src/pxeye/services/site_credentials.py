@@ -7,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from pxeye.common import atomic_json, digest
+from pxeye.clients.errors import RPCMethodUnavailableError
 
 
 FIELDS = {
@@ -57,6 +58,8 @@ class SiteCredentials:
     def view(self):
         try:
             return self._status()
+        except RPCMethodUnavailableError as error:
+            return {"state": "unsupported", "items": {}, "detail": str(error)}
         except (RuntimeError, ValueError, OSError):
             return {
                 "state": "unknown",

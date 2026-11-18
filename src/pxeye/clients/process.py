@@ -14,6 +14,12 @@ def run(argv, *, text=None, timeout=40, env=None):
     except subprocess.TimeoutExpired:
         raise RuntimeError(f"{Path(argv[0]).name} 执行超时（{timeout} 秒）。") from None
     if result.returncode:
+        if (
+            Path(argv[0]).name == "grpcurl"
+            and argv[-1] == "forge.Forge/GetSiteCredentialReadiness"
+            and re.search(r'does not include a method named "GetSiteCredentialReadiness"|Code: Unimplemented\b', result.stderr)
+        ):
+            raise RPCMethodUnavailableError("当前 Core 不支持逐项核验站点凭据。")
         # CLI arguments may contain installation data. Never include argv or stderr in public errors.
         if (
             Path(argv[0]).name == "grpcurl"

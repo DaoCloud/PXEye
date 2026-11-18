@@ -313,22 +313,28 @@ function taskRows() {
   });
 }
 const siteCredentialNames = { SiteWideBmcRoot: "BMC", HostUefi: "主机 UEFI", DpuUefi: "DPU UEFI" };
+function siteStatusItem(label, text, tone, action = "", hint = "") {
+  return `<span class="site-summary-item"${hint ? ` title="${esc(hint)}"` : ""}><strong>${esc(label)}</strong>${badge(text, tone)}${action}</span>`;
+}
 function credentialSummary(creds = {}, scan = {}) {
   const missing = Object.entries(creds.items || {}).filter(([, state]) => state !== "ready").map(([kind]) => siteCredentialNames[kind]).join("、");
-  const text = { ready: "已就绪", missing: `缺少 ${missing}`, recovery: `需恢复 ${missing}` }[creds.state] || "无法读取";
-  const scanLabel = { success: "成功", failed: "失败", none: "尚未扫描" }[scan.state] || "未知";
   const scanTime = scan.finished_at ? new Date(scan.finished_at).toLocaleString("zh-CN", { hour12: false }) : "";
+  const historical = creds.state === "unsupported" && scan.state === "success" && scanTime;
+  const text = { ready: "已就绪", missing: `缺少 ${missing}`, recovery: `需恢复 ${missing}`, unsupported: historical ? "上次扫描已通过" : "不支持逐项核验" }[creds.state] || "无法读取";
   const action = creds.state === "missing" ? `<button class="link-button" data-live="site-credentials-open">${creds.supplied ? "补录缺失凭据" : "生成缺失凭据"}</button>` : "";
-  return `<span title="${esc(creds.detail || (creds.state === "recovery" ? "请核对现有凭据来源并恢复原值" : "BMC、主机 UEFI、DPU UEFI"))}">接管凭据：${esc(text)}</span>${action}<span title="${esc(scanTime)}">最近扫描：${esc(scanLabel)}${scan.category ? `（${esc(scan.category === "missing_credentials" ? "缺少凭据" : scan.category)}）` : ""}</span>`;
+  const hint = historical ? `${creds.detail || ""} 最近一次成功扫描：${scanTime}；并非当前逐项核验。` : creds.detail || (creds.state === "recovery" ? "需恢复原有凭据" : "BMC、主机 UEFI、DPU UEFI");
+  const credentials = siteStatusItem("接管凭据", text, creds.state === "ready" ? "green" : historical ? "gray" : "amber", action, hint);
+  const issue = { failed: scan.category === "missing_credentials" ? "缺少凭据" : scan.category || "失败", none: "尚未扫描", unknown: "无法读取" }[scan.state];
+  return credentials + (issue ? siteStatusItem("最近扫描", issue, scan.state === "failed" ? "red" : "gray", "", scanTime) : "");
 }
 function siteDiscoveryLine(discovery = {}) {
   const { state: phase, create_machines: auto } = discovery;
   const labels = { enabled: "已启用", paused: "已暂停", applying: "启用中…", failed: "更新失败" };
   const creationUpdate = discovery.action === "create_machines" && ["applying", "failed"].includes(phase);
-  const autoLabel = creationUpdate ? labels[phase] : typeof auto === "boolean" ? (auto ? "开" : "关") : "待核对";
+  const autoLabel = creationUpdate ? labels[phase] : typeof auto === "boolean" ? (auto ? "已启用" : "已关闭") : "待核对";
   const discoverAction = phase === "paused" && auto === false ? '<button class="link-button" data-live="site-discovery-open">启用站点发现</button>' : "";
   const createAction = phase === "enabled" && auto === false ? '<button class="link-button" data-live="site-creation-open">开启自动建机</button>' : "";
-  return `<div class="site-discovery-line" role="status"><strong>站点发现</strong>${badge(creationUpdate ? "待核对" : labels[phase] || "无法读取", phase === "enabled" ? "green" : "amber")}${discoverAction}<span>自动建机：${esc(autoLabel)}</span>${createAction}${discovery.detail && phase !== "applying" ? `<span>${esc(discovery.detail)}</span>` : ""}${credentialSummary(state.siteInfo?.site_credentials, state.siteInfo?.last_site_scan)}</div>`;
+  return `<div class="site-discovery-line" role="status">${siteStatusItem("站点发现", creationUpdate ? "待核对" : labels[phase] || "无法读取", phase === "enabled" ? "green" : phase === "failed" && !creationUpdate ? "red" : "amber", discoverAction)}${siteStatusItem("自动建机", autoLabel, creationUpdate ? (phase === "failed" ? "red" : "amber") : auto ? "green" : "gray", createAction)}${credentialSummary(state.siteInfo?.site_credentials, state.siteInfo?.last_site_scan)}${discovery.detail && phase !== "applying" ? `<span>${esc(discovery.detail)}</span>` : ""}</div>`;
 }
 function sitePage() {
   const s = state.siteInfo;
