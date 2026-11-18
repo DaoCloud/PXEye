@@ -6,6 +6,7 @@ from pxeye.common import sha
 from pxeye.services.onboarding import Onboarding, discovery_info, architecture
 from pxeye.common import atomic_json, digest
 from pxeye.domain.pci import scout_pci_address
+from pxeye.services.redfish_disks import cached_disks, display_disks
 
 
 def facts(machine):
@@ -20,7 +21,10 @@ def facts(machine):
             {
                 k: v
                 for k, v in dict(
-                    serial=d.get("serial"), model=d.get("model"), size_mb=extra.get("size_mb")
+                    serial=d.get("serial"),
+                    model=d.get("model"),
+                    size_mb=extra.get("size_mb"),
+                    is_nvme=True if extra else None,
                 ).items()
                 if v is not None
             }
@@ -275,4 +279,15 @@ class Hardware:
         result["nics"] = (
             EquipmentPlanning(self.adapter, self.resources).host_nics(record) if record else []
         )
+        inventory = cached_disks(self.adapter, serial, row["bmc_mac_address"])
+        hardware = result.get("hardware") or {}
+        scout = (
+            hardware.get("disks", [])
+            if serial in {hardware.get("product_serial"), hardware.get("chassis_serial")}
+            and result.get("phase") != "identity_conflict"
+            else []
+        )
+        result["disks"] = display_disks(inventory, scout)
+        result["disk_error"] = inventory.get("error")
+        result["disk_read_at"] = inventory.get("observed_at")
         return result

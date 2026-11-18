@@ -420,7 +420,7 @@ async function equipmentBatchRefresh() {
   modal(
     "刷新设备详情",
     `已启动 ${selection.length} 台设备的后台刷新`,
-    `<div class="live-empty">正在通过 Redfish 读取设备身份和型号，请稍候…</div><div class="live-note">可以关闭窗口继续使用页面；刷新完成后设备信息会自动更新。</div>` +
+    `<div class="live-empty">正在读取设备身份及服务器网卡、磁盘信息…</div><div class="live-note">可以关闭窗口继续使用页面；刷新完成后设备信息会自动更新。</div>` +
       eqError(),
     button("关闭", "close"),
   );
@@ -442,7 +442,7 @@ async function equipmentBatchRefresh() {
       ["设备 / SN", "地址", "结果", "刷新时间"],
       r.rows.map(
         (row) =>
-          `<tr><td>${esc(row.serial || row.device_id)}</td><td>${esc(row.address || "—")}</td><td>${row.passed ? esc([equipmentKinds[row.kind], row.model].filter(Boolean).join(" · ") || "已刷新") : `<span class="live-error">${esc(row.detail)}</span>`}</td><td>${row.refreshed_at ? when(row.refreshed_at) : "—"}</td></tr>`,
+          `<tr><td>${esc(row.serial || row.device_id)}</td><td>${esc(row.address || "—")}</td><td>${row.passed ? esc([equipmentKinds[row.kind], row.model].filter(Boolean).join(" · ") || "已刷新") : `<span class="live-error">${esc(row.detail)}</span>`}${row.disk_error ? `<span class="live-small">${esc(row.disk_error)}</span>` : ""}</td><td>${row.refreshed_at ? when(row.refreshed_at) : "—"}</td></tr>`,
       ),
     ) + eqError(),
     button("关闭", "close"),

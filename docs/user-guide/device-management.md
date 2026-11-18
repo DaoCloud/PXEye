@@ -122,6 +122,8 @@ The plan page's **Configuration matches (配置一致)** means the plan matches 
 
 Double-click a device row or click its name for details. Select devices and click **Refresh device details (刷新设备详情)** to start a background task; review the hardware update time and results after completion.
 
+The **Device disks (设备磁盘列表)** table appears below the server's NIC list. Refresh reads storage from the BMC even before Scout reports. Each row shows name, model, capacity (decimal GB/TB) and media type, such as HDD or SSD. RAID volumes appear once, without their member drives; mixed media can appear as `HDD / SSD`. Unreported fields display `—`. This inventory does not select an installation target.
+
 ## 4. Example
 
 These are fictional values; replace them with the actual site plan:

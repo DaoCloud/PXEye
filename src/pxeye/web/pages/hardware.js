@@ -75,6 +75,20 @@ function deviceInterfaceTable(device, hardware, observed = []) {
     }),
   ) + '<p class="live-small">IP 为已保存的设备配置，下次安装时生效。PCIe 地址来自硬件回报，未获取或映射不唯一时留空。</p></section>';
 }
+function deviceDiskTable(hardware) {
+  const capacity = (bytes) => {
+    if (!Number.isFinite(bytes) || bytes <= 0) return "—";
+    const tb = bytes >= 1e12;
+    return (bytes / (tb ? 1e12 : 1e9)).toLocaleString("zh-CN", { maximumFractionDigits: 2 }) + (tb ? " TB" : " GB");
+  };
+  const disks = hardware.disks || [];
+  const notice = hardware.disk_error ? `<p class="live-small">${esc(hardware.disk_error)}${hardware.disk_read_at ? ` 上次成功读取：${when(hardware.disk_read_at)}` : ""}</p>` : "";
+  const content = disks.length || hardware.disk_read_at ? table(
+    ["名称", "型号", "容量", "磁盘类型"],
+    disks.map(disk => `<tr><td>${esc(disk.name || "—")}</td><td>${esc(disk.model || "—")}</td><td>${capacity(disk.capacity_bytes)}</td><td>${esc(disk.media_type || "—")}</td></tr>`),
+  ) : '<div class="live-empty">尚无磁盘清单，请在纳管设备中刷新设备详情。</div>';
+  return `<section class="subsection"><h3>设备磁盘列表</h3>${notice}${content}</section>`;
+}
 function renderDeviceDetail(w, scroll = 0) {
   if (state.wizard !== w) return;
   const d = state.resources.devices.find((d) => d.serial === w.serial),
@@ -86,7 +100,8 @@ function renderDeviceDetail(w, scroll = 0) {
     modal("设备详情", w.serial, body, button("关闭", "close"));
     return;
   }
-  body += `<p class="live-small">硬件信息更新时间：${h.hardware_read_at ? when(h.hardware_read_at) : "暂无"}</p>`;
+  const updated = Math.max(h.hardware_read_at || 0, h.disk_read_at || 0);
+  body += `<p class="live-small">硬件信息更新时间：${updated ? when(updated) : "暂无"}</p>`;
   if (h.error || w.error)
     body += `<div class="live-error">${esc(w.error || (typeof h.error === "string" && h.error) || "NICo返回接入失败，请查看错误信息。")}</div>`;
   if (w.tab === "overview") {
@@ -113,7 +128,7 @@ function renderDeviceDetail(w, scroll = 0) {
             " · " +
             h.hardware.nics.length +
             " 个网卡 · " +
-            h.hardware.disks.length +
+            (h.disks || []).length +
             " 块盘"
           : "等待 Scout 回报",
       ],
@@ -157,23 +172,14 @@ function renderDeviceDetail(w, scroll = 0) {
           ? [["内存", (f.memory_mb / 1024).toLocaleString() + " GiB"]]
           : []),
       ]);
-      body +=
-        '<section class="subsection"><h3>磁盘</h3>' +
-        table(
-          ["型号", "序列号", "容量", "规划用途"],
-          f.disks.map(
-            (disk) =>
-              `<tr><td>${esc(disk.model || "未回报")}</td><td>${esc(disk.serial || "无可用序列号")}</td><td>${disk.size_mb ? (disk.size_mb / 1024).toFixed(1) + " GiB" : "Scout未提供"}</td><td>${disk.serial && disk.serial === d.intent?.disk_serial ? "规划系统盘" : "—"}</td></tr>`,
-          ),
-        ) +
-        "</section>";
       if (h.changes.length || h.conflicts.length)
         body += `<section class="subsection"><h3>硬件与规划变更</h3>${[...h.changes, ...h.conflicts].map((x) => `<p>${esc(x)}</p>`).join("")}<p class="live-small">请核对差异并更新设备规划。</p></section>`;
     } else
       body +=
-        '<div class="live-empty">暂无硬件信息。主机进入 Scout 后可采集网卡和磁盘。</div>';
+        '<div class="live-empty">等待 Scout 回报 CPU 和内存信息。</div>';
   }
   body += deviceInterfaceTable(d, h.hardware, h.nics);
+  body += deviceDiskTable(h);
   if (h.can_prepare && !w.check)
     body += button("检查接入条件", "hardware-check", false);
   if (w.check) {

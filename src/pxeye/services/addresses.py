@@ -609,10 +609,22 @@ class ManagementAddresses:
                     "verified_ip": row["addresses"][0],
                 }
                 self.write("proofs", row["interface_id"], proof)
+                storage = {}
+                if identity["kind"] == "server":
+                    from pxeye.services.redfish_disks import display_disks, refresh_disks
+
+                    inventory = refresh_disks(
+                        self.adapter, row["addresses"][0], credential, identity, row["mac_address"]
+                    )
+                    storage = {
+                        "disks": display_disks(inventory, []),
+                        "disk_error": inventory.get("error"),
+                    }
                 return {
                     "device_id": device_id,
                     "interface_id": row["interface_id"],
                     "passed": True,
+                    **storage,
                     "serial": identity["serial"],
                     "kind": identity["kind"],
                     "model": identity["model"],
