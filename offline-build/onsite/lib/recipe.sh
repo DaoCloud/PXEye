@@ -26,7 +26,7 @@ derive_recipe_chart() {
     local source=$1 destination=$2 scratch=$3 root path
     mkdir -p "$scratch"
     recipe_chart_alias_map "$source" "$scratch/aliases.json"
-    if [[ $("$JQ" 'length' "$scratch/aliases.json") == 0 ]]; then cp "$source" "$destination"; return; fi
+    if [[ $("$JQ" 'length' "$scratch/aliases.json") == 0 && -z $NODE_NAME ]]; then cp "$source" "$destination"; return; fi
     safe_extract "$source" "$scratch/tree" 268435456
     local roots=()
     while IFS= read -r -d '' path; do roots+=("$path"); done < <(find "$scratch/tree" -mindepth 2 -maxdepth 2 -type f -name Chart.yaml -print0)
@@ -35,12 +35,12 @@ derive_recipe_chart() {
     # Helm aliases become the child .Chart.Name, including container names
     # that standard nameOverride/fullnameOverride values cannot affect.
     "$JQ" --slurpfile aliases "$scratch/aliases.json" '
-      .dependencies |= map(. as $dependency | ($dependency.alias // $dependency.name) as $alias
+      .dependencies = ((.dependencies // []) | map(. as $dependency | ($dependency.alias // $dependency.name) as $alias
         | if $aliases[0][$alias] then .alias=$aliases[0][$alias] else . end
         | if (.condition|type)=="string" then
             .condition |= (split(",") | map(reduce ($aliases[0]|to_entries[]) as $item (.;
               if .==$item.key or startswith($item.key+".") then $item.value+ltrimstr($item.key) else . end)) | join(","))
-          else . end)
+          else . end))
     ' "$scratch/aliases.json.metadata" > "$scratch/chart.json" || die 'Cannot derive DNS-safe dependency aliases'
     "$YQ" -P -p json -o yaml '.' "$scratch/chart.json" > "$root/Chart.yaml"
     "$YQ" -p yaml -o json '.' "$root/values.yaml" > "$scratch/values.json"
@@ -52,6 +52,7 @@ derive_recipe_chart() {
         else . end)
     ' "$scratch/values.json" > "$scratch/normalized-values.json" || die 'Cannot move dependency values to DNS-safe alias'
     "$YQ" -P -p json -o yaml '.' "$scratch/normalized-values.json" > "$root/values.yaml"
+    if [[ -n $NODE_NAME ]]; then place_chart_tree "$root" "$scratch/placement"; fi
     pack_chart "$root" "$destination"
     printf 'RECIPE_CHART_NAMES_NORMALIZED %s\n' "$("$JQ" -c . "$scratch/aliases.json")"
 }
@@ -106,6 +107,7 @@ check_images() {
         unique | .[] | tostring
     ') || die "Cannot validate rendered image references"
     [[ -z $rejected ]] || die "Rendered image is outside imported lock: $rejected"
+    check_node_placement "$rendered"
 }
 
 imported_defaults() {
@@ -207,6 +209,10 @@ recipe_values() {
               enabled:true, claimName:($owner+"-storage"), ownerRelease:$owner}
         ' "$scratch/core.json" > "$scratch/substituted.json" || die "Cannot disable initial external boot Services"
     fi
+    if [[ -n $NODE_NAME ]]; then
+        placement_values "$scratch/substituted.json" "$scratch/placed.json"
+        mv "$scratch/placed.json" "$scratch/substituted.json"
+    fi
     "$JQ" -e '[.. | strings | select(test("@\\{[a-z_]+\\}"))] | length == 0' "$scratch/substituted.json" > /dev/null || die "Unresolved values variables in $phase_id"
     "$YQ" -P -p json -o yaml '.' "$scratch/substituted.json" > "$output" || die "Cannot write phase values"
     chmod 600 "$output"
@@ -247,8 +253,8 @@ prepare_recipe() {
         target=$recipe/charts/$chart_id.tgz
         if [[ ! -e $target ]]; then
             derive_recipe_chart "$chart" "$target" "$temporary/chart-$chart_id"
-            jq_atomic "$provenance" '.[$chart]={source:{oci:$source.oci,oci_digest:$source.oci_digest,sha256:$source.sha256},sha256:$digest,naming_policy:"dns-cert-manager-alias-v1",aliases:$aliases[0]}' \
-                --arg chart "charts/$chart_id.tgz" --argjson source "$record" --arg digest "$(sha "$target")" --slurpfile aliases "$temporary/chart-$chart_id/aliases.json"
+            jq_atomic "$provenance" '.[$chart]={source:{oci:$source.oci,oci_digest:$source.oci_digest,sha256:$source.sha256},sha256:$digest,naming_policy:"dns-cert-manager-alias-v1",aliases:$aliases[0],node_selector:$selector}' \
+                --arg chart "charts/$chart_id.tgz" --argjson source "$record" --arg digest "$(sha "$target")" --slurpfile aliases "$temporary/chart-$chart_id/aliases.json" --argjson selector "$NODE_SELECTOR"
         fi
         chart=$target
         hrun "$phase_id-defaults" show values "$chart" || die "Cannot read Chart defaults: $phase_id"

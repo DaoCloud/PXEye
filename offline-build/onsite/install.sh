@@ -16,16 +16,18 @@ source "$KIT_DIR/lib/common.sh"
 source "$KIT_DIR/lib/relocation.sh"
 source "$KIT_DIR/lib/registry.sh"
 source "$KIT_DIR/lib/cluster.sh"
+source "$KIT_DIR/lib/placement.sh"
 source "$KIT_DIR/lib/recipe.sh"
 source "$KIT_DIR/lib/helm.sh"
 
 usage() {
     cat <<'HELP'
-Usage: install.sh --archive /absolute/path/bundle.tar.gz [--mode kind|k8s]
+Usage: install.sh --archive /absolute/path/bundle.tar.gz [--mode kind|k8s] [--node NODE]
 
 Install PXEye/NICo into an existing cluster without host Python.
   --archive PATH  Absolute offline archive path (required)
   --mode MODE     kind (default), or k8s using the current kubeconfig context
+  --node NODE     Schedule all new delivery workloads and hooks on this node
   -h, --help      Show this help
 
 If Registry discovery is ambiguous, set NICO_REGISTRY_URL=http(s)://host[:port].
@@ -33,11 +35,12 @@ Rerun the same command after fixing a failure to resume this installation.
 HELP
 }
 
-ARCHIVE= MODE=kind
+ARCHIVE= MODE=kind NODE_NAME= NODE_SELECTOR='{}'
 while (($#)); do
     case $1 in
         --archive) (($# >= 2)) || die '--archive needs a path'; ARCHIVE=$2; shift 2 ;;
         --mode) (($# >= 2)) || die '--mode needs kind or k8s'; MODE=$2; shift 2 ;;
+        --node) (($# >= 2)) && [[ -n $2 ]] || die '--node needs a Kubernetes node name'; NODE_NAME=$2; shift 2 ;;
         -h|--help) usage; exit 0 ;;
         *) die "Unknown parameter: $1" ;;
     esac
@@ -96,8 +99,8 @@ ARCHIVE_ID=$("$JQ" -nc --arg name "$_name" --argjson bytes "$(stat -c %s -- "$AR
     --arg modified "$(stat -c %y -- "$ARCHIVE")" '{name:$name,bytes:$bytes,modified:$modified}')
 _implementation=$({ find "$KIT_DIR" -type f -name '*.sh' -print0; find "$BIN_DIR" -maxdepth 1 -type f -print0; } | \
     LC_ALL=C sort -z | xargs -0 sha256sum | sed "s|$KIT_DIR/||g; s|$BIN_DIR/|bin/|g" | sha256sum | awk '{print $1}')
-IDENTITY=$("$JQ" -nc --argjson archive "$ARCHIVE_ID" --arg mode "$MODE" --arg context "$CONTEXT" --arg implementation "$_implementation" \
-    '{installer:"pxeye-onsite-shell-v1",archive:$archive,cluster_mode:$mode,context:$context,implementation:$implementation}')
+IDENTITY=$("$JQ" -nc --argjson archive "$ARCHIVE_ID" --arg mode "$MODE" --arg context "$CONTEXT" --arg implementation "$_implementation" --arg node "$NODE_NAME" \
+    '{installer:"pxeye-onsite-shell-v1",archive:$archive,cluster_mode:$mode,context:$context,implementation:$implementation} + (if $node=="" then {} else {node:$node} end)')
 if [[ -f $PROGRESS ]]; then
     "$JQ" -e --argjson identity "$IDENTITY" '(.identity|del(.implementation))==($identity|del(.implementation))' "$PROGRESS" >/dev/null || \
         die 'Archive, installer format, mode or context changed; resume the original target or use a different archive name. Python-run progress is not adopted.'
@@ -158,16 +161,18 @@ unpack_delivery() {
 resolve_site() {
     local fingerprint lock_id
     mkdir -p "$DEPLOY/private"
+    resolve_node_placement
     if [[ -f $CONFIG ]]; then
-        "$JQ" -e --arg mode "$MODE" --arg context "$CONTEXT" --arg bundle "$BUNDLE" --arg directory "$DEPLOY" \
-            '.schema_version==3 and .cluster_mode==$mode and .context==$context and .namespace=="nico-system" and .bundle==$bundle and .work_directory==$directory' "$CONFIG" >/dev/null || die 'Generated configuration targets another installation'
+        "$JQ" -e --arg mode "$MODE" --arg context "$CONTEXT" --arg bundle "$BUNDLE" --arg directory "$DEPLOY" --arg node "$NODE_NAME" --argjson selector "$NODE_SELECTOR" \
+            '.schema_version==3 and .cluster_mode==$mode and .context==$context and .namespace=="nico-system" and .bundle==$bundle and .work_directory==$directory and (.node // "")==$node and (.node_selector // {})==$selector' "$CONFIG" >/dev/null || die 'Generated configuration targets another installation'
         REGISTRY_URL=$("$JQ" -r '.registry.url' "$CONFIG")
         REGISTRY=${REGISTRY_URL#*://}
         printf 'REUSE_INSTALL_CONFIG %s\n' "$CONFIG"
     else
         detect_registry
-        jq_atomic "$CONFIG" '{schema_version:3,cluster_mode:$mode,context:$context,namespace:"nico-system",site_name:"PXEye",bundle:$bundle,work_directory:$directory,registry:{url:$registry,repository_prefix:"nico-offline",ca_file:null,skip_tls_verify:true,docker_config_directory:null,discovery:$discovery}}' \
+        jq_atomic "$CONFIG" '{schema_version:3,cluster_mode:$mode,context:$context,namespace:"nico-system",site_name:"PXEye",bundle:$bundle,work_directory:$directory,registry:{url:$registry,repository_prefix:"nico-offline",ca_file:null,skip_tls_verify:true,docker_config_directory:null,discovery:$discovery}} + (if $node=="" then {} else {node:$node,node_selector:$selector} end)' \
             --arg mode "$MODE" --arg context "$CONTEXT" --arg bundle "$BUNDLE" --arg directory "$DEPLOY" --arg registry "$REGISTRY_URL" \
+            --arg node "$NODE_NAME" --argjson selector "$NODE_SELECTOR" \
             --argjson discovery "$(cat "$WORK/registry-discovery.json")"
         printf 'INSTALL_CONFIG_RESOLVED %s\n' "$CONFIG"
     fi
@@ -189,6 +194,7 @@ resolve_site() {
         printf 'export NICO_NAMESPACE=%q\n' "$NAMESPACE"
         printf 'export NICO_RELEASE=%q\n' "$RELEASE"
         printf 'export PXEYE_RELEASE=%q\n' "$NAMESPACE-pxeye"
+        printf 'export NICO_NODE=%q\n' "$NODE_NAME"
         printf 'export BUNDLE=%q\n' "$BUNDLE"
         printf 'export WORK=%q\n' "$DEPLOY"
         printf 'export REGISTRY_URL=%q\n' "$REGISTRY_URL"

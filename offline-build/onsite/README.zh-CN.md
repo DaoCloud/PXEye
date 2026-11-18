@@ -10,6 +10,10 @@
 固定安装身份：namespace `nico-system`，NICo 父 Chart release `nico`，PXEye NodePort `31808`。
 `--archive` 是唯一必填参数；可选 `--mode kind|k8s`，默认 `kind`，无需填写安装配置文件。
 
+只安装到集群的指定节点时追加 `--node <Kubernetes节点名>`。脚本将节点选择冻结到安装配方，
+覆盖 PXEye、Core、平台组件、安装 Hook Job 和定时维护任务；省略时由 Kubernetes 正常选择节点。
+指定节点需要能够拉取现场 Registry 镜像并提供可用存储，共享 cert-manager 仍按原部署复用。
+
 ## 前置条件
 
 执行机器为 Linux amd64，具备 Bash 4+、kubectl，以及常见 GNU 工具：tar、gzip、find、sort、stat、
@@ -43,6 +47,9 @@ tar -xzf onsite-tools.tar.gz
 kubectl config current-context
 bash /srv/nico/onsite-tools/install.sh \
   --archive /srv/nico/bundle.tar.gz --mode k8s
+# 仅在指定节点安装
+bash /srv/nico/onsite-tools/install.sh \
+  --archive /srv/nico/bundle.tar.gz --mode k8s --node <Kubernetes节点名>
 ```
 
 `k8s` 使用当前 kubeconfig context；执行前通过 `kubectl config use-context` 选择目标。
@@ -82,6 +89,8 @@ Caddy 只在本机 loopback 上为 relok8s 提供传输适配，随本次进程�
 原包里的 Python 文件属于历史包内容，保持原样但不会由 Shell 执行器调用。
 生成配方时会修正不符合 DNS 命名规则的 cert-manager 依赖别名，并记录来源 OCI 摘要、派生 Chart 摘要与别名映射；
 源码 Chart 和大包保持不变。
+指定节点时，派生 Chart 会补齐子 Chart 的节点选择配置，并逐阶段核对渲染后的所有 Pod 模板（含安装 Hook）；
+无法覆盖的模板会在安装前停止。节点由调度器通过 `nodeSelector` 选择，执行器不修改其他节点配置。
 
 ## 确认命令
 
@@ -123,7 +132,7 @@ bash /srv/nico/onsite-tools/install.sh \
   --archive /srv/nico/bundle.tar.gz --mode k8s
 ```
 
-已完成阶段会复核并复用。模式、context、归档或安装状态格式变化会停止；恢复原目标后再续跑。
+已完成阶段会复核并复用。模式、context、指定节点、归档或安装状态格式变化会停止；恢复原目标后再续跑。
 更新 Shell 工具会记录源码指纹，并重新核对冻结的配置、配方和 Helm intent，允许修复工具后继续。
 不会自动解锁 Helm pending，也不会自动采用旧 Python 执行器的进度。首次改用 Shell 时使用尚未开始安装的
 归档名称；不删除或改写旧安装状态来绕过检查。

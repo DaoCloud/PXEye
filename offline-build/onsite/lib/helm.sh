@@ -338,6 +338,17 @@ bootstrap_pxeye() {
     mkdir -p "$directory"
     pull_chart "$record" "$directory"
     chart=$PULLED_CHART
+    if [[ -n $NODE_NAME ]]; then
+        if [[ -f $directory/chart.tgz ]]; then
+            "$JQ" -e --arg source "$(sha "$chart")" --arg derived "$(sha "$directory/chart.tgz")" --argjson selector "$NODE_SELECTOR" \
+                '.source==$source and .derived==$derived and .node_selector==$selector' "$directory/placement.json" >/dev/null || die 'Frozen PXEye placement Chart changed'
+        else
+            derive_recipe_chart "$chart" "$directory/chart.tgz" "$directory/derived"
+            jq_atomic "$directory/placement.json" '{source:$source,derived:$derived,node_selector:$selector}' \
+                --arg source "$(sha "$chart")" --arg derived "$(sha "$directory/chart.tgz")" --argjson selector "$NODE_SELECTOR"
+        fi
+        chart=$directory/chart.tgz
+    fi
     [[ "$chart" == "$DEPLOY/"* ]] || die 'Bootstrap Chart must remain inside this deployment directory'
     values="$directory/values.yaml"
     "$JQ" -n --arg release "$RELEASE" --arg ns "$NAMESPACE" --arg site "$("$JQ" -r '.site_name' "$CONFIG")" '{
@@ -347,6 +358,11 @@ bootstrap_pxeye() {
           clientSecret:($release+"-nico-admin-client"),clientCertKey:"tls.crt",clientPrivateKey:"tls.key",caSecret:($release+"-nico-site-ca"),
           caKey:"tls.crt",pxeInternalUrl:("http://"+$release+"-nico-pxe."+$ns+".svc:8080")}}
     ' | "$YQ" -P '.' > "$values.tmp" || die 'Cannot generate deterministic PXEye bootstrap values'
+    if [[ -n $NODE_NAME ]]; then
+        "$YQ" -o=json '.' "$values.tmp" > "$directory/values.json"
+        placement_values "$directory/values.json" "$directory/placed.json"
+        "$YQ" -P -p=json -o=yaml '.' "$directory/placed.json" > "$values.tmp"
+    fi
     mv "$values.tmp" "$values"
     chmod 600 "$values"
     [[ "$release" != "$RELEASE" ]] || die 'PXEye and Core parent releases must differ'

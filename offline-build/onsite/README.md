@@ -12,6 +12,10 @@ Installation uses namespace `nico-system`, NICo parent-Chart release `nico`, and
 `--archive` is the only required parameter. Optional `--mode kind|k8s` defaults to `kind`; there is no installer
 configuration file to fill in.
 
+Append `--node <Kubernetes-node-name>` to install only on a selected node. The frozen recipe covers PXEye,
+Core, platform workloads, install-hook Jobs and maintenance CronJobs. Without it, Kubernetes selects nodes
+normally. The selected node needs Registry access and usable storage; an existing shared cert-manager is reused.
+
 ## Prerequisites
 
 Use a Linux amd64 host with Bash 4+, kubectl, curl and standard GNU utilities: tar, gzip, find, sort, stat,
@@ -46,6 +50,9 @@ tar -xzf onsite-tools.tar.gz
 kubectl config current-context
 bash /srv/nico/onsite-tools/install.sh \
   --archive /srv/nico/bundle.tar.gz --mode k8s
+# Restrict this installation to one node
+bash /srv/nico/onsite-tools/install.sh \
+  --archive /srv/nico/bundle.tar.gz --mode k8s --node <Kubernetes-node-name>
 ```
 
 `k8s` uses the kubeconfig's current context. Select the intended target with `kubectl config use-context` first.
@@ -87,6 +94,9 @@ Caddy provides a process-owned loopback transport adapter for relok8s and exits 
 create or retain a Registry service. Python files already inside an older delivery remain intact but are never
 called by the Shell installer. Recipe Charts may normalize invalid cert-manager dependency aliases; the recipe
 records the source OCI digest, derived Chart hash and alias mapping. Source Charts and the delivery stay unchanged.
+With a selected node, derived Charts add missing subchart placement settings. Every rendered Pod template,
+including install hooks, is checked before installation; unsupported layouts stop the run. Placement uses
+the scheduler and `nodeSelector`; the runner does not reconfigure other nodes.
 
 ## Verify
 
@@ -130,7 +140,7 @@ bash /srv/nico/onsite-tools/install.sh \
   --archive /srv/nico/bundle.tar.gz --mode k8s
 ```
 
-Completed stages are checked and reused. A changed mode, context, archive or state format stops the run; restore
+Completed stages are checked and reused. A changed mode, context, selected node, archive or state format stops the run; restore
 the original target to continue. Updating the Shell tools records the source fingerprint and rechecks the frozen
 configuration, recipe and Helm intent, so tool fixes can resume. Pending Helm operations are never unlocked automatically. Existing Python
 runner progress is not adopted. Start Shell with an archive name that has no installation in progress; do not edit
