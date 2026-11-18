@@ -11,13 +11,19 @@
 | Temporal | NICo-pinned upstream `temporal` | `temporal` / `temporal` |
 | Keycloak | Project `pxeye-keycloak` (the pinned NICo version used prerequisite manifests, not a standalone Chart) | `nico-keycloak` / `nico-rest`; Service `keycloak` |
 
-The parent always contains these child Charts. Each management release enables one component. `managementReleases` in the parent values is the authority for release names and namespaces. Preview with the **onsite relocated** parent Chart and site-specific values:
+The parent always contains these dependencies but is not the install target for optional releases. The helper selects the actual child (vendored `.tgz` or expanded directory) from the **onsite relocated** parent. Helm records the child's name and version; for example, `helm list -n temporal` should show `temporal-0.35.0`, not `pxeye-*`. `managementReleases` in the parent values supplies the default release names and namespaces. Preview first:
 
 ```bash
 bash tools/management-release.sh template temporal "$PARENT_CHART" -f site-values.yaml
+# Existing upstream Temporal values need no temporal: wrapper:
+bash tools/management-release.sh template temporal "$PARENT_CHART" --native-values temporal-values.yaml
 ```
 
-Other component keys are `rest`, `siteagent` and `keycloak`. Only the explicit `upgrade` action runs `helm upgrade --install --wait`; prepare the target namespace first. A same-name native release or a release for another component is not automatically adopted. If overriding `managementReleases.<component>.namespace` or `.name`, also review DNS, certificate SANs, RBAC references and site registration settings. Do not enable all components in the Core release. Build-time authentication fixtures are not onsite values.
+Other component keys are `rest`, `siteagent` and `keycloak`. Run from the full delivery tools directory (Bash, GNU tar, Helm, yq and jq). For a standalone copy of the helper, set `PXEYE_ONSITE_LIB` to the matching trusted kit's `onsite/lib`. The standard `relocation/pxeye/chart.tgz` is matched to the import's `catalog.json`; pass `--catalog /path/to/catalog.json` when the archive is copied elsewhere. A completed import, matching parent SHA256 and rendered workload/init/hook images present in that onsite registry catalog are required before any Helm write.
+
+`-f` keeps the parent format: only the selected subtree and the parent's `global` are passed down, with parent globals taking precedence on conflicts. `--native-values` takes child-shaped values directly; later files of each kind win. During upgrade, explicit values from the existing native release are retained unless overridden by site `-f` files, then by `--native-values`. Packaged image bindings take precedence; upstream-registry fallback is not allowed. `template` does not read the cluster: supply a restricted `--native-values` file to preview an existing release's customizations. Do not put credentials in command arguments.
+
+Only `upgrade` writes to the cluster: absent releases use `helm install --wait`; existing ones use `helm upgrade --wait` after Helm metadata confirms the release name, namespace, **native Chart name** and `deployed` status. Old `pxeye` parent releases, other Charts and non-deployed states require separate migration or reconciliation. Prepare the namespace first; if overriding the release name or namespace, review DNS, TLS SANs, RBAC and site registration as well.
 
 These are delivery inputs, not an installer or an authorization grant. Core/PXEye installation does not create REST, Site Agent, Temporal, Keycloak or the Site CRD by default. Render with site-specific values and review namespaces, resource names, RBAC, TLS SANs and relocated images before enabling anything. Never deploy the packager's per-component render fixtures. By default Site Manager is not granted cluster-wide RBAC; provision its dedicated ServiceAccount and permissions in the target namespace.
 

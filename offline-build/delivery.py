@@ -100,8 +100,9 @@ def chart_images(path, package_value, packager, ui=None, material_records=None):
         images = set()
         for mode, release, namespace, overrides in packager.management.profiles(defaults, 'pxeye', settings['namespace']):
             values = packager.charts.merge(defaults, overrides)
-            value_path = temporary / (mode + '.yaml'); value_path.write_text(yaml.safe_dump(values))
-            result = packager.command([package_value['tools']['helm'], 'template', release, root, '--namespace', namespace, '-f', value_path],
+            target, target_values = packager.management.render_target(root, mode, values, packager.charts.merge)
+            value_path = temporary / (mode + '.yaml'); value_path.write_text(yaml.safe_dump(target_values))
+            result = packager.command([package_value['tools']['helm'], 'template', release, target, '--namespace', namespace, '-f', value_path],
                                       temporary / (mode + '.log'))
             objects = list(yaml.safe_load_all(result.stdout))
             packager.management.check_profile(mode, values, objects, namespace)

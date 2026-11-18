@@ -550,8 +550,9 @@ def validate_charts(roots, helm, mapping, material_images, directory, material_r
         defaults = yaml.safe_load(b.substitute((root / 'values.yaml').read_text(), settings))
         for mode, release, namespace, overrides in management.profiles(defaults, key, settings['namespace']):
             values = charts.merge(defaults, overrides)
-            path = directory / (key + '-' + mode + '.yaml'); path.write_text(yaml.safe_dump(values))
-            args = [helm, 'template', '--include-crds', release, root, '--namespace', namespace, '-f', path]
+            target, target_values = management.render_target(root, mode, values, charts.merge)
+            path = directory / (key + '-' + mode + '.yaml'); path.write_text(yaml.safe_dump(target_values))
+            args = [helm, 'template', '--include-crds', release, target, '--namespace', namespace, '-f', path]
             objects = [obj for obj in yaml.safe_load_all(command(args, directory / (key + '-' + mode + '.log')).stdout) if obj]
             images = management.images(objects)
             management.check_profile(mode, values, objects, namespace)
@@ -570,7 +571,7 @@ def validate_charts(roots, helm, mapping, material_images, directory, material_r
                 b.require('command' not in containers[0],
                           'ARM boot-artifact image ENTRYPOINT must not be overridden')
             b.require('@{' not in yaml.safe_dump(objects), 'Unresolved validation token in ' + key)
-            report.append({'chart': key, 'mode': mode, 'release': release, 'namespace': namespace,
+            report.append({'chart': key, 'helm_input': target.name, 'mode': mode, 'release': release, 'namespace': namespace,
                            'resources': len(objects), 'images': sorted(images)})
     return report
 

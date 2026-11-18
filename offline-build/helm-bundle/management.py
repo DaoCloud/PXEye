@@ -28,6 +28,28 @@ def dependencies(repo):
     return selected
 
 
+def render_target(parent, mode, values, merge):
+    if mode == "default":
+        return parent, values
+    rows = yaml.safe_load((parent / "Chart.yaml").read_text())["dependencies"]
+    selected = [
+        row
+        for row in rows
+        if (row.get("alias") or row["name"]) == mode
+        and row.get("condition") == f"components.{mode}.enabled"
+    ]
+    if len(selected) != 1:
+        raise ValueError(f"Missing or ambiguous native dependency for {mode}")
+    row = selected[0]
+    package = parent / "charts" / f"{row['name']}-{row['version']}.tgz"
+    if not package.is_file():
+        raise ValueError(f"Native dependency archive missing: {package.name}")
+    child = values[mode]
+    return package, merge(
+        child, {"global": merge(child.get("global") or {}, values.get("global") or {})}
+    )
+
+
 def check_archived_materials(package, repo):
     rows = yaml.safe_load((repo / "charts/pxeye/Chart.yaml").read_text())["dependencies"]
     children = {
