@@ -142,7 +142,10 @@ function batchIdentityCells(d) {
 }
 function batchNetworkCell(d) {
   const i = d.selection_identity || {};
-  return `<div class="batch-management"><div class="batch-management-address"><strong>${esc(i.management_ip || d.planned_ip || d.management_ip || "待规划")}</strong><span class="batch-management-prefix">${esc(i.management_prefix || "子网未关联")}</span></div><span class="live-small live-code">MAC ${esc(i.management_mac || d.boot_mac || "待规划")}</span></div>`;
+  const subnet = i.networks_available === false
+    ? "子网信息暂不可用"
+    : [i.management_network_name, i.management_prefix || "未匹配到唯一子网前缀"].filter(Boolean).join(" · ");
+  return `<div class="batch-management"><div class="batch-management-address"><strong>${esc(i.management_ip || d.planned_ip || d.management_ip || "待规划")}</strong><span class="batch-management-prefix">${esc(subnet)}</span></div><span class="live-small live-code">MAC ${esc(i.management_mac || d.boot_mac || "待规划")}</span></div>`;
 }
 function batchDeviceMatches(d) {
   const f = state.wizard.filters || {},

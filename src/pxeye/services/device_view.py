@@ -29,15 +29,15 @@ class DeviceProjection:
                     history_by_serial[record["device"]] = installation_history(
                         json.loads(record["data"])
                     )
-        configured_rows = self.adapter.config.get("devices", [])
-        has_execution = bool(
-            configured_rows or list((self.adapter.data / "config" / "execution").glob("*.json"))
-        )
+        networks_available = True
         try:
-            networks = self.resources.networks() if has_execution else []
+            networks = self.resources.networks() if rows else []
+        except (RuntimeError, OSError):
+            networks, networks_available = [], False
+        try:
             interfaces = self.adapter.rpc("FindInterfaces", {}).get("interfaces", [])
         except (RuntimeError, OSError):
-            networks, interfaces = [], []
+            interfaces = []
         for row in rows:
             item = public_machine(row)
             serial = row["chassis_serial_number"]
@@ -201,4 +201,5 @@ class DeviceProjection:
                 hardware_by_serial.get(item["serial"]),
                 history_by_serial.get(item["serial"]),
             )
+            item["selection_identity"]["networks_available"] = networks_available
         return devices
