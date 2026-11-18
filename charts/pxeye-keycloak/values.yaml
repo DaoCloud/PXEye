@@ -12,6 +12,7 @@ nameOverride: ""
 fullnameOverride: ""
 
 service:
+  nameOverride: ''
   type: ClusterIP
   port: 8082
   targetPort: 8080

@@ -1,6 +1,25 @@
 # Offline NICo REST management materials
 
-These are delivery inputs, not an installer or an authorization grant. Core/PXEye installation does not create REST, Site Agent, Temporal, Keycloak or the Site CRD by default. Render with site-specific values and review namespaces, resource names, RBAC, TLS SANs and relocated images before enabling anything. Never deploy the packager's `rest-materials` render fixtures.
+**English** · [简体中文](README.zh-CN.md)
+
+## Native dependencies and namespaces
+
+| Component | Child Chart | Opt-in release / namespace |
+| --- | --- | --- |
+| REST services | Upstream `nico-rest` | `nico-rest` / `nico-rest` |
+| Site Agent | Upstream `nico-rest-site-agent` | `nico-rest-site-agent` / `nico-rest` |
+| Temporal | NICo-pinned upstream `temporal` | `temporal` / `temporal` |
+| Keycloak | Project `pxeye-keycloak` (the pinned NICo version used prerequisite manifests, not a standalone Chart) | `nico-keycloak` / `nico-rest`; Service `keycloak` |
+
+The parent always contains these child Charts. Each management release enables one component. `managementReleases` in the parent values is the authority for release names and namespaces. Preview with the **onsite relocated** parent Chart and site-specific values:
+
+```bash
+bash tools/management-release.sh template temporal "$PARENT_CHART" -f site-values.yaml
+```
+
+Other component keys are `rest`, `siteagent` and `keycloak`. Only the explicit `upgrade` action runs `helm upgrade --install --wait`; prepare the target namespace first. A same-name native release or a release for another component is not automatically adopted. If overriding `managementReleases.<component>.namespace` or `.name`, also review DNS, certificate SANs, RBAC references and site registration settings. Do not enable all components in the Core release. Build-time authentication fixtures are not onsite values.
+
+These are delivery inputs, not an installer or an authorization grant. Core/PXEye installation does not create REST, Site Agent, Temporal, Keycloak or the Site CRD by default. Render with site-specific values and review namespaces, resource names, RBAC, TLS SANs and relocated images before enabling anything. Never deploy the packager's per-component render fixtures. By default Site Manager is not granted cluster-wide RBAC; provision its dedicated ServiceAccount and permissions in the target namespace.
 
 | Packaged material | Purpose and site inputs |
 | --- | --- |

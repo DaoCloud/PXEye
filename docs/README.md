@@ -10,6 +10,7 @@ Public PXEye documentation is maintained in English and Simplified Chinese. Star
 | Grace ARM64 boot materials | [Read](arm64-materials.md) | [阅读](arm64-materials.zh-CN.md) | Generation requirements, pinned payload, packaging and hardware acceptance. |
 | Unified source build | [Read](source-build.md) | [阅读](source-build.zh-CN.md) | Maintained main commits, Core/libredfish/Scout/Boot/PXEye and build locks. |
 | Offline delivery build | [Read](../offline-build/BUILD.md) | [阅读](../offline-build/BUILD.zh-CN.md) | Copyable build sequence, artifacts, scope and handoff boundary. |
+| Optional REST management stack | [Read](../charts/pxeye/files/management/README.md) | [阅读](../charts/pxeye/files/management/README.zh-CN.md) | Bundled child Charts, native release namespaces and onsite prerequisites. |
 | Onsite offline deployment | [Read](../offline-build/onsite/README.md) | [阅读](../offline-build/onsite/README.zh-CN.md) | Import the verified delivery, optionally select one node, and install resumably. |
 | Pre-installation checklist | [Read](pre-installation-checklist.md) | [阅读](pre-installation-checklist.zh-CN.md) | One-sentence checks for discovery, host OS writing and managed DPUs. |
 | Onsite DHCP quick check | [Read](dhcp-check.md) | [阅读](dhcp-check.zh-CN.md) | Dependency-free Discover/Offer check through Make, with result diagnosis. |

@@ -4,7 +4,7 @@
 
 This is the delivery parent Chart. By default it deploys only the PXEye web console with its ServiceAccount, RBAC, ConfigMap, authentication Secret, a shared storage PVC and Service. The offline builder vendors the locked NICo dependencies under this Chart, resolves `Chart.lock`, and relocates one complete image closure.
 
-The dependency tree is cert-manager, the platform infrastructure Chart, a separate Vault-bootstrap alias of that Chart, NICo Core, and the optional material publisher. The material publisher is disabled in the current image-only delivery.
+The dependency tree contains cert-manager, platform and Vault bootstrap, NICo Core, the optional material publisher, and child Charts for REST, Site Agent, Temporal and Keycloak. The last four use separate releases in their [native namespaces](files/management/README.md) and are not installed with Core by default.
 
 ## Installation
 

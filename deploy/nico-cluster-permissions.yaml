@@ -1,7 +1,7 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: mmzhou-pxeye-nico-cluster-installer
+  name: nico-system-pxeye-nico-cluster-installer
 rules:
   - apiGroups: [rbac.authorization.k8s.io]
     resources: [clusterroles, clusterrolebindings]
@@ -19,12 +19,12 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: mmzhou-pxeye-nico-cluster-installer
+  name: nico-system-pxeye-nico-cluster-installer
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: mmzhou-pxeye-nico-cluster-installer
+  name: nico-system-pxeye-nico-cluster-installer
 subjects:
   - kind: ServiceAccount
-    name: mmzhou-pxeye
-    namespace: mmzhou
+    name: nico-system-pxeye
+    namespace: nico-system

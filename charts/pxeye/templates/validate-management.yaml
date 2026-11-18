@@ -1,0 +1,12 @@
+{{- range $component, $target := .Values.managementReleases -}}
+{{- if (index $.Values.components $component).enabled -}}
+{{- if ne $.Release.Namespace $target.namespace -}}
+{{- fail (printf "%s belongs in the %s release namespace, not %s; use the management-release helper, or explicitly configure managementReleases.%s.namespace for your site" $component $target.namespace $.Release.Namespace $component) -}}
+{{- end -}}
+{{- range $other, $switch := $.Values.components -}}
+{{- if and (ne $other $component) $switch.enabled -}}
+{{- fail (printf "%s and %s must not share this management release; select one component using management-release" $component $other) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}

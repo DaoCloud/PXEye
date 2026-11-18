@@ -58,9 +58,9 @@ class CertificateSyncTests(unittest.TestCase):
         ):
             if mismatch or invalid:
                 with self.assertRaises(RuntimeError):
-                    sync("test", "nico-system", "mmzhou")
+                    sync("test", "nico-system", "example-site")
             else:
-                sync("test", "nico-system", "mmzhou")
+                sync("test", "nico-system", "example-site")
         return calls
 
     def test_patch_only_tls_fields_and_uses_stdin(self):

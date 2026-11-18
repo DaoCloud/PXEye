@@ -5,8 +5,8 @@
   "description": "Core, PXE, network services, database, Vault, REST and workflows; x86 control plane.",
   "defaults": {
     "site_name": "Example site",
-    "release_prefix": "mmzhou",
-    "core_url": "https://mmzhou-nico-api.mmzhou.svc:1079",
+    "release_prefix": "nico",
+    "core_url": "https://nico-nico-api.nico-system.svc:1079",
     "pxe_url": "http://192.0.2.50:31880"
   },
   "phases": [
@@ -63,7 +63,7 @@
             {
               "name": "pxeye-os-materials",
               "persistentVolumeClaim": {
-                "claimName": "mmzhou-pxeye-materials"
+                "claimName": "nico-system-pxeye-materials"
               }
             }
           ],

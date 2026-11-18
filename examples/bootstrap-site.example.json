@@ -1,9 +1,9 @@
 {
-  "site": {"name": "PXEye", "namespace": "mmzhou", "deployment": "mmzhou-pxeye"},
+  "site": {"name": "PXEye", "namespace": "nico-system", "deployment": "nico-system-pxeye"},
   "core_url": "",
   "nico_deployment": {
     "enabled": true,
-    "namespace": "mmzhou",
+    "namespace": "nico-system",
     "allow_cluster_resources": false,
     "observe_namespaces": [],
     "bundles_directory": "/nico-bundles"

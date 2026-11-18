@@ -5,7 +5,7 @@ VERSION = $(shell $(PYTHON) -c 'import tomllib; print(tomllib.load(open("$(REPO_
 BUILD_TIME := $(shell TZ=Asia/Shanghai date +%Y%m%d%H%M)
 VCS_REF := $(shell git -C "$(REPO_ROOT)" rev-parse HEAD)
 IMAGE_TAG := $(VERSION)-$(BUILD_TIME)-$(shell git -C "$(REPO_ROOT)" rev-parse --short=7 HEAD)
-IMAGE ?= mmzhou-os-install-console:$(IMAGE_TAG)
+IMAGE ?= pxeye:$(IMAGE_TAG)
 PUBLISH_IMAGE := $(REGISTRY)/pxeye:$(IMAGE_TAG)
 BASE_IMAGE ?= ubuntu:24.04
 BUILD_CONFIG ?= $(REPO_ROOT)/outputs_/build-config.json

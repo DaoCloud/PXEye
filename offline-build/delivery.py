@@ -98,13 +98,13 @@ def chart_images(path, package_value, packager, ui=None, material_records=None):
                     'dns_ip': '10.96.40.10', 'pxe_ip': '10.96.40.11', 'ntp_ip': '10.96.40.12'}
         defaults = yaml.safe_load(packager.b.substitute((root / 'values.yaml').read_text(), settings))
         images = set()
-        for mode, overrides in packager.management.profiles().items():
+        for mode, release, namespace, overrides in packager.management.profiles(defaults, 'pxeye', settings['namespace']):
             values = packager.charts.merge(defaults, overrides)
             value_path = temporary / (mode + '.yaml'); value_path.write_text(yaml.safe_dump(values))
-            result = packager.command([package_value['tools']['helm'], 'template', 'pxeye', root, '--namespace', 'nico-system', '-f', value_path],
+            result = packager.command([package_value['tools']['helm'], 'template', release, root, '--namespace', namespace, '-f', value_path],
                                       temporary / (mode + '.log'))
             objects = list(yaml.safe_load_all(result.stdout))
-            packager.management.check_profile(mode, values, objects)
+            packager.management.check_profile(mode, values, objects, namespace)
             images.update(packager.management.images(objects))
     if not images:
         raise ValueError('Parent Chart render did not produce image references')
@@ -133,9 +133,10 @@ def cache_reference(reference, registry):
     """Replace only the registry hostname; PXEye itself is published as pxeye."""
     parts = reference.split('/')
     repository = '/'.join(parts[1:]) if len(parts) > 1 and ('.' in parts[0] or ':' in parts[0] or parts[0] == 'localhost') else reference
-    if 'mmzhou-os-install-console' in repository:
-        tag = reference.rsplit(':', 1)[-1] if ':' in reference.rsplit('/', 1)[-1] else 'latest'
-        return registry + '/pxeye:' + tag
+    leaf = repository.rsplit('/', 1)[-1]
+    name = leaf.split('@', 1)[0].split(':', 1)[0]
+    if name in ('pxeye', 'os-install-console') or name.endswith('-os-install-console'):
+        return registry + '/pxeye' + (leaf[len(name):] or ':latest')
     return registry + '/' + repository
 
 

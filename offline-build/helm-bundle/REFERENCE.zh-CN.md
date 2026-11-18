@@ -21,7 +21,7 @@
 [images.txt](../material-prepare/images.txt) 每行一个本地完整镜像引用，支持空行、注释和行尾用途标记：
 
 ```text
-docker.io/library/mmzhou-os-install-console:0.22.16-2edc182 # roles=ui,bootstrap
+docker.io/library/pxeye:0.22.16-2edc182 # roles=ui,bootstrap
 ```
 
 用途支持 `ui`、`bootstrap`，可由同一镜像承担；工具镜像需提供 skopeo、Python 等工具。第一步将用途写入 `export.json`，原五字段镜像锁和 OCI 结构不变。未显式标记时，唯一带 PXEye 产品标签的镜像可承担两种用途。仅导出普通镜像不要求存在 PXEye，但第二步必须能确定两个用途。

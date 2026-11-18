@@ -1,5 +1,5 @@
 mode: infrastructure
-prefix: mmzhou
+prefix: nico
 storageClass: ""
 postgresStorage: 20Gi
 vaultStorage: 5Gi

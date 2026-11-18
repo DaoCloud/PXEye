@@ -1,6 +1,25 @@
 # NICo REST 离线扩展材料
 
-材料随父 Chart 交付，不是自动安装或授权。默认 Core/PXEye 安装不创建 REST、Site Agent、Temporal、Keycloak 或 Site CRD。启用前先用现场 values 渲染，核对 namespace、资源名、RBAC、证书域名及镜像地址；不要把构建器的 `rest-materials` 校验值用于部署。
+[English](README.md) · **简体中文**
+
+## 原生子依赖与命名空间
+
+| 组件 | 子 Chart | 显式启用时的 release / namespace |
+| --- | --- | --- |
+| REST 服务 | 上游 `nico-rest` | `nico-rest` / `nico-rest` |
+| Site Agent | 上游 `nico-rest-site-agent` | `nico-rest-site-agent` / `nico-rest` |
+| Temporal | 上游随 NICo 固定的 `temporal` | `temporal` / `temporal` |
+| Keycloak | 项目 `pxeye-keycloak`（该 NICo 版本原来用前置清单，无独立上游 Chart） | `nico-keycloak` / `nico-rest`；Service 为 `keycloak` |
+
+父 Chart 始终携带这些子依赖，一个管理 release 只启用一个组件。默认 release 名和 namespace 在父 values 的 `managementReleases` 唯一维护。使用**现场已迁移**的父 Chart 及现场 values，先预览，例如：
+
+```bash
+bash tools/management-release.sh template temporal "$PARENT_CHART" -f site-values.yaml
+```
+
+其他选择为 `rest`、`siteagent`、`keycloak`。只有显式使用 `upgrade` 才会执行 `helm upgrade --install --wait`；目标 namespace 须提前准备。同名原生 release 或其他组件的 release 不会被自动接管。通过现场 values 覆盖 `managementReleases.<组件>.namespace` 或 `.name` 时，也要核对 DNS、证书 SAN、RBAC 引用及站点注册配置。不要从 Core release 一次开齐这些开关。构建用的临时认证配置不会作为现场 values 下发。
+
+材料随父 Chart 交付，不是自动安装或授权。默认 Core/PXEye 安装不创建 REST、Site Agent、Temporal、Keycloak 或 Site CRD。启用前先用现场 values 渲染，核对 namespace、资源名、RBAC、证书域名及镜像地址；不要把构建时各子依赖的校验值用于部署。Site Manager 默认不授予集群级权限；需要预先在目标 namespace 配置其专用 ServiceAccount 和授权。
 
 | 材料 | 用途和现场输入 |
 | --- | --- |

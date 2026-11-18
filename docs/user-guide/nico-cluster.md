@@ -49,7 +49,7 @@ Set image, database, Vault, service exposure and Boot options through the Chart 
 | --- | --- |
 | Online repository | Select Helm repository and enter its URL, Chart name, optional version and values. |
 | OCI | Enter `oci://registry.example.com/charts/nico`, a version and values. |
-| Offline | Upload `nico-0.1.1.tgz`, use release `mmzhou` and read its values YAML. |
+| Offline | Upload `nico-0.1.1.tgz`, use release `nico` and read its values YAML. |
 
 Replace example URLs with actual sources. See [Deployment](../nico-deployment.md) for parameters and dependencies.
 

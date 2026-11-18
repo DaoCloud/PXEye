@@ -24,7 +24,7 @@ For external DHCP, the runtime uses `mcopy` from mtools and xorriso to insert th
 
 ### Image name and tag
 
-The default repository is `mmzhou-os-install-console`. Tags follow `<pyproject.toml version>-<YYYYMMDDHHmm>`, using `Asia/Shanghai` (UTC+8), to the minute; for example, `mmzhou-os-install-console:0.22.16-202611121830`. The application version excludes the timestamp. OCI labels record the full Git commit in `org.opencontainers.image.revision` and the application version in `org.opencontainers.image.version`. Retain existing SHA-based tags unchanged.
+The default repository is `pxeye`. Tags follow `<pyproject.toml version>-<YYYYMMDDHHmm>`, using `Asia/Shanghai` (UTC+8), to the minute; for example, `pxeye:0.22.16-202611121830`. The application version excludes the timestamp. OCI labels record the full Git commit in `org.opencontainers.image.revision` and the application version in `org.opencontainers.image.version`. Retain existing SHA-based tags unchanged.
 
 ### Build and inspect
 
@@ -33,7 +33,7 @@ Run at the PXEye repository root on the build host with Python 3.11+, Make, and 
 ```bash
 export PXEYE_VERSION="$(python3 -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
 export PXEYE_TAG="$PXEYE_VERSION-$(TZ=Asia/Shanghai date +%Y%m%d%H%M)"
-export PXEYE_IMAGE="mmzhou-os-install-console:$PXEYE_TAG"
+export PXEYE_IMAGE="pxeye:$PXEYE_TAG"
 make image IMAGE="$PXEYE_IMAGE"
 docker image inspect "$PXEYE_IMAGE" \
   --format '{{.Id}} {{.Architecture}} {{index .Config.Labels "org.opencontainers.image.version"}} {{index .Config.Labels "org.opencontainers.image.revision"}}'

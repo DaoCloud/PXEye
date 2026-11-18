@@ -14,7 +14,7 @@ Use this optional mode when the network team supplies DHCP addresses but cannot 
 
 ## Matching source versions
 
-Use the maintained [Core integration branch](https://github.com/SSmallMonster/infra-controller/tree/mmzhou/nico-site-fixes) when building this feature. Core and Scout are built from the same repository and must use the same source revision.
+Use the pinned [Core integration revision](https://github.com/SSmallMonster/infra-controller/tree/ebaadc097c4c72af58bf30a934c3b086ed878778) when building this feature. Core and Scout are built from the same repository and must use the same source revision.
 
 | Component | Source revision |
 | --- | --- |
@@ -22,7 +22,7 @@ Use the maintained [Core integration branch](https://github.com/SSmallMonster/in
 | Lenovo Redfish compatibility | `SSmallMonster/libredfish` at `b6b4fff7277276bb4d0724e7dd4dca9cea2abbd1`, pinned by Core's Cargo manifest and lockfile |
 
 ```bash
-git clone --branch mmzhou/nico-site-fixes https://github.com/SSmallMonster/infra-controller.git
+git clone https://github.com/SSmallMonster/infra-controller.git
 cd infra-controller
 git checkout --detach ebaadc097c4c72af58bf30a934c3b086ed878778
 ```

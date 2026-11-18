@@ -96,7 +96,7 @@ def probe(args):
     if count != 1:
         raise ValueError("原始脚本不包含预期的硬编码 MAC 定义，未执行；请核对 Nmap 脚本版本")
     print(f"发送接口：{args.interface}；客户端 MAC：{mac}；等待：{args.timeout} 秒", flush=True)
-    with tempfile.TemporaryDirectory(prefix="mmzhou-dhcp-") as directory:
+    with tempfile.TemporaryDirectory(prefix="pxeye-dhcp-") as directory:
         temporary = Path(directory) / "broadcast-dhcp-discover.nse"
         temporary.write_text(updated)
         command = [

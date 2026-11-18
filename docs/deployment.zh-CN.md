@@ -24,7 +24,7 @@ PXEye 运行环境需要访问 Core 和硬件控制器。目标主机需要访�
 
 ### 镜像名称与 TAG
 
-默认名称为 `mmzhou-os-install-console`，TAG 为 `<pyproject.toml版本>-<YYYYMMDDHHmm>`，时间统一使用 `Asia/Shanghai`（UTC+8），精确到分钟，例如 `mmzhou-os-install-console:0.22.16-202611121830`。应用版本不包含时间；完整 Git commit 写入 OCI `org.opencontainers.image.revision`，版本写入 `org.opencontainers.image.version`。历史 SHA TAG 保留，不改名。
+默认名称为 `pxeye`，TAG 为 `<pyproject.toml版本>-<YYYYMMDDHHmm>`，时间统一使用 `Asia/Shanghai`（UTC+8），精确到分钟，例如 `pxeye:0.22.16-202611121830`。应用版本不包含时间；完整 Git commit 写入 OCI `org.opencontainers.image.revision`，版本写入 `org.opencontainers.image.version`。历史 SHA TAG 保留，不改名。
 
 ### 构建与确认
 
@@ -33,7 +33,7 @@ PXEye 运行环境需要访问 Core 和硬件控制器。目标主机需要访�
 ```bash
 export PXEYE_VERSION="$(python3 -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
 export PXEYE_TAG="$PXEYE_VERSION-$(TZ=Asia/Shanghai date +%Y%m%d%H%M)"
-export PXEYE_IMAGE="mmzhou-os-install-console:$PXEYE_TAG"
+export PXEYE_IMAGE="pxeye:$PXEYE_TAG"
 make image IMAGE="$PXEYE_IMAGE"
 docker image inspect "$PXEYE_IMAGE" \
   --format '{{.Id}} {{.Architecture}} {{index .Config.Labels "org.opencontainers.image.version"}} {{index .Config.Labels "org.opencontainers.image.revision"}}'

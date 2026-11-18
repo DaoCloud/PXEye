@@ -4,7 +4,7 @@
 
 这是交付父 Chart。默认仅部署 PXEye Web 控制台及其 ServiceAccount、RBAC、ConfigMap、认证 Secret、共享存储 PVC、Service。离线构建器会在此 Chart 下引入已锁定的 NICo 依赖、生成 `Chart.lock`，再对完整镜像闭包执行一次搬迁。
 
-依赖树包含 cert-manager、平台基础设施 Chart、该平台 Chart 的 Vault 初始化别名、NICo Core 和可选材料发布器。本轮镜像闭包 POC 中材料发布器保持关闭。
+依赖树包含 cert-manager、平台基础设施及 Vault 初始化、NICo Core、可选材料发布器，以及 REST、Site Agent、Temporal 和 Keycloak 子 Chart。后四项按[原生命名空间](files/management/README.zh-CN.md)分别发布，不随 Core 默认安装。
 
 ## 安装
 

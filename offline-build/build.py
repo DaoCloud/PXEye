@@ -16,7 +16,6 @@ import gzip
 import hashlib
 import ipaddress
 import json
-import os
 from pathlib import Path, PurePosixPath
 import re
 import shutil
@@ -305,8 +304,9 @@ def prepare_recipe(bundle, config, version, settings, scratch, source, prepared_
 def prepare_bootstrap(bundle, config, settings, ui):
     namespace = config['namespace'];name = namespace + '-pxeye'
     objects = list(yaml.safe_load_all((REPO / 'deploy/bootstrap-kubernetes.yaml').read_text()))
+    template_name = next(obj['metadata']['name'] for obj in objects if obj['kind'] == 'Deployment')
     for obj in objects:
-        old = obj['metadata']['name'];obj['metadata']['name'] = namespace if old == 'mmzhou' else old.replace('mmzhou-pxeye', name)
+        old = obj['metadata']['name'];obj['metadata']['name'] = namespace if obj['kind'] == 'Namespace' else old.replace(template_name, name)
         if 'namespace' in obj['metadata']: obj['metadata']['namespace'] = namespace
         if obj['kind'] == 'RoleBinding':
             obj['roleRef']['name'] = name + '-nico-installer'
@@ -325,7 +325,7 @@ def prepare_bootstrap(bundle, config, settings, ui):
                 for key in ('configMap', 'secret', 'persistentVolumeClaim'):
                     if key in volume:
                         for field in ('name', 'secretName', 'claimName'):
-                            if field in volume[key]: volume[key][field] = volume[key][field].replace('mmzhou-pxeye', name)
+                            if field in volume[key]: volume[key][field] = volume[key][field].replace(template_name, name)
             pod['volumes'].append({'name': 'nico-bundles', 'hostPath': {'path': config['bundle_host_path'], 'type': 'Directory'}})
         if obj['kind'] == 'Service':
             obj['spec']['selector'] = {'app.kubernetes.io/instance': name}
@@ -336,7 +336,12 @@ def prepare_bootstrap(bundle, config, settings, ui):
     role = next(o for o in objects if o['kind'] == 'Role')
     binding = next(o for o in objects if o['kind'] == 'RoleBinding')
     write(bundle / 'deployment/nico-target-namespace-rbac.yaml', yaml.safe_dump_all([role, binding], sort_keys=False))
-    cluster = list(yaml.safe_load_all((REPO / 'deploy/nico-cluster-permissions.yaml').read_text().replace('mmzhou-pxeye', name).replace('namespace: mmzhou', 'namespace: ' + namespace)))
+    cluster = list(yaml.safe_load_all((REPO / 'deploy/nico-cluster-permissions.yaml').read_text()))
+    for obj in cluster:
+        obj['metadata']['name'] = obj['metadata']['name'].replace(template_name, name)
+        if obj['kind'] == 'ClusterRoleBinding':
+            obj['roleRef']['name'] = obj['roleRef']['name'].replace(template_name, name)
+            obj['subjects'] = [{'kind': 'ServiceAccount', 'name': name, 'namespace': namespace}]
     write(bundle / 'deployment/nico-cluster-permissions.yaml', yaml.safe_dump_all(cluster, sort_keys=False))
     dump(bundle / 'config/runtime.json', {'site': {'name': config['site_name'], 'namespace': namespace, 'deployment': name},
          'core_url': '', 'nico_deployment': {'enabled': True, 'namespace': namespace, 'allow_cluster_resources': True, 'bundles_directory': '/nico-bundles'}})

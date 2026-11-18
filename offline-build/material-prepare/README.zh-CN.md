@@ -20,7 +20,7 @@
 }
 ```
 
-默认镜像清单为仓库 [images.txt](images.txt)，固定12张 Core/PXEye 镜像。`image_list` 相对配置文件目录解析。行尾 `# roles=ui,bootstrap` 标记镜像用途，第一步将用途写入产物，第二步自动读取。
+复制 [images.txt](images.txt) 示例并按部署回执替换镜像引用，再将 `image_export.image_list` 指向该文件。示例 Registry 不是真实库存。使用 `# roles=ui,bootstrap` 标记对应镜像用途。
 
 ## 执行命令
 

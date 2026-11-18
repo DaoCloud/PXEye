@@ -25,7 +25,7 @@ REPORT_DIRECTORY = Path(__file__).resolve().parents[2] / 'outputs_/version-audit
 FILE_TEST = ("-name '*.efi' -o -name '*.squashfs' -o -name '*.iso' "
              "-o -name '*.bfb' -o -name '*.deb' -o -name 'vmlinuz*' "
              "-o -name 'initrd*' -o -name 'BUILD-INFO.json' -o -name 'ROOTFS-PACKAGES.json' "
-             "-o -name 'mmzhou-build-info.json' -o -name 'kernel' -o -name 'linux'")
+             "-o -name '*-build-info.json' -o -name 'kernel' -o -name 'linux'")
 ACCEPT = "application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json"
 
 
@@ -58,7 +58,7 @@ def snapshot(kind):
 
 def role(reference):
     name = reference.split("@", 1)[0].rsplit("/", 1)[-1].split(":", 1)[0]
-    return {"mmzhou-os-install-console": "pxeye"}.get(name, name)
+    return "pxeye" if name == "os-install-console" or name.endswith("-os-install-console") else name
 
 
 def file_key(name):
@@ -72,7 +72,8 @@ def selected_file(name):
     p = Path(name)
     return (p.suffix in (".efi", ".squashfs", ".iso", ".bfb", ".deb")
             or p.name.startswith(("vmlinuz", "initrd"))
-            or p.name in ("BUILD-INFO.json", "ROOTFS-PACKAGES.json", "mmzhou-build-info.json", "kernel", "linux"))
+            or p.name.endswith("-build-info.json")
+            or p.name in ("BUILD-INFO.json", "ROOTFS-PACKAGES.json", "kernel", "linux"))
 
 
 def build_revision(raw):
@@ -126,8 +127,10 @@ class Content:
         parts = ref.split('/')
         repository = '/'.join(parts[1:]) if len(parts) > 1 and (
             '.' in parts[0] or ':' in parts[0] or parts[0] == 'localhost') else ref
-        if 'mmzhou-os-install-console' in repository:
-            repository = 'pxeye:' + ref.rsplit(':', 1)[-1]
+        if role(ref) == 'pxeye':
+            leaf = repository.rsplit('/', 1)[-1]
+            name = leaf.split('@', 1)[0].split(':', 1)[0]
+            repository = 'pxeye' + (leaf[len(name):] or ':latest')
         return self.args.registry.rstrip('/') + '/' + repository
 
     def blob(self, digest, ref, *, config=False):
@@ -333,7 +336,7 @@ def package(args):
 def runtime(args):
     report = snapshot('runtime')
     report['context'] = args.context
-    report['namespaces'] = args.namespace or ['nico-system', 'mmzhou', 'cert-manager']
+    report['namespaces'] = args.namespace or ['nico-system', 'nico-rest', 'temporal', 'cert-manager']
     report['architecture'] = args.architecture
     report['file_scope'] = ROOT if not args.boot_root else args.boot_root
     report['include_site_files'] = args.include_site_files
@@ -490,8 +493,8 @@ No images are built/pulled, no workloads/configuration are changed. package may 
             p.add_argument('--include-arm64', action='store_true', help='Match make bundles INCLUDE_ARM64_MATERIALS=1')
         else:
             p.add_argument('--context', help='Defaults to the current kubectl context')
-            p.add_argument('--namespace', action='append', help='Repeatable; default nico-system, mmzhou and cert-manager')
-            p.add_argument('--name-pattern', default='nico|pxeye|os-install-console|cert-manager', help='Pod name regex scope')
+            p.add_argument('--namespace', action='append', help='Repeatable; default nico-system, nico-rest, temporal and cert-manager')
+            p.add_argument('--name-pattern', default='nico|pxeye|os-install-console|cert-manager|temporal|keycloak', help='Pod name regex scope')
             p.add_argument('--kubectl', default='kubectl')
             p.add_argument('--boot-root', help='PXE container published-file root')
             p.add_argument('--include-site-files', action='store_true', help='Also hash uploaded ISO/BFB and other files under nico/; potentially slow')

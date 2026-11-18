@@ -21,16 +21,16 @@ from textwrap import dedent
 
 
 DEFAULTS = {
-    "core_image": "docker.io/library/nico-api:mmzhou-e703126e4",
-    "bmc_image": "docker.io/library/nico-bmc-proxy:mmzhou-e703126e4",
-    "pxe_image": "docker.io/library/nico-pxe:mmzhou-e703126e4",
-    "boot_image": "docker.io/library/boot-artifacts-x86_64:mmzhou-e703126e4",
+    "core_image": None,
+    "bmc_image": None,
+    "pxe_image": None,
+    "boot_image": None,
     "postgres_image": "m.daocloud.io/docker.io/library/postgres:16.6",
     "vault_image": "m.daocloud.io/docker.io/hashicorp/vault:1.20.2",
     "chrony_image": "m.daocloud.io/docker.io/dockurr/chrony:latest",
-    "pxeye_image": "docker.io/library/mmzhou-os-install-console:0.20.3-20261107-r16",
+    "pxeye_image": None,
     "site_name": "NICo Core single-node lab",
-    "network_name": "mmzhou-host-boot",
+    "network_name": "host-boot",
     "network_prefix": "192.0.2.0/24",
     "network_gateway": "192.0.2.1",
 }
@@ -65,7 +65,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--bundle", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--chart-source", type=Path, required=True)
-    parser.add_argument("--release-prefix", default="mmzhou")
+    parser.add_argument("--release-prefix", default="nico")
+    parser.add_argument("--namespace", default="nico-system")
     parser.add_argument("--site-name", default=DEFAULTS["site_name"])
     parser.add_argument("--network-name", default=DEFAULTS["network_name"])
     parser.add_argument("--network-prefix", default=DEFAULTS["network_prefix"])
@@ -103,6 +104,27 @@ def lock_recipe_files(output: Path, manifest: dict) -> None:
     manifest["files"] = dict(sorted(locked.items()))
 
 
+def resolve_bundle_images(args, bundle: Path) -> None:
+    repositories = {"core_image": "nico-api", "bmc_image": "nico-bmc-proxy", "pxe_image": "nico-pxe",
+                    "boot_image": "boot-artifacts-x86_64", "pxeye_image": "pxeye"}
+    missing = {key: name for key, name in repositories.items() if not getattr(args, key)}
+    if not missing:
+        return
+    lock = bundle / "manifests/images-lock.json"
+    if not lock.is_file():
+        raise SystemExit("Bundle image lock is missing; supply explicit image references")
+    references = {row["image"] for row in json.loads(lock.read_text())}
+    for key, name in missing.items():
+        candidates = set()
+        for ref in references:
+            leaf = ref.rsplit("/", 1)[-1].partition(":")[0]
+            if leaf == name or (name == "pxeye" and leaf.endswith("-os-install-console")):
+                candidates.add(ref)
+        if len(candidates) != 1:
+            raise SystemExit(f"No unique {name} in the bundle lock; specify --{key.replace('_', '-')}")
+        setattr(args, key, candidates.pop())
+
+
 def main() -> None:
     args = parse_args()
     bundle = args.bundle.resolve()
@@ -113,6 +135,8 @@ def main() -> None:
         raise SystemExit("bundle is missing images/nico-amd64.oci.tar")
     if not args.chart_source.joinpath("Chart.yaml").is_file():
         raise SystemExit("chart source must contain Chart.yaml")
+
+    resolve_bundle_images(args, bundle)
 
     charts = output / "charts"
     values = output / "values"
@@ -142,8 +166,8 @@ def main() -> None:
     pxe_repository, pxe_tag = image_parts(args.pxe_image)
     boot_repository, boot_tag = image_parts(args.boot_image)
     chrony_repository, chrony_tag = image_parts(args.chrony_image)
-    if not re.fullmatch(r"mmzhou-[a-z0-9-]+", args.network_name):
-        raise SystemExit("network name must use the mmzhou-* convention")
+    if not re.fullmatch(r"[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?", args.network_name):
+        raise SystemExit("network name must be a DNS label")
     try:
         network = ipaddress.ip_network(args.network_prefix, strict=True)
         gateway = ipaddress.ip_address(args.network_gateway)
@@ -331,8 +355,8 @@ allocation_strategy = "reserved"
         "defaults": {
             "site_name": args.site_name,
             "release_prefix": args.release_prefix,
-            "core_url": "https://mmzhou-nico-api.mmzhou.svc:1079",
-            "pxe_url": "http://mmzhou-nico-pxe.mmzhou.svc:8080",
+            "core_url": f"https://{args.release_prefix}-nico-api.{args.namespace}.svc:1079",
+            "pxe_url": f"http://{args.release_prefix}-nico-pxe.{args.namespace}.svc:8080",
         },
         "phases": [
             {"id": "cert-manager", "name": "证书管理", "release": f"{prefix}-cert-manager", "chart": f"charts/{cert_chart}", "values": ["values/cert-manager.yaml"], "timeout_seconds": 900},

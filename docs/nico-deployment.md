@@ -52,6 +52,8 @@ python3 tools/build-nico-core-recipe.py \
   --chart-source deploy/nico-platform
 ```
 
+The legacy builder resolves unspecified image references from the input bundle lock. If multiple tags match (for example for Core), pass the exact `--core-image` from the receipt. The default namespace is `nico-system` and the default release prefix is `nico`.
+
 The builder creates `deployment/deployment.json`, locks every referenced Chart/value
 with SHA256, and writes `deployment/charts/` and `deployment/values/`. It deliberately
 selects only the versioned Core Chart (`nico-<version>.tgz`), not the optional

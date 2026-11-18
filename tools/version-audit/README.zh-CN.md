@@ -48,7 +48,7 @@ python3 audit.py compare
 - `package --registry <host:port>`：与 `make bundles REGISTRY=...` 的缓存地址映射一致；默认使用 `127.0.0.1:1027` 的 HTTP Registry；更换地址时默认校验 HTTPS，可显式使用 `--registry-http`。传入 `--registry ""` 可按本地 containerd 记录解析。
 - `package --chart-cache <目录>`：复用构建工作区 `cache/charts` 中的 SHA 命名归档，复用前重新校验。缺少时可能下载固定上游 Chart；不要求已有离线包。
 - `package --include-arm64`：对应 `make bundles INCLUDE_ARM64_MATERIALS=1`。默认关闭，与仓库 Make 默认一致；ARM 材料镜像在构建时生成，本脚本只导出配方中的文件身份。
-- `runtime --namespace <名称>`：可重复；默认 `nico-system`、`mmzhou`、`cert-manager`，Pod 名默认匹配 `nico|pxeye|os-install-console|cert-manager`，可用 `--name-pattern` 调整。已结束和正在删除的 Pod 不纳入。
+- `runtime --namespace <名称>`：可重复；默认 `nico-system`、`nico-rest`、`temporal`、`cert-manager`，Pod 名默认匹配 `nico|pxeye|os-install-console|cert-manager|temporal|keycloak`，可用 `--name-pattern` 调整。已结束和正在删除的 Pod 不纳入。
 - `runtime --include-site-files`：默认跳过 `nico/` 下站点上传材料，只核对 Boot/Scout 等基础材料。需要完整导出站点 ISO、BFB 等文件时启用，计算大文件摘要可能较慢。
 - `runtime --boot-root <路径>`：默认 PXE 容器内 `/forge-boot-artifacts/blobs/internal`。计算真实文件摘要可能耗时，尤其是 ISO；需要容器具备 `sh`、`find`、`sha256sum`，读取构建说明还需 `head`。
 - `--architecture amd64|arm64`：控制面容器运行平台，默认 `amd64`，与待安装主机的 ARM 架构分别处理。

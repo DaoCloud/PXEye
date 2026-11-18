@@ -322,7 +322,7 @@ class BuildRegistry:
         self.docker, self.work, self.run_id = docker, work, run_id
         self.resumable = resumable
         self.container = None
-        self.tool_image = 'mmzhou-offline-tools:' + run_id
+        self.tool_image = 'pxeye-offline-tools:' + run_id
         self.owned_tags = []
 
     def __enter__(self):
@@ -548,29 +548,30 @@ def validate_charts(roots, helm, mapping, material_images, directory, material_r
     for key, root in roots.items():
         expected = hinted_images(root)
         defaults = yaml.safe_load(b.substitute((root / 'values.yaml').read_text(), settings))
-        for mode, overrides in management.profiles().items():
+        for mode, release, namespace, overrides in management.profiles(defaults, key, settings['namespace']):
             values = charts.merge(defaults, overrides)
             path = directory / (key + '-' + mode + '.yaml'); path.write_text(yaml.safe_dump(values))
-            args = [helm, 'template', '--include-crds', 'nico' if key in ('core', 'platform') else key, root,
-                    '--namespace', 'nico-system', '-f', path]
+            args = [helm, 'template', '--include-crds', release, root, '--namespace', namespace, '-f', path]
             objects = [obj for obj in yaml.safe_load_all(command(args, directory / (key + '-' + mode + '.log')).stdout) if obj]
             images = management.images(objects)
-            management.check_profile(mode, values, objects)
+            management.check_profile(mode, values, objects, namespace)
             has_site_crd = any(obj and obj['kind'] == 'CustomResourceDefinition' and
                                obj['metadata']['name'] == 'sites.forge.nvidia.io' for obj in objects)
-            b.require(has_site_crd == (mode == 'rest-materials'), 'Unexpected Site CRD coverage in ' + mode)
+            b.require(has_site_crd == (mode == 'rest'), 'Unexpected Site CRD coverage in ' + mode)
             b.require(images <= known, 'Rendered image is outside the archive closure: ' + ', '.join(sorted(images - known)))
             b.require(images <= expected, 'Rendered image is absent from this Chart hints: ' + ', '.join(sorted(images - expected)))
             native_boot = [v for k, v in mapping.items() if 'boot-artifacts-x86' in k]
-            b.require(native_boot and set(native_boot) <= images, 'Native x86_64 boot-artifacts initContainer was lost during Chart composition')
-            if arm_material:
+            if mode == 'default':
+                b.require(native_boot and set(native_boot) <= images, 'Native x86_64 boot-artifacts initContainer was lost during Chart composition')
+            if arm_material and mode == 'default':
                 containers = _named_init_containers(objects, 'boot-artifacts-aarch64')
                 b.require(len(containers) == 1 and containers[0].get('image') == arm_material['image'],
                           'ARM boot-artifact initContainer was lost during Chart composition')
                 b.require('command' not in containers[0],
                           'ARM boot-artifact image ENTRYPOINT must not be overridden')
             b.require('@{' not in yaml.safe_dump(objects), 'Unresolved validation token in ' + key)
-            report.append({'chart': key, 'mode': mode, 'resources': len(objects), 'images': sorted(images)})
+            report.append({'chart': key, 'mode': mode, 'release': release, 'namespace': namespace,
+                           'resources': len(objects), 'images': sorted(images)})
     return report
 
 
@@ -758,6 +759,8 @@ def build(config, args, progress=None):
             for tool in ('relok8s', 'helm'):
                 (bundle / 'tools' / tool).chmod(0o755)
             shutil.copyfile(HOME / 'verify.py', bundle / 'tools/verify.py')
+            shutil.copyfile(REPO / 'charts/pxeye/files/management/management-release.sh', bundle / 'tools/management-release.sh')
+            (bundle / 'tools/management-release.sh').chmod(0o755)
             shutil.copytree(REPO / 'offline-build/onsite', bundle / 'tools/onsite', dirs_exist_ok=True,
                             ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
             for name in ('README.md', 'README.zh-CN.md'):

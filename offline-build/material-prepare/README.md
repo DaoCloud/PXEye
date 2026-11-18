@@ -20,7 +20,7 @@ Both build steps use only `build-config.json` in the work directory. Step one ow
 }
 ```
 
-The repository [images.txt](images.txt) selects 12 pinned Core/PXEye images. `image_list` resolves relative to the configuration file. A trailing `# roles=ui,bootstrap` assigns roles, which step one records for step two.
+Copy [images.txt](images.txt) as an example; set `image_export.image_list` to the edited list with verified local image references. Example registry names are not an inventory. `# roles=ui,bootstrap` marks images reused for these roles.
 
 ## Commands
 

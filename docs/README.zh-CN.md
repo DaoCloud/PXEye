@@ -10,6 +10,7 @@ PXEye 公开项目文档均提供内容对应的中英文版本。首次使用�
 | Grace ARM64 启动材料 | [Read](arm64-materials.md) | [阅读](arm64-materials.zh-CN.md) | 材料生产要求、固定配方、封装与真实硬件验收边界。 |
 | 统一源码构建 | [Read](source-build.md) | [阅读](source-build.zh-CN.md) | 固定维护 main、Core/libredfish/Scout/Boot/PXEye 与构建锁。 |
 | 离线交付构建 | [Read](../offline-build/BUILD.md) | [阅读](../offline-build/BUILD.zh-CN.md) | 可复制的构建步骤、交付物、范围和交接边界。 |
+| 可选 REST 管理面 | [Read](../charts/pxeye/files/management/README.md) | [阅读](../charts/pxeye/files/management/README.zh-CN.md) | 随包子 Chart、原生 release/namespace 及现场启用前提。 |
 | 离线包现场部署 | [Read](../offline-build/onsite/README.md) | [阅读](../offline-build/onsite/README.zh-CN.md) | 导入已校验交付包、可指定安装节点并支持断点安装。 |
 | 装机前检查 | [Read](pre-installation-checklist.md) | [阅读](pre-installation-checklist.zh-CN.md) | 一句话一项，分发现、主机 OS 写入及受管 DPU 阶段检查。 |
 | 现场 DHCP 快速检查 | [Read](dhcp-check.md) | [阅读](dhcp-check.zh-CN.md) | Make 单入口、无外部依赖的 Discover/Offer 检测及结果定位。 |

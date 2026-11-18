@@ -49,7 +49,7 @@ NICo 的镜像、数据库、Vault、服务暴露和 Boot 配置按 Chart 的 va
 | --- | --- |
 | 在线仓库 | 来源选择 Helm 仓库，填写仓库地址、Chart 名称与可选版本，粘贴其 values。 |
 | 在线 OCI | 填写 `oci://registry.example.com/charts/nico`，并指定版本和 values。 |
-| 离线 Chart | 上传 `nico-0.1.1.tgz`，发布名填写 `mmzhou`，读取对应的 values YAML。 |
+| 离线 Chart | 上传 `nico-0.1.1.tgz`，发布名填写 `nico`，读取对应的 values YAML。 |
 
 示例地址需要替换为实际值。完整部署与参数准备见[部署说明](../nico-deployment.zh-CN.md)。
 

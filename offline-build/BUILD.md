@@ -130,7 +130,7 @@ tools/                              # Helm, relok8s, verifier and onsite helpers
 docs/                               # delivery documentation and licenses
 ```
 
-Core/PXEye, cert-manager, platform and Vault form the default installation. REST, Site Agent, Temporal, Keycloak and their migration/registration helpers are mandatory **delivery materials**, but disabled onsite. Packaging locks the union of the default and `rest-materials` renders; the build host must be able to read the selected REST images. Missing optional-runtime inputs cannot be silently skipped. See [management materials](../charts/pxeye/files/management/README.md). ARM64 boot content remains opt-in; DPF services and OS ISOs are not included.
+Core/PXEye, cert-manager, platform and Vault form the default installation. REST, Site Agent, Temporal, Keycloak and their migration/registration helpers are mandatory **delivery materials**, but disabled onsite. Packaging renders each child in its native release and namespace, checks the hooks and locks the union with default-install images. The build host must be able to read those images. Preview onsite with `tools/management-release.sh template`; see [management materials](../charts/pxeye/files/management/README.md) for targets and prerequisites. ARM64 boot content remains opt-in; DPF services and OS ISOs are not included.
 
 The onsite runner uses the bundled PXEye Chart to connect PXEye to the same-namespace Core client Secrets and
 in-cluster API. Therefore, after a PXEye source change, publish a new PXEye image with `make pxeye-images` before running

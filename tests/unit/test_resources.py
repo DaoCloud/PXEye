@@ -173,7 +173,7 @@ class ResourceTests(unittest.TestCase):
 
     def test_subnet_save_checks_cidr_gateway_and_persists_draft(self):
         c = {
-            "name": "mmzhou-test",
+            "name": "example-site-test",
             "segment_type": "HOST_INBAND",
             "prefix": "192.0.2.0/24",
             "gateway": "192.0.2.1",
@@ -199,7 +199,7 @@ class ResourceTests(unittest.TestCase):
         n = {
             "id": MACHINE["id"],
             "revision": "rev",
-            "name": "mmzhou-test",
+            "name": "example-site-test",
             "segment_type": "HOST_INBAND",
             "prefixes": [{"prefix": "192.0.2.0/24", "gateway": "192.0.2.1", "reserveFirst": 5}],
             "mtu": 1500,
@@ -376,7 +376,7 @@ class ResourceTests(unittest.TestCase):
         n = {
             "id": MACHINE["id"],
             "revision": "rev",
-            "name": "mmzhou-test",
+            "name": "example-site-test",
             "segment_type": "HOST_INBAND",
             "prefixes": [{"prefix": "192.0.2.0/24", "gateway": "192.0.2.1", "reserveFirst": 5}],
             "mtu": 1500,
@@ -434,7 +434,7 @@ class ResourceTests(unittest.TestCase):
         row = {
             "id": MACHINE["id"],
             "revision": "rev",
-            "name": "mmzhou-unused",
+            "name": "example-site-unused",
             "segment_type": "UNDERLAY",
             "prefixes": [{"prefix": "198.18.72.0/28"}],
             "interface_count": 0,
@@ -454,7 +454,7 @@ class ResourceTests(unittest.TestCase):
         p.parent.mkdir(parents=True)
         p.write_text(
             json.dumps(
-                {"id": MACHINE["id"], "config": {"name": "mmzhou-unused"}, "status": "applied"}
+                {"id": MACHINE["id"], "config": {"name": "example-site-unused"}, "status": "applied"}
             )
         )
         result = self.resources.delete_network(self.deletion_body())
@@ -547,7 +547,7 @@ class ResourceTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.resources.apply_network(MACHINE["id"])
         config = {
-            "name": "mmzhou-unused",
+            "name": "example-site-unused",
             "segment_type": "UNDERLAY",
             "prefix": "198.18.72.0/28",
             "mtu": 1500,
@@ -562,7 +562,7 @@ class ResourceTests(unittest.TestCase):
     def test_delete_draft_is_local_and_cannot_reappear_or_apply(self):
         self.resources.networks = Mock(return_value=[])
         config = {
-            "name": "mmzhou-draft",
+            "name": "example-site-draft",
             "segment_type": "UNDERLAY",
             "prefix": "198.18.72.0/28",
             "mtu": 1500,
@@ -581,7 +581,7 @@ class ResourceTests(unittest.TestCase):
     def test_delete_draft_rejects_changed_or_unknown_execution_state(self):
         self.resources.networks = Mock(return_value=[])
         config = {
-            "name": "mmzhou-draft",
+            "name": "example-site-draft",
             "segment_type": "UNDERLAY",
             "prefix": "198.18.72.0/28",
             "mtu": 1500,

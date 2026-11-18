@@ -78,8 +78,8 @@ class FakeSite(Adapter):
             "network": {},
             "site": {
                 "name": "TEST",
-                "namespace": "mmzhou",
-                "deployment": "mmzhou-os-install-console",
+                "namespace": "example-site",
+                "deployment": "example-site-os-install-console",
             },
             "task_timeout_seconds": 1,
         }

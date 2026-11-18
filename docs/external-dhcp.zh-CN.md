@@ -14,7 +14,7 @@
 
 ## 配套源码版本
 
-构建此功能时使用维护中的 [Core 集成分支](https://github.com/SSmallMonster/infra-controller/tree/mmzhou/nico-site-fixes)。Core 与 Scout 来自同一个仓库，必须使用同一源码版本。
+构建此功能时使用已固定的 [Core 集成提交](https://github.com/SSmallMonster/infra-controller/tree/ebaadc097c4c72af58bf30a934c3b086ed878778)。Core 与 Scout 来自同一个仓库，必须使用同一源码版本。
 
 | 组件 | 源码版本 |
 | --- | --- |
@@ -22,7 +22,7 @@
 | 联想 Redfish 兼容补丁 | `SSmallMonster/libredfish` 的 `b6b4fff7277276bb4d0724e7dd4dca9cea2abbd1`，由 Core 的 Cargo 清单和锁文件固定 |
 
 ```bash
-git clone --branch mmzhou/nico-site-fixes https://github.com/SSmallMonster/infra-controller.git
+git clone https://github.com/SSmallMonster/infra-controller.git
 cd infra-controller
 git checkout --detach ebaadc097c4c72af58bf30a934c3b086ed878778
 ```

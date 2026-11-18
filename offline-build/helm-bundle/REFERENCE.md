@@ -21,7 +21,7 @@ Relative file paths resolve from the configuration directory; `~/` is supported.
 [images.txt](../material-prepare/images.txt) lists exact local image references, with blank lines, comments and optional trailing roles:
 
 ```text
-docker.io/library/mmzhou-os-install-console:0.22.16-2edc182 # roles=ui,bootstrap
+docker.io/library/pxeye:0.22.16-2edc182 # roles=ui,bootstrap
 ```
 
 Roles are `ui` and `bootstrap`; one image may serve both. The tool image must provide skopeo, Python and related tools. Step one records roles in `export.json` without changing the historical five-field lock or OCI layout. An unannotated, unique image carrying the PXEye product label can serve both roles. Plain image export does not require PXEye, but packaging needs both roles resolved.

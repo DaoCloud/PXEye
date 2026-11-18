@@ -61,6 +61,8 @@ python3 tools/build-nico-core-recipe.py \
   --chart-source deploy/nico-platform
 ```
 
+旧版构建器从输入包的镜像锁解析未指定的镜像。如果同一组件有多个候选（例如 Core），通过 `--core-image` 指定部署回执中的实际引用。默认 namespace 为 `nico-system`，release 前缀为 `nico`。
+
 构建器会生成 `deployment/deployment.json`，为每个引用的 Chart/value 写入 SHA256 锁，
 并生成 `deployment/charts/` 和 `deployment/values/`。它只选择版本化的 Core Chart
 （`nico-<version>.tgz`），不会把可选的 `nico-rest-*` Chart 误当成 Core。当前 recipe
