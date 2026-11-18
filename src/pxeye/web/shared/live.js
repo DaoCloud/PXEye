@@ -312,11 +312,10 @@ function taskRows() {
     return `<tr><td><button class="link-button" data-task="${esc(t.id)}">${esc(t.id)}</button><span class="live-small">${when(t.created_at)}</span></td><td>${esc(t.device)}<span class="live-small">${esc(t.management_ip)}</span></td><td>${esc(t.hostname)}</td><td>${badge(status.label, status.tone)}<span class="live-small">${esc(stages[t.stage])}</span></td><td>${bmcLink(state.resources?.devices.find((d) => d.serial === t.device)?.bmc_ip)}</td><td><div class="live-tools"><button class="link-button" data-task="${esc(t.id)}">实时日志 / 记录</button>${endTaskButton(t)}</div></td></tr>`;
   });
 }
-function siteDiscoveryPanel(discovery = {}) {
-  const enabled = discovery.state === "enabled", paused = discovery.state === "paused";
-  const label = enabled ? "已启用" : paused ? "已暂停" : "无法读取";
-  const auto = discovery.create_machines;
-  return `<section class="site-panel"><header class="site-panel-header"><h2>站点发现</h2>${paused && auto === false ? button("启用站点发现", "site-discovery-open") : ""}</header><div class="site-services"><div class="site-service-row"><span class="site-service-dot ${enabled ? "ok" : paused ? "set" : "bad"}"></span><div class="site-service-name"><strong>${label}</strong><span>${esc(discovery.detail || "Core Site Explorer 运行状态")}</span></div><div class="site-service-state"><strong>自动建机：${auto === true ? "已启用" : auto === false ? "已关闭" : "未知"}</strong><span>检查于 ${when(discovery.checked_at)}</span></div></div></div></section>`;
+function siteDiscoveryLine(discovery = {}) {
+  const { state: phase, create_machines: auto } = discovery;
+  const labels = { enabled: "已启用", paused: "已暂停", applying: "启用中…", failed: "更新失败" };
+  return `<div class="site-discovery-line" role="status"><strong>站点发现</strong>${badge(labels[phase] || "无法读取", phase === "enabled" ? "green" : phase === "failed" ? "red" : "amber")}${typeof auto === "boolean" ? `<span>自动建机：${auto ? "开" : "关"}</span>` : ""}${phase === "paused" && auto === false ? '<button class="link-button" data-live="site-discovery-open">启用</button>' : ""}${discovery.detail && phase !== "applying" ? `<span>${esc(discovery.detail)}</span>` : ""}</div>`;
 }
 function sitePage() {
   const s = state.siteInfo;
@@ -396,8 +395,7 @@ function sitePage() {
       "查看和维护 NICo 控制面。",
       button("刷新数据", "refresh") + button("编辑站点", "site-edit", true),
     ) +
-    siteDiscoveryPanel(s.site_explorer) +
-    `<section class="site-overview"><div class="site-overview-main"><span class="site-eyebrow">当前站点</span><h2>${esc(s.site.name)}</h2><div class="site-overview-meta"><span>${esc(s.site.namespace)} / ${esc(s.site.deployment)}</span><span class="live-code">${esc(s.core_url)}</span><span>新建安装批次默认并发 ${esc(s.default_install_concurrency || 5)} 台</span></div></div><div class="site-health"><span class="site-status-dot ${healthy ? "ok" : "bad"}"></span><div><strong>${healthy ? "Core 连接正常" : "Core 连接异常"}</strong><span>${esc(core.detail || "尚未获得连接状态")}</span><small>检查于 ${when(s.checked_at)}</small></div></div></section>` +
+    `<section class="site-overview"><div class="site-overview-main"><span class="site-eyebrow">当前站点</span><h2>${esc(s.site.name)}</h2><div class="site-overview-meta"><span>${esc(s.site.namespace)} / ${esc(s.site.deployment)}</span><span class="live-code">${esc(s.core_url)}</span><span>新建安装批次默认并发 ${esc(s.default_install_concurrency || 5)} 台</span></div>${siteDiscoveryLine(s.site_explorer)}</div><div class="site-health"><span class="site-status-dot ${healthy ? "ok" : "bad"}"></span><div><strong>${healthy ? "Core 连接正常" : "Core 连接异常"}</strong><span>${esc(core.detail || "尚未获得连接状态")}</span><small>检查于 ${when(s.checked_at)}</small></div></div></section>` +
     `<div class="site-layout"><section class="site-panel"><header class="site-panel-header"><div><span class="site-eyebrow">安全连接</span><h2>连接身份</h2></div></header><dl class="site-identity"><div><dt>客户端身份</dt><dd>${esc(identity.subject || identity.error || "未提供")}</dd></div><div><dt>签发者</dt><dd>${esc(identity.issuer || "—")}</dd></div><div><dt>有效期</dt><dd>${esc(identity.valid_from || "—")}<span>至 ${esc(identity.valid_until || "—")}</span></dd></div></dl></section><section class="site-panel"><header class="site-panel-header"><div><span class="site-eyebrow">本地存储</span><h2>数据目录</h2></div></header><div class="site-storage-list">${storage}</div></section></div>` +
     `<section class="site-panel site-services-panel"><header class="site-panel-header"><div><span class="site-eyebrow">运行依赖</span><h2>网络与基础服务</h2></div></header><div class="site-services">${services}</div><p class="site-panel-note">${esc(s.dns_maintenance.detail)}</p></section>` +
     `<section class="site-panel site-services-panel"><header class="site-panel-header"><div><span class="site-eyebrow">物理引导网络</span><h2>DHCP / PXE / DNS / NTP</h2></div>${button("管理引导网络", "site-boot-network", true)}</header><div class="site-services"><div class="site-service-row"><span class="site-service-dot ${bootTone === "green" ? "ok" : bootTone === "red" ? "bad" : "set"}"></span><div class="site-service-name"><strong>${externalDhcp ? "外部 DHCP / BMC 引导" : "DHCP / PXE 引导地址"}</strong><span>${externalDhcp ? "本站点 Kea 保持关闭，外部 DHCP 提供固定租约" : "保存后将写入 Kea 并滚动 DHCP"}</span></div><span class="site-service-endpoint live-code">${esc(externalDhcp ? bootValues.pxe_http_endpoint || "未配置" : (bootValues.dhcp_address || "未配置") + " / " + (bootValues.pxe_address || "未配置"))}</span><div class="site-service-state ${bootTone === "green" ? "ok" : bootTone === "red" ? "bad" : "set"}"><strong>${bootLabel}</strong><span>${esc(boot.detail || "尚未配置物理引导服务地址。")}</span></div></div><div class="site-service-row"><span class="site-service-dot ${materialTone}"></span><div class="site-service-name"><strong>安装材料 HTTP 端点</strong><span>新建 OS 版本的 ISO、kernel、initrd 发布基址</span></div><span class="site-service-endpoint live-code">${esc(materialHttpEndpoint || "未配置")}</span><div class="site-service-state ${materialTone}"><strong>${esc(materialLabel)}</strong><span>${esc(materialDetail)}</span>${materialProbe.checked_at ? `<span>检查于 ${when(materialProbe.checked_at)}${materialProbe.latency_ms != null ? " · " + esc(materialProbe.latency_ms) + " ms" : ""}</span>` : ""}</div></div></div><p class="site-panel-note">PXE 引导地址只更新 Kea。材料 HTTP 端点独立管理，必须是装机网络可访问的完整地址和端口；PXEye 不会修改外部 Service、DHCP 地址池或既有 OS。</p></section>`
@@ -1113,6 +1111,26 @@ async function refreshTasks() {
   state.tasks = (await api("/api/tasks")).tasks;
   render();
 }
+let discoveryPolling = false;
+registerPoller("site-discovery-status", ["site"], async () => {
+  const previous = state.siteInfo?.site_explorer;
+  if (!state.csrf || state.wizard || discoveryPolling || previous?.state !== "applying") return;
+  discoveryPolling = true;
+  try {
+    const observed = await api("/api/site/discovery");
+    if (state.page === "site" && state.siteInfo?.site_explorer === previous) {
+      state.siteInfo.site_explorer = observed;
+      if (!state.wizard) render();
+    }
+  } catch {
+    if (state.page === "site" && state.siteInfo?.site_explorer === previous) {
+      state.siteInfo.site_explorer = { state: "unknown", detail: "状态查询失败，请刷新重试。" };
+      if (!state.wizard) render();
+    }
+  } finally {
+    discoveryPolling = false;
+  }
+}, 3000);
 registerActions(
   "live.js",
   [
@@ -1188,9 +1206,10 @@ registerActions(
         case "site-discovery-enable":
           return await busy(async () => {
             const result = await api("/api/site/discovery/enable", { confirm: true });
+            state.siteInfo.site_explorer = { ...state.siteInfo.site_explorer, state: result.status };
             close();
-            toast(result.status === "enabled" ? "站点发现已启用。" : "已提交 Core 更新，请刷新查看实际运行状态。");
-            await refreshPage("site");
+            render();
+            toast(result.status === "enabled" ? "站点发现已启用。" : "正在启用站点发现，状态会自动更新。");
           });
         case "site-save":
           return await saveSite();

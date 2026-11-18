@@ -20,7 +20,7 @@ Open **Configuration → Site settings (配置 → 站点设置)** to inspect NI
 
 **Site discovery (站点发现)** shows the actual switch on all ready Core replicas: enabled, paused, or unavailable. Automatic machine creation has its own status. New sites start Core with discovery enabled and automatic machine creation and firmware updates disabled. An enabled switch does not establish that a BMC has been discovered: Core also needs management network access and site credentials.
 
-For an existing paused site with automatic creation off, choose **Enable site discovery**. Confirmation updates the mounted Core site ConfigMap and rolls Core; a single-replica API may be briefly unavailable. Refresh the page to verify the running state. If Helm or GitOps still supplies older values, set `[site_explorer].enabled` to `true` there as well to retain the change on future deployments. Saving unrelated site settings does not resume a paused site.
+For an existing paused site with automatic creation off, choose **Enable site discovery**. Confirmation updates the mounted Core site ConfigMap and rolls Core; a single-replica API may be briefly unavailable. The discovery row in the site overview shows **Enabling** during the rollout and checks the live switch automatically afterwards. Do not resubmit while it is updating. If Helm or GitOps still supplies older values, set `[site_explorer].enabled` to `true` there as well to retain the change on future deployments. Saving unrelated site settings does not resume a paused site.
 
 **Edit site (编辑站点)** changes three fields:
 

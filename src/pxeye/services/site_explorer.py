@@ -116,9 +116,52 @@ class SiteExplorer:
             raise ValueError("Core 副本的发现开关不一致。")
         return results.pop()
 
+    def deployment(self, ns, selector):
+        deployments = [
+            d
+            for d in self.cluster.list("deployments", ns)
+            if all(
+                d["spec"]["template"]["metadata"].get("labels", {}).get(k) == v
+                for k, v in selector.items()
+            )
+        ]
+        if len(deployments) != 1:
+            raise ValueError("无法唯一识别本站点 Core Deployment。")
+        return deployments[0]
+
+    @staticmethod
+    def activation(dep):
+        spec, status = dep["spec"], dep.get("status", {})
+        annotations = spec["template"]["metadata"].get("annotations", {})
+        if not annotations.get("pxeye.io/discovery-enabled-at"):
+            return None
+        generation = dep["metadata"]["generation"]
+        if annotations.get("pxeye.io/discovery-generation") != str(generation):
+            return None
+        observed = status.get("observedGeneration") == generation
+        if observed and any(
+            c.get("reason") == "ProgressDeadlineExceeded" and c.get("status") == "False"
+            for c in status.get("conditions", [])
+        ):
+            return {"state": "failed", "detail": "Core 滚动更新超时，请检查 Pod 事件。"}
+        desired = spec.get("replicas", 1)
+        if (
+            not observed
+            or not desired
+            or any(
+                status.get(k, 0) != desired
+                for k in ("replicas", "updatedReplicas", "availableReplicas", "readyReplicas")
+            )
+        ):
+            return {"state": "applying", "detail": "配置已保存，正在等待新版 Core 副本就绪。"}
+        return None
+
     def view(self):
         try:
-            ns, _, name = self.target()
+            ns, selector, name = self.target()
+            transition = self.activation(self.deployment(ns, selector))
+            if transition:
+                return {**transition, "checked_at": time.time()}
             enabled, auto_create = self.observe(ns, name)
             return {
                 "state": "enabled" if enabled else "paused",
@@ -132,20 +175,13 @@ class SiteExplorer:
         if not isinstance(body, dict) or set(body) != {"confirm"} or body["confirm"] is not True:
             raise ValueError("请确认启用本站点发现并滚动更新 Core。")
         ns, selector, name = self.target()
+        dep = self.deployment(ns, selector)
+        transition = self.activation(dep)
+        if transition and transition["state"] == "applying":
+            return {"status": "applying"}
         enabled, auto_create = self.observe(ns, name)
         if auto_create:
             raise ValueError("当前 Core 已启用自动建机，请先核对站点策略。")
-        deployments = [
-            d
-            for d in self.cluster.list("deployments", ns)
-            if all(
-                d["spec"]["template"]["metadata"].get("labels", {}).get(k) == v
-                for k, v in selector.items()
-            )
-        ]
-        if len(deployments) != 1:
-            raise ValueError("无法唯一识别本站点 Core Deployment。")
-        dep = deployments[0]
         if dep.get("status", {}).get("observedGeneration") != dep["metadata"].get("generation"):
             raise ValueError("Core 更新尚未被控制器确认，请稍后刷新。")
         if dep.get("status", {}).get("updatedReplicas", 0) != dep["spec"].get(
@@ -194,7 +230,10 @@ class SiteExplorer:
                         "template": {
                             "metadata": {
                                 "annotations": {
-                                    "pxeye.io/discovery-enabled-at": str(time.time_ns())
+                                    "pxeye.io/discovery-enabled-at": str(time.time_ns()),
+                                    "pxeye.io/discovery-generation": str(
+                                        dep["metadata"]["generation"] + 1
+                                    ),
                                 }
                             }
                         }
