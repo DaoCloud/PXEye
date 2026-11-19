@@ -86,3 +86,4 @@ Each piece of data has one place where it is maintained. Other pages reference i
 5. Is there a write? If so, what are the object, the effect and the confirmation?
 6. With the switch off, are existing pages entirely unaffected?
 7. Does the wording use the existing terms?
+8. For a rack operations feature, was the implementation status of its functional area updated in the [capability requirements](rack-operations-requirements.md)?

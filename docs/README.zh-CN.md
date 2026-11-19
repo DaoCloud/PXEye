@@ -32,7 +32,7 @@ PXEye 公开项目文档均提供内容对应的中英文版本。首次使用�
 | --- | --- | --- | --- |
 | 设计文档索引 | [Read](design/README.md) | [阅读](design/README.zh-CN.md) | 各类内容放在哪；命名规则。 |
 | 交互规则 | [Read](design/interaction-rules.md) | [阅读](design/interaction-rules.zh-CN.md) | 页面归属、文案、状态、危险操作。 |
-| 机柜运维：能力需求 | [Read](design/rack-operations-requirements.md) | [阅读](design/rack-operations-requirements.zh-CN.md) | 目标能力全貌：范围、生命周期、功能域。 |
+| 机柜运维：能力需求 | [Read](design/rack-operations-requirements.md) | [阅读](design/rack-operations-requirements.zh-CN.md) | 目标能力全貌和各功能域的实现状态。 |
 | 机柜运维：范围与现状 | [Read](design/rack-operations.md) | [阅读](design/rack-operations.zh-CN.md) | 机柜方向做什么、做到哪一步。 |
 | 机柜运维：NICo 数据契约 | [Read](design/rack-operations-data-contract.md) | [阅读](design/rack-operations-data-contract.zh-CN.md) | 每个页面使用的 Core 接口和字段，及验证标记。 |
 

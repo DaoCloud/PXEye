@@ -2,9 +2,38 @@
 
 **English** · [简体中文](rack-operations-requirements.zh-CN.md) · [Design documents](README.md)
 
-- Version: v1.0, compiled on 2026-11-17.
-- Nature: a complete description of the **target capabilities**, derived from the public NVIDIA Infra Controller (NICo) documentation, to show the whole of rack-level management. It does not state that PXEye implements them, nor that every item is achievable at a given site.
-- Current state: what each item can actually do at a real site and how far PXEye has gone is in [scope and status](rack-operations.md); its capability comparison follows the numbering of section 6 here.
+- Requirements baseline: v1.0, 2026-11-17, compiled from the public NVIDIA Infra Controller (NICo) documentation.
+- Status checked: 2026-11-19, against the Core interfaces of a general server site; interfaces and fields are in the [data contract](rack-operations-data-contract.md).
+- This document is maintained for the long term. The requirement items describe target capabilities; the “Implementation status” under each functional area records facts and changes with development. The pages and plan of the current stage are in [scope and status](rack-operations.md).
+
+## Use and maintenance
+
+### How to use it
+
+- Planning a feature: find the functional area in section 6 it belongs to, read its implementation status and conclusion, then decide whether and how to build it.
+- Reviewing a change: check that it updated the implementation status of its functional area.
+- Arriving at a new site: after checking the interfaces with the data contract, update “What NICo Core provides”.
+
+| Status | Meaning |
+| --- | --- |
+| present | The main requirements of the area have a usable feature |
+| partial | Part of the area is usable; the conclusion says what is not |
+| not started | No corresponding feature yet |
+| not surveyed | Core's actual capability has not been checked |
+
+Requirement items are targets. “Present” or “partial” does not mean every item is met; the current state and conclusion in the table are authoritative.
+
+### When it must be updated
+
+In these cases, update this document in the same commit, in both languages:
+
+1. A feature is added, changed or removed: update “PXEye today”, “Pages” and the status of its functional area.
+2. A requirement turns out not to be achievable, or is built differently from what it says: update “Conclusion and next step”; when the requirement item itself no longer holds, change the item.
+3. What Core provides changes, for example with a new version or a new kind of site: update “What NICo Core provides”.
+4. An item is dropped: say so in the conclusion, with the reason.
+5. A new requirement or functional area appears: add it to section 6.
+
+State the current conclusion; do not append dated sections, Git keeps the history. Change the “Status checked” date above with every update. Only conclusions belong here; page details go to scope and status, interface details to the data contract.
 
 ## 1. Purpose
 
@@ -75,12 +104,24 @@ It draws on the bare-metal lifecycle, device orchestration, network isolation, t
 - Relations between a device and its rack, tray, host, DPU, BMC, interconnect and power.
 - Asset state queries, change history, labels and search.
 
+**Implementation status: partial**
+
+| What NICo Core provides | PXEye today | Conclusion and next step | Pages |
+| --- | --- | --- | --- |
+| Device list, serial numbers, hand-declared `rack_id`; rack objects only at whole-rack sites; no rack unit position | Device management and rack topology exist; display order is stored by PXEye | Present. A unit position would have to be recorded by PXEye. No change audit | Rack topology, device management |
+
 ### 6.2 Topology and connections
 
 - Identify and maintain host–DPU, device–port, node–interconnect domain and device–power domain relations.
 - Combine information from LLDP, serial numbers, ports and management interfaces.
 - Check topology consistency and identify missing, wrong, duplicate or unexpected links.
 - Provide topology data for visualising racks, interconnect domains and resource domains.
+
+**Implementation status: partial**
+
+| What NICo Core provides | PXEye today | Conclusion and next step | Pages |
+| --- | --- | --- | --- |
+| LLDP neighbours of servers, with the peer switch name, model and serial (verified); the network topology interface returns nothing | The server page shows uplink switches; the status dialog lists every neighbour | Viewing is done. Comparing intended and actual cabling is not, for lack of an intended cabling source | Device management → Servers |
 
 ### 6.3 Power and operation orchestration
 
@@ -90,6 +131,12 @@ It draws on the bare-metal lifecycle, device orchestration, network isolation, t
 - Power profiles, power budgets and coordination with an external power engine.
 - A clear boundary between critical safety interlocks and low-level facility control.
 
+**Implementation status: partial**
+
+| What NICo Core provides | PXEye today | Conclusion and next step | Pages |
+| --- | --- | --- | --- |
+| Desired and actual power state; power and reset interfaces exist; rack-level orchestration is for whole racks only; no power readings | Power state is shown | Operations not done. A rack power total cannot be built from Core | Rack topology, device management (power state only) |
+
 ### 6.4 Firmware, UEFI and DPU
 
 - Firmware baselines by device type, model, site and version.
@@ -98,6 +145,12 @@ It draws on the bare-metal lifecycle, device orchestration, network isolation, t
 - DPU OS, HBN, DPU firmware, DPU agent and configuration synchronisation.
 - No unauthorised firmware rollback; versions and operations are audited.
 
+**Implementation status: not started**
+
+| What NICo Core provides | PXEye today | Conclusion and next step | Pages |
+| --- | --- | --- | --- |
+| Per-machine firmware inventory, lockdown state, secure boot state (verified); update interfaces exist; the verification site has no host firmware baseline | Not shown | Firmware inventory is next. Compliance lacks a baseline. Updates not done | — |
+
 ### 6.5 Operating system installation and boot
 
 - Multiple OS images, versions, architectures and installation parameters.
@@ -105,6 +158,12 @@ It draws on the bare-metal lifecycle, device orchestration, network isolation, t
 - Installation templates chosen by device, resource type or instance type.
 - Retry, timeout, cancel, rollback, isolation and manual takeover on failure.
 - After installation, resource state and connection information that higher-level systems can consume.
+
+**Implementation status: present**
+
+| What NICo Core provides | PXEye today | Conclusion and next step | Pages |
+| --- | --- | --- | --- |
+| Main line of the product | Present | Outside this work | Installation tasks, operating systems, installation profiles |
 
 ### 6.6 Network and interconnect resources
 
@@ -115,6 +174,12 @@ It draws on the bare-metal lifecycle, device orchestration, network isolation, t
 - NVLink domain formation, health check, partitioning and allocation gating.
 - Idempotent network configuration, convergence checks and cleanup on tenant release.
 
+**Implementation status: partial**
+
+| What NICo Core provides | PXEye today | Conclusion and next step | Pages |
+| --- | --- | --- | --- |
+| Segment, VPC, InfiniBand and NVLink partition interfaces exist | Network management covers installation segments only | Not part of this work | Network management |
+
 ### 6.7 Monitoring, alerting and rack health
 
 - Collect data from BMCs, DPUs, servers, GPUs, interconnect, storage, power and environmental sensors.
@@ -123,6 +188,12 @@ It draws on the bare-metal lifecycle, device orchestration, network isolation, t
 - Rack overview, device matrix, topology view, power view and deliverable-resource view.
 - Alert severity, suppression, aggregation, notification, acknowledgement, escalation and closure.
 - Policy-triggered graceful shutdown, resource isolation, allocation stop and recovery.
+
+**Implementation status: partial**
+
+| What NICo Core provides | PXEye today | Conclusion and next step | Pages |
+| --- | --- | --- | --- |
+| Health alerts and health history per object (verified); no time series; no dedicated leak or liquid-cooling interface | The server page shows health and alerts | Per-device health is done. Alert roll-up and history are not. Charts need a monitoring system | Device management → Servers, Switches, Power shelves |
 
 ### 6.8 Security and trust
 
@@ -133,6 +204,12 @@ It draws on the bare-metal lifecycle, device orchestration, network isolation, t
 - NVMe/SAS/SATA secure erase, result verification and isolation on failure.
 - Audit of security events, policy changes, credential operations and critical actions.
 
+**Implementation status: not surveyed**
+
+| What NICo Core provides | PXEye today | Conclusion and next step | Pages |
+| --- | --- | --- | --- |
+| Attestation and measurement read interfaces exist | Not covered | Not surveyed; not in this stage | — |
+
 ### 6.9 Delivery, release and reuse
 
 - Instance types, resource pools, allocation and reclamation.
@@ -140,6 +217,12 @@ It draws on the bare-metal lifecycle, device orchestration, network isolation, t
 - Network, route, address, partition and metadata associations withdrawn on release.
 - A resource is not marked reusable before cleaning completes.
 - Re-discovery, re-validation, reinstallation and re-delivery.
+
+**Implementation status: partial**
+
+| What NICo Core provides | PXEye today | Conclusion and next step | Pages |
+| --- | --- | --- | --- |
+| Instance management | Present | Outside this work | Instance management |
 
 ### 6.10 Faults, repair and retirement
 
@@ -149,7 +232,15 @@ It draws on the bare-metal lifecycle, device orchestration, network isolation, t
 - Access control for asset migration, site migration, record retention and forced deletion.
 - Recovery, retry and manual takeover for every exceptional flow.
 
+**Implementation status: partial**
+
+| What NICo Core provides | PXEye today | Conclusion and next step | Pages |
+| --- | --- | --- | --- |
+| Quarantine, maintenance marks, machine validation, SKU and decommission interfaces exist; at the verification site validation was skipped and there is no SKU | The status dialog shows quarantine and maintenance | Viewing partly done. Operations not done | Device management → Servers (status dialog) |
+
 ## 7. Suggested core state model
+
+Implementation rule: pages show the state text the NICo state machine reports and define no state names of their own. The table below groups stages conceptually for discussion and documentation; its entries are not values shown on a page.
 
 | Object | Suggested states | Transition triggers |
 | --- | --- | --- |
@@ -171,14 +262,14 @@ It draws on the bare-metal lifecycle, device orchestration, network isolation, t
 
 ## 9. Suggested stages
 
-| Stage | Focus | Result |
-| --- | --- | --- |
-| 1: Basic enrollment | Asset model, device discovery, BMC/Redfish, basic topology, state machine, audit | Devices can be connected, inventoried, queried and operated at a basic level |
-| 2: Installation and initialization | Firmware baseline, DPU initialization, DHCP/PXE/iPXE, OS installation, basic network | An automated flow from device connection to system boot |
-| 3: Delivery and isolation | Resource pools, instance types, Ethernet/IB/NVLink partitions, release cleanup | Resources can be delivered, isolated, released and safely reused |
-| 4: Rack-level orchestration | Power sequencing, tray and NVL domain orchestration, power coordination, rack workflows | Rack-level maintenance and operations with complex dependencies |
-| 5: Monitoring and intelligent operations | Rack health, BMS, leak, alert policy, automatic isolation and recovery | Monitoring, alerting, response and closed-loop operations |
-| 6: Scale and ecosystem | Multiple sites, adapters, higher-level APIs, ticket, monitoring and identity integration | Large deployments and cooperation with external systems |
+| Stage | Focus | Result | PXEye progress |
+| --- | --- | --- | --- |
+| 1: Basic enrollment | Asset model, device discovery, BMC/Redfish, basic topology, state machine, audit | Devices can be connected, inventoried, queried and operated at a basic level | Partial: discovery, enrollment and basic topology exist; no operation audit |
+| 2: Installation and initialization | Firmware baseline, DPU initialization, DHCP/PXE/iPXE, OS installation, basic network | An automated flow from device connection to system boot | Partial: OS installation exists; firmware baseline not started; DPU initialization is done by NICo, not PXEye |
+| 3: Delivery and isolation | Resource pools, instance types, Ethernet/IB/NVLink partitions, release cleanup | Resources can be delivered, isolated, released and safely reused | Partial: instances are created and released; partitions and pools not started |
+| 4: Rack-level orchestration | Power sequencing, tray and NVL domain orchestration, power coordination, rack workflows | Rack-level maintenance and operations with complex dependencies | Not started |
+| 5: Monitoring and intelligent operations | Rack health, BMS, leak, alert policy, automatic isolation and recovery | Monitoring, alerting, response and closed-loop operations | Partial: read-only per-device health |
+| 6: Scale and ecosystem | Multiple sites, adapters, higher-level APIs, ticket, monitoring and identity integration | Large deployments and cooperation with external systems | Not started |
 
 These stages follow the capability targets. The order PXEye actually takes is in section 9 of [scope and status](rack-operations.md).
 

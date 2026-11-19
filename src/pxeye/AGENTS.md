@@ -30,6 +30,20 @@ the behaviour of `services/equipment.py` or `services/addresses.py`, which they 
 - New persistent data gets a new table. Do not rename, remove or repurpose an existing field,
   and do not change what is written to Core: an older image must still open the database.
 
+## Keeping the requirements current
+
+[Capability requirements](../../docs/design/rack-operations-requirements.md) is the long-lived
+record of what rack operations should do and what exists. Update the “Implementation status” of
+the affected functional area, in both languages, in the same commit that:
+
+- adds, changes or removes a feature in that area;
+- shows a requirement cannot be met, or builds it differently from what it says;
+- finds that Core provides something different, at a new version or a new kind of site;
+- drops an item.
+
+A change that does none of these leaves the document alone. Say in the hand-off which area was
+updated, or that none applied.
+
 ## Naming
 
 - One feature, one name: `services/<feature>.py`, `/api/<feature-with-hyphens>`,

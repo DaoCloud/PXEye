@@ -22,6 +22,18 @@ its index row in the same commit, and keep every relative link working.
   with the same structure, commands, paths and API names, each linking to the other and to
   its index.
 
+## Documents that track the product
+
+- [design/rack-operations-requirements](design/rack-operations-requirements.md) holds the target
+  capabilities and, per functional area, the implementation status. It is the single place where
+  that status is maintained; other documents link to it and do not restate it.
+- [design/rack-operations](design/rack-operations.md) holds the pages, rules and plan of the
+  current stage.
+- [design/rack-operations-data-contract](design/rack-operations-data-contract.md) holds the Core
+  interfaces and fields, with verification marks.
+
+A design change is reflected in these documents in the commit that makes it.
+
 ## Content
 
 - A design document states the current conclusion. Replace what is superseded instead of

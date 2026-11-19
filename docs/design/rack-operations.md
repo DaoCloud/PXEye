@@ -29,20 +29,7 @@ The site used for verification is a general server site. In the whole-rack colum
 
 ## 3. Capability comparison
 
-For the ten functional areas in section 6 of the [capability requirements](rack-operations-requirements.md): what Core actually provides, and how far PXEye has gone.
-
-| Capability | What Core provides | PXEye today | Conclusion |
-| --- | --- | --- | --- |
-| 6.1 Racks and assets | Device list, serial numbers, hand-declared `rack_id`; rack objects only at whole-rack sites; no rack unit position | Device management and rack topology exist; display order is stored by PXEye | Present. A unit position would have to be recorded by PXEye. No change audit |
-| 6.2 Topology and connections | LLDP neighbours of servers, with the peer switch name, model and serial (verified); the network topology interface returns nothing | The server page shows uplink switches; the status dialog lists every neighbour | Viewing is done. Comparing intended and actual cabling is not, for lack of an intended cabling source |
-| 6.3 Power and orchestration | Desired and actual power state; power and reset interfaces exist; rack-level orchestration is for whole racks only; no power readings | Power state is shown | Operations not done. A rack power total cannot be built from Core |
-| 6.4 Firmware | Per-machine firmware inventory, lockdown state, secure boot state (verified); update interfaces exist; the verification site has no host firmware baseline | Not shown | Firmware inventory is next. Compliance lacks a baseline. Updates not done |
-| 6.5 Installation and boot | Main line of the product | Present | Outside this work |
-| 6.6 Networking | Segment, VPC, InfiniBand and NVLink partition interfaces exist | Network management covers installation segments only | Not part of this work |
-| 6.7 Monitoring and health | Health alerts and health history per object (verified); no time series; no dedicated leak or liquid-cooling interface | The server page shows health and alerts | Per-device health is done. Alert roll-up and history are not. Charts need a monitoring system |
-| 6.8 Security and trust | Attestation and measurement read interfaces exist | Not covered | Not surveyed; not in this stage |
-| 6.9 Delivery, release and reuse | Instance management | Present | Outside this work |
-| 6.10 Faults, repair and retirement | Quarantine, maintenance marks, machine validation, SKU and decommission interfaces exist; at the verification site validation was skipped and there is no SKU | The status dialog shows quarantine and maintenance | Viewing partly done. Operations not done |
+For each of the ten functional areas, the target, what Core actually provides and how far PXEye has gone are recorded under “Implementation status” in section 6 of the [capability requirements](rack-operations-requirements.md), and maintained only there. This document covers the pages, rules and plan of the current stage.
 
 ## 4. Pages
 

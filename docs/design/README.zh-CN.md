@@ -11,7 +11,7 @@
 | 功能与边界 | [Read](features.md) | [阅读](features.zh-CN.md) | 每个功能对应 NICo 的什么，支持到哪里 |
 | 系统架构 | [Read](architecture.md) | [阅读](architecture.zh-CN.md) | 运行环境、模块职责、数据归谁 |
 | 交互规则 | [Read](interaction-rules.md) | [阅读](interaction-rules.zh-CN.md) | 页面、文案、状态和危险操作怎么设计 |
-| 机柜运维：能力需求 | [Read](rack-operations-requirements.md) | [阅读](rack-operations-requirements.zh-CN.md) | 机柜级管理的目标能力全貌：范围、生命周期、十个功能域 |
+| 机柜运维：能力需求 | [Read](rack-operations-requirements.md) | [阅读](rack-operations-requirements.zh-CN.md) | 机柜级管理的目标能力全貌，以及每个功能域的实现状态。长期维护，设计变更同步到这里 |
 | 机柜运维：范围与现状 | [Read](rack-operations.md) | [阅读](rack-operations.zh-CN.md) | 机柜方向做什么、不做什么、做到哪一步 |
 | 机柜运维：NICo 数据契约 | [Read](rack-operations-data-contract.md) | [阅读](rack-operations-data-contract.zh-CN.md) | 每个页面用 Core 的哪个接口和字段，哪些已在真实站点验证 |
 | 代码结构评审 | [Read](code-structure-review.md) | [阅读](code-structure-review.zh-CN.md) | 历史静态问题和已完成的调整 |

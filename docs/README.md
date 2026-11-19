@@ -32,7 +32,7 @@ Scope, system design, interaction rules and data contracts are in [design](desig
 | --- | --- | --- | --- |
 | Design index | [Read](design/README.md) | [阅读](design/README.zh-CN.md) | Where each kind of content lives; naming rules. |
 | Interaction rules | [Read](design/interaction-rules.md) | [阅读](design/interaction-rules.zh-CN.md) | Page ownership, wording, state, dangerous operations. |
-| Rack operations: capability requirements | [Read](design/rack-operations-requirements.md) | [阅读](design/rack-operations-requirements.zh-CN.md) | The whole of the target capabilities: scope, lifecycle, functional areas. |
+| Rack operations: capability requirements | [Read](design/rack-operations-requirements.md) | [阅读](design/rack-operations-requirements.zh-CN.md) | Target capabilities and the implementation status of each functional area. |
 | Rack operations: scope and status | [Read](design/rack-operations.md) | [阅读](design/rack-operations.zh-CN.md) | What the rack line of work does and has reached. |
 | Rack operations: NICo data contract | [Read](design/rack-operations-data-contract.md) | [阅读](design/rack-operations-data-contract.zh-CN.md) | Core interfaces and fields per page, with verification marks. |
 
