@@ -81,6 +81,7 @@ class Application:
             # Core inventory can take a minute when unavailable; never block the HTTP listener.
             threading.Thread(target=self._refresh_inventory, daemon=True).start()
         self.nico_deployment = NicoDeployment(self)
+        self._restore_site_initializer_source()
         self.site_boot_network = SiteBootNetwork(self)
         self.site_explorer = SiteExplorer(self)
         self.executor.discovery_status = self.site_explorer.view
@@ -128,6 +129,43 @@ class Application:
         self.adapter.resources = self.resources
         self.adapter.device_config = self.device_config
         self.adapter.profiles = self.profiles
+
+    @staticmethod
+    def _site_initializer_source(source, default_namespace):
+        secret = source.get("site_initializer_secret")
+        if not secret:
+            return None
+        return {
+            "namespace": source.get("namespace", default_namespace),
+            "client_secret": secret,
+            "client_cert_key": source.get("site_initializer_cert_key", "tls.crt"),
+            "client_private_key": source.get("site_initializer_private_key", "tls.key"),
+            "ca_secret": source["ca_secret"],
+            "ca_key": source.get("ca_key", "tls.crt"),
+        }
+
+    def _restore_site_initializer_source(self):
+        if self.config.get("site_initializer_source"):
+            return
+        connection = (self.config.get("site_bootstrap") or {}).get("connection") or {}
+        try:
+            source = self._site_initializer_source(
+                connection, self.nico_deployment.cluster.namespace
+            )
+        except KeyError:
+            return
+        if not source:
+            return
+        self.config["site_initializer_source"] = source
+        path = self.adapter.data / "config" / "deployment-site.json"
+        if not path.exists():
+            return
+        try:
+            deployed = json.loads(path.read_text())
+            deployed["site_initializer_source"] = source
+            atomic_json(path, deployed)
+        except (OSError, ValueError, TypeError):
+            self.config.pop("site_initializer_source", None)
 
     def _create_coordinator(self):
         self.coordinator = TaskCoordinator(
@@ -339,20 +377,11 @@ class Application:
                 core_identity_source=source,
                 core_identity_revision=revision,
             )
-            initializer_secret = source.get("site_initializer_secret")
-            if initializer_secret:
-                proposed["site_initializer_source"] = {
-                    "namespace": source.get(
-                        "namespace", self.nico_deployment.cluster.namespace
-                    ),
-                    "client_secret": initializer_secret,
-                    "client_cert_key": source.get("site_initializer_cert_key", "tls.crt"),
-                    "client_private_key": source.get(
-                        "site_initializer_private_key", "tls.key"
-                    ),
-                    "ca_secret": source["ca_secret"],
-                    "ca_key": source.get("ca_key", "tls.crt"),
-                }
+            initializer = self._site_initializer_source(
+                source, self.nico_deployment.cluster.namespace
+            )
+            if initializer:
+                proposed["site_initializer_source"] = initializer
             proposed["site"]["name"] = site_name
             candidate = Adapter(proposed, self.adapter.secrets, self.adapter.data)
             try:
