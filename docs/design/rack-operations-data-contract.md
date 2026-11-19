@@ -256,7 +256,26 @@ A capture holds:
 
 Only fields whose names look like credentials (password, secret, token, key and similar) are replaced with `<redacted>`; everything else is verbatim. The file therefore holds site addresses, serial numbers and machine IDs: **it must not enter this repository** and is kept only in the restricted directory.
 
-At the end the command prints the number of calls and failures on standard error. Failed calls are recorded too and fail the same way on replay.
+#### Empty data and failures
+
+A capture never stops because one item could not be read. Each case is recorded as it happened and appears the same way on replay:
+
+| Case | In the capture | On replay |
+| --- | --- | --- |
+| Core returns nothing (no such device, no record). Core omits empty lists, so the usual answer is `{}` | The empty response verbatim; the method is listed in `summary.empty_calls` | The same empty data |
+| A Core call fails (unknown method, invalid argument, timeout, connection failure) | The error's type, message and attributes (such as an error code), listed in `summary.failed_calls` | The same error type is raised, so the console returns the same status and error code as at the site |
+| Part of a console read fails (for example switches cannot be read while servers can) | The read returns 200 with the failure in its `errors`, listed in `summary.reads_with_errors` | The same |
+| A console read returns an error status | The status and body; a body that is not JSON is kept as text | Compared field by field |
+| A console read returns nothing (timeout, connection closed) | `status` is empty and the reason is kept | Not compared; shown as `SKIP` |
+| The capture fails midway (for example sign-in fails) | What was read so far is still written; `summary.complete` is false and `aborted` gives the reason | Only what exists is replayed |
+
+At the end the command prints a summary on standard error: complete or aborted, each failed call, each failed or partly failed read, and the methods that returned nothing. Exit code 0 means the capture is complete (it may contain failed calls, which are facts about the site); 2 means it stopped midway.
+
+After reading the summary:
+
+- **Empty responses**: decide whether they match the site. `FindSwitches` returning nothing at a general server site is normal; no servers while device management lists some means checking enrollment in Core.
+- **Failed calls**: call the method again on its own with `survey call` to see whether the failure is intermittent or persistent. For a persistent failure, record the method, error code and message in the field table of this document; for a method this Core version lacks, note it in sections 2 and 3.
+- **Aborted**: fix the cause and capture again. An aborted file can be kept for diagnosis but is not used as a test baseline.
 
 ### 5.4 Developing and testing with a capture
 

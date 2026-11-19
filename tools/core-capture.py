@@ -56,6 +56,9 @@ PAGE_READS = [
     "/api/install-profiles",
     "/api/device-status",
 ]
+# Longest wait for one console read. A Core call has its own limit of 45 seconds; a
+# page read may make several, in parallel.
+READ_TIMEOUT = 180
 TABLES = [
     "device_plans",
     "equipment_records",
@@ -76,6 +79,32 @@ def redact(value):
     if isinstance(value, list):
         return [redact(v) for v in value]
     return value
+
+
+def describe_error(error):
+    """Enough to raise the same error again on replay: class, message and attributes."""
+    attributes = {}
+    for name, value in vars(error).items():
+        try:
+            json.dumps(value)
+        except (TypeError, ValueError):
+            continue
+        attributes[name] = value
+    kind = type(error)
+    return {
+        "type": f"{kind.__module__}.{kind.__qualname__}",
+        "message": str(error),
+        "attributes": redact(attributes),
+    }
+
+
+def empty(value):
+    """A response with no data: Core omits empty lists, so this is often {}."""
+    if isinstance(value, dict):
+        return all(empty(item) for item in value.values())
+    if isinstance(value, list):
+        return not value
+    return value in (None, "")
 
 
 def site_config(data):
@@ -177,10 +206,7 @@ def main():
             try:
                 result = original(self, *args, **kwargs)
             except Exception as error:  # recorded, then raised as before
-                entry.update(
-                    error={"type": type(error).__name__, "message": str(error)},
-                    seconds=round(time.time() - started, 3),
-                )
+                entry.update(error=describe_error(error), seconds=round(time.time() - started, 3))
                 with lock:
                     calls.append(entry)
                 raise
@@ -218,6 +244,7 @@ def main():
     kubernetes.CurrentCluster.request = cluster_reads_only
 
     work = Path(tempfile.mkdtemp(prefix="pxeye-capture-"))
+    server, inputs, responses, aborted = None, {"files": {}, "tables": {}}, {}, None
     try:
         data = work / "data"
         data.mkdir()
@@ -244,56 +271,135 @@ def main():
         )
         opener.open(login, timeout=30).read()
 
-        responses = {}
-
         def read(path):
+            started = time.time()
             try:
-                with opener.open(base + path, timeout=180) as response:
-                    responses[path] = {
-                        "status": response.status,
-                        "body": json.loads(response.read() or b"null"),
-                    }
+                with opener.open(base + path, timeout=READ_TIMEOUT) as response:
+                    status, raw = response.status, response.read()
             except urllib.error.HTTPError as error:
+                status, raw = error.code, error.read()
+            except Exception as error:  # timeout, connection: the read itself failed
                 responses[path] = {
-                    "status": error.code,
-                    "body": json.loads(error.read() or b"null"),
+                    "status": None,
+                    "error": f"{type(error).__name__}: {error}",
+                    "seconds": round(time.time() - started, 3),
                 }
-            except Exception as error:
-                responses[path] = {"status": None, "error": f"{type(error).__name__}: {error}"}
+                return
+            try:
+                body = {"body": json.loads(raw or b"null")}
+            except ValueError:
+                body = {"raw": raw.decode("utf-8", "replace")}
+            responses[path] = {"status": status, **body, "seconds": round(time.time() - started, 3)}
 
         for path in PAGE_READS:
-            read(path)
+            try:
+                read(path)
+            except Exception as error:  # never lose the reads already made
+                responses[path] = {
+                    "status": None,
+                    "error": f"capture: {type(error).__name__}: {error}",
+                }
         status = responses.get("/api/device-status", {}).get("body") or {}
         for machine in sorted((status.get("servers") or {}).keys()):
-            read(f"/api/device-status/machines/{machine}/history")
-            read(f"/api/device-status/machines/{machine}/firmware")
-        server.shutdown()
-        document = {
-            "format": FORMAT,
-            "captured_at": time.time(),
-            "pxeye_version": getattr(pxeye, "__version__", ""),
-            "core_url": config["core_url"],
-            "site": {"name": config.get("site", {}).get("name", "")},
-            "inputs": inputs,
-            "core_calls": calls,
-            "pxeye_responses": responses,
-        }
-        text = json.dumps(document, ensure_ascii=False, indent=1, sort_keys=True)
-        output.write(text + "\n")
-        output.flush()
-        counts = {}
-        for call in calls:
-            counts[call["kind"]] = counts.get(call["kind"], 0) + 1
-        print(
-            f"captured: {counts} calls, {len(responses)} API reads, "
-            f"{sum(1 for c in calls if 'error' in c)} failed calls, sha256 {hashlib.sha256(text.encode()).hexdigest()[:16]}",
-            file=sys.stderr,
-        )
-    except Exception:
+            for item in ("history", "firmware"):
+                path = f"/api/device-status/machines/{machine}/{item}"
+                try:
+                    read(path)
+                except Exception as error:
+                    responses[path] = {
+                        "status": None,
+                        "error": f"capture: {type(error).__name__}: {error}",
+                    }
+    except Exception as error:
+        # Keep what was read so far: a partial capture is still evidence.
+        aborted = f"{type(error).__name__}: {error}"
         traceback.print_exc()
-        sys.exit(1)
     finally:
+        if server is not None:
+            server.shutdown()
+            server.server_close()
         shutil.rmtree(work, ignore_errors=True)
+    summary = summarize(calls, responses, aborted)
+    import pxeye
+
+    document = {
+        "format": FORMAT,
+        "captured_at": time.time(),
+        "pxeye_version": getattr(pxeye, "__version__", ""),
+        "core_url": config["core_url"],
+        "site": {"name": config.get("site", {}).get("name", "")},
+        "summary": summary,
+        "inputs": inputs,
+        "core_calls": calls,
+        "pxeye_responses": responses,
+    }
+    text = json.dumps(document, ensure_ascii=False, indent=1, sort_keys=True)
+    output.write(text + "\n")
+    output.flush()
+    report(summary, calls, responses, hashlib.sha256(text.encode()).hexdigest()[:16])
+    sys.exit(2 if aborted else 0)
+
+
+def summarize(calls, responses, aborted):
+    """What a reader of the capture should look at first."""
+    return {
+        "complete": aborted is None,
+        "aborted": aborted,
+        "failed_calls": [
+            {
+                "kind": c["kind"],
+                "call": c.get("method") or " ".join(c.get("args", [])) or c.get("path"),
+                "error": c["error"]["message"][:300],
+            }
+            for c in calls
+            if "error" in c
+        ],
+        "empty_calls": sorted(
+            {
+                c.get("method") or " ".join(c.get("args", [])) or c.get("path")
+                for c in calls
+                if "error" not in c and empty(c.get("response"))
+            }
+        ),
+        "failed_reads": {
+            path: read_failure(r) for path, r in responses.items() if r.get("status") != 200
+        },
+        "reads_with_errors": {
+            path: r["body"]["errors"]
+            for path, r in responses.items()
+            if r.get("status") == 200
+            and isinstance(r.get("body"), dict)
+            and r["body"].get("errors")
+        },
+    }
+
+
+def read_failure(response):
+    if response.get("error"):
+        return response["error"]
+    body = response.get("body")
+    if isinstance(body, dict) and body.get("error"):
+        return body["error"]
+    return "non-JSON body" if "raw" in response else "no error message"
+
+
+def report(summary, calls, responses, digest):
+    counts = {}
+    for call in calls:
+        counts[call["kind"]] = counts.get(call["kind"], 0) + 1
+    lines = [
+        f"captured: {counts} calls, {len(responses)} API reads, sha256 {digest}",
+        "status: " + ("complete" if summary["complete"] else "INCOMPLETE, " + summary["aborted"]),
+    ]
+    for item in summary["failed_calls"]:
+        lines.append(f"failed call  {item['kind']} {item['call']}: {item['error'][:160]}")
+    for path, error in summary["failed_reads"].items():
+        lines.append(f"failed read  {path} [{responses[path].get('status')}]: {str(error)[:160]}")
+    for path, errors in summary["reads_with_errors"].items():
+        lines.append(f"partial read {path}: {'; '.join(map(str, errors))[:160]}")
+    if summary["empty_calls"]:
+        lines.append("empty        " + ", ".join(summary["empty_calls"]))
+    print("\n".join(lines), file=sys.stderr)
 
 
 if __name__ == "__main__":

@@ -24,8 +24,10 @@ repository.
 """
 
 import argparse
+import builtins
 import copy
 import http.cookiejar
+import importlib
 import json
 import re
 import secrets
@@ -66,6 +68,27 @@ def redact(value):
     return value
 
 
+def recorded_error(error):
+    """The error the site raised: same class, message and attributes, so the console
+    maps it to the same response. An unknown class becomes RuntimeError."""
+    module, _, name = error["type"].rpartition(".")
+    kind = RuntimeError
+    if module:
+        try:
+            found = getattr(importlib.import_module(module), name)
+            if isinstance(found, type) and issubclass(found, Exception):
+                kind = found
+        except (ImportError, AttributeError):
+            pass
+    elif isinstance(getattr(builtins, name, None), type):
+        kind = getattr(builtins, name)
+    instance = kind.__new__(kind)
+    Exception.__init__(instance, error["message"])
+    for attribute, value in (error.get("attributes") or {}).items():
+        setattr(instance, attribute, value)
+    return instance
+
+
 def key(kind, **parts):
     return json.dumps({"kind": kind, **parts}, sort_keys=True, separators=(",", ":"))
 
@@ -94,7 +117,7 @@ class Recorded:
             print("UNRECORDED " + label, file=sys.stderr, flush=True)
             raise RuntimeError("回放中没有这个请求的记录：" + label)
         if "error" in call:
-            raise RuntimeError(call["error"]["message"])
+            raise recorded_error(call["error"])
         return copy.deepcopy(call["response"])
 
 
@@ -238,11 +261,21 @@ def check(capture, server, password, out, replayed=None):
     opener.open(login, timeout=30).read()
     failures = 0
     for path, recorded in capture["pxeye_responses"].items():
+        if recorded.get("status") is None:
+            # The read itself failed at the site (timeout, connection); nothing to compare.
+            print(f"SKIP {path}: {recorded.get('error', '')}", file=out)
+            continue
         try:
             with opener.open(base + path, timeout=120) as response:
-                status, body = response.status, json.loads(response.read() or b"null")
+                status, raw = response.status, response.read()
         except urllib.error.HTTPError as error:
-            status, body = error.code, json.loads(error.read() or b"null")
+            status, raw = error.code, error.read()
+        try:
+            body = json.loads(raw or b"null")
+        except ValueError:
+            body = {"raw": raw.decode("utf-8", "replace")}
+        if "raw" in recorded:
+            recorded = dict(recorded, body={"raw": recorded["raw"]})
         found = (
             []
             if status == recorded.get("status")
@@ -310,6 +343,7 @@ def main():
         pass
     finally:
         server.shutdown()
+        server.server_close()
         shutil.rmtree(work, ignore_errors=True)
 
 

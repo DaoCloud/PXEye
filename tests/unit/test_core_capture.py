@@ -17,6 +17,7 @@ import unittest
 from pathlib import Path
 
 from pxeye.clients.core import CoreClient
+from pxeye.clients.errors import CoreConnectionError, RPCRequestError
 from pxeye.clients.redfish import RedfishClient
 from pxeye.deployment import kubernetes
 from tests.unit import test_device_status as samples
@@ -68,7 +69,7 @@ def load(name):
     return module
 
 
-def stand_in_core():
+def stand_in_core(failures=None):
     machine = copy.deepcopy(samples.MACHINE)
     machine["id"] = {"id": MACHINE_ID}
     answers = {
@@ -92,6 +93,8 @@ def stand_in_core():
     }
 
     def rpc(self, method, body):
+        if failures and method in failures:
+            raise failures[method]
         return copy.deepcopy(answers.get(method, {}))
 
     def cli(self, args, *, data=False):
@@ -125,13 +128,14 @@ class CaptureReplayTests(unittest.TestCase):
             ]
         )
 
-    def capture(self):
-        CoreClient.rpc, CoreClient.core = stand_in_core()
+    def capture(self, failures=None, password=True):
+        CoreClient.rpc, CoreClient.core = stand_in_core(failures)
         CoreClient.check_core_certificate = lambda self: None
         data, secrets = self.work / "data", self.work / "secrets"
         (data / "config").mkdir(parents=True)
         secrets.mkdir()
-        (secrets / "bootstrap-password").write_text("placeholder\n")
+        if password:
+            (secrets / "bootstrap-password").write_text("placeholder\n")
         (secrets / "auth.json").write_text(
             json.dumps({"password_sha256": hashlib.sha256(b"placeholder").hexdigest()})
         )
@@ -150,7 +154,9 @@ class CaptureReplayTests(unittest.TestCase):
         )
         output = io.StringIO()
         with contextlib.redirect_stdout(output), contextlib.redirect_stderr(io.StringIO()):
-            load("core-capture").main()
+            with self.assertRaises(SystemExit) as exit:
+                load("core-capture").main()
+        self.exit_code = exit.exception.code
         return json.loads(output.getvalue())
 
     def replay(self, capture):
@@ -162,6 +168,7 @@ class CaptureReplayTests(unittest.TestCase):
                 failures = replay.check(capture, server, password, report)
             finally:
                 server.shutdown()
+                server.server_close()
                 shutil.rmtree(work, ignore_errors=True)
         return failures, sorted(set(recorded.missing)), report.getvalue()
 
@@ -201,6 +208,46 @@ class CaptureReplayTests(unittest.TestCase):
         self.assertEqual(failures, 1, report)
         self.assertEqual(len(missing), 1)
         self.assertIn("GetComponentInventory", missing[0])
+
+    def test_failed_and_empty_calls_are_recorded_and_replay_the_same(self):
+        capture = self.capture(
+            failures={
+                "FindSwitches": RPCRequestError("placeholder: method failed"),
+                "GetComponentInventory": CoreConnectionError(
+                    "placeholder: unreachable", "CORE_UNREACHABLE"
+                ),
+            }
+        )
+        self.assertEqual(self.exit_code, 0)
+        summary = capture["summary"]
+        self.assertTrue(summary["complete"])
+        failed = {item["call"]: item for item in summary["failed_calls"]}
+        self.assertEqual(set(failed), {"FindSwitches", "GetComponentInventory"})
+        errors = {c["method"]: c["error"] for c in capture["core_calls"] if "error" in c}
+        self.assertEqual(
+            errors["GetComponentInventory"]["type"], "pxeye.clients.errors.CoreConnectionError"
+        )
+        self.assertEqual(
+            errors["GetComponentInventory"]["attributes"], {"code": "CORE_UNREACHABLE"}
+        )
+        # A failed kind is reported inside an otherwise good read, not as a failed read.
+        self.assertIn("/api/device-status", summary["reads_with_errors"])
+        firmware = f"/api/device-status/machines/{MACHINE_ID}/firmware"
+        self.assertEqual(capture["pxeye_responses"][firmware]["status"], 502)
+        self.assertEqual(capture["pxeye_responses"][firmware]["body"]["code"], "CORE_UNREACHABLE")
+        self.assertIn(firmware, summary["failed_reads"])
+        # Core leaves out empty lists; such answers are listed, not treated as failures.
+        self.assertIn("GetAllExpectedSwitches", summary["empty_calls"])
+
+        failures, missing, report = self.replay(capture)
+        self.assertEqual((failures, missing), (0, []), report)
+
+    def test_an_aborted_capture_still_writes_what_it_read(self):
+        capture = self.capture(password=False)
+        self.assertEqual(self.exit_code, 2)
+        self.assertFalse(capture["summary"]["complete"])
+        self.assertIn("bootstrap-password", capture["summary"]["aborted"])
+        self.assertEqual(capture["pxeye_responses"], {})
 
 
 if __name__ == "__main__":
