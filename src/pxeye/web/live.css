@@ -2276,11 +2276,11 @@ body.read-only .topbar::after {
 }
 
 /* Per-kind device pages reuse the device-management table and filters. */
-.inventory-summary {
+.device-status-summary {
   grid-template-columns: repeat(4, 1fr);
 }
 @media (max-width: 600px) {
-  .inventory-summary {
+  .device-status-summary {
     grid-template-columns: repeat(2, 1fr);
   }
 }

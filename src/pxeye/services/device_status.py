@@ -209,7 +209,7 @@ def power_shelf(row):
     }
 
 
-class DeviceInsights:
+class DeviceStatus:
     def __init__(self, adapter):
         self.adapter = adapter
 

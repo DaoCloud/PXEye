@@ -2,7 +2,7 @@
 
 import unittest
 
-from pxeye.services.device_insights import DeviceInsights, health, lifecycle, state_text
+from pxeye.services.device_status import DeviceStatus, health, lifecycle, state_text
 
 MACHINE = {
     "id": {"id": "fm100h-host"},
@@ -91,7 +91,7 @@ class Core:
         }[method]
 
 
-class DeviceInsightsTests(unittest.TestCase):
+class DeviceStatusTests(unittest.TestCase):
     def test_state_is_read_as_text_or_as_a_nested_document(self):
         self.assertEqual(state_text("Ready"), "Ready")
         self.assertEqual(state_text('{"state":"ready"}'), "ready")
@@ -109,7 +109,7 @@ class DeviceInsightsTests(unittest.TestCase):
         self.assertEqual(lifecycle({})["state"], "")
 
     def test_each_kind_keeps_its_core_identifier_and_reported_state(self):
-        view = DeviceInsights(Core()).view()
+        view = DeviceStatus(Core()).view()
         self.assertEqual(view["errors"], [])
         host = view["servers"]["fm100h-host"]
         self.assertEqual(host["type"], "host")
@@ -182,7 +182,7 @@ class DeviceInsightsTests(unittest.TestCase):
         self.assertEqual(shelf["health"]["level"], "unknown")
 
     def test_one_unreadable_kind_is_reported_and_does_not_hide_the_others(self):
-        view = DeviceInsights(Core(failing=("FindSwitches",))).view()
+        view = DeviceStatus(Core(failing=("FindSwitches",))).view()
         self.assertEqual(view["switches"], {})
         self.assertEqual(len(view["errors"]), 1)
         self.assertIn("交换机", view["errors"][0])
@@ -194,7 +194,7 @@ class DeviceInsightsTests(unittest.TestCase):
             def rpc(self, method, body):
                 return {}
 
-        view = DeviceInsights(Empty()).view()
+        view = DeviceStatus(Empty()).view()
         self.assertEqual(
             (view["servers"], view["switches"], view["power_shelves"], view["errors"]),
             ({}, {}, {}, []),
