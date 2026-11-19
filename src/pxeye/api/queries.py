@@ -65,19 +65,21 @@ class QueryRoutes:
                 path.startswith("/api/device-status/")
                 and self.app.config.get("rack_operations") is True
             ):
-                from pxeye.services.device_status import MACHINE_ID, DeviceStatus
+                from pxeye.services.device_status import (
+                    MACHINE_ID,
+                    DeviceStatus,
+                    machine_firmware,
+                )
 
                 parts = path.split("/")
-                if (
-                    len(parts) == 6
-                    and parts[3] == "machines"
-                    and parts[5] == "history"
-                    and MACHINE_ID.fullmatch(parts[4])
-                ):
-                    return self.respond(
-                        200, DeviceStatus(self.app.adapter).machine_history(parts[4])
-                    )
-                return self.respond(404, {"error": "机器不存在。"})
+                if len(parts) == 6 and parts[3] == "machines" and MACHINE_ID.fullmatch(parts[4]):
+                    if parts[5] == "history":
+                        return self.respond(
+                            200, DeviceStatus(self.app.adapter).machine_history(parts[4])
+                        )
+                    if parts[5] == "firmware":
+                        return self.respond(200, machine_firmware(self.app.adapter, parts[4]))
+                return self.respond(404, {"error": "接口不存在。"})
             if path == "/api/equipment":
                 snapshot = self.app.management_addresses.snapshot()
                 data = self.app.equipment.view(snapshot)

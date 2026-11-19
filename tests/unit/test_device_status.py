@@ -9,6 +9,7 @@ from pxeye.services.device_status import (
     DeviceStatus,
     health,
     lifecycle,
+    machine_firmware,
     state_text,
     state_timeline,
 )
@@ -208,6 +209,145 @@ class DeviceStatusTests(unittest.TestCase):
             (view["servers"], view["switches"], view["power_shelves"], view["errors"]),
             ({}, {}, {}, []),
         )
+
+
+INVENTORY = {
+    "entries": [
+        {
+            "result": {"componentId": "machine0"},
+            "report": {
+                "endpointType": "Bmc",
+                "vendor": "VendorA",
+                "chassis": [
+                    {"id": "0", "model": ""},
+                    {"id": "1", "model": "Model-1", "partNumber": "PN-1", "manufacturer": "MakerA"},
+                ],
+                "service": [
+                    {"id": "Other", "inventories": [{"id": "ignored", "version": "9"}]},
+                    {
+                        "id": "FirmwareInventory",
+                        "inventories": [
+                            {
+                                "id": "VendorBmc",
+                                "description": "Management controller firmware.",
+                                "version": "1.0",
+                                "releaseDate": "2026-01-01T00:00:00Z",
+                            },
+                            {
+                                "id": "Slot_1.Bundle",
+                                "description": "Adapter",
+                                "version": "",
+                                "releaseDate": None,
+                            },
+                        ],
+                    },
+                ],
+                "secureBootStatus": {},
+                "lockdownStatus": {"message": "Lockdown disabled"},
+            },
+        }
+    ]
+}
+
+
+class Inventory:
+    def __init__(self, response):
+        self.response, self.calls = response, []
+
+    def rpc(self, method, body):
+        self.calls.append((method, body))
+        return self.response
+
+
+class FirmwareTests(unittest.TestCase):
+    def test_the_inventory_is_listed_as_reported(self):
+        core = Inventory(INVENTORY)
+        data = machine_firmware(core, "machine0")
+        self.assertEqual(
+            core.calls,
+            [("GetComponentInventory", {"machineIds": {"machineIds": [{"id": "machine0"}]}})],
+        )
+        self.assertTrue(data["reported"])
+        self.assertEqual((data["vendor"], data["endpoint_type"]), ("VendorA", "Bmc"))
+        self.assertEqual(
+            data["chassis"], {"model": "Model-1", "part_number": "PN-1", "manufacturer": "MakerA"}
+        )
+        self.assertEqual((data["lockdown"], data["secure_boot"]), ("Lockdown disabled", {}))
+        self.assertEqual(
+            data["entries"],
+            [
+                {
+                    "id": "VendorBmc",
+                    "description": "Management controller firmware.",
+                    "version": "1.0",
+                    "release_date": "2026-01-01T00:00:00Z",
+                },
+                {
+                    "id": "Slot_1.Bundle",
+                    "description": "Adapter",
+                    "version": "",
+                    "release_date": "",
+                },
+            ],
+        )
+
+    def test_a_missing_report_is_empty_with_a_note(self):
+        for response in ({}, {"entries": []}, {"entries": [{"result": {}}]}, None):
+            data = machine_firmware(Inventory(response), "machine0")
+            self.assertFalse(data["reported"])
+            self.assertEqual(data["entries"], [])
+            self.assertTrue(data["note"])
+            self.assertIsNone(data["secure_boot"])
+
+    def test_an_invalid_id_is_refused_before_any_call(self):
+        for bad in ("", "Machine0", "a-b", "a/b", "x" * 129, None):
+            core = Inventory(INVENTORY)
+            with self.assertRaises(ValueError):
+                machine_firmware(core, bad)
+            self.assertEqual(core.calls, [])
+
+
+class Route(QueryRoutes):
+    def __init__(self, path, enabled):
+        self.path, self.result = path, None
+        self.core = Inventory(INVENTORY)
+        self.app = type(
+            "App",
+            (),
+            {
+                "config": {"rack_operations": enabled},
+                "adapter": self.core,
+                "readiness": lambda _: {"business_available": True},
+            },
+        )()
+
+    def session(self):
+        return {"csrf": "x"}
+
+    def respond(self, code, payload, headers=None):
+        self.result = (code, payload)
+
+
+class FirmwareRouteTests(unittest.TestCase):
+    PATH = "/api/device-status/machines/machine0/firmware"
+
+    def test_the_route_reads_when_the_switch_is_on(self):
+        route = Route(self.PATH, True)
+        route.get_request()
+        self.assertEqual(route.result[0], 200)
+        self.assertEqual(len(route.result[1]["entries"]), 2)
+
+    def test_the_route_does_not_exist_when_the_switch_is_off(self):
+        route = Route(self.PATH, False)
+        route.get_request()
+        self.assertEqual(route.result[0], 404)
+        self.assertEqual(route.core.calls, [])
+
+    def test_an_invalid_id_is_not_found(self):
+        route = Route("/api/device-status/machines/Bad-Id/firmware", True)
+        route.get_request()
+        self.assertEqual(route.result[0], 404)
+        self.assertEqual(route.core.calls, [])
 
 
 if __name__ == "__main__":

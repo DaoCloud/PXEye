@@ -316,3 +316,77 @@ def state_timeline(records, now):
         stay["duration_seconds"] = max(0, int(end - stay.pop("_at")))
         stay["current"] = last
     return stays
+
+
+def valid_machine_id(value):
+    return isinstance(value, str) and MACHINE_ID.fullmatch(value) is not None
+
+
+def firmware(report):
+    """The firmware inventory of one Redfish exploration report.
+
+    Entry ids are vendor names (one vendor's BMC is another's XCC), so entries are
+    kept as listed and never matched by name. An empty version stays empty: the
+    component exists and its version was not read.
+    """
+    chassis = next(
+        (c for c in report.get("chassis") or [] if isinstance(c, dict) and c.get("model")), {}
+    )
+    lockdown = report.get("lockdownStatus")
+    secure_boot = report.get("secureBootStatus")
+    return {
+        "vendor": report.get("vendor") or "",
+        "endpoint_type": report.get("endpointType") or "",
+        "chassis": {
+            "model": chassis.get("model") or "",
+            "part_number": chassis.get("partNumber") or "",
+            "manufacturer": chassis.get("manufacturer") or "",
+        },
+        "lockdown": (lockdown.get("message") or "") if isinstance(lockdown, dict) else "",
+        # Kept as Core gives it; on a verified site it is an empty object.
+        "secure_boot": secure_boot if isinstance(secure_boot, dict) else None,
+        "entries": [
+            {
+                "id": str(item.get("id") or ""),
+                "description": item.get("description") or "",
+                "version": item.get("version") or "",
+                "release_date": item.get("releaseDate") or "",
+            }
+            for service in report.get("service") or []
+            if isinstance(service, dict) and service.get("id") == "FirmwareInventory"
+            for item in service.get("inventories") or []
+            if isinstance(item, dict)
+        ],
+    }
+
+
+def machine_firmware(adapter, machine_id):
+    """Read the firmware inventory Core holds for one machine. Reads only."""
+    if not valid_machine_id(machine_id):
+        raise ValueError("机器 ID 无效。")
+    response = adapter.rpc(
+        "GetComponentInventory", {"machineIds": {"machineIds": [{"id": machine_id}]}}
+    )
+    report = next(
+        (
+            entry.get("report")
+            for entry in (response or {}).get("entries") or []
+            if isinstance(entry, dict) and isinstance(entry.get("report"), dict)
+        ),
+        None,
+    )
+    if not report:
+        return {
+            "machine_id": machine_id,
+            "observed_at": time.time(),
+            "reported": False,
+            "note": "NICo 没有此机器的固件清单。",
+            **firmware({}),
+        }
+    return {
+        "machine_id": machine_id,
+        "observed_at": time.time(),
+        "reported": True,
+        "note": "",
+        **firmware(report),
+    }

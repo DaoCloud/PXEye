@@ -315,7 +315,8 @@ function deviceStatusStatus(name, id) {
     d = state.equipment?.devices.find((x) => x.id === id);
   if (!page || !d) throw Error("设备归属已变化，请刷新。");
   const i = deviceStatusReported(page, d);
-  state.wizard = { resource: "device-status", device: d };
+  const w = { resource: "device-status", device: d };
+  state.wizard = w;
   const foot =
     button("关闭", "close") +
     (page.kind === "server"
@@ -399,7 +400,8 @@ function deviceStatusStatus(name, id) {
           (n) =>
             `<tr><td>${esc(n.local_port || "—")}<span class="live-small">${esc(n.mac_address)}</span></td><td>${esc(n.switch || n.switch_id || "—")}<span class="live-small">${esc(n.switch_model)}</span></td><td>${esc(n.remote_port || "—")}</td><td>${esc(n.switch_serial || "—")}</td></tr>`,
         ),
-      );
+      ) +
+      '<h3>固件</h3><div id="device-status-firmware" aria-live="polite"><div class="live-empty">正在读取固件清单…</div></div>';
   }
   if (page.kind === "switch")
     body +=
@@ -429,8 +431,10 @@ function deviceStatusStatus(name, id) {
     body,
     foot,
   );
-  if (page.kind === "server" && i.id)
-    deviceStatusReadHistory(state.wizard, i.id);
+  if (page.kind === "server" && i.id) {
+    deviceStatusReadHistory(w, i.id);
+    deviceStatusFirmwareRead(w, i.id);
+  }
 }
 // Whole units, largest first, two at most: “3 天 4 小时”, “12 分钟 5 秒”.
 function deviceStatusDuration(seconds) {
@@ -479,6 +483,67 @@ async function deviceStatusReadHistory(w, machineId) {
   const section = $("#device-status-history");
   if (state.wizard !== w || !section) return;
   section.innerHTML = html;
+}
+// The firmware inventory is read per machine after the dialog opens, and only
+// written into it while the same dialog is still the one on screen.
+async function deviceStatusFirmwareRead(w, machineId) {
+  const place = () =>
+    state.wizard === w ? $("#device-status-firmware") : null;
+  if (!/^[a-z0-9]{1,128}$/.test(machineId || "")) {
+    if (place())
+      place().innerHTML =
+        '<div class="live-note">此设备的 NICo 机器 ID 无法用于读取固件清单。</div>';
+    return;
+  }
+  let html;
+  try {
+    const data = await api(
+      "/api/device-status/machines/" +
+        encodeURIComponent(machineId) +
+        "/firmware",
+    );
+    html = deviceStatusFirmware(data);
+  } catch (e) {
+    html = `<div class="live-error" role="alert">固件清单读取失败：${esc(e.message)}</div>`;
+  }
+  if (place()) place().innerHTML = html;
+}
+function deviceStatusFirmware(data) {
+  if (!data.reported)
+    return `<div class="live-note">${esc(data.note || "NICo 没有此机器的固件清单。")}</div>`;
+  const c = data.chassis,
+    sb = data.secure_boot,
+    secureBoot =
+      sb && Object.keys(sb).length
+        ? Object.entries(sb)
+            .map(
+              ([k, v]) =>
+                `${k}: ${typeof v === "object" ? JSON.stringify(v) : v}`,
+            )
+            .join(" · ")
+        : "未报告";
+  return (
+    defs([
+      [
+        "机型",
+        esc(c.model || "—") +
+          (c.manufacturer || data.vendor
+            ? `<span class="live-small">${esc(c.manufacturer || data.vendor)}</span>`
+            : ""),
+      ],
+      ["部件号", `<span class="live-code">${esc(c.part_number || "—")}</span>`],
+      ["锁定状态", esc(data.lockdown || "未报告")],
+      ["安全启动", esc(secureBoot)],
+    ]) +
+    table(
+      ["部件", "版本", "发布日期"],
+      data.entries.map(
+        (f) =>
+          `<tr><td>${esc(f.description || f.id)}<span class="live-small live-code">${esc(f.id)}</span></td><td>${esc(f.version || "—")}</td><td>${esc(f.release_date ? f.release_date.slice(0, 10) : "—")}</td></tr>`,
+      ),
+    ) +
+    `<p class="live-small">来自 NICo 站点发现的 BMC 探测报告（GetComponentInventory），共 ${data.entries.length} 项，读取于 ${esc(when(data.observed_at))}。</p>`
+  );
 }
 registerPage("servers", () => deviceStatusPage("servers"));
 registerPage("switches", () => deviceStatusPage("switches"));
