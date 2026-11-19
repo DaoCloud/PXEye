@@ -22,34 +22,57 @@
 - 所有命令都在这个实例的容器里执行，**不在正在装机的控制台里执行**。
 - 脚本从本仓库经标准输入传进容器，不需要镜像里带 `tools/`。
 
-### 1.2 三个工具
+### 1.2 入口脚本
 
-| 工具 | 用途 | 输出 |
+所有采集都通过一个脚本 `tools/site-survey.sh` 执行。每次调用都是独立的，不依赖之前定义的函数或变量，AI 可以逐条直接执行。在仓库根目录运行。
+
+先设置环境变量（每个新的 shell 都要设置，或者写在命令前面）：
+
+| 变量 | 含义 | 是否必填 |
 | --- | --- | --- |
-| `tools/core-cli.py` | 运行只读的 `nico-admin-cli` 命令 | 表格，加 `--json` 时为 JSON |
-| `tools/core-survey.py` | 用 gRPC 反射看接口定义、调用读取接口 | 只显示结构：长值截短，列表只留第一项 |
-| `tools/core-capture.py` | 把页面用到的全部 Core 返回原样保存 | 一个 JSON 文件，可在本地回放 |
-
-三个工具都只允许读取。`core-cli.py` 只接受白名单里的命令，执行 `cli list` 可以看到全部；`machine force-delete`、`site-explorer explore` 这类会改变站点的命令会被拒绝。
-
-在仓库根目录定义：
+| `SURVEY_NAMESPACE` | 只读观察实例所在的命名空间 | 必填 |
+| `SURVEY_DEPLOYMENT` | 观察实例的 Deployment 名 | 必填 |
+| `SURVEY_CONTEXT` | kubectl 的 context | 可选 |
+| `SURVEY_SSH` | 本机不能直接用 kubectl 时，先登录到能用的机器，例如 `ssh -p 2022 root@<节点地址>` | 可选 |
+| `SURVEY_DIR` | 采集目录，必须在本仓库之外 | 保存输出时必填 |
 
 ```bash
-NS=<namespace>; DEPLOY=<pxeye>
-cli()     { kubectl -n "$NS" exec -i deploy/"$DEPLOY" -c pxeye -- python3 - "$@" < tools/core-cli.py; }
-survey()  { kubectl -n "$NS" exec -i deploy/"$DEPLOY" -c pxeye -- python3 - "$@" < tools/core-survey.py; }
-capture() { kubectl -n "$NS" exec -i deploy/"$DEPLOY" -c pxeye -- python3 - < tools/core-capture.py; }
+export SURVEY_NAMESPACE=<namespace> SURVEY_DEPLOYMENT=<pxeye> SURVEY_DIR=<采集目录>
+tools/site-survey.sh check
 ```
 
-先确认连接和版本：
+`check` 打印 Core 版本，以及机器、交换机、供电框的数量。记下 `build_version` 和 `git_sha`，之后各页面的结论都要注明 Core 版本。
 
-```bash
-cli version
-```
+脚本有四种用法：
 
-记下输出里的 `build_version` 和 `git_sha`。之后各页面的结论都要注明对应的 Core 版本。
+| 用法 | 作用 | 底层 |
+| --- | --- | --- |
+| `tools/site-survey.sh cli <命令>` | 运行只读的 NICo 命令行 `nico-admin-cli`；加 `--json` 在命令前输出 JSON | `tools/core-cli.py`，在容器里调用 `/usr/local/bin/nico-admin-cli`，自动带上 Core 地址和身份证书 |
+| `tools/site-survey.sh survey call '<接口>=<请求>'` | 调用 Core 的 gRPC 读取接口，与页面代码发出的请求相同 | `tools/core-survey.py`，在容器里调用 `grpcurl` |
+| `tools/site-survey.sh survey ids machines` | 列出完整的机器 ID，一行一个；也可以是 `switches`、`power-shelves`、`racks` | 同上 |
+| `tools/site-survey.sh capture` | 把页面用到的全部 Core 返回原样保存到采集目录 | `tools/core-capture.py` |
 
-### 1.3 采集目录
+在第一个参数前加 `--save <文件名>`，输出会同时保存到 `$SURVEY_DIR/cli/` 或 `$SURVEY_DIR/survey/` 下。命令失败时不会留下文件，退出码不为 0。
+
+三个底层工具都只允许读取：
+
+- `cli` 只接受白名单里的命令，执行 `tools/site-survey.sh cli list` 可以看到全部；`machine force-delete`、`site-explorer explore` 这类命令会被拒绝。
+- `survey call` 只接受名字以 `Find`、`Get`、`List`、`Determine` 开头的接口，并拒绝返回凭据的接口。
+- `survey call` 的输出只显示结构：长值截短，列表只留第一项。要完整数据用 `cli --json` 或 `capture`。
+
+### 1.3 命令行和接口的关系
+
+页面代码只调用 gRPC 接口，不使用命令行。`nico-admin-cli` 是同一个 Core API 的另一个客户端，它的输出经过整理：表格会截断长值，JSON 用下划线字段名。所以各页面文档把两者分开列：
+
+| 对等程度 | 含义 | 核对时 |
+| --- | --- | --- |
+| 相同 | 命令行调用的就是页面代码用的同一个接口 | 可以直接用命令行的输出核对页面 |
+| 近似 | 命令行用别的接口取到相近的数据 | 只能交叉参考，不一致时以 `survey call` 或采集文件为准 |
+| 无 | 没有对应的命令行 | 只能用 `survey call` 或采集文件 |
+
+对应关系按站点 Core 版本（`7c7788a8c7f1`）的命令行源码核对过。Core 版本不同时，用 `cli <命令> --help` 和 `survey describe <接口>` 重新确认。
+
+### 1.4 采集目录
 
 每次采集建一个目录，放在**本仓库之外**、只有项目成员能访问的位置，例如 `operations/runs/<运行编号>/`：
 
@@ -57,16 +80,18 @@ cli version
 <采集目录>/
   session.md                 过程和结论
   capture-<站点>.json         core-capture 的原样采集（权限 600）
-  cli/<页面>-<命令>.txt        命令行输出
+  cli/<页面>-<内容>.txt        命令行输出
+  survey/<页面>-<内容>.txt     gRPC 调用的输出
   supplements/<名称>.csv      用户补充的数据
 ```
 
-命令输出直接重定向保存，例如：
+命令输出用 `--save` 保存，例如：
 
 ```bash
-mkdir -p <采集目录>/cli <采集目录>/supplements
-cli machine show --hosts > <采集目录>/cli/servers-machine-show.txt
+tools/site-survey.sh --save servers-machine-show.txt cli machine show --hosts
 ```
+
+用户补充的数据由 AI 或用户手工放进 `supplements/`。
 
 采集文件和命令输出里有站点地址、序列号和机器 ID，**不能放进本仓库**。
 
@@ -78,15 +103,14 @@ cli machine show --hosts > <采集目录>/cli/servers-machine-show.txt
 2. **原样采集**：整个站点执行一次即可，覆盖所有页面：
 
    ```bash
-   capture > <采集目录>/capture-<站点>.json
-   chmod 600 <采集目录>/capture-<站点>.json
+   tools/site-survey.sh capture
    ```
 
-   结束时会打印汇总：采集是否完整、失败的调用、返回为空的方法。退出码 0 表示完整（其中可以有失败的调用，那是站点的事实），2 表示中途中止，需要修正原因后重来。
-3. **逐项核对**：打开观察实例上的页面，按页面文档第 3 节的通过标准，和命令输出对照。
+   文件保存为 `$SURVEY_DIR/capture-<日期时间>.json`，权限 600。结束时会打印汇总：采集是否完整、失败的调用、返回为空的方法。退出码 0 表示完整（其中可以有失败的调用，那是站点的事实）；2 表示中途中止，文件名带 `-incomplete`，需要修正原因后重来；其他值表示没能运行，不留下文件。
+3. **逐项核对**：按页面文档第 3 节的通过标准，把页面内容和命令输出对照。有浏览器时打开观察实例上的页面；没有浏览器时，用采集文件里控制台接口的输出对照（见 3.1 节）。
 4. **向用户补充**：按页面文档第 4 节，把 NICo 没有的数据向用户要，存成指定格式的 CSV。
 
-## 3. 回到本地
+## 3. 离开站点后
 
 ```bash
 PYTHONPATH=src python3 tools/core-replay.py check <采集目录>/capture-<站点>.json
@@ -97,7 +121,21 @@ PYTHONPATH=src python3 tools/core-replay.py serve <采集目录>/capture-<站点
 - `serve` 启动一个本地控制台，Core 的返回都来自采集文件，页面和后端是真实代码。
 - 出现 `UNRECORDED`，说明代码读了采集里没有的数据，需要重新采集，不能自己编一个返回。
 
-修改代码后：
+### 3.1 没有浏览器时核对页面
+
+采集文件的 `pxeye_responses` 就是页面当时从控制台接口拿到的数据。用 `jq` 取出来，和命令输出对照：
+
+```bash
+C=$SURVEY_DIR/capture-<日期时间>.json
+jq '.pxeye_responses | keys' $C                                        # 采集到的控制台接口
+jq '.pxeye_responses["/api/device-status"].body.servers | length' $C   # 页面关联上的服务器数
+jq '.pxeye_responses["/api/equipment"].body.devices | map(.kind) | group_by(.) | map({(.[0]): length}) | add' $C
+jq '.summary' $C                                                       # 采集汇总
+```
+
+页面上的筛选、分组和冲突判断在浏览器里计算，这种方式核对不到；需要时在本地用 `serve` 打开页面看。
+
+### 3.2 修改代码后
 
 | `check` 结果 | 处理 |
 | --- | --- |
@@ -123,8 +161,8 @@ NICo 没有的数据由用户提供，统一存成 CSV：
 
 在站点上协助采集的 AI 按以下规则工作：
 
-1. 只运行本目录列出的命令，以及 `cli list` 里的命令。不要执行写操作，不要在正在装机的控制台里执行命令。
-2. 每条命令的输出都保存到采集目录，不只看一眼。
+1. 只通过 `tools/site-survey.sh` 运行命令，只用本目录列出的命令，以及 `tools/site-survey.sh cli list` 里的命令。不要执行写操作，不要在正在装机的控制台里执行命令。
+2. 每条命令都加 `--save` 保存到采集目录，不只看一眼。
 3. 页面文档第 4 节列出的数据，NICo 里没有，必须问用户。提问时说明：要什么、为什么需要、用户可以怎么取得（给出命令）、存成什么格式。不要从别的数据推测。
 4. 命令失败时，先单独重试一次，区分偶发和一直失败；一直失败的，记下命令、错误码和消息。
 5. 结束时在 `session.md` 里写：Core 版本、每个页面有没有数据、核对结果、缺少的用户数据、对文档和测试需要的更新。

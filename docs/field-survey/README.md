@@ -22,34 +22,57 @@ For the full field mapping see the [data contract](../design/rack-operations-dat
 - Run every command in this instance's container, **never in the console that is installing**.
 - The scripts are passed from this repository into the container on standard input; the image does not need `tools/`.
 
-### 1.2 Three tools
+### 1.2 Entry script
 
-| Tool | Purpose | Output |
+Every survey step goes through one script, `tools/site-survey.sh`. Each call stands on its own and needs no function or variable defined earlier, so an AI can run the commands one by one. Run it from the repository root.
+
+Set the environment first (in every new shell, or in front of the command):
+
+| Variable | Meaning | Required |
 | --- | --- | --- |
-| `tools/core-cli.py` | Runs read-only `nico-admin-cli` commands | A table, or JSON with `--json` |
-| `tools/core-survey.py` | Shows interface definitions through gRPC reflection and calls read interfaces | Structure only: long values shortened, lists reduced to their first item |
-| `tools/core-capture.py` | Saves every Core response the pages use, verbatim | One JSON file that can be replayed locally |
-
-All three tools only read. `core-cli.py` accepts only commands on its allow list; `cli list` shows them all. Commands that change the site, such as `machine force-delete` and `site-explorer explore`, are rejected.
-
-Define at the repository root:
+| `SURVEY_NAMESPACE` | Namespace of the read-only observer instance | Yes |
+| `SURVEY_DEPLOYMENT` | Deployment name of the observer | Yes |
+| `SURVEY_CONTEXT` | kubectl context | No |
+| `SURVEY_SSH` | When kubectl does not work on this machine, a command that reaches one where it does, such as `ssh -p 2022 root@<node address>` | No |
+| `SURVEY_DIR` | Survey directory, outside this repository | To save output |
 
 ```bash
-NS=<namespace>; DEPLOY=<pxeye>
-cli()     { kubectl -n "$NS" exec -i deploy/"$DEPLOY" -c pxeye -- python3 - "$@" < tools/core-cli.py; }
-survey()  { kubectl -n "$NS" exec -i deploy/"$DEPLOY" -c pxeye -- python3 - "$@" < tools/core-survey.py; }
-capture() { kubectl -n "$NS" exec -i deploy/"$DEPLOY" -c pxeye -- python3 - < tools/core-capture.py; }
+export SURVEY_NAMESPACE=<namespace> SURVEY_DEPLOYMENT=<pxeye> SURVEY_DIR=<survey directory>
+tools/site-survey.sh check
 ```
 
-First confirm the connection and version:
+`check` prints the Core version and the number of machines, switches and power shelves. Note `build_version` and `git_sha`; every page conclusion afterwards states the Core version it applies to.
 
-```bash
-cli version
-```
+The script has four uses:
 
-Note `build_version` and `git_sha` from the output. Every page conclusion afterwards states the Core version it applies to.
+| Use | Purpose | Underneath |
+| --- | --- | --- |
+| `tools/site-survey.sh cli <command>` | Runs a read-only NICo CLI command, `nico-admin-cli`; put `--json` before the command for JSON | `tools/core-cli.py`, which runs `/usr/local/bin/nico-admin-cli` in the container with the Core address and identity |
+| `tools/site-survey.sh survey call '<interface>=<request>'` | Calls a Core gRPC read interface with the same request the page code sends | `tools/core-survey.py`, which runs `grpcurl` in the container |
+| `tools/site-survey.sh survey ids machines` | Lists full machine IDs, one per line; also `switches`, `power-shelves`, `racks` | Same |
+| `tools/site-survey.sh capture` | Saves every Core response the pages use, verbatim, in the survey directory | `tools/core-capture.py` |
 
-### 1.3 Survey directory
+Put `--save <file name>` before the first argument to also keep the output under `$SURVEY_DIR/cli/` or `$SURVEY_DIR/survey/`. A failed command leaves no file and exits non-zero.
+
+All three tools only read:
+
+- `cli` accepts only commands on its allow list; `tools/site-survey.sh cli list` shows them. Commands such as `machine force-delete` and `site-explorer explore` are refused.
+- `survey call` accepts only interfaces named `Find`, `Get`, `List` or `Determine`, and refuses those that return credentials.
+- `survey call` shows structure only: long values shortened, lists reduced to their first item. Use `cli --json` or `capture` for full data.
+
+### 1.3 How CLI commands relate to interfaces
+
+The page code calls gRPC interfaces only and does not use the CLI. `nico-admin-cli` is another client of the same Core API, and its output is reworked: tables cut long values, and JSON uses snake_case field names. Each page document therefore lists the two apart:
+
+| Equivalence | Meaning | When checking |
+| --- | --- | --- |
+| Same | The CLI calls the same interface as the page code | The CLI output can be used to check the page |
+| Close | The CLI gets similar data through another interface | Cross-reference only; when they differ, `survey call` or the capture decides |
+| None | No CLI command | Use `survey call` or the capture |
+
+The correspondence was checked against the CLI source of the site's Core version (`7c7788a8c7f1`). With another Core version, confirm it again with `cli <command> --help` and `survey describe <interface>`.
+
+### 1.4 Survey directory
 
 Create one directory per survey, **outside this repository**, in a place only project members can read, for example `operations/runs/<run id>/`:
 
@@ -57,16 +80,18 @@ Create one directory per survey, **outside this repository**, in a place only pr
 <survey directory>/
   session.md                 process and conclusions
   capture-<site>.json         verbatim core-capture output (mode 600)
-  cli/<page>-<command>.txt        CLI output
+  cli/<page>-<content>.txt        CLI output
+  survey/<page>-<content>.txt     gRPC call output
   supplements/<name>.csv      data provided by the user
 ```
 
-Save command output by redirecting it, for example:
+Save command output with `--save`, for example:
 
 ```bash
-mkdir -p <survey directory>/cli <survey directory>/supplements
-cli machine show --hosts > <survey directory>/cli/servers-machine-show.txt
+tools/site-survey.sh --save servers-machine-show.txt cli machine show --hosts
 ```
+
+Data the user provides is put into `supplements/` by the AI or the user.
 
 Captures and command output hold site addresses, serial numbers and machine IDs. They **must not enter this repository**.
 
@@ -78,15 +103,14 @@ Every page follows the same four steps; each page document covers only the diffe
 2. **Capture verbatim**: run once per site; it covers all pages:
 
    ```bash
-   capture > <survey directory>/capture-<site>.json
-   chmod 600 <survey directory>/capture-<site>.json
+   tools/site-survey.sh capture
    ```
 
-   At the end it prints a summary: whether the capture is complete, the failed calls, and the methods that returned nothing. Exit code 0 means complete (it may contain failed calls, which are facts about the site); 2 means it stopped midway, so fix the cause and run it again.
-3. **Check item by item**: open the page on the observer instance and compare it with the command output by the pass criteria in section 3 of the page document.
+   The file is saved as `$SURVEY_DIR/capture-<date-time>.json` with mode 600. At the end it prints a summary: whether the capture is complete, the failed calls, and the methods that returned nothing. Exit code 0 means complete (it may contain failed calls, which are facts about the site); 2 means it stopped midway, the file name ends in `-incomplete`, and the cause must be fixed before running it again; any other value means it could not run and no file is kept.
+3. **Check item by item**: compare the page with the command output by the pass criteria in section 3 of the page document. With a browser, open the page on the observer instance; without one, compare against the console API output in the capture (section 3.1).
 4. **Ask the user**: following section 4 of the page document, ask the user for data NICo lacks and save it as CSV in the given format.
 
-## 3. Back from the site
+## 3. After the site
 
 ```bash
 PYTHONPATH=src python3 tools/core-replay.py check <survey directory>/capture-<site>.json
@@ -97,7 +121,21 @@ PYTHONPATH=src python3 tools/core-replay.py serve <survey directory>/capture-<si
 - `serve` starts a local console whose Core reads all come from the capture; pages and backend are the real code.
 - `UNRECORDED` means the code read data the capture does not hold. Capture the site again; never make up a response.
 
-After changing code:
+### 3.1 Checking pages without a browser
+
+The capture's `pxeye_responses` holds the data the page got from the console API at the time. Extract it with `jq` and compare it with the command output:
+
+```bash
+C=$SURVEY_DIR/capture-<date-time>.json
+jq '.pxeye_responses | keys' $C                                        # console reads in the capture
+jq '.pxeye_responses["/api/device-status"].body.servers | length' $C   # servers the page joined
+jq '.pxeye_responses["/api/equipment"].body.devices | map(.kind) | group_by(.) | map({(.[0]): length}) | add' $C
+jq '.summary' $C                                                       # capture summary
+```
+
+Filtering, grouping and conflict detection on the pages happen in the browser and cannot be checked this way; when needed, open the page locally with `serve`.
+
+### 3.2 After changing code
 
 | `check` result | Action |
 | --- | --- |
@@ -123,8 +161,8 @@ For now these CSV files serve only for checking and later development. PXEye has
 
 An AI helping with a survey at a site works by these rules:
 
-1. Run only the commands listed in this directory and those in `cli list`. Do not run writes, and do not run commands in the console that is installing.
-2. Save the output of every command in the survey directory; do not just look at it.
+1. Run commands only through `tools/site-survey.sh`, and only those listed in this directory and in `tools/site-survey.sh cli list`. Do not run writes, and do not run commands in the console that is installing.
+2. Add `--save` to every command to keep its output in the survey directory; do not just look at it.
 3. The data listed in section 4 of a page document is not in NICo and must be asked from the user. When asking, state what is needed, why, how the user can get it (give the command), and the format to save it in. Do not infer it from other data.
 4. When a command fails, retry it once on its own to tell an intermittent failure from a persistent one; for a persistent failure, record the command, error code and message.
 5. At the end, write in `session.md`: the Core version, whether each page has data, the check results, the missing user data, and the updates needed to documents and tests.

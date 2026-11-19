@@ -9,6 +9,7 @@ the Core actually deployed at the site, not of any source checkout:
     kubectl -n <namespace> exec -i deploy/<pxeye> -c pxeye -- python3 - describe FindSwitches < tools/core-survey.py
     kubectl -n <namespace> exec -i deploy/<pxeye> -c pxeye -- python3 - message forge.Machine < tools/core-survey.py
     kubectl -n <namespace> exec -i deploy/<pxeye> -c pxeye -- python3 - call 'FindRackIds={}' < tools/core-survey.py
+    kubectl -n <namespace> exec -i deploy/<pxeye> -c pxeye -- python3 - ids machines < tools/core-survey.py
 
 Only methods named Find*, Get*, List* or Determine* can be called, and methods that
 return credentials or serve the boot path are refused. Values of fields whose names
@@ -103,7 +104,7 @@ def definition(name, limit=4000):
 
 
 def main():
-    if len(sys.argv) < 2 or sys.argv[1] not in ("list", "describe", "message", "call"):
+    if len(sys.argv) < 2 or sys.argv[1] not in ("list", "describe", "message", "call", "ids"):
         sys.exit(__doc__)
     mode, arguments = sys.argv[1], sys.argv[2:]
     if mode == "list":
@@ -123,6 +124,22 @@ def main():
             print(f"\n## {method}  request={found.group(1)}  response={found.group(2)}")
             print(definition(found.group(1), 1500))
             print(definition(found.group(2), 2500))
+    elif mode == "ids":
+        # Full identifiers, one per line, for use in later commands. `call` shortens lists.
+        kinds = {
+            "machines": ("FindMachineIds", "machineIds", "id"),
+            "switches": ("FindSwitchIds", "ids", "value"),
+            "power-shelves": ("FindPowerShelfIds", "ids", "value"),
+            "racks": ("FindRackIds", "rackIds", "value"),
+        }
+        if not arguments or arguments[0] not in kinds:
+            sys.exit("ids takes one of: " + ", ".join(kinds))
+        method, key, field = kinds[arguments[0]]
+        ok, out = grpcurl("forge.Forge/" + method, data="{}")
+        if not ok:
+            sys.exit(f"{method} failed: {out}")
+        for item in json.loads(out or "{}").get(key, []):
+            print(item.get(field, ""))
     elif mode == "message":
         for name in arguments:
             print(f"\n## {name}\n{definition(name)}")
