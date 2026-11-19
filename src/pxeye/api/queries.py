@@ -61,6 +61,10 @@ class QueryRoutes:
                 from pxeye.services.device_status import DeviceStatus
 
                 return self.respond(200, DeviceStatus(self.app.adapter).view())
+            if path == "/api/exploration" and self.app.config.get("rack_operations") is True:
+                from pxeye.services.exploration import exploration
+
+                return self.respond(200, exploration(self.app.adapter))
             if (
                 path.startswith("/api/device-status/")
                 and self.app.config.get("rack_operations") is True
