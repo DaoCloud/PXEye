@@ -263,6 +263,59 @@ class Executor:
             flush=True,
         )
 
+    def request_scout_discovery_retry(self, task, observed):
+        """Request one explicit discovery reboot per operator-confirmed preparation attempt."""
+        machine = observed.get("machine") or {}
+        state = str(machine.get("state") or "")
+        if state != "HostInitializing/WaitingForDiscovery":
+            return False
+        if observed.get("instances"):
+            raise RuntimeError("设备已有 Instance，不能触发首次 Scout 发现重启。")
+        if observed.get("failure_details"):
+            raise RuntimeError("NICo 设备准备已有失败详情；停止触发 Scout 发现重启。")
+        machine_id = machine.get("id")
+        if not isinstance(machine_id, str) or not machine_id:
+            raise RuntimeError("NICo Machine 缺少有效 ID，不能触发 Scout 发现重启。")
+
+        attempts = task.setdefault("scout_discovery_reboots", [])
+        # The initial task confirmation permits one request. Every explicit
+        # continue-preparation confirmation permits at most one additional request.
+        authorized_attempts = 1 + len(task.get("preparation_continuations", []))
+        if len(attempts) >= authorized_attempts:
+            return False
+
+        attempt = {
+            "number": len(attempts) + 1,
+            "machine_id": machine_id,
+            "state": "requesting",
+            "requested_at": time.time(),
+        }
+        attempts.append(attempt)
+        self.event(
+            task,
+            "prepare",
+            "Machine 尚未完成首次 Scout 发现；请求 NICo 立即重启主机进入发现引导。",
+            machine_id=machine_id,
+            scout_discovery_reboot=attempt["number"],
+        )
+        try:
+            self.adapter.core(["machine", "reboot", "--machine", machine_id])
+        except Exception as error:
+            attempt.update(state="unknown", completed_at=time.time())
+            self.store.save(task)
+            raise RuntimeError(
+                "NICo Scout 发现重启请求结果未知；不会自动重复发送，请核对 BMC 电源和 Core 日志。"
+            ) from error
+        attempt.update(state="accepted", completed_at=time.time())
+        self.event(
+            task,
+            "prepare",
+            "NICo 已接受 Scout 发现重启；等待 UEFI DHCP、iPXE 和 Scout 硬件回报。",
+            machine_id=machine_id,
+            scout_discovery_reboot=attempt["number"],
+        )
+        return True
+
     def identity_candidate(self, task, text, trusted_key):
         events = observations(self.adapter, self.store, task)
         signed = any(
@@ -1661,6 +1714,7 @@ class Executor:
             # A new task may start after a prior admission was cancelled while
             # its Machine still exists. Declare policy without replaying ingestion.
             self.boot_transport.prepare(task, "DISCOVERY", row=row)
+        self.request_scout_discovery_retry(task, observed)
         preparation_timeout = self.adapter.config.get("discovery_timeout_seconds", 900)
         deadline = time.monotonic() + preparation_timeout
         task["preparation_deadline"] = time.time() + preparation_timeout
@@ -1689,6 +1743,9 @@ class Executor:
                 "state": machine.get("state"),
                 "scout_received": task["device"] in serials,
                 "failure_details": observed.get("failure_details"),
+                "scout_discovery_reboot": (
+                    task.get("scout_discovery_reboots") or [{}]
+                )[-1].get("state"),
             }
             if (
                 not discovery_window_started
