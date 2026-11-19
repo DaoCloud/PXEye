@@ -1687,7 +1687,7 @@ class Executor:
             progress = {
                 "machine_id": machine.get("id"),
                 "state": machine.get("state"),
-                "scout_received": bool(info),
+                "scout_received": task["device"] in serials,
                 "failure_details": observed.get("failure_details"),
             }
             if progress != last_progress:

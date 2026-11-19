@@ -118,7 +118,8 @@ async function api(path, body) {
       });
       const data = await result.json();
       if (!result.ok) {
-        const error = Error(data.error || "请求失败");
+        const message = data.error || "请求失败";
+        const error = Error(result.status >= 500 && data.request_id ? `${message} 错误编号：${data.request_id}` : message);
         error.status = result.status;
         error.code = data.code;
         error.requestId = data.request_id;

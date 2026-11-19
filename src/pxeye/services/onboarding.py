@@ -44,9 +44,16 @@ def nvlink_gpu_configs(profile):
 
 
 def discovery_info(machine):
-    return (
+    info = (
         (machine.get("status") or {}).get("discovery_info") or machine.get("discovery_info") or {}
     )
+    if not isinstance(info, dict):
+        raise ValueError("NICo 返回的 Scout 硬件信息格式无效，请核对主机发现状态。")
+    if "dmi_data" in info and info["dmi_data"] is None:
+        return {key: value for key, value in info.items() if key != "dmi_data"}
+    if not isinstance(info.get("dmi_data", {}), dict):
+        raise ValueError("NICo 返回的 Scout 主机身份格式无效，不能确认设备序列号。")
+    return info
 
 
 def architecture(info):
