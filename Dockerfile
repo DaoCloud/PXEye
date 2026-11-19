@@ -22,7 +22,7 @@ COPY tools/import-oci-bundle.py /usr/local/bin/pxeye-import-oci-bundle
 RUN chmod 0755 /usr/local/bin/pxeye-import-oci-bundle
 COPY pyproject.toml /tmp/pxeye-build/pyproject.toml
 RUN python3 -m venv /opt/pxeye \
-    && python3 -c 'import tomllib; p=tomllib.load(open("/tmp/pxeye-build/pyproject.toml", "rb")); print("\\n".join(p["build-system"]["requires"] + p["project"].get("dependencies", [])))' > /tmp/pxeye-build/requirements.txt \
+    && python3 -c 'import tomllib; p=tomllib.load(open("/tmp/pxeye-build/pyproject.toml", "rb")); print("\n".join(p["build-system"]["requires"] + p["project"].get("dependencies", [])))' > /tmp/pxeye-build/requirements.txt \
     && /opt/pxeye/bin/pip install --no-cache-dir -r /tmp/pxeye-build/requirements.txt \
     && rm -rf /tmp/pxeye-build
 COPY pyproject.toml README.md LICENSE /app/
