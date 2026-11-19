@@ -7,7 +7,9 @@ identifiers the equipment view already exposes, so the two never disagree about
 which device is which.
 """
 
+import datetime
 import json
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor
 
@@ -213,6 +215,18 @@ class DeviceStatus:
     def __init__(self, adapter):
         self.adapter = adapter
 
+    def machine_history(self, machine_id):
+        """State timeline of one machine; an unknown machine has an empty timeline."""
+        if not isinstance(machine_id, str) or not MACHINE_ID.fullmatch(machine_id):
+            raise ValueError("机器 ID 格式不正确。")
+        response = self.adapter.rpc(
+            "FindMachineStateHistories", {"machineIds": [{"id": machine_id}]}
+        )
+        histories = (response or {}).get("histories") or {}
+        records = (histories.get(machine_id) or {}).get("records") or []
+        now = time.time()
+        return {"observed_at": now, "records": state_timeline(records, now)}
+
     def _machines(self):
         ids = self.adapter.rpc("FindMachineIds", {}).get("machineIds", [])
         if not ids:
@@ -256,3 +270,49 @@ class DeviceStatus:
                 if error:
                     result["errors"].append(error)
         return result
+
+
+MACHINE_ID = re.compile(r"[a-z0-9]{1,128}")
+
+
+def record_time(value):
+    """Core writes record times as RFC 3339 text; anything else is unreadable."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    text = value.strip().replace("Z", "+00:00")
+    # Python before 3.11 accepts at most six fraction digits.
+    text = re.sub(r"(\.\d{6})\d+", r"\1", text)
+    try:
+        parsed = datetime.datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=datetime.timezone.utc)
+    return parsed.timestamp()
+
+
+def state_timeline(records, now):
+    """Order history records by time and say how long the machine stayed in each state.
+
+    Consecutive records with the same state text are one stay. The last stay runs to now.
+    """
+    timed = []
+    for record in records or []:
+        if not isinstance(record, dict):
+            continue
+        moment = record_time(record.get("time"))
+        if moment is None:
+            continue
+        timed.append((moment, state_text(record.get("event")), record.get("time")))
+    timed.sort(key=lambda item: item[0])
+    stays = []
+    for moment, state, raw in timed:
+        if stays and stays[-1]["state"] == state:
+            continue
+        stays.append({"state": state, "entered_at": raw, "_at": moment})
+    for index, stay in enumerate(stays):
+        last = index == len(stays) - 1
+        end = now if last else stays[index + 1]["_at"]
+        stay["duration_seconds"] = max(0, int(end - stay.pop("_at")))
+        stay["current"] = last
+    return stays

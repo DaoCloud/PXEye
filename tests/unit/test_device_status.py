@@ -2,7 +2,16 @@
 
 import unittest
 
-from pxeye.services.device_status import DeviceStatus, health, lifecycle, state_text
+from unittest import mock
+
+from pxeye.api.queries import QueryRoutes
+from pxeye.services.device_status import (
+    DeviceStatus,
+    health,
+    lifecycle,
+    state_text,
+    state_timeline,
+)
 
 MACHINE = {
     "id": {"id": "fm100h-host"},
@@ -203,3 +212,113 @@ class DeviceStatusTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+MACHINE_ID = "fm100hexample0"
+HISTORY = [
+    # Out of order on purpose: Core does not promise an order.
+    {"event": '{"state":"ready"}', "time": "2026-01-01T03:00:00Z", "version": "V3"},
+    {"event": '{"state":"created"}', "time": "2026-01-01T00:00:00Z", "version": "V1"},
+    {
+        "event": '{"state":"hostinit","machine_state":{"state":"waitingforlockdown",'
+        '"lockdown_info":{"mode":"enable","state":"setlockdown"}}}',
+        "time": "2026-01-01T00:00:10.123456789Z",
+        "version": "V2",
+    },
+    {
+        "event": '{"state":"hostinit","machine_state":{"state":"waitingforlockdown",'
+        '"lockdown_info":{"mode":"enable","state":"setlockdown"}}}',
+        "time": "2026-01-01T01:00:00Z",
+        "version": "V2b",
+    },
+]
+END = 1767236400.0  # 2026-01-01T03:00:00Z
+
+
+class HistoryCore:
+    def __init__(self, response):
+        self.response, self.calls = response, []
+
+    def rpc(self, method, body):
+        self.calls.append((method, body))
+        return self.response
+
+
+class Routes(QueryRoutes):
+    def __init__(self, path, config, adapter):
+        self.path = path
+        self.app = mock.Mock()
+        self.app.config = config
+        self.app.adapter = adapter
+        self.app.readiness.return_value = {"business_available": True}
+
+    def session(self):
+        return {"csrf": "x"}
+
+    def respond(self, code, payload, headers=None):
+        return code, payload
+
+
+class MachineHistoryTests(unittest.TestCase):
+    def test_records_are_ordered_merged_and_timed(self):
+        core = HistoryCore({"histories": {MACHINE_ID: {"records": HISTORY}}})
+        with mock.patch("pxeye.services.device_status.time.time", return_value=END + 60):
+            result = DeviceStatus(core).machine_history(MACHINE_ID)
+        self.assertEqual(
+            core.calls,
+            [("FindMachineStateHistories", {"machineIds": [{"id": MACHINE_ID}]})],
+        )
+        self.assertEqual(
+            [(r["state"], r["duration_seconds"], r["current"]) for r in result["records"]],
+            [
+                ("created", 10, False),
+                ("hostinit/waitingforlockdown/setlockdown", 3 * 3600 - 11, False),
+                ("ready", 60, True),
+            ],
+        )
+        # A merged stay keeps the time it was first entered.
+        self.assertEqual(result["records"][1]["entered_at"], "2026-01-01T00:00:10.123456789Z")
+
+    def test_unreadable_times_are_skipped(self):
+        records = [{"event": '{"state":"created"}', "time": "not a time"}, None]
+        self.assertEqual(state_timeline(records, END), [])
+
+    def test_no_history_is_an_empty_list(self):
+        for response in ({}, {"histories": {}}, {"histories": {MACHINE_ID: {}}}, None):
+            result = DeviceStatus(HistoryCore(response)).machine_history(MACHINE_ID)
+            self.assertEqual(result["records"], [])
+
+    def test_machine_id_is_validated(self):
+        core = HistoryCore({})
+        for bad in ("", "FM100H", "a/b", "a" * 129, None, "x y"):
+            with self.assertRaises(ValueError):
+                DeviceStatus(core).machine_history(bad)
+        self.assertEqual(core.calls, [])
+
+    def test_route_rejects_a_malformed_id_with_404(self):
+        core = HistoryCore({})
+        for path in (
+            "/api/device-status/machines/FM100H/history",
+            "/api/device-status/machines/a%2Fb/history",
+            "/api/device-status/machines/" + "a" * 129 + "/history",
+            "/api/device-status/machines//history",
+            "/api/device-status/machines/" + MACHINE_ID,
+        ):
+            code, _ = Routes(path, {"rack_operations": True}, core).get_request()
+            self.assertEqual(code, 404, path)
+        self.assertEqual(core.calls, [])
+
+    def test_route_returns_history_when_enabled(self):
+        core = HistoryCore({"histories": {MACHINE_ID: {"records": HISTORY}}})
+        path = "/api/device-status/machines/" + MACHINE_ID + "/history"
+        code, payload = Routes(path, {"rack_operations": True}, core).get_request()
+        self.assertEqual(code, 200)
+        self.assertEqual(len(payload["records"]), 3)
+
+    def test_route_does_not_exist_with_the_gate_off(self):
+        core = HistoryCore({"histories": {MACHINE_ID: {"records": HISTORY}}})
+        path = "/api/device-status/machines/" + MACHINE_ID + "/history"
+        for config in ({}, {"rack_operations": False}, {"rack_operations": "true"}):
+            code, _ = Routes(path, config, core).get_request()
+            self.assertEqual(code, 404)
+        self.assertEqual(core.calls, [])

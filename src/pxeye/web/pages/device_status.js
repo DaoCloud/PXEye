@@ -389,6 +389,9 @@ function deviceStatusStatus(name, id) {
           ),
         ),
       ) +
+      (i.id
+        ? '<h3>状态时间线</h3><div id="device-status-history"><p class="live-small">正在读取状态记录…</p></div>'
+        : "") +
       "<h3>LLDP 邻居</h3>" +
       table(
         ["本机接口", "邻居交换机", "邻居端口", "交换机 SN"],
@@ -426,6 +429,56 @@ function deviceStatusStatus(name, id) {
     body,
     foot,
   );
+  if (page.kind === "server" && i.id)
+    deviceStatusReadHistory(state.wizard, i.id);
+}
+// Whole units, largest first, two at most: “3 天 4 小时”, “12 分钟 5 秒”.
+function deviceStatusDuration(seconds) {
+  let rest = Math.max(0, Math.floor(Number(seconds) || 0));
+  const parts = [];
+  for (const [size, unit] of [
+    [86400, "天"],
+    [3600, "小时"],
+    [60, "分钟"],
+    [1, "秒"],
+  ]) {
+    if (rest >= size || (size === 1 && !parts.length))
+      parts.push(`${Math.floor(rest / size)} ${unit}`);
+    rest %= size;
+  }
+  return parts.slice(0, 2).join(" ");
+}
+function deviceStatusHistoryTable(data) {
+  if (!data.records.length)
+    return '<p class="live-small">NICo 没有这台机器的状态记录。</p>';
+  return (
+    table(
+      ["状态", "进入时间", "停留时长"],
+      data.records.map(
+        (r) =>
+          `<tr><td><code>${esc(r.state || "—")}</code>${r.current ? " " + badge("当前", "amber") : ""}</td><td>${esc(deviceStatusTime(r.entered_at))}</td><td>${esc(deviceStatusDuration(r.duration_seconds))}${r.current ? '<span class="live-small">至读取时</span>' : ""}</td></tr>`,
+      ),
+    ) +
+    `<p class="live-small">状态记录由 NICo 状态机保存，读取于 ${esc(when(data.observed_at))}。</p>`
+  );
+}
+// The dialog may have closed or moved to another device while Core answered;
+// only the dialog that asked writes into its own section.
+async function deviceStatusReadHistory(w, machineId) {
+  let html;
+  try {
+    const data = await api(
+      "/api/device-status/machines/" +
+        encodeURIComponent(machineId) +
+        "/history",
+    );
+    html = deviceStatusHistoryTable(data);
+  } catch (e) {
+    html = `<div class="live-error" role="alert">状态记录读取失败：${esc(e.message)}</div>`;
+  }
+  const section = $("#device-status-history");
+  if (state.wizard !== w || !section) return;
+  section.innerHTML = html;
 }
 registerPage("servers", () => deviceStatusPage("servers"));
 registerPage("switches", () => deviceStatusPage("switches"));
