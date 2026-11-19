@@ -66,6 +66,20 @@ class ParseTests(unittest.TestCase):
         text = PORTS + "aa:bb:cc:00:00:01,swp1,other\n"
         self.assertEqual(self.errors(ports_csv=text)[0]["line"], 3)
 
+    def test_port_key_matches_page_normalisation(self):
+        text = PORTS + "aa:bb:cc:00:00:01,SWP1,other\n"
+        self.assertEqual(self.errors(ports_csv=text)[0]["line"], 3)
+        mac_ports = (
+            "chassis_mac,port_id,port_name\n"
+            "aa:bb:cc:00:00:01,02-00-00-BB-00-01,P-1\n"
+            "aa:bb:cc:00:00:01,02:00:00:bb:00:01,P-2\n"
+        )
+        self.assertEqual(self.errors(ports_csv=mac_ports)[0]["line"], 3)
+        _, ports = switch_labels.parse(
+            {"switches_csv": "", "ports_csv": mac_ports.rsplit("\n", 2)[0] + "\n", "revision": ""}
+        )
+        self.assertEqual(ports[0]["port_id"], "02:00:00:bb:00:01")
+
     def test_row_limit(self):
         rows = "".join(f"aa:bb:cc:00:00:01,p{i},n\n" for i in range(2001))
         errors = self.errors(ports_csv="chassis_mac,port_id,port_name\n" + rows)

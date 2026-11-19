@@ -87,7 +87,10 @@ def parse_table(text, columns, required, keys, table):
                 item["chassis_mac"] = mac
         if bad:
             continue
-        key = tuple(item[k] for k in keys)
+        if "port_id" in item:
+            # Same key form as the cabling page: MAC colon form, else case-insensitive.
+            item["port_id"] = normalize_mac(item["port_id"]) or item["port_id"]
+        key = tuple(item[k].lower() for k in keys)
         if key in seen:
             errors.append(
                 {
