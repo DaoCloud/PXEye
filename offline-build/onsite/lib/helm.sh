@@ -357,7 +357,8 @@ bootstrap_pxeye() {
         components:{pxeye:{enabled:true},certManager:{enabled:false},platform:{enabled:false},vaultBootstrap:{enabled:false},core:{enabled:false},materials:{enabled:false}},
         siteBootstrap:{enabled:true,siteName:$site,coreUrl:("https://"+$release+"-nico-api."+$ns+".svc.cluster.local:1079"),namespace:$ns,
           clientSecret:($release+"-nico-admin-client"),clientCertKey:"tls.crt",clientPrivateKey:"tls.key",caSecret:($release+"-nico-site-ca"),
-          caKey:"tls.crt",pxeInternalUrl:("http://"+$release+"-nico-pxe."+$ns+".svc:8080")}}
+          caKey:"tls.crt",siteInitializerSecret:($release+"-nico-site-initializer-client"),
+          pxeInternalUrl:("http://"+$release+"-nico-pxe."+$ns+".svc:8080")}}
     ' | "$YQ" -P '.' > "$values.tmp" || die 'Cannot generate deterministic PXEye bootstrap values'
     if [[ -n $NODE_NAME ]]; then
         "$YQ" -o=json '.' "$values.tmp" > "$directory/values.json"

@@ -1016,6 +1016,7 @@ class Onsite:
                       'clientPrivateKey': 'tls.key',
                       'caSecret': core_release + '-nico-site-ca',
                       'caKey': 'tls.crt',
+                      'siteInitializerSecret': core_release + '-nico-site-initializer-client',
                       'pxeInternalUrl': 'http://' + core_release + '-nico-pxe.' + namespace + '.svc:8080',
                   },
                   # Bootstrap owns the PXEye UI only.  The offline parent
@@ -1039,6 +1040,7 @@ class Onsite:
             'clientPrivateKey': 'tls.key',
             'caSecret': core_release + '-nico-site-ca',
             'caKey': 'tls.crt',
+            'siteInitializerSecret': core_release + '-nico-site-initializer-client',
             'pxeInternalUrl': 'http://' + core_release + '-nico-pxe.' + namespace + '.svc:8080',
         }
         path = directory / 'values.yaml'; path.write_text(yaml.safe_dump(values)); path.chmod(0o600)
