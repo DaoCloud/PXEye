@@ -2274,3 +2274,13 @@ body.read-only .topbar::after {
   font-weight: 600;
   white-space: nowrap;
 }
+
+/* Per-kind device pages reuse the device-management table and filters. */
+.inventory-summary {
+  grid-template-columns: repeat(4, 1fr);
+}
+@media (max-width: 600px) {
+  .inventory-summary {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}

@@ -159,6 +159,7 @@ class Application:
             "deployment_enabled": bool(self.config.get("nico_deployment", {}).get("enabled")),
             "site_bootstrap": getattr(self, "site_bootstrap_state", {}),
             "read_only": read_only.enabled(self.config),
+            "rack_operations": self.config.get("rack_operations") is True,
             "reason": "请先部署 NICo 并应用到站点，或在站点设置中连接已有 Core。",
         }
 

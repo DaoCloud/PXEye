@@ -9,6 +9,9 @@ sharedStorage:
 # Read-only observer: a second console on a Core that another PXEye operates.
 # It rejects every command except sign-in and sends only reads to Core and BMCs.
 readOnly: false
+# Preview: per-kind device pages (servers, switches, power shelves) with the
+# operational state NICo Core reports. Off keeps the navigation and API as before.
+rackOperations: false
 service:
   type: NodePort
   port: 80

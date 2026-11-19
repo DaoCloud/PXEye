@@ -227,6 +227,7 @@ async function load() {
     "read-only",
     state.readiness.read_only === true,
   );
+  runHooks("readiness", state.readiness);
   if (!state.readiness.business_available) {
     if (state.page !== "site") state.page = "nico";
     location.hash = state.page;

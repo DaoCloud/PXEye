@@ -57,6 +57,10 @@ class QueryRoutes:
                 )
             if path == "/api/instances":
                 return self.respond(200, self.app.instances.list())
+            if path == "/api/device-insights" and self.app.config.get("rack_operations") is True:
+                from pxeye.services.device_insights import DeviceInsights
+
+                return self.respond(200, DeviceInsights(self.app.adapter).view())
             if path == "/api/equipment":
                 snapshot = self.app.management_addresses.snapshot()
                 data = self.app.equipment.view(snapshot)
