@@ -61,6 +61,20 @@ class QueryRoutes:
                 from pxeye.services.device_status import DeviceStatus
 
                 return self.respond(200, DeviceStatus(self.app.adapter).view())
+            if (
+                path.startswith("/api/device-status/machines/")
+                and path.endswith("/firmware")
+                and self.app.config.get("rack_operations") is True
+            ):
+                from pxeye.services.device_status import machine_firmware, valid_machine_id
+
+                machine_id = path[len("/api/device-status/machines/") : -len("/firmware")]
+                if not valid_machine_id(machine_id):
+                    return self.respond(404, {"error": "接口不存在。"})
+                try:
+                    return self.respond(200, machine_firmware(self.app.adapter, machine_id))
+                except (RuntimeError, OSError):
+                    return self.respond(502, {"error": "NICo 未返回固件清单。"})
             if path == "/api/equipment":
                 snapshot = self.app.management_addresses.snapshot()
                 data = self.app.equipment.view(snapshot)
