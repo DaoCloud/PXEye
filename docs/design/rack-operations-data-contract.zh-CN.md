@@ -107,6 +107,12 @@ Core 的供电框没有插口，机柜 PDU 不在 Core 里。接口：`FindPower
 | BMC（PMC） | `bmc_info.{ip,mac,firmware_version}` |
 | 机柜 | `rack_id.value` |
 
+### 2.4 布线
+
+没有新的 Core 接口。数据来自 2.1 的 `status.lldp_neighbors`，经 `/api/device-status` 的 `servers[].lldp` 读取，页面按交换机分组（交换机名，没有时用 `id_value`，再没有时用序列号）。同一交换机端口被不同网口报告即为冲突。`remote_port_type` 为 `mac` 时端口显示为 MAC，不推测接口名。
+
+待核对：除 `mac` 外的 `remote_port_type` 取值；真实的端口冲突；只有序列号、没有名字和 ID 的交换机。
+
 ## 3. 候选页面的接口
 
 ### 3.1 机器状态时间线（已验证，已实现）
@@ -152,7 +158,7 @@ Core 的供电框没有插口，机柜 PDU 不在 Core 里。接口：`FindPower
 - 实现：接口 `/firmware` 返回 `vendor`、`endpoint_type`、`chassis.{model,part_number,manufacturer}`（取第一个有型号的机箱）、`lockdown`（`lockdownStatus.message`）、`secure_boot`（原样）、`entries[].{id,description,version,release_date}`，以及 `reported`、`note`、`observed_at`。版本为空的条目保留。没有报告时 `reported` 为 false，不报错。只在打开弹窗时对一台机器读取一次，列表不逐行读取。
 - 待核对：一次请求传多台机器是否可行；这个接口读的是缓存还是会访问 BMC；`secureBootStatus` 不为空时的字段。
 
-### 3.3 发现诊断（已验证）
+### 3.3 发现诊断（已验证，已实现）
 
 `GetSiteExplorationReport {}`
 
@@ -166,7 +172,12 @@ Core 的供电框没有插口，机柜 PDU 不在 Core 里。接口：`FindPower
 
 探测成功的端点，`report` 是和 3.2 相同结构的报告。相关接口：`FindExploredEndpointIds` 和 `FindExploredEndpointsByIds`（现有代码已在用）、`GetAllUnexpectedMachines`。
 
-### 3.4 硬件校验（部分验证）
+
+实现：接口 `GET /api/exploration`（只在 `rack_operations` 开启时存在）。成功端点的 `report` 是完整的 Redfish 清单，只保留地址、类型、厂商、接入阶段、耗时、错误码/文字/处理建议、`lastExplorationError` 里的 `Type`（不是 JSON 时保留原文）、报告版本、重置和重启时间、是否为已纳管主机，以及成功端点的系统序列号和型号。`lastRun` 的计数原为字符串，转为整数。页面按地址和设备管理里设备的地址关联。
+
+待核对：成功端点的序列号和型号从未在完整的真实报告上提取过；`lastRun` 失败、`machineId` 出现等情况未见过。
+
+### 3.4 硬件校验（部分验证，已实现）
 
 | 接口 | 返回 | 验证站点 |
 | --- | --- | --- |
@@ -175,9 +186,19 @@ Core 的供电框没有插口，机柜 PDU 不在 Core 里。接口：`FindPower
 | `GetMachineValidationTests {}` | `tests[]`：`testId`、`name`、`description`、`contexts`、`command`、`timeout`、`supportedPlatforms`、`isEnabled` | 11 个内置测试 |
 | `GetAllSkuIds {}`，再 `FindSkusByIds {"ids":[…]}` | SKU 定义 | 空 |
 
-### 3.5 健康历史（已验证）
+
+实现：接口 `/api/device-status/machines/<机器ID>/validation` 以 `includeHistory: true` 读取校验记录和结果，按校验 ID 分组；不逐台读取测试项清单。运行状态 `status` 是多选一的对象（如 `{"completed": "Skipped"}`），转成简短文字并保留原样。结果里的 stdout 和 stderr 各截取前 2000 个字符，不在列表中显示。缺少 `exitCode` 视为 0（Core 省略零值），退出码为 0 显示“通过”。
+
+待核对：校验结果（`forge.MachineValidationResult`）的字段从未在站点上出现过，全部仅定义；`Success`、`Failed`、进行中等状态未见过；`durationToComplete` 只见过 `0s`。
+
+### 3.5 健康历史（已验证，已实现）
 
 `FindMachineHealthHistories {"machineIds":[{"id":…}]}`，可带 `startTime`、`endTime`。返回 `histories.<机器ID>.records[]`，每条有 `time` 和 `health`（结构同 2.1 的健康）。`ListMachineHealthReports`、`ListHealthReportOverrides` 在验证站点返回空。当前告警直接取各对象的 `status.health.alerts`。
+
+
+实现：接口 `/api/device-status/machines/<机器ID>/health` 按时间排序记录，按告警 ID 和 `target` 把连续出现的记录合并为一段：开始取 `inAlertSince`，没有时取第一次出现的记录时间；中间有一条记录不含该告警，这一段就结束，再出现时算新的一段。只有最新一条记录里还有的告警算“仍存在”。同时返回记录条数和时间范围。
+
+待核对：长时间运行的机器记录条数是否有上限；`target` 不为空的告警。
 
 ### 3.6 电源详情（已验证）
 
@@ -308,6 +329,10 @@ PYTHONPATH=src python3 tools/core-replay.py serve capture-<站点>.json --port 1
 | 服务器 | 行数等于设备管理里的服务器数；每行都关联到了 Core 的机器（“NICo 已建立对象”计数）；状态、健康、电源和 `FindMachinesByIds` 一致；“需要处理”的设备确实是处理失败、超出时限或有告警 | 没关联上的设备：它的 BMC MAC 和 Core 机器的 `bmc.mac` |
 | 服务器 → 运行状态 → 状态时间线 | 段数和顺序与 `FindMachineStateHistories` 一致；当前状态与列表一致；时间按本地时区显示 | 原始 `time` 的格式；`event` 里出现的新结构 |
 | 服务器 → 运行状态 → 固件清单 | 条目数等于 `FirmwareInventory` 的条目数；版本为空的条目仍显示 | `secureBootStatus` 不为空时的字段；没有报告的机器 |
+| 服务器 → 运行状态 → 健康历史 | 告警段和 `FindMachineHealthHistories` 一致；“仍存在”的告警和列表的健康一致 | 记录条数；`target` 不为空的告警 |
+| 服务器 → 运行状态 → 硬件校验 | 记录条数和状态与 `GetMachineValidationRuns` 一致 | 校验结果的实际字段（第一次出现时） |
+| 布线 | 每台服务器的网口数等于它的 LLDP 邻居数；交换机分组正确 | `remote_port_type` 的取值；冲突是否真实 |
+| 发现诊断 | 地址数等于 `GetSiteExplorationReport` 的端点数；失败的错误码、处理建议与之一致；已纳管设备能关联上 | 关联不上的地址；成功端点的序列号和型号 |
 | 交换机、供电框 | 只在 5.2 返回不为 0 时核对；逐字段对照 2.2、2.3 | 每个“仅定义”的字段实际有没有值 |
 | 带 DPU 的站点 | 一台主机是否同时返回主机和 DPU 机器；DPU 是否没有被当成服务器 | `machineType` 的取值 |
 

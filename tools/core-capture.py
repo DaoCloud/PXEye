@@ -55,6 +55,7 @@ PAGE_READS = [
     "/api/operating-systems",
     "/api/install-profiles",
     "/api/device-status",
+    "/api/exploration",
 ]
 # Longest wait for one console read. A Core call has its own limit of 45 seconds; a
 # page read may make several, in parallel.
@@ -302,7 +303,7 @@ def main():
                 }
         status = responses.get("/api/device-status", {}).get("body") or {}
         for machine in sorted((status.get("servers") or {}).keys()):
-            for item in ("history", "firmware"):
+            for item in ("history", "health", "validation", "firmware"):
                 path = f"/api/device-status/machines/{machine}/{item}"
                 try:
                     read(path)

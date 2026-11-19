@@ -35,22 +35,26 @@ For each of the ten functional areas, the target, what Core actually provides an
 
 ### 4.1 Done
 
-Three pages sit under device management as second-level entries. They list the same devices as device management, split by kind, with the operational status Core reports.
+Five pages sit under device management as second-level entries. Servers, switches and power shelves list the same devices as device management, split by kind, with the operational status Core reports; cabling and discovery diagnostics summarise by switch and by BMC address.
 
 | Page | Purpose | What the user can do | Verification |
 | --- | --- | --- | --- |
 | Servers | See which servers are not ready, at which step and why; check uplink switches; find devices without a declared rack | Filter by “needs attention” and rack, search; open the status dialog (state reason, health alerts, hardware capabilities, LLDP neighbours, state timeline, firmware inventory); go to the installation task, hardware details and address management; open the system settings to declare a rack | The list and the basic status content were verified with real data; the state timeline and firmware inventory follow the response structure recorded at a real site and were verified with authored sample data only |
 | Switches | View status, health, management ports and fabric manager state of NVLink switches Core manages | Same | Verified with authored sample data only. A general server site has no such device, and the page explains what it covers |
 | Power shelves | View status, health, capacity and voltage of power shelves Core manages | Same | Same |
+| Cabling | See, per switch, which port each server interface is connected to; find a port reported by more than one interface; find servers without LLDP data | Filter by switch, search; open a server's hardware details | The data comes from servers' LLDP neighbours, whose structure was verified with real data (one server, one switch); the page was verified with authored sample data only. It shows observed connections and is not compared with a plan |
+| Discovery diagnostics | See the result of NICo site exploration for each BMC address, to find why a device was not discovered | Filter by result, search by address, serial or error code; failures first, with error code and mitigation; open the details of a joined device | The response structure was verified with real data (5 addresses, 4 refused connections); the page was verified with authored sample data only |
 
 The pages start no write.
 
-After the server status dialog opens, it reads two more items, each showing loading, its result or its failure without affecting the rest of the dialog:
+After the server status dialog opens, it reads four more items, each showing loading, its result or its failure without affecting the rest of the dialog:
 
 | Content | Use | Notes |
 | --- | --- | --- |
 | State timeline | Which states a machine went through, how long it stayed in each, and where it is now | Consecutive identical states form one stay; the last runs to the time of reading |
 | Firmware inventory | Actual firmware versions per component, with model, part number, lockdown and secure boot state | Versions are shown, not judged compliant (there is no host firmware baseline); the list does not read them per row |
+| Health history | Which alerts the machine had, when each began, when it was last seen and whether it cleared | An alert that clears and returns counts as two periods |
+| Hardware validation | Validation runs, the result of each and the result of each test | The verification site had one skipped run only; the fields of test results come from the interface definition only |
 
 ### 4.2 Next
 
@@ -60,10 +64,8 @@ Nothing is decided. A candidate from 4.3 is listed here once chosen.
 
 | Content | Decision needed first |
 | --- | --- |
-| Discovery diagnostics (addresses that failed to probe, error code and mitigation) | Its relation to the discovery tab of device management |
-| Health history, alert roll-up | Whether it deserves its own page |
-| Hardware validation | Whether the site enables machine validation or SKUs |
-| Cabling check | Where the intended cabling comes from |
+| Cabling check (intended against actual) | Where the intended cabling comes from; arrival planning is deferred |
+| Alert roll-up page | Whether many devices and alerts need a cross-device roll-up; the list already filters by health alert |
 
 ### 4.4 Not done, or not possible
 
@@ -114,6 +116,6 @@ Core offers power, maintenance, quarantine, firmware, validation and decommissio
 | Stage | Content | Status |
 | --- | --- | --- |
 | 1 | Read-only observer instance; server, switch and power shelf pages | Done |
-| 2 | State timeline, firmware inventory | Done; to be checked at a real site |
+| 2 | State timeline, firmware inventory, health history, hardware validation, cabling, discovery diagnostics | Done; to be checked at a real site |
 | 3 | Verify switch, power shelf and rack fields at a site that has them; decide the candidates | Awaiting a site |
 | 4 | Operations | After section 6 is settled |

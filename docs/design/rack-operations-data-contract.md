@@ -107,6 +107,12 @@ A Core power shelf has no outlets, and rack PDUs are not in Core. Interface: `Fi
 | BMC (PMC) | `bmc_info.{ip,mac,firmware_version}` |
 | Rack | `rack_id.value` |
 
+### 2.4 Cabling
+
+No new Core interface. The data is `status.lldp_neighbors` from 2.1, read through `servers[].lldp` of `/api/device-status`, and the page groups by switch (its name, else `id_value`, else serial). A switch port reported by different interfaces is a conflict. When `remote_port_type` is `mac` the port shows as a MAC; no interface name is guessed.
+
+To verify: values of `remote_port_type` other than `mac`; a real port conflict; a switch with a serial but no name or ID.
+
 ## 3. Interfaces for candidate pages
 
 ### 3.1 Machine state timeline (verified, implemented)
@@ -152,7 +158,7 @@ To verify: whether the number of records is capped; the raw `time` format, once 
 - Implementation: `/firmware` returns `vendor`, `endpoint_type`, `chassis.{model,part_number,manufacturer}` (the first chassis with a model), `lockdown` (`lockdownStatus.message`), `secure_boot` (as given), `entries[].{id,description,version,release_date}`, and `reported`, `note`, `observed_at`. Entries with an empty version are kept. Without a report, `reported` is false and no error is raised. It is read once per machine when the dialog opens; the list does not read it per row.
 - To verify: whether one request can carry many machines; whether this interface reads a cache or reaches the BMC; the fields of a non-empty `secureBootStatus`.
 
-### 3.3 Discovery diagnostics (verified)
+### 3.3 Discovery diagnostics (verified, implemented)
 
 `GetSiteExplorationReport {}`
 
@@ -166,7 +172,12 @@ To verify: whether the number of records is capped; the raw `time` format, once 
 
 For an endpoint explored successfully, `report` has the same structure as in 3.2. Related interfaces: `FindExploredEndpointIds` and `FindExploredEndpointsByIds` (already used by existing code), `GetAllUnexpectedMachines`.
 
-### 3.4 Hardware validation (partly verified)
+
+Implementation: `GET /api/exploration` (only with `rack_operations` on). The `report` of a successful endpoint is a full Redfish inventory; only the address, type, vendor, ingestion stage, latency, error code / text / mitigation, the `Type` in `lastExplorationError` (raw text when not JSON), report version, reset and reboot times, whether it is a managed host, and for successful endpoints the system serial and model are kept. `lastRun` counts arrive as strings and are converted to integers. The page joins endpoints to devices by address.
+
+To verify: serial and model have never been extracted from a full real report; a failed `lastRun` or a `machineId` have not been seen.
+
+### 3.4 Hardware validation (partly verified, implemented)
 
 | Interface | Returns | Verification site |
 | --- | --- | --- |
@@ -175,9 +186,19 @@ For an endpoint explored successfully, `report` has the same structure as in 3.2
 | `GetMachineValidationTests {}` | `tests[]`: `testId`, `name`, `description`, `contexts`, `command`, `timeout`, `supportedPlatforms`, `isEnabled` | 11 built-in tests |
 | `GetAllSkuIds {}`, then `FindSkusByIds {"ids":[…]}` | SKU definitions | Empty |
 
-### 3.5 Health history (verified)
+
+Implementation: `/api/device-status/machines/<machine ID>/validation` reads runs and results with `includeHistory: true` and groups results by validation ID; it does not read the test list per machine. A run's `status` is a one-of object (such as `{"completed": "Skipped"}`), turned into short text and kept as given. stdout and stderr in results are cut to 2000 characters each and are not shown in the list. A missing `exitCode` counts as 0 (Core omits zero values); exit code 0 shows as passed.
+
+To verify: the fields of a validation result (`forge.MachineValidationResult`) have never been seen at a site and are definition only; `Success`, `Failed` and in-progress states have not been seen; `durationToComplete` has only been seen as `0s`.
+
+### 3.5 Health history (verified, implemented)
 
 `FindMachineHealthHistories {"machineIds":[{"id":…}]}`, optionally with `startTime` and `endTime`. It returns `histories.<machine ID>.records[]`, each with `time` and `health` (the structure of health in 2.1). `ListMachineHealthReports` and `ListHealthReportOverrides` returned nothing at the verification site. Current alerts come from `status.health.alerts` of each object.
+
+
+Implementation: `/api/device-status/machines/<machine ID>/health` orders the records by time and, per alert ID and `target`, merges consecutive records into a period: its start is `inAlertSince`, or the first record time when absent; a record without the alert ends the period, and a return starts a new one. Only alerts in the latest record count as still present. The record count and time span are returned too.
+
+To verify: whether the number of records is capped for a long-running machine; alerts with a non-empty `target`.
 
 ### 3.6 Power details (verified)
 
@@ -308,6 +329,10 @@ Open the pages on the observer and compare with the results of 5.2:
 | Servers | Row count equals the servers in device management; every row is joined to a Core machine (the “NICo objects” count); state, health and power match `FindMachinesByIds`; devices under “needs attention” really have a failed handler run, an exceeded time limit or an alert | For an unjoined device: its BMC MAC and the `bmc.mac` of the Core machine |
 | Servers → status → state timeline | Stays and their order match `FindMachineStateHistories`; the current state matches the list; times show in the local time zone | The raw `time` format; any new structure in `event` |
 | Servers → status → firmware inventory | Entry count equals the `FirmwareInventory` entries; entries with an empty version still show | The fields of a non-empty `secureBootStatus`; machines without a report |
+| Servers → status → health history | Alert periods match `FindMachineHealthHistories`; alerts still present match the health in the list | The record count; alerts with a non-empty `target` |
+| Servers → status → hardware validation | Run count and states match `GetMachineValidationRuns` | The actual fields of a validation result, when first seen |
+| Cabling | Each server's interface count equals its LLDP neighbours; switch grouping is right | Values of `remote_port_type`; whether a conflict is real |
+| Discovery diagnostics | Address count equals the endpoints of `GetSiteExplorationReport`; error codes and mitigations match; enrolled devices are joined | Addresses that cannot be joined; serial and model of successful endpoints |
 | Switches, power shelves | Only when 5.2 returned rows; field by field against 2.2 and 2.3 | Whether each “definition only” field has a value |
 | Sites with DPUs | Whether a host returns both host and DPU machines; that no DPU is shown as a server | The values of `machineType` |
 
