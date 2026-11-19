@@ -46,6 +46,8 @@ class QueryRoutes:
                 return self.respond(200, self.app.site_information())
             if path == "/api/site/discovery":
                 return self.respond(200, self.app.site_explorer.view())
+            if path == "/api/site/status-summary":
+                return self.respond(200, self.app.site_status_summary())
             if path == "/api/site/boot-network":
                 return self.respond(200, self.app.site_boot_network.view())
             if not self.app.readiness()["business_available"]:

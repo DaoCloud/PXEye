@@ -320,10 +320,11 @@ function credentialSummary(creds = {}, scan = {}) {
   const missing = Object.entries(creds.items || {}).filter(([, state]) => state !== "ready").map(([kind]) => siteCredentialNames[kind]).join("、");
   const scanTime = scan.finished_at ? new Date(scan.finished_at).toLocaleString("zh-CN", { hour12: false }) : "";
   const historical = creds.state === "unsupported" && scan.state === "success" && scanTime;
-  const text = { ready: "已就绪", missing: `缺少 ${missing}`, recovery: `需恢复 ${missing}`, unsupported: historical ? "上次扫描已通过" : "不支持逐项核验" }[creds.state] || "无法读取";
+  const configured = creds.state === "ready" || historical;
+  const text = configured ? "已配置" : ({ missing: `缺少 ${missing}`, recovery: `需恢复 ${missing}`, unsupported: "不支持逐项核验" }[creds.state] || "无法读取");
   const action = creds.state === "missing" ? `<button class="link-button" data-live="site-credentials-open">${creds.supplied ? "补录缺失凭据" : "生成缺失凭据"}</button>` : "";
   const hint = historical ? `${creds.detail || ""} 最近一次成功扫描：${scanTime}；并非当前逐项核验。` : creds.detail || (creds.state === "recovery" ? "需恢复原有凭据" : "BMC、主机 UEFI、DPU UEFI");
-  const credentials = siteStatusItem("接管凭据", text, creds.state === "ready" ? "green" : historical ? "gray" : "amber", action, hint);
+  const credentials = siteStatusItem("接管凭据", text, configured ? "green" : "amber", action, hint);
   const issue = { failed: scan.category === "missing_credentials" ? "缺少凭据" : scan.category || "失败", none: "尚未扫描", unknown: "无法读取" }[scan.state];
   return credentials + (issue ? siteStatusItem("最近扫描", issue, scan.state === "failed" ? "red" : "gray", "", scanTime) : "");
 }
@@ -1136,14 +1137,16 @@ registerPoller("site-discovery-status", ["site"], async () => {
   if (!state.csrf || state.wizard || discoveryPolling || previous?.state !== "applying") return;
   discoveryPolling = true;
   try {
-    const observed = await api("/api/site/discovery");
+    const observed = await api("/api/site/status-summary");
     if (state.page === "site" && state.siteInfo?.site_explorer === previous) {
-      state.siteInfo.site_explorer = observed;
+      Object.assign(state.siteInfo, observed);
       if (!state.wizard) render();
     }
   } catch {
     if (state.page === "site" && state.siteInfo?.site_explorer === previous) {
       state.siteInfo.site_explorer = { state: "unknown", detail: "状态查询失败，请刷新重试。" };
+      state.siteInfo.site_credentials = { state: "unknown" };
+      state.siteInfo.last_site_scan = { state: "unknown" };
       if (!state.wizard) render();
     }
   } finally {

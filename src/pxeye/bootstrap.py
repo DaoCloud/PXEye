@@ -585,6 +585,11 @@ class Application:
                 "detail": "OS DNS 在网络管理的 HostInband 子网中维护",
             },
             "boot_network": self.site_boot_network.view(),
+            **self.site_status_summary(),
+        }
+
+    def site_status_summary(self):
+        return {
             "site_explorer": self.site_explorer.view(),
             "site_credentials": self.site_credentials.view(),
             "last_site_scan": self.site_credentials.last_scan(),
