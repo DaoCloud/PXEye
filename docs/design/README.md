@@ -13,6 +13,7 @@ Documents that explain why something is built the way it is and where it stops: 
 | Interaction rules | [Read](interaction-rules.md) | [阅读](interaction-rules.zh-CN.md) | How pages, wording, states and dangerous operations are designed |
 | Rack operations: capability requirements | [Read](rack-operations-requirements.md) | [阅读](rack-operations-requirements.zh-CN.md) | The whole of the target capabilities and the implementation status of each functional area. Maintained long term; design changes are reflected here |
 | Rack operations: scope and status | [Read](rack-operations.md) | [阅读](rack-operations.zh-CN.md) | What the rack line of work does, does not do, and has reached |
+| Rack operations: rules for operations (draft) | [Read](rack-operations-actions.md) | [阅读](rack-operations-actions.zh-CN.md) | Rules to settle before power, maintenance, quarantine and other writes |
 | Rack operations: NICo data contract | [Read](rack-operations-data-contract.md) | [阅读](rack-operations-data-contract.zh-CN.md) | Which Core interface and field each page uses, and which were verified on a real site |
 | Code structure review | [Read](code-structure-review.md) | [阅读](code-structure-review.zh-CN.md) | Historical static findings and the refactor delivered |
 | Documentation references | [Read](documentation-references.md) | [阅读](documentation-references.zh-CN.md) | Which projects informed the documentation structure |

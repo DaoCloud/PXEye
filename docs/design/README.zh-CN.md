@@ -13,6 +13,7 @@
 | 交互规则 | [Read](interaction-rules.md) | [阅读](interaction-rules.zh-CN.md) | 页面、文案、状态和危险操作怎么设计 |
 | 机柜运维：能力需求 | [Read](rack-operations-requirements.md) | [阅读](rack-operations-requirements.zh-CN.md) | 机柜级管理的目标能力全貌，以及每个功能域的实现状态。长期维护，设计变更同步到这里 |
 | 机柜运维：范围与现状 | [Read](rack-operations.md) | [阅读](rack-operations.zh-CN.md) | 机柜方向做什么、不做什么、做到哪一步 |
+| 机柜运维：操作类功能规则（草案） | [Read](rack-operations-actions.md) | [阅读](rack-operations-actions.zh-CN.md) | 电源、维护、隔离等写操作开放前要定的规则 |
 | 机柜运维：NICo 数据契约 | [Read](rack-operations-data-contract.md) | [阅读](rack-operations-data-contract.zh-CN.md) | 每个页面用 Core 的哪个接口和字段，哪些已在真实站点验证 |
 | 代码结构评审 | [Read](code-structure-review.md) | [阅读](code-structure-review.zh-CN.md) | 历史静态问题和已完成的调整 |
 | 文档设计参考 | [Read](documentation-references.md) | [阅读](documentation-references.zh-CN.md) | 文档结构参考了哪些项目 |

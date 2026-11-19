@@ -90,6 +90,8 @@ General rules are in [interaction rules](interaction-rules.md). This work adds:
 
 ## 6. Preconditions for operations
 
+A draft of the rules is in [rules for operations](rack-operations-actions.md): candidate operations and risk, yielding to installation, confirmation, execution, audit, stages and open decisions.
+
 Core offers power, maintenance, quarantine, firmware, validation and decommission operations. None is integrated or verified. Before starting, decide:
 
 - Yielding to installation: whether a device with an installation task in progress is always refused.
