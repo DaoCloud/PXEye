@@ -34,7 +34,19 @@ MACHINE = {
         "capabilities": {"gpu": [{"name": "H100", "count": 8, "capacity": "80 GiB"}]},
         "quarantine": {"mode": "BLOCK_ALL_TRAFFIC", "reason": "sku mismatch"},
         "associatedDpuMachineIds": [{"id": "fm100d-dpu"}],
-        "lldpNeighbors": [{"macAddress": "AA:BB:CC:00:00:02", "lldp": {"name": "leaf-1"}}],
+        "lldpNeighbors": [
+            {
+                "macAddress": "AA:BB:CC:00:00:02",
+                "lldp": {
+                    "name": "leaf-1",
+                    "localPort": "ens2f0np0",
+                    "idValue": "60:db:15:b6:cb:3e",
+                    "remotePortType": "mac",
+                    "remotePortValue": "60:db:15:b6:cb:8c",
+                    "medInventory": {"serial": "SW123", "manufacturer": "H3C", "model": "S6520X"},
+                },
+            }
+        ],
     },
 }
 DPU = {"id": {"id": "fm100d-dpu"}, "machineType": "DPU", "status": {}}
@@ -127,7 +139,22 @@ class DeviceInsightsTests(unittest.TestCase):
         self.assertEqual(host["quarantine"]["reason"], "sku mismatch")
         self.assertEqual(host["dpu_ids"], ["fm100d-dpu"])
         self.assertEqual(host["capabilities"]["gpu"][0]["count"], 8)
-        self.assertEqual(host["lldp"][0]["mac_address"], "aa:bb:cc:00:00:02")
+        self.assertEqual(
+            host["lldp"],
+            [
+                {
+                    "mac_address": "aa:bb:cc:00:00:02",
+                    "local_port": "ens2f0np0",
+                    "switch": "leaf-1",
+                    "switch_id": "60:db:15:b6:cb:3e",
+                    "switch_model": "S6520X",
+                    "switch_serial": "SW123",
+                    "remote_port": "60:db:15:b6:cb:8c",
+                    "remote_port_type": "mac",
+                    "description": "",
+                }
+            ],
+        )
         self.assertEqual(view["servers"]["fm100d-dpu"]["type"], "dpu")
         self.assertEqual(view["servers"]["fm100d-dpu"]["health"]["level"], "unknown")
 

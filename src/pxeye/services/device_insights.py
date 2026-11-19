@@ -86,11 +86,7 @@ def health(row):
         "level": level,
         "alerts": alerts,
         "observed_at": (report or {}).get("observed_at") or "",
-        "sources": [
-            source.get("source") or source.get("name") or ""
-            for source in status.get("health_sources") or []
-            if isinstance(source, dict)
-        ],
+        "source": (report or {}).get("source") or "",
     }
 
 
@@ -114,6 +110,23 @@ def common(row):
             "version": firmware.get("version") or "",
             "firmware_version": firmware.get("firmware_version") or "",
         },
+    }
+
+
+def lldp_neighbor(item):
+    """One host interface and the switch port Scout heard on it."""
+    data = item.get("lldp") or {}
+    inventory = data.get("med_inventory") or {}
+    return {
+        "mac_address": str(item.get("mac_address") or "").lower(),
+        "local_port": data.get("local_port") or "",
+        "switch": data.get("name") or "",
+        "switch_id": data.get("id_value") or "",
+        "switch_model": inventory.get("model") or inventory.get("manufacturer") or "",
+        "switch_serial": inventory.get("serial") or "",
+        "remote_port": data.get("remote_port_value") or "",
+        "remote_port_type": data.get("remote_port_type") or "",
+        "description": data.get("description") or "",
     }
 
 
@@ -151,13 +164,7 @@ def server(row):
             for kind in CAPABILITIES
             if capabilities.get(kind)
         },
-        "lldp": [
-            {
-                "mac_address": str(item.get("mac_address") or "").lower(),
-                "neighbor": item.get("lldp"),
-            }
-            for item in status.get("lldp_neighbors") or []
-        ],
+        "lldp": [lldp_neighbor(item) for item in status.get("lldp_neighbors") or []],
         "failure": status.get("failure_details") or "",
         "scout_version": status.get("last_scout_observed_version") or "",
         "dpu_agent_version": status.get("dpu_agent_version") or "",

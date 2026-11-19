@@ -296,7 +296,7 @@ function inventoryStatus(name, id) {
         "健康",
         badge(healthLabel, healthTone) +
           (i.health.observed_at
-            ? `<span class="live-small">观测于 ${esc(inventoryTime(i.health.observed_at))}</span>`
+            ? `<span class="live-small">观测于 ${esc(inventoryTime(i.health.observed_at))}${i.health.source ? " · " + esc(i.health.source) : ""}</span>`
             : ""),
       ],
     ]) +
@@ -339,10 +339,10 @@ function inventoryStatus(name, id) {
       ) +
       "<h3>LLDP 邻居</h3>" +
       table(
-        ["本机接口 MAC", "邻居"],
+        ["本机接口", "邻居交换机", "邻居端口", "交换机 SN"],
         i.lldp.map(
           (n) =>
-            `<tr><td>${esc(n.mac_address)}</td><td><span class="live-code">${esc(JSON.stringify(n.neighbor))}</span></td></tr>`,
+            `<tr><td>${esc(n.local_port || "—")}<span class="live-small">${esc(n.mac_address)}</span></td><td>${esc(n.switch || n.switch_id || "—")}<span class="live-small">${esc(n.switch_model)}</span></td><td>${esc(n.remote_port || "—")}</td><td>${esc(n.switch_serial || "—")}</td></tr>`,
         ),
       );
   }
