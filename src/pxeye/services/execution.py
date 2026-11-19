@@ -34,8 +34,6 @@ class Adapter(CoreClient, RedfishClient, SSHClient):
         if (self.secrets / "ssh_key").is_file():
             shutil.copyfile(self.secrets / "ssh_key", self.identity / "ssh_key")
         elif not (self.identity / "ssh_key").exists():
-            from pxeye.clients.process import run
-
             run(
                 [
                     "ssh-keygen",
@@ -49,6 +47,11 @@ class Adapter(CoreClient, RedfishClient, SSHClient):
                 ]
             )
         (self.identity / "ssh_key").chmod(0o600)
+        public_key = self.identity / "ssh_key.pub"
+        public_key.write_text(
+            run(["ssh-keygen", "-y", "-f", str(self.identity / "ssh_key")]).strip() + "\n"
+        )
+        public_key.chmod(0o644)
 
     def device(self, serial, *, bind_intent=True):
         devices = list(self.config.get("devices", []))
@@ -579,7 +582,7 @@ print(json.dumps({'serial':Path('/sys/class/dmi/id/product_serial').read_text().
             from pxeye.installation.network_interfaces import render_interfaces
 
             render_interfaces(network, plan.get("os_interfaces", []))
-        key = (self.secrets / "ssh_key.pub").read_text().strip()
+        key = (self.identity / "ssh_key.pub").read_text().strip()
         if key not in ai["ssh"]["authorized-keys"]:
             ai["ssh"]["authorized-keys"].append(key)
         receipt = {
