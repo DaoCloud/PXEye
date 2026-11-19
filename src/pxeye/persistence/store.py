@@ -3,6 +3,7 @@
 import json
 import sqlite3
 import time
+import uuid
 import threading
 from contextlib import contextmanager
 from pathlib import Path
@@ -64,6 +65,9 @@ class Store:
                 CREATE TABLE IF NOT EXISTS topology_layout (
                     id INTEGER PRIMARY KEY CHECK (id = 1), data TEXT NOT NULL, updated REAL NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS rack_units (
+                    id INTEGER PRIMARY KEY CHECK (id = 1), data TEXT NOT NULL
+                );
             """)
             db.execute(
                 "INSERT OR IGNORE INTO schema_migrations(version,applied) VALUES(1,?)",
@@ -112,6 +116,29 @@ class Store:
                 (json.dumps(saved, ensure_ascii=False), updated),
             )
         return {"racks": saved["racks"], "updated_at": updated}
+
+    def rack_units(self):
+        with self.db() as db:
+            row = db.execute("SELECT data FROM rack_units WHERE id=1").fetchone()
+            return (
+                json.loads(row["data"])
+                if row
+                else {"positions": [], "updated": None, "revision": ""}
+            )
+
+    def save_rack_units(self, positions, revision):
+        """Replace the saved positions unless they changed since `revision`; None on conflict."""
+        with self.db() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute("SELECT data FROM rack_units WHERE id=1").fetchone()
+            if (json.loads(row["data"])["revision"] if row else "") != revision:
+                return None
+            saved = {"positions": positions, "updated": time.time(), "revision": uuid.uuid4().hex}
+            db.execute(
+                "INSERT INTO rack_units(id,data) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data",
+                (json.dumps(saved, ensure_ascii=False),),
+            )
+            return saved
 
     def get(self, task_id):
         with self.db() as db:

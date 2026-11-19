@@ -101,7 +101,7 @@ class Handler(QueryRoutes, CommandRoutes, BaseHTTPRequestHandler):
             if length < 2 or length > (
                 2 * 1024 * 1024
                 if urlsplit(self.path).path.startswith(
-                    ("/api/devices", "/api/device-plans", "/api/equipment")
+                    ("/api/devices", "/api/device-plans", "/api/equipment", "/api/rack-units")
                 )
                 or path == "/api/install-profiles/save"
                 else 2 * 1024**2
