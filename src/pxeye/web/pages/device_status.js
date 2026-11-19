@@ -619,6 +619,11 @@ const deviceStatusValidationTones = {
   Failed: "red",
   Skipped: "gray",
 };
+const deviceStatusValidationLabels = {
+  Success: "通过",
+  Failed: "失败",
+  Skipped: "已跳过",
+};
 function deviceStatusValidation(data) {
   if (!data.runs.length)
     return '<p class="live-small">NICo 没有这台机器的校验记录。</p>';
@@ -627,7 +632,7 @@ function deviceStatusValidation(data) {
       s = r.status,
       label =
         s.phase === "completed"
-          ? s.outcome
+          ? deviceStatusValidationLabels[s.outcome] || s.outcome
           : s.phase === "in_progress"
             ? "进行中"
             : s.phase === "started"
@@ -651,7 +656,7 @@ function deviceStatusValidation(data) {
             )
             .join("")
         : '<span class="live-small">这次校验没有结果记录。</span>';
-    return `<tr><td>${esc(r.name || r.validation_id || "—")}<span class="live-small">${esc(r.context || "—")}</span></td><td>${esc(deviceStatusTime(r.start))}</td><td>${r.duration_seconds != null ? esc(deviceStatusDuration(r.duration_seconds)) : "—"}</td><td>${badge(label, tone)}${progress}</td></tr><tr><td colspan="4">${detail}</td></tr>`;
+    return `<tr><td>${esc(r.name || r.validation_id || "—")}<span class="live-small">${esc(r.context || "—")}</span></td><td>${esc(deviceStatusTime(r.start))}</td><td>${r.duration_seconds != null ? esc(deviceStatusDuration(r.duration_seconds)) : "—"}</td><td><span title="${esc(s.text || s.outcome || "")}">${badge(label, tone)}</span>${progress}</td></tr><tr><td colspan="4">${detail}</td></tr>`;
   });
   return (
     table(["名称 / 场景", "开始", "耗时", "结果"], rows) +

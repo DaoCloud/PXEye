@@ -398,7 +398,8 @@ def machine_health_history(adapter, machine_id):
     An alert is identified by its probe id and target. It started when Core says it
     went into alert (inAlertSince), or else at the first record that shows it; it was
     last seen at the last record that still shows it, and it is still present when the
-    latest record shows it. A record without alerts is a healthy observation.
+    latest record shows it. A record without alerts is a healthy observation. When a
+    record no longer shows an alert, its period ends; a later recurrence is a new period.
     """
     if not valid_machine_id(machine_id):
         raise ValueError("机器 ID 无效。")
@@ -413,23 +414,27 @@ def machine_health_history(adapter, machine_id):
         if moment is not None:
             records.append((moment, record.get("time"), record.get("health") or {}))
     records.sort(key=lambda item: item[0])
-    periods = {}
+    periods = []
+    open_periods = {}
     for moment, raw, report in records:
+        seen = {}
         for alert in (report if isinstance(report, dict) else {}).get("alerts") or []:
             if not isinstance(alert, dict):
                 continue
             key = (str(alert.get("id") or ""), str(alert.get("target") or ""))
             since = alert.get("inAlertSince") or ""
-            period = periods.get(key)
+            period = seen.get(key) or open_periods.get(key)
             if period is None:
-                period = periods[key] = {
+                period = {
                     "id": key[0],
                     "target": key[1],
                     "since": since or raw,
                     "_since": record_time(since) or moment,
                 }
+                periods.append(period)
             elif since and (record_time(since) or moment) < period["_since"]:
                 period["since"], period["_since"] = since, record_time(since)
+            seen[key] = period
             period.update(
                 last_seen=raw,
                 _last=moment,
@@ -438,8 +443,10 @@ def machine_health_history(adapter, machine_id):
                     str(c) for c in alert.get("classifications") or [] if isinstance(c, str)
                 ],
             )
+        # A record without the alert closes its period; a later recurrence is a new row.
+        open_periods = seen
     latest = records[-1][0] if records else None
-    alerts = sorted(periods.values(), key=lambda p: p["_since"], reverse=True)
+    alerts = sorted(periods, key=lambda p: p["_since"], reverse=True)
     for period in alerts:
         period["active"] = period.pop("_last") == latest
         period.pop("_since")

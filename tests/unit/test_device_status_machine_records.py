@@ -65,7 +65,7 @@ class HealthHistoryTests(unittest.TestCase):
         self.assertEqual(data["record_count"], 4)
         self.assertEqual(data["first_record"], "2026-01-01T01:00:01Z")
         self.assertEqual(data["last_record"], "2026-01-01T04:00:00Z")
-        fan, power = data["alerts"]
+        fan, fan_before, power = data["alerts"]
         self.assertEqual(
             power,
             {
@@ -78,8 +78,13 @@ class HealthHistoryTests(unittest.TestCase):
                 "active": False,
             },
         )
-        # Without inAlertSince the first record showing it is the start.
-        self.assertEqual(fan["since"], "2026-01-01T02:00:00Z")
+        # Without inAlertSince the first record showing it is the start. The healthy
+        # record at 03:00 ends the first Fan period; its return at 04:00 is a new one.
+        self.assertEqual(
+            (fan_before["since"], fan_before["last_seen"], fan_before["active"]),
+            ("2026-01-01T02:00:00Z", "2026-01-01T02:00:00Z", False),
+        )
+        self.assertEqual(fan["since"], "2026-01-01T04:00:00Z")
         self.assertEqual((fan["target"], fan["classifications"], fan["active"]), ("", [], True))
 
     def test_healthy_or_missing_history_has_no_alerts(self):
