@@ -6,7 +6,12 @@ import time
 import traceback
 import uuid
 from pathlib import Path
-from pxeye.clients.errors import CoreConnectionError, RedfishRequestError, RPCRequestError
+from pxeye.clients.errors import (
+    ConfigurationError,
+    CoreConnectionError,
+    RedfishRequestError,
+    RPCRequestError,
+)
 from pxeye.services.resources import ImportReadbackError
 
 
@@ -21,6 +26,8 @@ def failure(error, *, method, path, request_id=None):
         status, code, message = 502, "REDFISH_REQUEST_FAILED", str(error)
     elif isinstance(error, ImportReadbackError):
         status, code, message = 502, "IMPORT_READBACK_FAILED", str(error)
+    elif isinstance(error, ConfigurationError):
+        status, code, message = 409, "CONFIGURATION_INCOMPLETE", str(error)
     elif isinstance(error, ValueError):
         status, code, message = 400, "INVALID_REQUEST", str(error)
     elif isinstance(error, (KeyError, TypeError)):

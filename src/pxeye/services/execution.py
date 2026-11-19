@@ -14,6 +14,7 @@ from pathlib import Path
 
 import yaml
 from pxeye.clients.core import CoreClient
+from pxeye.clients.errors import ConfigurationError
 from pxeye.clients.redfish import RedfishClient
 from pxeye.clients.ssh import SSHClient
 from pxeye.clients.process import run
@@ -52,6 +53,19 @@ class Adapter(CoreClient, RedfishClient, SSHClient):
             run(["ssh-keygen", "-y", "-f", str(self.identity / "ssh_key")]).strip() + "\n"
         )
         public_key.chmod(0o644)
+
+    def installer_public_key(self):
+        try:
+            value = (self.identity / "ssh_key.pub").read_text().strip()
+        except (OSError, UnicodeError):
+            raise ConfigurationError(
+                "安装器 SSH 身份尚未就绪，请检查 PXEye 持久化数据目录。"
+            ) from None
+        if not value.startswith(("ssh-ed25519 ", "ssh-rsa ", "ecdsa-sha2-")):
+            raise ConfigurationError(
+                "安装器 SSH 公钥无效，请检查 PXEye 持久化身份。"
+            )
+        return value
 
     def device(self, serial, *, bind_intent=True):
         devices = list(self.config.get("devices", []))
@@ -582,7 +596,7 @@ print(json.dumps({'serial':Path('/sys/class/dmi/id/product_serial').read_text().
             from pxeye.installation.network_interfaces import render_interfaces
 
             render_interfaces(network, plan.get("os_interfaces", []))
-        key = (self.identity / "ssh_key.pub").read_text().strip()
+        key = self.installer_public_key()
         if key not in ai["ssh"]["authorized-keys"]:
             ai["ssh"]["authorized-keys"].append(key)
         receipt = {

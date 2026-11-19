@@ -31,7 +31,7 @@ For a source-tree deployment, first use the offline builder to download and vend
 | `auth.existingSecret` | Empty | Reuse a Secret containing `auth.json`; otherwise generate credentials on first install and retain them on upgrade |
 | `nico.enabled` | `true` | Enable console NICo deployment configuration |
 | `nico.allowClusterResources` | `false` | Create cluster permissions for CRDs, ClusterRoles and related resources |
-| `siteBootstrap.*` | `enabled=false` | Reserved for the automated onsite installer: connect PXEye after Core is ready using in-cluster endpoints and existing client Secrets; it never publishes physical PXE/DNS/NTP addresses |
+| `siteBootstrap.*` | `enabled=false` | Reserved for the automated onsite installer: connect PXEye using in-cluster endpoints and existing client Secrets; `siteInitializerSecret` is a SiteAgent identity used only after explicit Tenant/Flat VPC initialization confirmation; never publishes physical PXE/DNS/NTP addresses |
 | `siteBootNetwork.namespace` | Release namespace | Namespace containing the NICo DHCP/PXE/DNS/NTP runtime resources when it differs from PXEye; this is not a physical-network setting |
 | `components.pxeye.enabled` | `true` | Render PXEye UI resources in this parent release |
 | `components.certManager/platform/vaultBootstrap/core.enabled` | `false` | Enable a locked NICo child component; the onsite runner enables these cumulatively in readiness-aware phases |
@@ -44,7 +44,7 @@ cert-manager child values use the `certmanager` key, matching its lowercase depe
 PVCs use the Helm keep policy. The onsite workflow reuses one parent release: cert-manager → platform/certificates → Vault bootstrap → Core. This avoids treating Helm dependency order as a substitute for controller, certificate, and Vault readiness.
 
 `siteBootstrap` is not for normal manual installation. It contains only in-cluster Core/PXE service endpoints and client
-Secret names; PXEye retries safely until Core and its certificates are ready, then persists the mTLS connection. Do not
+Secret names. The regular Core identity remains separate from the optional `siteInitializerSecret`, which is loaded only for an explicitly confirmed instance-network initialization. PXEye retries safely until Core and its certificates are ready, then persists the mTLS connection. Do not
 put external PXE, DHCP, DNS, NTP, or HostInband settings there: apply them through subsequent site-network configuration
 and physical-network validation.
 

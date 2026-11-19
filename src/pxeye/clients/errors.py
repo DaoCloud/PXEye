@@ -25,3 +25,9 @@ class RPCMethodUnavailableError(RuntimeError):
     """The server does not expose a requested optional RPC contract."""
 
     request_not_sent = True
+
+
+class ConfigurationError(RuntimeError):
+    """A required local product configuration is absent or internally inconsistent."""
+
+    request_not_sent = True

@@ -4,7 +4,7 @@ language: en
 title: Site settings
 description: Inspect Core connections, client identity and storage, and configure site boot-service addresses and installation concurrency.
 navigation_group: configuration
-updated_at: "2026-11-16"
+updated_at: "2026-11-19"
 product_version: "0.22.16"
 ---
 
@@ -18,7 +18,9 @@ Open **Configuration → Site settings (配置 → 站点设置)** to inspect NI
 
 ## 2. Field values
 
-The site summary uses matching badges for discovery, automatic machine creation and site credentials. A successful scan is not shown as a separate item; a failed scan shows the reason. Ready credentials display a green Configured badge. On older Core versions, a successful last scan also shows Configured; the tooltip identifies the evidence and its time. Credential status refreshes together with both site switches. The three site defaults are the desired BMC password and the host and DPU UEFI passwords. They are separate from PXEye login and per-device BMC credentials. **Generate missing credentials** appears only for confirmed omissions. Confirm that existing hardware has never used these defaults before generating new values. Existing values are never replaced. Recover original values when recovery is required; a read error or unsupported Core version disables initialization.
+The site summary uses matching badges for discovery, automatic machine creation, site credentials and the instance network. The instance network is the site Tenant and Flat VPC used for first installations. When either is absent and the deployment supplies the dedicated initializer identity, choose **Initialize instance network (初始化实例网络)**. Confirmation creates only missing resources, reuses compatible existing resources and stops on a name, type or tenant conflict. New Flat profiles inherit the resulting references; published profiles are never changed silently.
+
+A successful credential scan is not shown as a separate item; a failed scan shows the reason. Ready credentials display a green Configured badge. On older Core versions, a successful last scan also shows Configured; the tooltip identifies the evidence and its time. Credential status refreshes together with both site switches. The three site defaults are the desired BMC password and the host and DPU UEFI passwords. They are separate from PXEye login and per-device BMC credentials. **Generate missing credentials** appears only for confirmed omissions. Confirm that existing hardware has never used these defaults before generating new values. Existing values are never replaced. Recover original values when recovery is required; a read error or unsupported Core version disables initialization.
 
 For a genuinely new estate, pass `--new-site` to `install.sh` for one-time initialization and verification after PXEye first connects to Core. For operator-supplied values or recovery, use `--site-credentials-secret <name>` with a Secret in the PXEye namespace containing `bmc_password`, `host_uefi_password` and `dpu_uefi_password` (raw passwords without trailing newlines). The Helm settings are `siteCredentials.newSite` and `siteCredentials.existingSecret`, bound to `siteBootstrap.coreUrl`. On an already connected site, use the summary action to fill missing entries. Generated values stay in the Core credential backend; include it in site backups. Upgrade both Core and PXEye for this feature.
 
@@ -58,6 +60,7 @@ This is a site default because applying external mode stops the site's shared Ke
 | PXE boot server IP | IPv4 without a scheme or port; the next-server/boot server address advertised by Nico DHCP. |
 | Boot HTTP endpoint | Complete `http://host:port` or `https://host:port`; embedded in external-mode bootstrap media to request `/api/v0/pxe/boot`. |
 | Installation materials HTTP address and port | Publishes the bootstrap ISO and new OS versions' ISO/kernel/initrd; shared by both modes. |
+| Installer event callback | A PXEye HTTP/HTTPS address reachable from the installer. A service base URL is accepted and saved with `/api/installer-events`; it carries signed progress and completion receipts. |
 
 The boot HTTP endpoint controls only the bootstrap medium's first request into Nico. It does not update the Core/PXE service's own ports or the service URLs in subsequent scripts. Existing service configuration must still provide reachable URLs; this setting is not a global PXE port override.
 

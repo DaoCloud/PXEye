@@ -312,6 +312,7 @@
   "connection": {
     "namespace": "@{namespace}",
     "client_secret": "@{release_prefix}-nico-admin-client",
+    "site_initializer_secret": "@{release_prefix}-nico-site-initializer-client",
     "ca_secret": "@{release_prefix}-nico-site-ca",
     "ca_key": "tls.crt",
     "pxe_internal_url": "http://@{release_prefix}-nico-pxe.@{namespace}.svc:8080"

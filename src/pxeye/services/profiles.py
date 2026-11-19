@@ -35,12 +35,11 @@ class InstallProfiles:
         self.adapter = adapter
         self.store = store or get_store(adapter.data / "console.sqlite3")
 
-    @staticmethod
-    def creation_default(architecture):
+    def creation_default(self, architecture):
         """Return an unsaved generic draft, without site files or hardware identities."""
         if architecture not in ("x86_64", "aarch64"):
             raise ValueError("安装方案架构仅支持 x86_64 或 aarch64。")
-        return {
+        row = {
             "id": "",
             "family_id": "",
             "version": 1,
@@ -78,6 +77,19 @@ class InstallProfiles:
             },
             "template": generic_ubuntu(None, "operator", "", "UTC", ""),
         }
+        context = self.adapter.data / "config" / "site-network-context.json"
+        try:
+            saved = json.loads(context.read_text()) if context.exists() else {}
+        except (OSError, ValueError, TypeError):
+            saved = {}
+        tenant = saved.get("tenant_organization_id")
+        vpc = saved.get("vpc_id")
+        if tenant and vpc:
+            row["allocation"] = {
+                "tenant": {"tenant_organization_id": tenant},
+                "network": {"auto_config": {"vpc_id": {"value": vpc}}},
+            }
+        return row
 
     def import_legacy(self):
         """Import initial templates once at application bootstrap, never in list reads."""

@@ -30,6 +30,9 @@ siteBootstrap:
   clientPrivateKey: tls.key
   caSecret: ''
   caKey: tls.crt
+  # Optional SiteAgent identity used only after an operator confirms creation
+  # of the site's default Tenant and Flat VPC.
+  siteInitializerSecret: ''
   pxeInternalUrl: ''
 siteCredentials:
   newSite: false

@@ -37,7 +37,7 @@ def inject(adapter, ai, device, task):
         or parsed.path != "/api/installer-events"
     ):
         raise ValueError(
-            "站点缺少有效的 installer_events_url；请配置安装环境可达的内部事件接收地址。"
+            "站点缺少安装事件回传地址；请在站点设置的管理引导网络中配置安装环境可达的 PXEye 地址。"
         )
     binding = {
         "task_id": task["id"],

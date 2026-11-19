@@ -4,7 +4,7 @@ language: zh-CN
 title: 安装方案
 description: 设置可复用的 OS、系统盘规则、分区和默认登录配置。
 navigation_group: configuration
-updated_at: "2026-11-16"
+updated_at: "2026-11-19"
 product_version: "0.22.16"
 ---
 
@@ -67,7 +67,7 @@ site: "site-a"
 | 额外软件包 | 每行一个包名；安装所需依赖须在 ISO 或配置的软件源中可用。 |
 | APT 软件源 / 安全更新源 URL | 填写目标系统架构对应的可达源；离线安装留空时仅使用 ISO 材料。 |
 | DNS 验收域名 / HTTP 验收 URL | 每行一项，在安装验收时检查服务；DNS 验收域名不是 DNS 服务器配置。 |
-| Flat VPC ID / 租户 ID | 准备方案时可留空；Flat 装机前填写已存在的 Flat VPC 及其所属租户。创建或发布方案不会创建这些资源，安装任务会核对 VPC 是否存在及租户是否匹配。 |
+| Flat VPC ID / 租户 ID | 站点设置已初始化实例网络时，新建方案自动引用站点 Tenant 与 Flat VPC；否则可暂时留空。创建或发布方案本身不会创建资源，安装任务会核对 VPC 类型及所属租户。 |
 
 ## 3. 操作步骤
 

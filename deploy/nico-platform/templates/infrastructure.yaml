@@ -97,6 +97,26 @@ spec:
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
+  name: {{ $prefix }}-nico-site-initializer-client
+  namespace: {{ $ns }}
+spec:
+  secretName: {{ $prefix }}-nico-site-initializer-client
+  commonName: elektra-site-agent
+  uris:
+    - spiffe://nico.local/{{ $ns }}/sa/elektra-site-agent
+  duration: 720h
+  renewBefore: 360h
+  privateKey:
+    algorithm: ECDSA
+    size: 384
+  usages: [client auth, digital signature]
+  issuerRef:
+    name: {{ $prefix }}-nico-site-issuer
+    kind: Issuer
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
   name: {{ $prefix }}-nico-vault-tls
   namespace: {{ $ns }}
 spec:

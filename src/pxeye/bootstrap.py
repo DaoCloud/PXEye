@@ -32,6 +32,7 @@ from pxeye.services.addresses import ManagementAddresses
 from pxeye.services.site_boot_network import SiteBootNetwork
 from pxeye.services.site_explorer import SiteExplorer
 from pxeye.services.site_credentials import SiteCredentials
+from pxeye.services.site_network_context import SiteNetworkContext
 from pxeye.deployment.service import NicoDeployment
 from pxeye.clients.process import run
 from pxeye.common import atomic_text
@@ -84,6 +85,7 @@ class Application:
         self.site_explorer = SiteExplorer(self)
         self.executor.discovery_status = self.site_explorer.view
         self.site_credentials = SiteCredentials(self)
+        self.site_network_context = SiteNetworkContext(self)
         if config.get("core_identity_source"):
             threading.Thread(target=self._maintain_core_identity, daemon=True).start()
         else:
@@ -337,6 +339,20 @@ class Application:
                 core_identity_source=source,
                 core_identity_revision=revision,
             )
+            initializer_secret = source.get("site_initializer_secret")
+            if initializer_secret:
+                proposed["site_initializer_source"] = {
+                    "namespace": source.get(
+                        "namespace", self.nico_deployment.cluster.namespace
+                    ),
+                    "client_secret": initializer_secret,
+                    "client_cert_key": source.get("site_initializer_cert_key", "tls.crt"),
+                    "client_private_key": source.get(
+                        "site_initializer_private_key", "tls.key"
+                    ),
+                    "ca_secret": source["ca_secret"],
+                    "ca_key": source.get("ca_key", "tls.crt"),
+                }
             proposed["site"]["name"] = site_name
             candidate = Adapter(proposed, self.adapter.secrets, self.adapter.data)
             try:
@@ -411,6 +427,8 @@ class Application:
                     "os_library",
                 )
             }
+            if proposed.get("site_initializer_source"):
+                persisted["site_initializer_source"] = proposed["site_initializer_source"]
             atomic_json(self.adapter.data / "config" / "deployment-site.json", persisted)
             atomic_json(
                 self.adapter.data / "config" / "site-settings.json",
@@ -593,6 +611,7 @@ class Application:
             "site_explorer": self.site_explorer.view(),
             "site_credentials": self.site_credentials.view(),
             "last_site_scan": self.site_credentials.last_scan(),
+            "site_network_context": self.site_network_context.view(),
         }
 
     def save_site(self, body):

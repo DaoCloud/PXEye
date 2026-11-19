@@ -4,7 +4,7 @@ language: en
 title: Installation profiles
 description: Configure reusable OS, disk rules, partitioning and default login settings.
 navigation_group: configuration
-updated_at: "2026-11-16"
+updated_at: "2026-11-19"
 product_version: "0.22.16"
 ---
 
@@ -67,7 +67,7 @@ Expand **Advanced settings (高级设置)**:
 | Extra packages (额外软件包) | One package name per line. Installation dependencies must exist on the ISO or configured repositories. |
 | APT primary / security URL (APT 软件源 / 安全更新源 URL) | Reachable repositories for the target architecture. Empty values use ISO materials for offline installation. |
 | DNS acceptance domains / HTTP acceptance URLs (DNS 验收域名 / HTTP 验收 URL) | One per line, checked during acceptance. DNS acceptance domains do not configure DNS servers. |
-| Flat VPC ID / tenant ID (Flat VPC ID / 租户 ID) | May be left empty while preparing a profile. Before a Flat installation, specify an existing Flat VPC and its owning tenant. Creating or publishing a profile does not create these resources; the installation task verifies that the VPC exists and matches the tenant. |
+| Flat VPC ID / tenant ID (Flat VPC ID / 租户 ID) | New profiles inherit the site Tenant and Flat VPC after the instance network is initialized in Site settings; otherwise these values may remain empty while drafting. Profile creation and publishing do not create Core resources. Installation verifies the VPC type and owning tenant. |
 
 
 ## 3. Actions

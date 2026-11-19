@@ -27,7 +27,7 @@ class SiteBootNetwork:
         self.path = app.adapter.data / "config" / "site-boot-network.json"
         self.lock = threading.RLock()
         self.state = self._load()
-        self._restore_material_http_endpoint()
+        self._restore_public_endpoints()
         if self._saved_values().get("dhcp_mode") == "external":
             threading.Thread(
                 target=self._keep_external_dhcp_disabled,
@@ -48,11 +48,13 @@ class SiteBootNetwork:
     def _save(self):
         atomic_json(self.path, self.state)
 
-    def _restore_material_http_endpoint(self):
+    def _restore_public_endpoints(self):
         current = self.state.get("current") or {}
         values = current.get("values") or {}
         if current.get("status") == "applied" and values.get("material_http_address"):
             self._set_material_http_endpoint(values)
+        if current.get("status") == "applied" and values.get("installer_events_url"):
+            self.app.config["installer_events_url"] = values["installer_events_url"]
 
     def namespace(self):
         source = self.app.config.get("core_identity_source") or {}
@@ -85,6 +87,7 @@ class SiteBootNetwork:
             "pxe_address",
             "material_http_address",
             "material_http_port",
+            "installer_events_url",
         }
         optional = {"dns_address", "ntp_address"}
         # Accept obsolete fields from an already-open older client without using them.
@@ -121,6 +124,28 @@ class SiteBootNetwork:
         port = body["material_http_port"]
         if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
             raise ValueError("材料 HTTP 端口应为 1–65535。")
+        events = str(body.get("installer_events_url") or "").strip().rstrip("/")
+        event_url = urlsplit(events)
+        try:
+            event_port = event_url.port
+        except ValueError:
+            event_port = 0
+        if (
+            event_url.scheme not in ("http", "https")
+            or not event_url.hostname
+            or event_url.username
+            or event_url.password
+            or event_url.query
+            or event_url.fragment
+            or event_port == 0
+            or event_url.path not in ("", "/api/installer-events")
+        ):
+            raise ValueError(
+                "安装事件回传地址应为安装环境可达的 HTTP/HTTPS 地址，不含凭据或查询参数。"
+            )
+        events = urlunsplit(
+            (event_url.scheme, event_url.netloc, "/api/installer-events", "", "")
+        )
         return {
             "dhcp_mode": mode,
             "pxe_http_endpoint": endpoint,
@@ -128,6 +153,7 @@ class SiteBootNetwork:
             "pxe_address": cls._ipv4(body["pxe_address"], "PXE 引导地址", required=mode == "nico"),
             "material_http_address": cls._ipv4(body["material_http_address"], "材料 HTTP 地址"),
             "material_http_port": port,
+            "installer_events_url": events,
             "dns_address": cls._ipv4(body.get("dns_address"), "DNS 地址", required=False),
             "ntp_address": cls._ipv4(body.get("ntp_address"), "NTP 地址", required=False),
         }
@@ -338,9 +364,18 @@ class SiteBootNetwork:
             saved = self._saved_values()
             result["values"] = (
                 dict(saved)
+                | {
+                    "installer_events_url": saved.get("installer_events_url")
+                    or self.app.config.get("installer_events_url", "")
+                }
                 if saved.get("dhcp_mode") == "external"
                 else self._values_from_kea(discovered["configmap"])
-                | {"dhcp_mode": "nico", "pxe_http_endpoint": saved.get("pxe_http_endpoint", "")}
+                | {
+                    "dhcp_mode": "nico",
+                    "pxe_http_endpoint": saved.get("pxe_http_endpoint", ""),
+                    "installer_events_url": saved.get("installer_events_url")
+                    or self.app.config.get("installer_events_url", ""),
+                }
             )
             result["dhcp_replicas"] = discovered["deployment"].get("spec", {}).get("replicas", 1)
             result["dhcp_configmap"] = discovered["configmap"]["metadata"]["name"]
@@ -372,6 +407,7 @@ class SiteBootNetwork:
                     "外部 DHCP 必须为设备规划中的启动 MAC 配置固定租约，保证 iPXE、Scout、安装器使用同一 IP。",
                     "使用 BMC 虚拟介质进入明确的引导 HTTP 端点；需要配套 Core 的 HostBootIntent 接口。",
                     "保存端点供后续任务使用；不修改外部 DHCP、Service、设备规划或既有 OS。",
+                    "保存安装环境可达的 PXEye 事件回传地址，供安装进度和完成回执使用。",
                 ]
                 if external
                 else [
@@ -380,6 +416,7 @@ class SiteBootNetwork:
                     "将 DHCP Deployment 缩放至 1 并执行一次受控滚动更新。",
                     "不会修改 HostInband 网段、DHCP 地址池、设备规划或已有安装任务。",
                     "保存材料 HTTP 地址与端口，供后续新建 OS 版本使用；不会改写既有 OS 定义。",
+                    "保存安装环境可达的 PXEye 事件回传地址，供安装进度和完成回执使用。",
                     "切回 Nico DHCP 后，新任务仅在旧外部引导介质清理完成时释放该设备的 Core 启动策略。",
                 ]
             ),
@@ -440,6 +477,7 @@ class SiteBootNetwork:
                 )
                 ready = self._wait_for_dhcp(deployment, 0 if external else 1)
                 material_endpoint = self._set_material_http_endpoint(values)
+                self.app.config["installer_events_url"] = values["installer_events_url"]
                 event.update(
                     status="applied",
                     applied_at=time.time(),
