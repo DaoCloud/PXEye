@@ -31,6 +31,30 @@ function cablingConflicts(links) {
       .map(([key]) => key),
   );
 }
+// Servers without LLDP data, split by whether NICo has a machine for them.
+function cablingMissing(servers) {
+  return {
+    noMachine: servers.filter(([, i]) => !i).map(([d]) => d),
+    noLldp: servers
+      .filter(([, i]) => i && !(Array.isArray(i.lldp) && i.lldp.length))
+      .map(([d]) => d),
+  };
+}
+function cablingSwitches(links) {
+  const switches = {};
+  for (const link of links) (switches[link.switchKey] ||= []).push(link);
+  return switches;
+}
+const cablingNameLimit = 20;
+function cablingNames(list) {
+  const shown = list
+    .slice(0, cablingNameLimit)
+    .map((d) => esc(d.name || d.serial))
+    .join("、");
+  return list.length > cablingNameLimit
+    ? `${shown} 等 ${list.length} 台`
+    : shown;
+}
 function cablingMatches(link) {
   const f = state.cablingFilters,
     n = link.neighbor,
@@ -57,7 +81,7 @@ function cablingRow(link, conflict) {
   const d = link.device,
     n = link.neighbor,
     rack = d.rack_id || link.reported?.rack_id;
-  return `<tr><td><span class="live-code">${esc(n.remote_port || "—")}</span>${n.remote_port_type ? `<span class="live-small">${esc(n.remote_port_type)}</span>` : ""}${conflict ? badge("端口冲突", "red") + '<span class="live-small">同一端口被多个网口报告</span>' : ""}</td><td><button class="link-button" data-live="device-detail" data-serial="${esc(d.serial)}">${esc(d.name || d.serial)}</button><span class="live-small">${esc(d.serial)}</span></td><td>${esc(n.local_port || "—")}<span class="live-small live-code">${esc(n.mac_address || "")}</span></td><td>${esc(rack || "—")}</td></tr>`;
+  return `<tr${conflict ? ' style="background: var(--red-soft)"' : ""}><td><span class="live-code">${esc(n.remote_port || "—")}</span>${n.remote_port_type ? `<span class="live-small">${esc(n.remote_port_type)}</span>` : ""}${conflict ? badge("端口冲突", "red") + '<span class="live-small">同一端口被多个网口报告</span>' : ""}</td><td><button class="link-button" data-live="device-detail" data-serial="${esc(d.serial)}">${esc(d.name || d.serial)}</button><span class="live-small">${esc(d.serial)}</span></td><td>${esc(n.local_port || "—")}<span class="live-small live-code">${esc(n.mac_address || "")}</span></td><td>${esc(rack || "—")}</td></tr>`;
 }
 function cablingSwitchBlock(key, links, conflicts) {
   const first = links[0].neighbor,
@@ -106,13 +130,9 @@ function cablingRender() {
       .map((d) => [d, deviceStatusReported(cablingPage, d)]),
     links = cablingLinks(servers),
     conflicts = cablingConflicts(links),
-    noMachine = servers.filter(([, i]) => !i).map(([d]) => d),
-    noLldp = servers
-      .filter(([, i]) => i && !(Array.isArray(i.lldp) && i.lldp.length))
-      .map(([d]) => d),
-    switches = {};
-  for (const link of links) (switches[link.switchKey] ||= []).push(link);
-  const names = (list) => list.map((d) => esc(d.name || d.serial)).join("、");
+    { noMachine, noLldp } = cablingMissing(servers),
+    switches = cablingSwitches(links),
+    names = cablingNames;
   const notes =
     (noLldp.length
       ? `<div class="live-note">${noLldp.length} 台服务器在 NICo 中有机器对象但没有 LLDP 数据：${names(noLldp)}。</div>`
