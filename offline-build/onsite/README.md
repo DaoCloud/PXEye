@@ -59,7 +59,8 @@ bash /srv/nico/onsite-tools/install.sh \
 For Kind, pass `--mode kind` or omit it: the current `kind-*` context wins, otherwise exactly one Kind candidate
 is required.
 
-Registry discovery reads workload image references and `local-registry-hosting`. If discovery is ambiguous, set
+Registry discovery reads workload image references and `local-registry-hosting`. When both loopback and non-loopback
+endpoints are reachable, the runner ignores the host-only loopback candidate. If discovery remains ambiguous, set
 `NICO_REGISTRY_URL` to the site's complete `http://host:port` or `https://host:port` endpoint before retrying.
 The runner skips Registry server certificate-chain/name validation by default; node-side HTTP/certificate trust
 must already be configured.
@@ -80,7 +81,7 @@ must already be configured.
 Directories derive from the archive filename:
 
 ```text
-/srv/nico/bundle/                   # extracted content; original delivery stays unchanged
+/srv/nico/bundle.extracted/         # extracted content; original delivery stays unchanged
 /srv/nico/bundle.onsite/
   progress.json                    # stages and execution identity
   events.jsonl                     # stage history

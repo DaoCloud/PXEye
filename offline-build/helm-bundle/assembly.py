@@ -1,6 +1,7 @@
 """Adapt a containerd export and downloaded Charts to the existing packager."""
 import hashlib
 import json
+import os
 from pathlib import Path
 import shutil
 import sys
@@ -146,6 +147,54 @@ def selected_materials(material_records):
     return records
 
 
+def prepared_metadata(root):
+    """Fingerprint cache membership and metadata without rereading large blobs."""
+    rows = []
+    for path in sorted(root.rglob('*')):
+        prepared.require(not path.is_symlink(), 'Prepared symlinks are not allowed')
+        if path.is_file():
+            stat = path.stat()
+            rows.append((path.relative_to(root).as_posix(), stat.st_size, stat.st_mtime_ns,
+                         stat.st_ctime_ns, stat.st_ino, stat.st_mode))
+    return hashlib.sha256(json.dumps(rows, separators=(',', ':')).encode()).hexdigest()
+
+
+def record_prepared_verification(root):
+    marker = root.parent / (root.name + '.verified.json')
+    value = {'schema_version': 1,
+             'inventory_sha256': prepared.sha(root / 'manifests/files.json'),
+             'metadata_sha256': prepared_metadata(root)}
+    temporary = marker.with_suffix(marker.suffix + '.tmp')
+    temporary.write_text(json.dumps(value, indent=2) + '\n')
+    os.chmod(temporary, 0o644)
+    temporary.replace(marker)
+    return value
+
+
+def verify_cached_prepared(root):
+    """Fully verify once, then reuse an immutable content-addressed cache."""
+    marker = root.parent / (root.name + '.verified.json')
+    inventory = root / 'manifests/files.json'
+    inventory_sha256 = prepared.sha(inventory)
+    metadata_sha256 = prepared_metadata(root)
+    if marker.is_file() and not marker.is_symlink():
+        try:
+            saved = json.loads(marker.read_text())
+        except (OSError, ValueError, json.JSONDecodeError):
+            saved = {}
+        if saved == {'schema_version': 1, 'inventory_sha256': inventory_sha256,
+                     'metadata_sha256': metadata_sha256}:
+            descriptor = json.loads((root / 'prepared.json').read_text())
+            prepared.require(descriptor.get('kind') == 'nico-package-input' and
+                             descriptor.get('schema_version') == 1 and descriptor.get('complete') is True,
+                             'Not a complete prepared-material directory')
+            print('PREPARED_VERIFICATION_REUSED', root, flush=True)
+            return descriptor
+    descriptor = prepared.verify(root, kinds=('nico-package-input',))
+    record_prepared_verification(root)
+    return descriptor
+
+
 def prepare(value, h, material_records=None):
     b = h.b
     work = value['work_directory']
@@ -172,7 +221,7 @@ def prepare(value, h, material_records=None):
     include['aarch64'] = include['aarch64'] or any(record['id'] == 'boot-aarch64'
                                                    for record in material_records)
     if root.exists():
-        prepared.verify(root, kinds=('nico-package-input',))
+        verify_cached_prepared(root)
     else:
         root.parent.mkdir(parents=True, exist_ok=True)
         stage = Path(tempfile.mkdtemp(prefix='.input-', dir=root.parent))
@@ -210,6 +259,9 @@ def prepare(value, h, material_records=None):
                    'export_identity': descriptor['identity'], 'fingerprint': identity})
             prepared.inventory(stage); prepared.verify(stage, kinds=('nico-package-input',))
             stage.rename(root)
+            # The rename changes ctime/inode data, so create the reusable
+            # verification marker from the final immutable cache location.
+            record_prepared_verification(root)
         except BaseException:
             print('PACKAGE_INPUT_FAILED; staging retained at', stage, flush=True)
             raise

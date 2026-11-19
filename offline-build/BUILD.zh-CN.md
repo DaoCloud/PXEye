@@ -97,6 +97,9 @@ outputs_/
 唯一必填输入，可选 `--mode kind|k8s`，默认 `kind`，见[现场部署](onsite/README.zh-CN.md)。
 执行器在解压后验证包内不可变文件清单。若现场传输流程要求人工校验，仍可执行：
 
+构建机安装 `pigz` 时，归档默认使用最多 8 个可用 CPU 线程并为小型构建机保留一个 CPU；可通过
+`PXEYE_ARCHIVE_THREADS=<1-256>` 显式覆盖。没有 `pigz` 时自动回退到确定性的单线程 gzip。
+
 ```bash
 cd outputs_/output/bundle-<version>
 sha256sum -c SHA256SUMS

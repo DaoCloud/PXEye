@@ -112,6 +112,9 @@ optional `--mode kind|k8s` defaults to `kind`. See [onsite deployment](onsite/RE
 The runner verifies the delivery's immutable internal file inventory after extraction.
 If the field transfer process requires an explicit check, run:
 
+When `pigz` is available, archive creation uses up to eight available CPU threads while leaving one CPU on small builders;
+set `PXEYE_ARCHIVE_THREADS=<1-256>` to override it. Without `pigz`, the builder falls back to deterministic single-threaded gzip.
+
 ```bash
 cd outputs_/output/bundle-<version>
 sha256sum -c SHA256SUMS

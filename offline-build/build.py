@@ -16,6 +16,7 @@ import gzip
 import hashlib
 import ipaddress
 import json
+import os
 from pathlib import Path, PurePosixPath
 import re
 import shutil
@@ -123,9 +124,21 @@ def pack_tree(source, destination, prefix):
 
     pigz = shutil.which('pigz')
     if pigz:
+        available = len(os.sched_getaffinity(0)) if hasattr(os, 'sched_getaffinity') else (os.cpu_count() or 1)
+        configured = os.environ.get('PXEYE_ARCHIVE_THREADS', '').strip()
+        if configured:
+            require(configured.isdigit() and 1 <= int(configured) <= 256,
+                    'PXEYE_ARCHIVE_THREADS must be an integer from 1 to 256')
+            threads = int(configured)
+        else:
+            # Leave one CPU to the cluster on small builders and cap the
+            # default where gzip generally becomes storage-bound.  Operators
+            # can override this after measuring their own storage path.
+            threads = min(8, max(1, available - 1))
+        print('ARCHIVE_COMPRESSOR', 'pigz', 'level=1', 'threads=' + str(threads), flush=True)
         with destination.open('wb') as raw:
             process = subprocess.Popen(
-                [pigz, '-1', '-n', '-p', '8'],
+                [pigz, '-1', '-n', '-p', str(threads)],
                 stdin=subprocess.PIPE,
                 stdout=raw,
                 stderr=subprocess.PIPE,
