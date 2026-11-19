@@ -46,6 +46,7 @@ At a site, follow the [field survey guide](field-survey/README.md) to collect re
 | Servers | [Read](field-survey/servers.md) | [阅读](field-survey/servers.zh-CN.md) |
 | Switches | [Read](field-survey/switches.md) | [阅读](field-survey/switches.zh-CN.md) |
 | Power shelves | [Read](field-survey/power-shelves.md) | [阅读](field-survey/power-shelves.zh-CN.md) |
+| Alerts | [Read](field-survey/alerts.md) | [阅读](field-survey/alerts.zh-CN.md) |
 | Cabling | [Read](field-survey/cabling.md) | [阅读](field-survey/cabling.zh-CN.md) |
 | Discovery diagnostics | [Read](field-survey/discovery-diagnostics.md) | [阅读](field-survey/discovery-diagnostics.zh-CN.md) |
 

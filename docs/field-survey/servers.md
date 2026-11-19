@@ -97,7 +97,7 @@ Below, `C` is the capture file: `C=$SURVEY_DIR/capture-<date-time>.json`.
 | Data | Why it is needed | How the user gets it | Saved as |
 | --- | --- | --- | --- |
 | Rack of each server | NICo does not discover racks; it only records declared values. Servers without one do not appear in rack groups of the rack topology | Racking records or asset sheet; filled values are in the rack column of `tools/site-survey.sh cli expected-machine show` | `supplements/servers-rack.csv`: `serial,rack` |
-| Rack unit of each server (optional) | NICo has no position at general-purpose server sites | Racking records, or on-site inspection | `supplements/servers-position.csv`: `serial,rack,unit` |
+| Rack unit of each server (optional) | NICo has no position at general-purpose server sites | Racking records, or on-site inspection | `supplements/servers-position.csv`: `serial,rack,unit[,height]` |
 | Host firmware baseline (optional) | Without a baseline, versions can be shown but not judged for compliance | Vendor recommended versions, or the site's required versions; current NICo content in `tools/site-survey.sh cli firmware show` | `supplements/servers-firmware-baseline.csv`: `vendor,model,component,version` |
 | Whether machine validation and SKU are enabled | When disabled, validation only shows "skipped"; this is a site setting, not a fault | Ask the site owner; current configuration in `tools/site-survey.sh cli machine-validation tests show` and `tools/site-survey.sh cli sku show` | In `session.md` |
 | Expected server list | Shows whether any server never entered NICo | Delivery or purchase list | `supplements/servers-expected.csv`: `serial,bmc_mac,rack` |
@@ -105,6 +105,8 @@ Below, `C` is the capture file: `C=$SURVEY_DIR/capture-<date-time>.json`.
 The `component` column uses the component IDs shown in the firmware inventory (such as `BMC-Primary`, `UEFI`). Naming differs by vendor; use the names that appear at the site.
 
 Racks can be filled in per server in the system configuration of Device management on a writable console. The observation instance is read-only and cannot be used for this.
+
+Rack units can be imported on a writable console with “导入 U 位” on the server page, as CSV `serial,rack,unit[,height]`. PXEye keeps them in its own database and does not write them to NICo; the rack column is only compared with the device's rack. The read-only observer cannot import them. After an import, a capture includes `/api/rack-units`; check it with `jq '.pxeye_responses["/api/rack-units"].body | {positions: (.positions | length), mismatches, unknown}' $C`. Formats and validation are in section 2.6 of the [data contract](../design/rack-operations-data-contract.md).
 
 ## 5. Common cases
 
@@ -125,5 +127,5 @@ Racks can be filled in per server in the system configuration of Device manageme
 5. Run the site-level commands of section 2 (2), then all machine-level commands for each selected machine. If a command fails, retry it once alone; if it still fails, record the command, error code and message, and continue.
 6. If the site has no capture file yet, run `tools/site-survey.sh capture` once. On exit code 2, fix the cause and rerun; on another non-zero code, stop and report.
 7. Check each row of section 3, writing pass or fail and what was recorded.
-8. Ask the user for the data in section 4: rack (`supplements/servers-rack.csv`), expected server list (`supplements/servers-expected.csv`), rack unit and firmware baseline (optional, `supplements/servers-position.csv`, `supplements/servers-firmware-baseline.csv`), and whether validation and SKU are enabled. For each, say what, why and how to get it. Do not guess values the user cannot give.
+8. Ask the user for the data in section 4: rack (`supplements/servers-rack.csv`), expected server list (`supplements/servers-expected.csv`), rack unit and firmware baseline (optional, `supplements/servers-position.csv` with `serial,rack,unit[,height]`, `supplements/servers-firmware-baseline.csv`), and whether validation and SKU are enabled. For each, say what, why and how to get it. Do not guess values the user cannot give. On a writable console, have the user import the rack units with “导入 U 位” on the server page (not possible on the read-only observer); after the next capture, record the `mismatches` and `unknown` of `/api/rack-units`.
 9. Write a section for this page in `session.md`: Core version; server count; machine IDs used; result of each check in section 3; failed commands and error codes; user data received and missing (what is missing, which item it affects); documents and tests that need updating.

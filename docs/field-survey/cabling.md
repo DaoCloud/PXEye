@@ -95,6 +95,8 @@ For other systems look up the command that shows “LLDP local information” in
 
 Save the output as `supplements/cabling-<switch name>-lldp.txt`, then turn it into the two CSV files above. Only read-only show commands are needed; the switch configuration is not changed.
 
+The two CSV files can be imported on a writable console with “导入交换机信息” on the cabling page. PXEye keeps them in its own database and does not write them to NICo; the read-only observer cannot import them. After an import, a capture includes `/api/switch-labels`; compare it with the files, for example `jq '.pxeye_responses["/api/switch-labels"].body | {switches: (.switches | length), ports: (.ports | length)}' $C`. Formats and matching rules are in section 2.6 of the [data contract](../design/rack-operations-data-contract.md).
+
 ## 5. Common cases
 
 | Symptom | Meaning |
@@ -115,6 +117,6 @@ Save the output as `supplements/cabling-<switch name>-lldp.txt`, then turn it in
 5. Look at `lldp_neighbors` in `cli/cabling-machine-show-<machine ID>.txt`. If all are empty, ask the user: “Is LLDP enabled on the switches? Have these machines run discovery (Scout)?” Record the answer.
 6. Make sure `tools/site-survey.sh capture` has run once for this site; if not, run it. Continue only on exit code 0; on 2 fix the cause and run it again.
 7. Run each jq in section 3 and compare; record pass or fail for each item.
-8. If switch names are empty or the port type is `mac`, stop and ask the user: “Please provide switch name, model, serial, management address and rack in `supplements/cabling-switches.csv` (columns `chassis_mac,name,model,serial,management_ip,rack`), and the port MAC to panel port name mapping in `supplements/cabling-switch-ports.csv` (columns `chassis_mac,port_id,port_name`). You can get them with the read-only switch commands in section 4.”
+8. If switch names are empty or the port type is `mac`, stop and ask the user: “Please provide switch name, model, serial, management address and rack in `supplements/cabling-switches.csv` (columns `chassis_mac,name,model,serial,management_ip,rack`), and the port MAC to panel port name mapping in `supplements/cabling-switch-ports.csv` (columns `chassis_mac,port_id,port_name`). You can get them with the read-only switch commands in section 4.” On a writable console, have the user import both files with “导入交换机信息” on the cabling page (not possible on the read-only observer); after the next capture, compare `/api/switch-labels` with the files and record the result.
 9. Ask the user whether an expected cabling plan exists; if so save it as `supplements/cabling-expected.csv` (columns `server_serial,server_port,switch_name,switch_port`), otherwise record “not provided”. Have the user confirm any CSV you assembled before saving.
 10. Write into `session.md` for this page: Core version; machine count and number of servers with LLDP; port ID types; the result and differences of each check in section 3; port conflicts and the on-site confirmation; servers without LLDP and the cause (two groups: machine with empty LLDP; no NICo machine); supplements received and missing (what is missing, which item it affects); failed commands with error codes.

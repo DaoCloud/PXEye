@@ -113,6 +113,47 @@ No new Core interface. The data is `status.lldp_neighbors` from 2.1, read throug
 
 To verify: values of `remote_port_type` other than `mac`; a real port conflict; a switch with a serial but no name or ID.
 
+### 2.5 Alerts
+
+No new Core interface. The page `web/pages/alerts.js` reads the device list from `/api/equipment` and the `health` of `servers[]`, `switches[]` and `power_shelves[]` in `/api/device-status`, the same data as 2.1 to 2.3 (`FindMachinesByIds`, `FindSwitches`, `FindPowerShelves`).
+
+| Page content | Field of `health` in `/api/device-status` | Core source |
+| --- | --- | --- |
+| Alert grouping and search | `alerts[].id`, `alerts[].target`, `alerts[].message` | `status.health.alerts[]` |
+| Start, earliest start of a group | `alerts[].since` | `in_alert_since` |
+| Classification filter, `PreventAllocations` count | `alerts[].classifications[]` | `classifications` |
+| Device whose level needs attention but lists no alert | `level` (`warning`, `alert`, `critical`) with an empty `alerts` | `status.health_status`, or alerts present |
+
+One entry is one alert on one device. Device names open the existing status dialog. The page is read-only.
+
+To verify: real alert IDs and their wording; which classifications occur besides `PreventAllocations`; the values of `target`.
+
+### 2.6 PXEye-local data
+
+Two tables in PXEye's own SQLite database: `switch_labels` and `rack_units`. Each import replaces the whole table. Nothing is written to NICo Core or to a switch. The routes exist only with `rack_operations` on; a read-only observer refuses the writes and the pages do not offer the imports. Captures made with `tools/core-capture.py` include both routes and both tables.
+
+| Data | Routes | Backend | Page |
+| --- | --- | --- | --- |
+| Switch labels | `GET /api/switch-labels`; `POST /api/switch-labels` `{"switches_csv", "ports_csv", "revision"}` | `services/switch_labels.py` | Cabling, “导入交换机信息” |
+| Rack units | `GET /api/rack-units`; `POST /api/rack-units` `{"csv", "revision"}` | `services/rack_units.py` | Servers, “导入 U 位” |
+
+CSV formats. The switch and port headers must match exactly (spaces around names are ignored); the rack unit header is also accepted in upper case:
+
+| Table | Header | Required | Key |
+| --- | --- | --- | --- |
+| Switches | `chassis_mac,name,model,serial,management_ip,rack` | `chassis_mac`, `name` | `chassis_mac` |
+| Ports | `chassis_mac,port_id,port_name` | all | `chassis_mac` + `port_id` |
+| Rack units | `serial,rack,unit` or `serial,rack,unit,height` | `serial`, `unit` | `serial` |
+
+Validation: at most 2000 rows per table; every row has the header's column count; `chassis_mac` is a MAC in any common notation and is stored lower case with colons; `port_id` is normalised the same way when it is a MAC, else compared case-insensitively; `unit` and `height` are integers from 1 to 60 (`height` defaults to 1) and `unit + height - 1` does not pass 60; two positions with the same non-empty rack may not overlap (rows with an empty rack are not checked for overlap); keys are unique (`serial` case-sensitively, the switch and port keys case-insensitively). Any error rejects the whole import with HTTP 400 and a list of errors, each with its line and field (switch labels also name the table). The HTTP layer accepts request bodies up to 2 MiB for both, which holds 2000 rows. A save carries the `revision` last read; if someone saved since, the answer is 409 (`REVISION_CONFLICT`, `RACK_UNITS_CONFLICT`).
+
+Matching:
+
+- A switch label applies to LLDP neighbours whose `switch_id` (`lldp.id_value`) is the same MAC as `chassis_mac`. A port label applies when, in addition, `remote_port` (`lldp.remote_port_value`) equals `port_id` after the same normalisation. The cabling page shows the label name and panel port name next to what LLDP reports, and counts labels that match nothing.
+- A rack unit applies to the device with that serial in device management. `GET /api/rack-units` returns `positions`, `mismatches` (the recorded rack differs from the device's `rack_id`) and `unknown` (serials not in device management). The rack column is only compared; it is never written.
+
+To verify: whether `id_value` is the chassis MAC on real switches; the `remote_port_value` form on switches whose port type is not `mac`.
+
 ## 3. Interfaces for candidate pages
 
 ### 3.1 Machine state timeline (verified, implemented)

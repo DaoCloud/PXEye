@@ -35,17 +35,23 @@ For each of the ten functional areas, the target, what Core actually provides an
 
 ### 4.1 Done
 
-Five pages sit under device management as second-level entries. Servers, switches and power shelves list the same devices as device management, split by kind, with the operational status Core reports; cabling and discovery diagnostics summarise by switch and by BMC address.
+Six pages sit under device management as second-level entries. Servers, switches and power shelves list the same devices as device management, split by kind, with the operational status Core reports; alerts gathers their current health alerts; cabling and discovery diagnostics summarise by switch and by BMC address.
 
 | Page | Purpose | What the user can do | Verification |
 | --- | --- | --- | --- |
-| Servers | See which servers are not ready, at which step and why; check uplink switches; find devices without a declared rack | Filter by “needs attention” and rack, search; open the status dialog (state reason, health alerts, hardware capabilities, LLDP neighbours, state timeline, firmware inventory); go to the installation task, hardware details and address management; open the system settings to declare a rack | The list and the basic status content were verified with real data; the state timeline and firmware inventory follow the response structure recorded at a real site and were verified with authored sample data only |
+| Servers | See which servers are not ready, at which step and why; check uplink switches; find devices without a declared rack | Filter by “needs attention” and rack, search; open the status dialog (state reason, health alerts, hardware capabilities, LLDP neighbours, state timeline, firmware inventory); go to the installation task, hardware details and address management; open the system settings to declare a rack; import rack unit positions (“导入 U 位”) | The list and the basic status content were verified with real data; the state timeline and firmware inventory follow the response structure recorded at a real site and were verified with authored sample data only |
 | Switches | View status, health, management ports and fabric manager state of NVLink switches Core manages | Same | Verified with authored sample data only. A general server site has no such device, and the page explains what it covers |
 | Power shelves | View status, health, capacity and voltage of power shelves Core manages | Same | Same |
-| Cabling | See, per switch, which port each server interface is connected to; find a port reported by more than one interface; find servers without LLDP data | Filter by switch, search; open a server's hardware details | The data comes from servers' LLDP neighbours, whose structure was verified with real data (one server, one switch); the page was verified with authored sample data only. It shows observed connections and is not compared with a plan |
+| Alerts | See which current health alerts affect which servers, switches and power shelves | Group by alert or by device; filter by device kind and classification, search; see how many alerts carry `PreventAllocations`; open a device's status dialog | Reads only the health already returned for the device lists (no new Core interface); verified with authored sample data only |
+| Cabling | See, per switch, which port each server interface is connected to; find a port reported by more than one interface; find servers without LLDP data | Filter by switch, search; open a server's hardware details; import switch names and panel port names (“导入交换机信息”) | The data comes from servers' LLDP neighbours, whose structure was verified with real data (one server, one switch); the page was verified with authored sample data only. It shows observed connections and is not compared with a plan |
 | Discovery diagnostics | See the result of NICo site exploration for each BMC address, to find why a device was not discovered | Filter by result, search by address, serial or error code; failures first, with error code and mitigation; open the details of a joined device | The response structure was verified with real data (5 addresses, 4 refused connections); the page was verified with authored sample data only |
 
-The pages start no write.
+The pages start no write to NICo. Two pages own data that PXEye keeps in its own database, imported as CSV and never written to NICo; neither import is offered on a read-only observer:
+
+- The server page owns rack unit positions (`serial,rack,unit[,height]`). The server list shows `U<n>` (`U<n>–U<m>` when the height is above 1); the rack topology orders a compute section by unit, top first, when every server in it has one and the layout is not being edited. The rack column is only compared with the device's rack.
+- The cabling page owns switch labels (switches and panel ports, matched to LLDP by chassis MAC and port). The page shows the imported names next to what LLDP reports.
+
+Formats, validation and matching are in the [data contract](rack-operations-data-contract.md).
 
 After the server status dialog opens, it reads four more items, each showing loading, its result or its failure without affecting the rest of the dialog:
 
@@ -65,7 +71,6 @@ Nothing is decided. A candidate from 4.3 is listed here once chosen.
 | Content | Decision needed first |
 | --- | --- |
 | Cabling check (intended against actual) | Where the intended cabling comes from; arrival planning is deferred |
-| Alert roll-up page | Whether many devices and alerts need a cross-device roll-up; the list already filters by health alert |
 
 ### 4.4 Not done, or not possible
 
@@ -87,6 +92,7 @@ General rules are in [interaction rules](interaction-rules.md). This work adds:
 5. Details, addresses and rack declaration open the existing dialogs.
 6. Only show what has data.
 7. “Needs attention” uses Core's own signals: a failed handler run, a state past its time limit, or a health alert.
+8. The only data these pages edit is PXEye-local: rack unit positions and switch labels. It is used for display and comparison, never written to NICo, and cannot be edited on a read-only observer.
 
 ## 6. Preconditions for operations
 
@@ -118,6 +124,6 @@ Core offers power, maintenance, quarantine, firmware, validation and decommissio
 | Stage | Content | Status |
 | --- | --- | --- |
 | 1 | Read-only observer instance; server, switch and power shelf pages | Done |
-| 2 | State timeline, firmware inventory, health history, hardware validation, cabling, discovery diagnostics | Done; to be checked at a real site |
+| 2 | State timeline, firmware inventory, health history, hardware validation, cabling, discovery diagnostics; alerts page, switch label import, rack unit import | Done; to be checked at a real site |
 | 3 | Verify switch, power shelf and rack fields at a site that has them; decide the candidates | Awaiting a site |
 | 4 | Operations | After section 6 is settled |

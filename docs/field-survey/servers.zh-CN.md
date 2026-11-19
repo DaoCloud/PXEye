@@ -97,7 +97,7 @@ tools/site-survey.sh --save servers-<机器ID>-explore-report.txt cli site-explo
 | 数据 | 为什么需要 | 用户怎么取得 | 存成 |
 | --- | --- | --- | --- |
 | 服务器所在机柜 | NICo 不自动发现机柜，只记录人工声明的值；没填的服务器不会出现在机柜拓扑的机柜分组里 | 机房的上架记录或资产表；已填的部分见 `tools/site-survey.sh cli expected-machine show` 的机柜列 | `supplements/servers-rack.csv`：`serial,rack` |
-| 服务器在机柜中的 U 位（可选） | 通用服务器站点 NICo 不提供位置 | 上架记录，或现场查看 | `supplements/servers-position.csv`：`serial,rack,unit` |
+| 服务器在机柜中的 U 位（可选） | 通用服务器站点 NICo 不提供位置 | 上架记录，或现场查看 | `supplements/servers-position.csv`：`serial,rack,unit[,height]` |
 | 主机固件基线（可选） | 没有基线就只能展示版本，不能判断是否合规 | 硬件厂商发布的推荐版本，或站点规定的版本；NICo 现有内容见 `tools/site-survey.sh cli firmware show` | `supplements/servers-firmware-baseline.csv`：`vendor,model,component,version` |
 | 是否启用机器校验和 SKU | 没有启用时校验记录只有“已跳过”，这是站点设置，不是故障 | 询问站点负责人；现有配置见 `tools/site-survey.sh cli machine-validation tests show` 和 `tools/site-survey.sh cli sku show` | 写在 `session.md` |
 | 应有的服务器清单 | 判断有没有服务器根本没进入 NICo | 到货清单或采购清单 | `supplements/servers-expected.csv`：`serial,bmc_mac,rack` |
@@ -105,6 +105,8 @@ tools/site-survey.sh --save servers-<机器ID>-explore-report.txt cli site-explo
 `component` 列使用固件清单里显示的部件 ID（如 `BMC-Primary`、`UEFI`）。不同厂商的命名不一样，要按该站点实际出现的名称填写。
 
 机柜可以在可写的控制台里，通过设备管理的系统配置逐台填写。观察实例只读，不能在上面填。
+
+U 位可以在可写的控制台上，用服务器页的“导入 U 位”导入，CSV 为 `serial,rack,unit[,height]`。PXEye 把它存在自己的数据库里，不写入 NICo；机柜列只与设备的机柜比对。只读观察实例不能导入。导入后，采集文件里有 `/api/rack-units`，用 `jq '.pxeye_responses["/api/rack-units"].body | {positions: (.positions | length), mismatches, unknown}' $C` 检查。格式和校验见[数据契约](../design/rack-operations-data-contract.zh-CN.md)第 2.6 节。
 
 ## 5. 常见情况
 
@@ -125,5 +127,5 @@ tools/site-survey.sh --save servers-<机器ID>-explore-report.txt cli site-explo
 5. 执行第 2 节 (2) 的站点级命令，再对每台选出的机器执行全部机器级命令。任一命令失败：单独重试一次；仍失败时记下命令、错误码和消息，继续下一条。
 6. 如果本站点还没有采集文件，执行一次 `tools/site-survey.sh capture`。退出码 2 时修正原因后重来；其他非 0 值停下并报告。
 7. 按第 3 节逐行核对，每行写下通过或不通过及记录内容。
-8. 问用户第 4 节的数据：机柜（`supplements/servers-rack.csv`）、应有的服务器清单（`supplements/servers-expected.csv`）、U 位和固件基线（可选，`supplements/servers-position.csv`、`supplements/servers-firmware-baseline.csv`）、是否启用校验和 SKU。每项说明要什么、为什么、怎么取得。给不出的不要猜。
+8. 问用户第 4 节的数据：机柜（`supplements/servers-rack.csv`）、应有的服务器清单（`supplements/servers-expected.csv`）、U 位和固件基线（可选，`supplements/servers-position.csv` 列 `serial,rack,unit[,height]`、`supplements/servers-firmware-baseline.csv`）、是否启用校验和 SKU。每项说明要什么、为什么、怎么取得。给不出的不要猜。在可写的控制台上，请用户用服务器页的“导入 U 位”导入 U 位（只读观察实例上不能导入）；下次采集后，记录 `/api/rack-units` 的 `mismatches` 和 `unknown`。
 9. 在 `session.md` 写本页面一节：Core 版本；服务器数；选用的机器 ID；第 3 节每项的核对结果；失败的命令和错误码；已收到和缺少的用户数据（缺什么、影响哪一项）；需要更新的文档和测试。

@@ -11,6 +11,7 @@ For the full field mapping see the [data contract](../design/rack-operations-dat
 | Device management → Servers (including the state timeline, health history, hardware validation and firmware inventory of the status dialog) | [Servers](servers.md) | State, health, hardware capabilities, LLDP, state and health history, validation records, firmware versions | Rack assignment, host firmware baseline, whether validation is enabled |
 | Device management → Switches | [Switches](switches.md) | State, health and management port of NVLink switches | Whether the site has NVLink switches, the expected list |
 | Device management → Power shelves | [Power shelves](power-shelves.md) | State, health, capacity and voltage of power shelves | Whether the site has power shelves, the expected list |
+| Device management → Alerts | [Alerts](alerts.md) | Current health alerts of servers, switches and power shelves | Nothing required; optionally the alerts the site treats as known |
 | Device management → Cabling | [Cabling](cabling.md) | LLDP links from server interfaces to switch ports | Switch names and models, mapping of port MACs to panel port names, expected cabling |
 | Device management → Discovery diagnostics | [Discovery diagnostics](discovery-diagnostics.md) | Probe result, error code and mitigation for each BMC address | Expected list of BMC addresses, network reachability |
 

@@ -95,6 +95,8 @@ tools/site-survey.sh --save cabling-machine-show-<机器ID>.txt cli --json machi
 
 输出保存为 `supplements/cabling-<交换机名>-lldp.txt`，再整理成上面的两个 CSV。只需要只读的查看命令，不需要修改交换机配置。
 
+这两个 CSV 可以在可写的控制台上，用布线页的“导入交换机信息”导入。PXEye 把它们存在自己的数据库里，不写入 NICo；只读观察实例不能导入。导入后，采集文件里有 `/api/switch-labels`，可以和文件对照，例如 `jq '.pxeye_responses["/api/switch-labels"].body | {switches: (.switches | length), ports: (.ports | length)}' $C`。格式和对应规则见[数据契约](../design/rack-operations-data-contract.zh-CN.md)第 2.6 节。
+
 ## 5. 常见情况
 
 | 现象 | 判断 |
@@ -115,6 +117,6 @@ tools/site-survey.sh --save cabling-machine-show-<机器ID>.txt cli --json machi
 5. 看 `cli/cabling-machine-show-<机器ID>.txt` 的 `lldp_neighbors`。全部为空时，问用户：“交换机是否开启了 LLDP？这些机器是否已经跑过发现（Scout）？”记下回答。
 6. 确认本站点已执行过一次 `tools/site-survey.sh capture`；没有就执行，退出码为 0 才继续，为 2 时修正原因后重来。
 7. 按第 3 节逐项执行 jq 并对照，记录每项通过或不通过。
-8. 交换机名称为空或端口类型是 `mac` 时，停下来问用户：“请提供交换机名称、型号、序列号、管理地址和所在机柜，填 `supplements/cabling-switches.csv`（列 `chassis_mac,name,model,serial,management_ip,rack`）；以及端口 MAC 与面板端口名的对应，填 `supplements/cabling-switch-ports.csv`（列 `chassis_mac,port_id,port_name`）。可以在交换机上执行第 4 节的只读命令取得。”
+8. 交换机名称为空或端口类型是 `mac` 时，停下来问用户：“请提供交换机名称、型号、序列号、管理地址和所在机柜，填 `supplements/cabling-switches.csv`（列 `chassis_mac,name,model,serial,management_ip,rack`）；以及端口 MAC 与面板端口名的对应，填 `supplements/cabling-switch-ports.csv`（列 `chassis_mac,port_id,port_name`）。可以在交换机上执行第 4 节的只读命令取得。”在可写的控制台上，请用户用布线页的“导入交换机信息”导入这两个文件（只读观察实例上不能导入）；下次采集后，把 `/api/switch-labels` 和文件对照，记录结果。
 9. 问用户是否有预期布线；有则存成 `supplements/cabling-expected.csv`（列 `server_serial,server_port,switch_name,switch_port`），没有就记“未提供”。用户整理的 CSV 请用户确认后保存。
 10. 在 `session.md` 里写本页：Core 版本；机器数和有 LLDP 的服务器数；端口标识类型；第 3 节每项的核对结果和差异；端口冲突及现场确认结果；没有 LLDP 的服务器及原因（分两组：有机器但 LLDP 为空；没有 NICo 机器）；已收到和缺少的补充数据（缺什么、影响哪一项）；失败的命令及错误码。

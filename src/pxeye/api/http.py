@@ -103,7 +103,7 @@ class Handler(QueryRoutes, CommandRoutes, BaseHTTPRequestHandler):
                 if urlsplit(self.path).path.startswith(
                     ("/api/devices", "/api/device-plans", "/api/equipment")
                 )
-                or path in ("/api/install-profiles/save", "/api/switch-labels")
+                or path in ("/api/install-profiles/save", "/api/switch-labels", "/api/rack-units")
                 else 2 * 1024**2
                 if urlsplit(self.path).path == "/api/nico-deployment/preflight"
                 else 16384

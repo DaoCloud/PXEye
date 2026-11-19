@@ -108,7 +108,7 @@ It draws on the bare-metal lifecycle, device orchestration, network isolation, t
 
 | What NICo Core provides | PXEye today | Conclusion and next step | Pages |
 | --- | --- | --- | --- |
-| Device list, serial numbers, hand-declared `rack_id`; rack objects only at whole-rack sites; no rack unit position | Device management and rack topology exist; display order is stored by PXEye; discovery diagnostics lists the exploration result and failure reason of each BMC address | Present. A unit position would have to be recorded by PXEye. No change audit | Rack topology, device management, device management → Discovery diagnostics |
+| Device list, serial numbers, hand-declared `rack_id`; rack objects only at whole-rack sites; no rack unit position | Device management and rack topology exist; display order is stored by PXEye; discovery diagnostics lists the exploration result and failure reason of each BMC address; server unit positions are imported by CSV on the server page, stored by PXEye, shown on the server page and used to order the compute section of the rack topology | Present. Unit positions are recorded by PXEye only, not in NICo; the rack in the import is compared with the device's rack, not written. No change audit | Rack topology, device management, device management → Discovery diagnostics |
 
 ### 6.2 Topology and connections
 
@@ -121,7 +121,7 @@ It draws on the bare-metal lifecycle, device orchestration, network isolation, t
 
 | What NICo Core provides | PXEye today | Conclusion and next step | Pages |
 | --- | --- | --- | --- |
-| LLDP neighbours of servers, with the peer switch name, model and serial (verified); the network topology interface returns nothing | The server page shows uplink switches; the status dialog lists every neighbour; the cabling page groups ports by switch and marks a port reported by more than one interface | Viewing actual connections and finding conflicts are done. Comparing intended and actual cabling is not, for lack of an intended cabling source | Device management → Servers, Cabling |
+| LLDP neighbours of servers, with the peer switch name, model and serial (verified); the network topology interface returns nothing | The server page shows uplink switches; the status dialog lists every neighbour; the cabling page groups ports by switch and marks a port reported by more than one interface; switch names and panel port names can be imported by CSV, are stored by PXEye and are shown on the cabling page | Viewing actual connections and finding conflicts are done; imported names are for display only and are not written to NICo. Comparing intended and actual cabling is not, for lack of an intended cabling source | Device management → Servers, Cabling |
 
 ### 6.3 Power and operation orchestration
 
@@ -193,7 +193,7 @@ It draws on the bare-metal lifecycle, device orchestration, network isolation, t
 
 | What NICo Core provides | PXEye today | Conclusion and next step | Pages |
 | --- | --- | --- | --- |
-| Health alerts and health history per object (verified); no time series; no dedicated leak or liquid-cooling interface | The server page shows health and alerts; the status dialog shows health history (start, last seen and recovery of each alert) | Per-device health and history are done. A cross-device alert roll-up is not. Charts need a monitoring system | Device management → Servers, Switches, Power shelves |
+| Health alerts and health history per object (verified); no time series; no dedicated leak or liquid-cooling interface | The server page shows health and alerts; the status dialog shows health history (start, last seen and recovery of each alert); the alerts page groups the current alerts of servers, switches and power shelves by alert or by device | Per-device health and history and a read-only roll-up of current alerts are done. Acknowledgement, suppression and notification are not. Charts need a monitoring system | Device management → Servers, Switches, Power shelves, Alerts |
 
 ### 6.8 Security and trust
 

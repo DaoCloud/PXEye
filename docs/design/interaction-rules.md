@@ -13,7 +13,7 @@ Each piece of data has one place where it is maintained. Other pages reference i
 | Overview | Rack topology | Devices by rack; manual display order |
 | Installation | Installation tasks | Device selection, checks, confirmation, execution, logs and acceptance |
 | Resources | Device management | Device planning, discovery, enrollment, addresses, rack assignment, per-device installation settings |
-| Resources | Device management → Servers / Switches / Power shelves / Cabling / Discovery diagnostics | Read-only: the operational status, LLDP connections and site exploration results NICo reports. Owns no editable data |
+| Resources | Device management → Servers / Switches / Power shelves / Alerts / Cabling / Discovery diagnostics | Read-only: the operational status, health alerts, LLDP connections and site exploration results NICo reports. Owns no data, except that Servers owns rack unit positions and Cabling owns switch and port labels; both are PXEye-local, imported by CSV and not offered on a read-only observer |
 | Resources | Instance management | Instance inspection and release |
 | Resources | Operating systems | ISOs, boot artifacts, OS definitions |
 | Resources | Network management | Segments, address ranges, network services |

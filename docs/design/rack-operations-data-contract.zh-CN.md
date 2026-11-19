@@ -113,6 +113,47 @@ Core 的供电框没有插口，机柜 PDU 不在 Core 里。接口：`FindPower
 
 待核对：除 `mac` 外的 `remote_port_type` 取值；真实的端口冲突；只有序列号、没有名字和 ID 的交换机。
 
+### 2.5 告警
+
+没有新的 Core 接口。页面 `web/pages/alerts.js` 从 `/api/equipment` 读设备清单，从 `/api/device-status` 读 `servers[]`、`switches[]`、`power_shelves[]` 的 `health`，与 2.1 到 2.3 是同一份数据（`FindMachinesByIds`、`FindSwitches`、`FindPowerShelves`）。
+
+| 页面内容 | `/api/device-status` 中 `health` 的字段 | Core 来源 |
+| --- | --- | --- |
+| 告警分组和搜索 | `alerts[].id`、`alerts[].target`、`alerts[].message` | `status.health.alerts[]` |
+| 开始时间、分组的最早开始时间 | `alerts[].since` | `in_alert_since` |
+| 分类筛选、`PreventAllocations` 计数 | `alerts[].classifications[]` | `classifications` |
+| 健康等级需要关注但没有告警项的设备 | `level`（`warning`、`alert`、`critical`）且 `alerts` 为空 | `status.health_status`，或存在告警 |
+
+一条记录是一台设备上的一个告警。设备名打开现有的运行状态弹窗。页面只读。
+
+待核对：真实的告警 ID 和文字；除 `PreventAllocations` 外出现哪些分类；`target` 的取值。
+
+### 2.6 PXEye 本地数据
+
+PXEye 自己的 SQLite 数据库中有两张表：`switch_labels` 和 `rack_units`。每次导入替换整张表。不写入 NICo Core，也不写入交换机。只有开启 `rack_operations` 时才有这些接口；只读观察实例拒绝写入，页面也不提供导入。用 `tools/core-capture.py` 做的采集包含这两个接口和这两张表。
+
+| 数据 | 接口 | 后端 | 页面 |
+| --- | --- | --- | --- |
+| 交换机信息 | `GET /api/switch-labels`；`POST /api/switch-labels` `{"switches_csv", "ports_csv", "revision"}` | `services/switch_labels.py` | 布线，“导入交换机信息” |
+| U 位 | `GET /api/rack-units`；`POST /api/rack-units` `{"csv", "revision"}` | `services/rack_units.py` | 服务器，“导入 U 位” |
+
+CSV 格式。交换机表和端口表的表头必须完全一致（列名前后的空格忽略）；U 位的表头不区分大小写：
+
+| 表 | 表头 | 必填 | 唯一键 |
+| --- | --- | --- | --- |
+| 交换机 | `chassis_mac,name,model,serial,management_ip,rack` | `chassis_mac`、`name` | `chassis_mac` |
+| 端口 | `chassis_mac,port_id,port_name` | 全部 | `chassis_mac` + `port_id` |
+| U 位 | `serial,rack,unit` 或 `serial,rack,unit,height` | `serial`、`unit` | `serial` |
+
+校验：每张表最多 2000 行；每行列数与表头一致；`chassis_mac` 接受常见的 MAC 写法，保存为小写冒号格式；`port_id` 是 MAC 时同样规范化，否则不区分大小写比较；`unit` 和 `height` 是 1 到 60 的整数（`height` 默认 1），`unit + height - 1` 不超过 60；机柜相同且不为空的位置不能重叠（机柜为空的行不检查重叠）；唯一键不能重复（`serial` 区分大小写，交换机和端口的键不区分大小写）。有任何错误时整次导入被拒绝，返回 HTTP 400 和错误列表，每条带行号和字段（交换机信息还带表名）。HTTP 层对两者都接受最大 2 MiB 的请求体，足够 2000 行。保存时带上次读取的 `revision`；如果期间有人保存过，返回 409（`REVISION_CONFLICT`、`RACK_UNITS_CONFLICT`）。
+
+对应规则：
+
+- 交换机信息对应 `switch_id`（`lldp.id_value`）与 `chassis_mac` 是同一 MAC 的 LLDP 邻居。端口信息还要求 `remote_port`（`lldp.remote_port_value`）按同样规范化后等于 `port_id`。布线页在 LLDP 报告的内容旁显示交换机名称和面板端口名，并统计没有对应上的条目。
+- U 位对应设备管理中该序列号的设备。`GET /api/rack-units` 返回 `positions`、`mismatches`（记录的机柜与设备的 `rack_id` 不同）和 `unknown`（设备管理中没有的序列号）。机柜列只用于比对，从不写入。
+
+待核对：真实交换机上 `id_value` 是否就是机箱 MAC；端口类型不是 `mac` 的交换机上 `remote_port_value` 的形式。
+
 ## 3. 候选页面的接口
 
 ### 3.1 机器状态时间线（已验证，已实现）
