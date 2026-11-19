@@ -407,7 +407,11 @@ check_pxeye_core() {
         # Python runs inside the existing PXEye image; the fireseed host does
         # not need a Python interpreter or any Python packages.
         if run pxeye-core-connection timeout 30s kubectl --context "$CONTEXT" -n "$NAMESPACE" exec "deployment/$release" -- python3 -c "$program"; then
-            if [[ ${NEW_SITE:-false} == true || -n ${SITE_CREDENTIALS_SECRET:-} ]]; then
+            if [[ ${NEW_SITE:-false} == true ]]; then
+                printf 'SITE_CREDENTIALS_NEW_SITE; generating missing BMC, Host UEFI and DPU UEFI defaults; existing values are preserved\n'
+                run pxeye-site-defaults timeout 60s kubectl --context "$CONTEXT" -n "$NAMESPACE" exec "deployment/$release" -- python3 -c 'from pxeye.services.site_credentials import initialize_new_site; raise SystemExit(0 if initialize_new_site() else 1)' || die 'Core connected but new-site credentials could not be initialized safely. Existing values are preserved; inspect PXEye and Core logs before retrying.'
+                printf 'SITE_CREDENTIALS_READY\n'
+            elif [[ -n ${SITE_CREDENTIALS_SECRET:-} ]]; then
                 run pxeye-site-defaults timeout 60s kubectl --context "$CONTEXT" -n "$NAMESPACE" exec "deployment/$release" -- python3 -c 'from pxeye.services.site_credentials import verify_installed; raise SystemExit(0 if verify_installed() else 1)' || die 'Core connected but site credentials are not ready. Check Site settings, then resume; existing values are preserved.'
                 printf 'SITE_CREDENTIALS_READY\n'
             fi
