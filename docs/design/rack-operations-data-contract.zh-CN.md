@@ -44,7 +44,7 @@ survey call 'FindMachineStateHistories={"machineIds":[{"id":"MID"}]}'
 
 ## 2. 已实现的页面
 
-后端 `services/device_status.py`，接口 `GET /api/device-status`；前端 `web/pages/device_status.js`；测试 `tests/unit/test_device_status.py`。
+后端 `services/device_status.py`，接口 `GET /api/device-status`，以及按机器读取的 `GET /api/device-status/machines/<机器ID>/history` 和 `…/firmware`（机器 ID 只接受 `[a-z0-9]{1,128}`，其他路径返回 404）；前端 `web/pages/device_status.js`；测试 `tests/unit/test_device_status.py`。
 
 设备清单来自现有的 `GET /api/equipment`。运行状态按下面的方式关联到设备：
 
@@ -108,7 +108,7 @@ Core 的供电框没有插口，机柜 PDU 不在 Core 里。接口：`FindPower
 
 ## 3. 候选页面的接口
 
-### 3.1 机器状态时间线（已验证）
+### 3.1 机器状态时间线（已验证，已实现）
 
 `FindMachineStateHistories {"machineIds":[{"id":"<机器ID>"}]}`
 
@@ -120,9 +120,13 @@ Core 的供电框没有插口，机柜 PDU 不在 Core 里。接口：`FindPower
 ]}}}
 ```
 
-`event` 是 JSON 文本，`state` 逐层嵌套。停留时长用相邻记录的 `time` 相减，最后一条算到当前时间。交换机、供电框、机柜有同类接口 `Find…StateHistories`，仅定义。待核对：记录条数有没有上限。
+`event` 是 JSON 文本，`state` 逐层嵌套。停留时长用相邻记录的 `time` 相减，最后一条算到当前时间。交换机、供电框、机柜有同类接口 `Find…StateHistories`，仅定义。
 
-### 3.2 固件清单（已验证）
+实现：接口 `/history` 返回 `{observed_at, records:[{state, entered_at, duration_seconds, current}]}`。按 `time` 排序，连续相同的状态文本合并为一段并保留第一段的进入时间；`time` 按 RFC 3339 解析，小数秒可能多于 6 位，读不出的记录跳过。`state_text()` 只沿 `state` 键展开，不带 `state` 键的子对象（如重试计数）不区分，这类子步骤会合并为一段。没有记录时返回空列表。
+
+待核对：记录条数有没有上限；按真实站点再看一次 `time` 的原始格式。
+
+### 3.2 固件清单（已验证，已实现）
 
 `GetComponentInventory {"machineIds":{"machineIds":[{"id":"<机器ID>"}]}}`。请求是多选一，也可传 `switchIds`、`powerShelfIds` 或各类 BMC MAC。
 
@@ -144,7 +148,8 @@ Core 的供电框没有插口，机柜 PDU 不在 Core 里。接口：`FindPower
 - 基线：`GetDesiredFirmwareVersions {}` 返回 `entries[]`（`vendor`、`model`、`componentVersions`）；`ListHostFirmware {}` 返回 `available[]`。验证站点上只有 DPU 的条目，没有主机的基线，所以主机固件只能展示版本，不能判断是否合规。
 - 不可用：`ListComponentFirmwareVersions` 对服务器返回 `Unimplemented`。
 - `GetComponentFirmwareStatus` 返回 `statuses[]`（`result.componentId`、`state`），含义未弄清。
-- 待核对：一次请求传多台机器是否可行；这个接口读的是缓存还是会访问 BMC。
+- 实现：接口 `/firmware` 返回 `vendor`、`endpoint_type`、`chassis.{model,part_number,manufacturer}`（取第一个有型号的机箱）、`lockdown`（`lockdownStatus.message`）、`secure_boot`（原样）、`entries[].{id,description,version,release_date}`，以及 `reported`、`note`、`observed_at`。版本为空的条目保留。没有报告时 `reported` 为 false，不报错。只在打开弹窗时对一台机器读取一次，列表不逐行读取。
+- 待核对：一次请求传多台机器是否可行；这个接口读的是缓存还是会访问 BMC；`secureBootStatus` 不为空时的字段。
 
 ### 3.3 发现诊断（已验证）
 

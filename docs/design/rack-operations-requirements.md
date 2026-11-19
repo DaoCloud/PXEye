@@ -145,11 +145,11 @@ It draws on the bare-metal lifecycle, device orchestration, network isolation, t
 - DPU OS, HBN, DPU firmware, DPU agent and configuration synchronisation.
 - No unauthorised firmware rollback; versions and operations are audited.
 
-**Implementation status: not started**
+**Implementation status: partial**
 
 | What NICo Core provides | PXEye today | Conclusion and next step | Pages |
 | --- | --- | --- | --- |
-| Per-machine firmware inventory, lockdown state, secure boot state (verified); update interfaces exist; the verification site has no host firmware baseline | Not shown | Firmware inventory is next. Compliance lacks a baseline. Updates not done | — |
+| Per-machine firmware inventory, lockdown state, secure boot state (verified); update interfaces exist; the verification site has no host firmware baseline | The server status dialog shows the actual firmware version of each component, the model, part number, lockdown and secure boot state | Inventory done. Difference detection and compliance lack a host firmware baseline. Bulk updates not done | Device management → Servers (status dialog) |
 
 ### 6.5 Operating system installation and boot
 
@@ -236,7 +236,7 @@ It draws on the bare-metal lifecycle, device orchestration, network isolation, t
 
 | What NICo Core provides | PXEye today | Conclusion and next step | Pages |
 | --- | --- | --- | --- |
-| Quarantine, maintenance marks, machine validation, SKU and decommission interfaces exist; at the verification site validation was skipped and there is no SKU | The status dialog shows quarantine and maintenance | Viewing partly done. Operations not done | Device management → Servers (status dialog) |
+| Quarantine, maintenance marks, machine validation, SKU and decommission interfaces exist; at the verification site validation was skipped and there is no SKU | The status dialog shows quarantine, maintenance and the state timeline (states passed through and time in each) | Viewing partly done; where a machine is held can be located. Operations not done | Device management → Servers (status dialog) |
 
 ## 7. Suggested core state model
 

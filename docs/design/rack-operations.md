@@ -39,20 +39,22 @@ Three pages sit under device management as second-level entries. They list the s
 
 | Page | Purpose | What the user can do | Verification |
 | --- | --- | --- | --- |
-| Servers | See which servers are not ready, at which step and why; check uplink switches; find devices without a declared rack | Filter by “needs attention” and rack, search; open the status dialog (state reason, health alerts, hardware capabilities, LLDP neighbours); go to the installation task, hardware details and address management; open the system settings to declare a rack | Verified with real data |
+| Servers | See which servers are not ready, at which step and why; check uplink switches; find devices without a declared rack | Filter by “needs attention” and rack, search; open the status dialog (state reason, health alerts, hardware capabilities, LLDP neighbours, state timeline, firmware inventory); go to the installation task, hardware details and address management; open the system settings to declare a rack | The list and the basic status content were verified with real data; the state timeline and firmware inventory follow the response structure recorded at a real site and were verified with authored sample data only |
 | Switches | View status, health, management ports and fabric manager state of NVLink switches Core manages | Same | Verified with authored sample data only. A general server site has no such device, and the page explains what it covers |
 | Power shelves | View status, health, capacity and voltage of power shelves Core manages | Same | Same |
 
 The pages start no write.
 
+After the server status dialog opens, it reads two more items, each showing loading, its result or its failure without affecting the rest of the dialog:
+
+| Content | Use | Notes |
+| --- | --- | --- |
+| State timeline | Which states a machine went through, how long it stayed in each, and where it is now | Consecutive identical states form one stay; the last runs to the time of reading |
+| Firmware inventory | Actual firmware versions per component, with model, part number, lockdown and secure boot state | Versions are shown, not judged compliant (there is no host firmware baseline); the list does not read them per row |
+
 ### 4.2 Next
 
-Real data exists at the verification site. Both belong in the server status dialog rather than on a new page.
-
-| Content | Use |
-| --- | --- |
-| Machine state timeline | Which states a machine went through and how long it stayed in each |
-| Firmware inventory | Actual firmware versions per component, to find mismatches before installing |
+Nothing is decided. A candidate from 4.3 is listed here once chosen.
 
 ### 4.3 Candidates
 
@@ -78,7 +80,7 @@ General rules are in [interaction rules](interaction-rules.md). This work adds:
 
 1. Read-only first.
 2. Installation and device discovery are not changed; new features live in new files and shared files only gain registrations.
-3. With the switch off, navigation and API are as before.
+2. With the switch off, navigation and API are as before.
 4. The device list is the one device management uses, joined by Core object identifiers; no second set of device data.
 5. Details, addresses and rack declaration open the existing dialogs.
 6. Only show what has data.
@@ -103,15 +105,14 @@ Core offers power, maintenance, quarantine, firmware, validation and decommissio
 ## 8. Awaiting confirmation
 
 1. Whether the target site is a general server site or a whole-rack site. This decides whether the switch page, the power shelf page and rack features are meaningful.
-2. Whether to start the state timeline and the firmware inventory.
-3. Which candidates to build.
-4. Whether to build operations, and the rules in section 6.
+2. Which candidates to build.
+3. Whether to build operations, and the rules in section 6.
 
 ## 9. Stages
 
 | Stage | Content | Status |
 | --- | --- | --- |
 | 1 | Read-only observer instance; server, switch and power shelf pages | Done |
-| 2 | State timeline, firmware inventory | Awaiting confirmation |
+| 2 | State timeline, firmware inventory | Done; to be checked at a real site |
 | 3 | Verify switch, power shelf and rack fields at a site that has them; decide the candidates | Awaiting a site |
 | 4 | Operations | After section 6 is settled |

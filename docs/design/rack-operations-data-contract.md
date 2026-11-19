@@ -44,7 +44,7 @@ A read-only observer admits only `Find`, `Get` and `Determine` at the applicatio
 
 ## 2. Implemented pages
 
-Backend `services/device_status.py`, endpoint `GET /api/device-status`; frontend `web/pages/device_status.js`; tests `tests/unit/test_device_status.py`.
+Backend `services/device_status.py`, endpoints `GET /api/device-status` and, per machine, `GET /api/device-status/machines/<machine ID>/history` and `…/firmware` (machine IDs must match `[a-z0-9]{1,128}`; any other path returns 404); frontend `web/pages/device_status.js`; tests `tests/unit/test_device_status.py`.
 
 The device list comes from the existing `GET /api/equipment`. Status is joined to a device as follows:
 
@@ -108,7 +108,7 @@ A Core power shelf has no outlets, and rack PDUs are not in Core. Interface: `Fi
 
 ## 3. Interfaces for candidate pages
 
-### 3.1 Machine state timeline (verified)
+### 3.1 Machine state timeline (verified, implemented)
 
 `FindMachineStateHistories {"machineIds":[{"id":"<machine ID>"}]}`
 
@@ -120,9 +120,13 @@ A Core power shelf has no outlets, and rack PDUs are not in Core. Interface: `Fi
 ]}}}
 ```
 
-`event` is JSON text with nested `state` values. The time spent in a state is the difference between consecutive `time` values; the last record runs to now. Switches, power shelves and racks have matching `Find…StateHistories` interfaces, definition only. To verify: whether the number of records is capped.
+`event` is JSON text with nested `state` values. The time spent in a state is the difference between consecutive `time` values; the last record runs to now. Switches, power shelves and racks have matching `Find…StateHistories` interfaces, definition only.
 
-### 3.2 Firmware inventory (verified)
+Implementation: `/history` returns `{observed_at, records:[{state, entered_at, duration_seconds, current}]}`. Records are ordered by `time`, and consecutive identical state texts become one stay that keeps the first entry time. `time` is parsed as RFC 3339 and may carry more than six fraction digits; unreadable records are skipped. `state_text()` follows `state` keys only, so sub-objects without one (such as retry counts) are not told apart and those sub-steps merge into one stay. No history returns an empty list.
+
+To verify: whether the number of records is capped; the raw `time` format, once more on a real site.
+
+### 3.2 Firmware inventory (verified, implemented)
 
 `GetComponentInventory {"machineIds":{"machineIds":[{"id":"<machine ID>"}]}}`. The request is a one-of; `switchIds`, `powerShelfIds` or BMC MAC lists are also accepted.
 
@@ -144,7 +148,8 @@ A Core power shelf has no outlets, and rack PDUs are not in Core. Interface: `Fi
 - Baseline: `GetDesiredFirmwareVersions {}` returns `entries[]` (`vendor`, `model`, `componentVersions`); `ListHostFirmware {}` returns `available[]`. The verification site had entries for DPUs only and no host baseline, so host firmware can be shown but not judged compliant.
 - Unavailable: `ListComponentFirmwareVersions` returns `Unimplemented` for servers.
 - `GetComponentFirmwareStatus` returns `statuses[]` (`result.componentId`, `state`); its meaning is not yet understood.
-- To verify: whether one request can carry many machines; whether this interface reads a cache or reaches the BMC.
+- Implementation: `/firmware` returns `vendor`, `endpoint_type`, `chassis.{model,part_number,manufacturer}` (the first chassis with a model), `lockdown` (`lockdownStatus.message`), `secure_boot` (as given), `entries[].{id,description,version,release_date}`, and `reported`, `note`, `observed_at`. Entries with an empty version are kept. Without a report, `reported` is false and no error is raised. It is read once per machine when the dialog opens; the list does not read it per row.
+- To verify: whether one request can carry many machines; whether this interface reads a cache or reaches the BMC; the fields of a non-empty `secureBootStatus`.
 
 ### 3.3 Discovery diagnostics (verified)
 
