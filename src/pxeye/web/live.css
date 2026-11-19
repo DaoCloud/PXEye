@@ -2290,7 +2290,7 @@ body.read-only .topbar::after {
 .nav-item[data-page="switches"],
 .nav-item[data-page="power_shelves"] {
   position: relative;
-  width: auto;
+  width: calc(100% - 20px);
   margin: 1px 0 1px 20px;
   padding: 8px 12px 8px 16px;
   font-size: 12.5px;

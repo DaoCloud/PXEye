@@ -31,7 +31,7 @@ const inventoryHealth = {
 };
 state.deviceInsights = null;
 state.inventoryEnabled = false;
-state.inventoryFilters = { rack: "", health: "", search: "" };
+state.inventoryFilters = { rack: "", status: "", search: "" };
 sectionReads.deviceInsights = async () => {
   state.deviceInsights = await api("/api/device-insights");
 };
@@ -83,33 +83,65 @@ function inventoryHealthBadge(insight) {
     count = insight.health.alerts.length;
   return badge(count ? `${label} · ${count}` : label, tone);
 }
+const inventoryAlerting = (insight) =>
+  ["warning", "alert", "critical"].includes(insight?.health.level);
+// Core's own signals, not a reading of its state vocabulary: the last handler
+// run failed, the state outlived its time limit, or a health probe is alerting.
+const inventoryAttention = (insight) =>
+  !!insight &&
+  (insight.lifecycle.outcome === "error" ||
+    insight.lifecycle.above_sla ||
+    inventoryAlerting(insight));
 function inventoryPlacement(d, insight) {
+  const rack = d.rack_id || insight?.rack_id;
+  if (!rack)
+    // The rack is declared, not discovered; the existing editors own that field.
+    return d.kind === "server"
+      ? `<button class="link-button" data-live="device-edit" ${eqAttr(d.legacy_id)}>填写机柜</button>`
+      : `<button class="link-button" data-live="eq-edit" ${eqAttr(d.id)}>填写机柜</button>`;
   const place = insight?.placement || {},
     parts = [
       place.slot != null ? `槽位 ${place.slot}` : "",
       place.tray != null ? `托盘 ${place.tray}` : "",
     ].filter(Boolean);
   return (
-    esc(d.rack_id || insight?.rack_id || "—") +
+    esc(rack) +
     (parts.length
       ? `<span class="live-small">${esc(parts.join(" · "))}</span>`
       : "")
   );
 }
+function inventoryUplinks(insight) {
+  const ports = {};
+  for (const n of insight?.lldp || []) {
+    const name = n.switch || n.switch_id;
+    if (name) ports[name] = (ports[name] || 0) + 1;
+  }
+  return Object.keys(ports).length
+    ? Object.entries(ports)
+        .map(
+          ([name, count]) =>
+            `${esc(name)}<span class="live-small">${count} 个接口</span>`,
+        )
+        .join("")
+    : "—";
+}
 function inventoryMatches(page, d, insight) {
-  const f = state.inventoryFilters,
-    level = insight ? insight.health.level : "unknown";
+  const f = state.inventoryFilters;
   return (
-    (!f.rack || d.rack_id === f.rack) &&
-    (!f.health ||
-      (f.health === "alerting"
-        ? ["warning", "alert", "critical"].includes(level)
-        : level === f.health)) &&
+    (!f.rack || (f.rack === "-" ? !d.rack_id : d.rack_id === f.rack)) &&
+    (!f.status ||
+      (f.status === "attention"
+        ? inventoryAttention(insight)
+        : f.status === "alerting"
+          ? inventoryAlerting(insight)
+          : !insight)) /* absent */ &&
     (!f.search ||
       [
         d.serial,
         d.name,
         insight?.lifecycle.state,
+        ...(insight?.lldp || []).map((n) => n.switch),
         ...d.ports.flatMap((p) => [
           p.mac_address,
           p.target_ip,
@@ -133,6 +165,7 @@ function inventoryFabricManager(fm) {
 function inventoryColumns(page) {
   if (page.kind === "server")
     return [
+      ["上联交换机", (d, i) => inventoryUplinks(i)],
       ["SKU", (d, i) => esc(i?.sku.id || "—")],
       [
         "BMC 固件",
@@ -216,29 +249,45 @@ function inventoryPage(name) {
       .map((d) => [d, inventoryInsight(page, d)]),
     visible = all.filter(([d, i]) => inventoryMatches(page, d, i)),
     f = state.inventoryFilters,
-    alerting = all.filter(([, i]) =>
-      ["warning", "alert", "critical"].includes(i?.health.level),
-    ).length;
-  body += `<div class="summary-strip inventory-summary"><div><small>设备总数</small><strong>${all.length}</strong></div><div><small>NICo 已建立对象</small><strong>${all.filter(([, i]) => i).length}</strong></div><div><small>健康告警</small><strong>${alerting}</strong></div><div><small>超出状态时限</small><strong>${all.filter(([, i]) => i?.lifecycle.above_sla).length}</strong></div></div>`;
-  body += `<div class="equipment-device-filters">${selectField("inv-filter-rack", "机柜", [["", "全部机柜"], ...[...new Set(all.map(([d]) => d.rack_id).filter(Boolean))].map((id) => [id, id])], f.rack)}${selectField(
-    "inv-filter-health",
-    "健康",
+    unracked = all.filter(([d]) => !d.rack_id).length;
+  if (!all.length && page.kind !== "server")
+    return (
+      body +
+      `<div class="live-note">${
+        page.kind === "switch"
+          ? "NICo 中没有 NVLink 交换机。此页面只显示由 NICo 纳管的 NVLink 交换机；通用以太网交换机不由 NICo 管理，可在服务器的运行状态中查看其 LLDP 邻居。"
+          : "NICo 中没有供电框。此页面只显示由 NICo 纳管的供电框；机柜 PDU 不由 NICo 管理。"
+      }在设备管理中纳管后，设备会出现在这里。</div>`
+    );
+  body += `<div class="summary-strip inventory-summary"><div><small>设备总数</small><strong>${all.length}</strong></div><div><small>NICo 已建立对象</small><strong>${all.filter(([, i]) => i).length}</strong></div><div><small>需要处理</small><strong>${all.filter(([, i]) => inventoryAttention(i)).length}</strong></div><div><small>未填写机柜</small><strong>${unracked}</strong></div></div>`;
+  if (unracked)
+    body += `<div class="live-note live-warning">${unracked} 台设备未填写机柜，不会出现在机柜拓扑的机柜分组里。机柜由人工声明，NICo 不会自动发现；在“机柜 / 位置”列点击“填写机柜”。</div>`;
+  body += `<div class="equipment-device-filters">${selectField("inv-filter-rack", "机柜", [["", "全部机柜"], ...(unracked ? [["-", "未填写机柜"]] : []), ...[...new Set(all.map(([d]) => d.rack_id).filter(Boolean))].map((id) => [id, id])], f.rack)}${selectField(
+    "inv-filter-status",
+    "状态",
     [
       ["", "全部"],
-      ["alerting", "有告警"],
-      ["ok", "正常"],
-      ["unknown", "未报告"],
+      ["attention", "需要处理"],
+      ["alerting", "有健康告警"],
+      ["absent", "NICo 未建立对象"],
     ],
-    f.health,
-  )}${inputField("inv-filter-search", "搜索 SN、名称、状态、MAC 或 IP", f.search)}</div>`;
-  const columns = inventoryColumns(page);
+    f.status,
+  )}${inputField("inv-filter-search", "搜索 SN、名称、状态、交换机、MAC 或 IP", f.search)}</div>`;
+  // A column no device has a value for says nothing; leave it out.
+  const columns = inventoryColumns(page).filter(([, cell]) =>
+    all.some(([d, i]) => cell(d, i) !== "—"),
+  );
   const rows = visible.map(([d, i]) => {
     const native = state.resources?.devices.find((x) => x.serial === d.serial),
+      task =
+        page.kind === "server"
+          ? state.tasks.find((t) => t.device === d.serial)
+          : null,
       open =
         page.kind === "server"
           ? `data-live="device-detail" data-serial="${esc(d.serial)}"`
           : `data-live="eq-detail" ${eqAttr(d.id)}`;
-    return `<tr><td><button class="link-button" ${open}>${esc(d.name || d.serial || d.id)}</button><span class="live-small">${esc(d.serial)}</span></td><td>${inventoryPlacement(d, i)}</td><td>${equipmentBmcAddresses(d, native)}</td><td>${inventoryLifecycle(i, d)}</td><td>${inventoryHealthBadge(i)}</td><td>${equipmentOnline(d)}</td>${columns.map(([, cell]) => `<td>${cell(d, i)}</td>`).join("")}<td><div class="device-row-actions">${button("运行状态", "inv-status", false, `${eqAttr(d.id)} data-inventory="${esc(name)}"`)}${button("地址管理", "address-device", false, eqAttr(d.id))}</div></td></tr>`;
+    return `<tr><td><button class="link-button" ${open}>${esc(d.name || d.serial || d.id)}</button><span class="live-small">${esc(d.serial)}</span></td><td>${inventoryPlacement(d, i)}</td><td>${equipmentBmcAddresses(d, native)}</td><td>${inventoryLifecycle(i, d)}</td><td>${inventoryHealthBadge(i)}</td><td>${equipmentOnline(d)}</td>${columns.map(([, cell]) => `<td>${cell(d, i)}</td>`).join("")}<td><div class="device-row-actions">${button("运行状态", "inv-status", false, `${eqAttr(d.id)} data-inventory="${esc(name)}"`)}${task ? `<button class="button" data-task="${esc(task.id)}">安装任务</button>` : ""}${button("地址管理", "address-device", false, eqAttr(d.id))}</div></td></tr>`;
   });
   return (
     body +
@@ -255,7 +304,7 @@ function inventoryPage(name) {
       ],
       rows,
     ) +
-    `<p class="live-small">运行状态由 NICo 状态机回报，读取于 ${esc(when(insights.observed_at))}。设备的纳管、地址和安装规划在设备管理中维护。</p>`
+    `<p class="live-small">运行状态由 NICo 状态机回报，读取于 ${esc(when(insights.observed_at))}。“需要处理”指状态机最近一次处理失败、超出状态时限或有健康告警。设备的纳管、地址和安装规划在设备管理中维护。</p>`
   );
 }
 function inventoryStatus(name, id) {
@@ -434,7 +483,7 @@ registerHook("readiness", (readiness) => {
 });
 window.addEventListener("hashchange", () => {
   if (state.inventoryEnabled && inventoryPages[location.hash.slice(1)]) {
-    state.inventoryFilters = { rack: "", health: "", search: "" };
+    state.inventoryFilters = { rack: "", status: "", search: "" };
     inventoryReload();
   }
 });
