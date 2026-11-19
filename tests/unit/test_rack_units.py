@@ -1,5 +1,8 @@
 """Rack unit positions: strict import, revision check, comparison and the site switch."""
 
+import json
+import shutil
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -9,6 +12,18 @@ from pxeye.api.commands import CommandRoutes
 from pxeye.api.queries import QueryRoutes
 from pxeye.persistence.store import Store
 from pxeye.services import rack_units
+
+TOPOLOGY = Path(__file__).resolve().parents[2] / "src/pxeye/web/pages/topology.js"
+HARNESS = r"""
+const vm = require("vm");
+const fs = require("fs");
+const noop = () => {};
+const ctx = { state: {}, registerPage: noop, registerActions: noop, registerHook: noop, observeUI: noop,
+  window: { addEventListener: noop }, esc: String };
+vm.createContext(ctx);
+vm.runInContext(fs.readFileSync(process.argv[1], "utf8"), ctx);
+process.stdout.write(JSON.stringify(vm.runInContext(process.argv[2], ctx)));
+"""
 
 DEVICES = [
     {"serial": "SN-A", "rack_id": "RACK-1", "kind": "server"},
@@ -101,6 +116,27 @@ class ParseTests(unittest.TestCase):
             ],
         )
         self.assertTrue(all(e["message"] for e in errors))
+
+    def test_blank_rack_rows_do_not_overlap(self):
+        self.assertEqual(len(rack_units.parse("serial,rack,unit\nSN-A,,5\nSN-B,,5\n")), 2)
+
+    def test_topology_keeps_manual_order_while_editing(self):
+        node = shutil.which("node")
+        if not node:
+            raise unittest.SkipTest("node is not installed")
+        expr = (
+            "state.rackOperations = true;"
+            "state.rackUnits = {positions: [{serial: 'A', unit: 1, height: 1},"
+            " {serial: 'B', unit: 9, height: 1}]};"
+            "const rows = [{kind: 'server', serial: 'A'}, {kind: 'server', serial: 'B'}];"
+            "const sorted = topologyByUnit(rows).map((r) => r.serial);"
+            "state.topologyEditing = true;"
+            "[sorted, topologyByUnit(rows).map((r) => r.serial)]"
+        )
+        out = subprocess.run(
+            [node, "-e", HARNESS, str(TOPOLOGY), expr], capture_output=True, text=True, check=True
+        )
+        self.assertEqual(json.loads(out.stdout), [["B", "A"], ["A", "B"]])
 
     def test_row_limit(self):
         text = "serial,rack,unit\n" + "".join(f"S{i},R{i},1\n" for i in range(2001))

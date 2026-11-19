@@ -87,7 +87,8 @@ def parse(text):
     for i, a in enumerate(positions):
         for j, b in enumerate(positions[:i]):
             if (
-                a["rack"] == b["rack"]
+                a["rack"]
+                and a["rack"] == b["rack"]
                 and a["unit"] <= b["unit"] + b["height"] - 1
                 and b["unit"] <= a["unit"] + a["height"] - 1
             ):

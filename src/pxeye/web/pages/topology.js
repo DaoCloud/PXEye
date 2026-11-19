@@ -131,8 +131,10 @@ function topologyOrdered(rackId, zone, rows) {
     .map((item) => item.row);
 }
 // When every server in the section has a recorded U, show it top of rack first;
-// otherwise keep the automatic or manual order unchanged.
+// otherwise keep the automatic or manual order unchanged. While the manual
+// layout is being edited, the saved order is shown so dragging stays visible.
 function topologyByUnit(rows) {
+  if (state.topologyEditing) return rows;
   const units = rows.map(topologyUnit);
   if (!rows.length || units.some((u) => !u)) return rows;
   return rows
