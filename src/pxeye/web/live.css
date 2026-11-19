@@ -2285,6 +2285,17 @@ body.read-only .topbar::after {
   }
 }
 
+/* 发现诊断: Core's error texts and mitigations are sentences; let them wrap. */
+.exploration-table .live-table {
+  white-space: normal;
+}
+.exploration-table .live-table td:nth-child(-n + 4) {
+  white-space: nowrap;
+}
+.exploration-table .live-table td:nth-child(n + 5) {
+  min-width: 240px;
+}
+
 /* The rack operations pages are children of 设备管理: indented, lighter, on a guide line. */
 .nav-item[data-page="servers"],
 .nav-item[data-page="switches"],
