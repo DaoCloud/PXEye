@@ -2261,3 +2261,16 @@
   display: flex;
   justify-content: flex-end;
 }
+
+/* Read-only observer instance: always visible, so it is never mistaken for the operating console. */
+body.read-only .topbar::after {
+  content: "只读观察实例 · 不执行写操作";
+  margin-left: auto;
+  padding: 3px 12px;
+  border-radius: 999px;
+  background: #fdf3e3;
+  color: #b45309;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}

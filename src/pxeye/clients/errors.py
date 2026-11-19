@@ -25,3 +25,9 @@ class RPCMethodUnavailableError(RuntimeError):
     """The server does not expose a requested optional RPC contract."""
 
     request_not_sent = True
+
+
+class ReadOnlyModeError(RuntimeError):
+    """A read-only observer instance refused a write before sending anything."""
+
+    request_not_sent = True

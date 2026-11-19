@@ -223,6 +223,10 @@ async function load() {
   $("#operator").textContent = "站点操作员 · 已登录";
   state.readiness = await api("/api/readiness");
   $("#site-label").textContent = state.readiness.site_name;
+  document.body.classList.toggle(
+    "read-only",
+    state.readiness.read_only === true,
+  );
   if (!state.readiness.business_available) {
     if (state.page !== "site") state.page = "nico";
     location.hash = state.page;

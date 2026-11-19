@@ -12,7 +12,7 @@ from urllib.parse import urlsplit
 from pxeye.api.queries import QueryRoutes
 from pxeye.api.commands import CommandRoutes
 from pxeye.api.errors import failure
-from pxeye import __version__
+from pxeye import __version__, read_only
 
 
 class Handler(QueryRoutes, CommandRoutes, BaseHTTPRequestHandler):
@@ -93,6 +93,8 @@ class Handler(QueryRoutes, CommandRoutes, BaseHTTPRequestHandler):
         self.request_id = uuid.uuid4().hex
         try:
             path = urlsplit(self.path).path
+            if not read_only.command_allowed(self.app.config, path):
+                return self.respond(403, {"error": read_only.MESSAGE, "code": "READ_ONLY"})
             if path != "/api/installer-events" and not self.same_origin():
                 return self.respond(403, {"error": "请求来源不匹配。"})
             length = int(self.headers.get("Content-Length", "0"))
@@ -178,6 +180,8 @@ class Handler(QueryRoutes, CommandRoutes, BaseHTTPRequestHandler):
             match = __import__("re").fullmatch(
                 r"/api/operating-systems/([a-f0-9-]{36})/content", path.path
             )
+            if not read_only.command_allowed(self.app.config, path.path):
+                return self.respond(403, {"error": read_only.MESSAGE, "code": "READ_ONLY"})
             if not self.same_origin():
                 return self.respond(403, {"error": "请求来源不匹配。"})
             session = self.session()

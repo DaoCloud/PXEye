@@ -27,6 +27,7 @@ helm upgrade --install pxeye ./charts/pxeye \
 | `storageClass` | 空 | 使用集群默认 StorageClass |
 | `dataStorage` / `materialsStorage` | `2Gi` / `50Gi` | 共享存储 PVC 容量 |
 | `service.type` / `service.port` / `service.nodePort` | `NodePort` / `80` / `31808` | 服务访问方式 |
+| `readOnly` | `false` | 只读观察实例：连接已由另一个 PXEye 操作的 Core 的第二个控制台。除登录外拒绝所有命令，对 Core 和 BMC 只发送读取请求 |
 | `auth.existingSecret` | 空 | 复用含 `auth.json` 的已有 Secret；为空时首次生成密码，升级时保留原认证信息 |
 | `nico.enabled` | `true` | 启用控制台中的 NICo 部署配置 |
 | `nico.allowClusterResources` | `false` | 创建操作 CRD、ClusterRole 等资源所需的集群级权限 |

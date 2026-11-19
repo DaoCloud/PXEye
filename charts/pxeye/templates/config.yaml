@@ -6,6 +6,7 @@
 {{- $siteBootstrap := dict "enabled" (default false $bootstrap.enabled) "site_name" (default "PXEye" $bootstrap.siteName) "core_url" (default "" $bootstrap.coreUrl) "connection" $connection }}
 {{- $siteConfig := dict "site" (dict "name" (default "PXEye" $bootstrap.siteName) "namespace" .Release.Namespace "deployment" .Release.Name) "core_url" "" "nico_deployment" (dict "enabled" .Values.nico.enabled "namespace" .Release.Namespace "allow_cluster_resources" .Values.nico.allowClusterResources "bundles_directory" "/nico-bundles") "site_bootstrap" $siteBootstrap "site_boot_network" (dict "namespace" (default .Release.Namespace $bootNetwork.namespace)) }}
 {{- $_ := set $siteConfig "os_library" (dict "directory" "/materials" "sources" (list (dict "id" "onsite" "name" "Server ISO directory" "directory" "/iso-sources"))) }}
+{{- if .Values.readOnly }}{{- $_ := set $siteConfig "read_only" true }}{{- end }}
 {{- $creds := default (dict) .Values.siteCredentials }}
 {{- if and (or $creds.newSite $creds.existingSecret) (not $bootstrap.coreUrl) }}{{ fail "Set siteBootstrap.coreUrl to bind credential initialization to the intended Core" }}{{ end }}
 {{- $_ := set $siteConfig "site_credentials" (dict "new_site" (default false $creds.newSite) "use_secret" (not (empty $creds.existingSecret)) "target" (default "" $bootstrap.coreUrl)) }}

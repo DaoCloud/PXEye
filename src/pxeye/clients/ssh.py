@@ -2,10 +2,12 @@
 
 from pathlib import Path
 from pxeye.clients.process import run
+from pxeye import read_only
 
 
 class SSHClient:
     def ssh(self, device, script, *, known=None, timeout=45):
+        read_only.require_no_ssh(self.config)
         known = Path(known) if known else self.secrets / "known_hosts"
         argv = [
             "ssh",

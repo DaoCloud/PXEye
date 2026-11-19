@@ -8,6 +8,7 @@ import time
 import urllib.request
 from contextvars import ContextVar
 from pxeye.clients.errors import RedfishRequestError
+from pxeye import read_only
 
 REDFISH_DEADLINE = ContextVar("redfish_deadline", default=None)
 
@@ -19,6 +20,7 @@ class RedfishClient:
     def redfish_request(self, ip, path, credential, *, method="GET", body=None):
         import ipaddress
 
+        read_only.require_redfish(self.config, method)
         ipaddress.IPv4Address(ip)
         if not isinstance(path, str) or not re.fullmatch(r"/redfish/v1(?:/[A-Za-z0-9_.-]+)+", path):
             raise ValueError("BMC 返回了无效的 Redfish 路径。")

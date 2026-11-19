@@ -28,6 +28,7 @@ For a source-tree deployment, first use the offline builder to download and vend
 | `sharedStorage.size` / `sharedStorage.accessMode` | `200Gi` / `ReadWriteOnce` | Shared PVC capacity and access mode |
 | `sharedStorage.existingClaim` | empty | Reuse an existing PVC instead of creating one |
 | `service.type` / `service.port` / `service.nodePort` | `NodePort` / `80` / `31808` | Service access |
+| `readOnly` | `false` | Read-only observer: a second console on a Core that another PXEye operates. It rejects every command except sign-in and sends only reads to Core and BMCs |
 | `auth.existingSecret` | Empty | Reuse a Secret containing `auth.json`; otherwise generate credentials on first install and retain them on upgrade |
 | `nico.enabled` | `true` | Enable console NICo deployment configuration |
 | `nico.allowClusterResources` | `false` | Create cluster permissions for CRDs, ClusterRoles and related resources |

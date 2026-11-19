@@ -7,6 +7,7 @@ import ssl
 import time
 from pxeye.clients.process import run
 from pxeye.clients.errors import CoreConnectionError
+from pxeye import read_only
 
 
 class CoreClient:
@@ -92,6 +93,7 @@ class CoreClient:
             )
 
     def core(self, args, *, data=False):
+        read_only.require_cli(self.config, args)
         self.check_core_certificate()
         base = [
             self.config.get("cli", "/usr/local/bin/nico-admin-cli"),
@@ -115,6 +117,7 @@ class CoreClient:
         return json.loads(output) if data else output
 
     def rpc(self, method, body):
+        read_only.require_rpc(self.config, method)
         self.check_core_certificate()
         limit = 4 if method in ("GetSiteCredentialReadiness", "GetSiteExplorerLastRun") else 45
         endpoint = self.config["core_url"].removeprefix("https://")

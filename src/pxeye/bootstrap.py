@@ -13,6 +13,7 @@ import uuid
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from pxeye import read_only
 from pxeye.services.execution import Adapter
 from pxeye.installation.executor import Executor
 from pxeye.services.tasks import TaskCoordinator
@@ -157,6 +158,7 @@ class Application:
             "site_name": self.config["site"]["name"],
             "deployment_enabled": bool(self.config.get("nico_deployment", {}).get("enabled")),
             "site_bootstrap": getattr(self, "site_bootstrap_state", {}),
+            "read_only": read_only.enabled(self.config),
             "reason": "请先部署 NICo 并应用到站点，或在站点设置中连接已有 Core。",
         }
 

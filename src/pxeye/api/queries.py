@@ -16,6 +16,7 @@ class QueryRoutes:
                 {
                     "status": "ok",
                     "mode": "live",
+                    "read_only": readiness["read_only"],
                     "version": __version__,
                     "core": {
                         "configured": readiness["core_configured"],

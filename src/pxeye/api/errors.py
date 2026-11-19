@@ -6,14 +6,21 @@ import time
 import traceback
 import uuid
 from pathlib import Path
-from pxeye.clients.errors import CoreConnectionError, RedfishRequestError, RPCRequestError
+from pxeye.clients.errors import (
+    CoreConnectionError,
+    ReadOnlyModeError,
+    RedfishRequestError,
+    RPCRequestError,
+)
 from pxeye.services.resources import ImportReadbackError
 
 
 def failure(error, *, method, path, request_id=None):
     request_id = request_id or uuid.uuid4().hex
     name = type(error).__name__
-    if isinstance(error, CoreConnectionError):
+    if isinstance(error, ReadOnlyModeError):
+        status, code, message = 403, "READ_ONLY", str(error)
+    elif isinstance(error, CoreConnectionError):
         status, code, message = 502, error.code, str(error)
     elif isinstance(error, RPCRequestError):
         status, code, message = 502, "RPC_REQUEST_INVALID", str(error)

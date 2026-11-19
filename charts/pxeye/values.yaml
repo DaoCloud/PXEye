@@ -6,6 +6,9 @@ sharedStorage:
   size: 200Gi
   accessMode: ReadWriteOnce
   existingClaim: ''
+# Read-only observer: a second console on a Core that another PXEye operates.
+# It rejects every command except sign-in and sends only reads to Core and BMCs.
+readOnly: false
 service:
   type: NodePort
   port: 80
