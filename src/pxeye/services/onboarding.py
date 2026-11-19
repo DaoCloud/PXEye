@@ -90,6 +90,8 @@ def scout_boot_guard(override):
 
 def preparation_message(progress):
     state = str(progress.get("state") or "")
+    if state == "HostInitializing/WaitingForDiscovery" and not progress.get("scout_received"):
+        return "NICo 已创建 Machine，正在等待 Scout 硬件回报；启动重试由 NICo 管理。"
     if state.startswith("WaitingForCleanup/HostCleanup"):
         return (
             "等待 Scout 执行 NICo 接入清理并回报完成；尚未下发 ISO 安装。"

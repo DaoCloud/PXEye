@@ -1661,10 +1661,10 @@ class Executor:
             # A new task may start after a prior admission was cancelled while
             # its Machine still exists. Declare policy without replaying ingestion.
             self.boot_transport.prepare(task, "DISCOVERY", row=row)
-        deadline = time.monotonic() + self.adapter.config.get("discovery_timeout_seconds", 900)
-        task["preparation_deadline"] = time.time() + self.adapter.config.get(
-            "discovery_timeout_seconds", 900
-        )
+        preparation_timeout = self.adapter.config.get("discovery_timeout_seconds", 900)
+        deadline = time.monotonic() + preparation_timeout
+        task["preparation_deadline"] = time.time() + preparation_timeout
+        discovery_window_started = False
         last_progress = None
         next_guard_check = time.monotonic() + 30
         while time.monotonic() < deadline:
@@ -1690,6 +1690,20 @@ class Executor:
                 "scout_received": task["device"] in serials,
                 "failure_details": observed.get("failure_details"),
             }
+            if (
+                not discovery_window_started
+                and progress["machine_id"]
+                and progress["state"] == "HostInitializing/WaitingForDiscovery"
+                and not progress["scout_received"]
+                and not progress["failure_details"]
+            ):
+                discovery_window_started = True
+                window = self.adapter.config.get(
+                    "scout_discovery_wait_seconds", 90 * 60 + preparation_timeout
+                )
+                now = time.monotonic()
+                deadline = max(deadline, now + window)
+                task["preparation_deadline"] = time.time() + (deadline - now)
             if progress != last_progress:
                 task["preparation_observation"] = progress
                 self.event(task, "prepare", preparation_message(progress), observation=progress)
@@ -1731,6 +1745,11 @@ class Executor:
                 return
             time.sleep(5)
         state = (last_progress or {}).get("state") or "尚未创建 Machine"
+        if state == "HostInitializing/WaitingForDiscovery" and not last_progress["scout_received"]:
+            raise TimeoutError(
+                "Machine 已创建，但仍未收到 Scout 身份。请从启动网核对 DHCP 返回的 EFI 下载地址、"
+                "iPXE 脚本和 Scout 到 Core 的连接；修复后在原任务继续准备。"
+            )
         raise TimeoutError(
             "设备准备超时："
             + state
