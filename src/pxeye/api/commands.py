@@ -35,6 +35,10 @@ class CommandRoutes:
         if path == "/api/topology-layout":
             layout = normalize_topology_layout(self.app, body)
             return self.respond(200, self.app.store.save_topology_layout(layout))
+        if path == "/api/rack-units" and self.app.config.get("rack_operations") is True:
+            from pxeye.services import rack_units
+
+            return self.respond(*rack_units.save(self.app, body))
         if path.startswith("/api/equipment-planning/"):
             from pxeye.services.equipment_planning import EquipmentPlanning
             from pxeye.services.interface_planning import InterfacePlanning

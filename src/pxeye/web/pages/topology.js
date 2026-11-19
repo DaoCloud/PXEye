@@ -82,7 +82,17 @@ function topologyPower(device) {
   if (value === "off" || value === "1") return ["off", "关机"];
   return ["unknown", "电源状态未知"];
 }
+// Recorded U positions (rack operations only; never read with the switch off).
+function topologyUnit(device) {
+  if (!state.rackOperations || device.kind !== "server") return null;
+  return (
+    (state.rackUnits?.positions || []).find(
+      (p) => p.serial === device.serial,
+    ) || null
+  );
+}
 function topologyDevice(device) {
+  const unit = topologyUnit(device);
   const dpus = device.ports.filter((p) => p.role?.startsWith("dpu_"));
   const bmc = device.ports.find((p) =>
     ["host_bmc", "switch_bmc", "dpu_bmc", "pmc"].includes(p.role),
@@ -96,7 +106,7 @@ function topologyDevice(device) {
       : "";
   return `<button class="topology-device topology-${esc(device.kind)}" data-topology-device="${esc(device.id)}" type="button" draggable="${state.topologyEditing ? "true" : "false"}">
    <span class="topology-device-icon">${topologyIcon(device.kind)}</span>
-   <span class="topology-device-main"><strong>${esc(device.serial || device.name || topologyKinds[device.kind] || "设备")}</strong><span class="topology-device-facts"><small><i>BMC 地址</i><b>${esc(topologyPortAddress(bmc))}</b></small><small><i>管理地址</i><b>${esc(topologyPortAddress(management))}</b></small></span></span>
+   <span class="topology-device-main"><strong>${esc(device.serial || device.name || topologyKinds[device.kind] || "设备")}</strong>${unit ? `<small class="topology-device-unit">${esc(unit.height > 1 ? `U${unit.unit}–U${unit.unit + unit.height - 1}` : `U${unit.unit}`)}</small>` : ""}<span class="topology-device-facts"><small><i>BMC 地址</i><b>${esc(topologyPortAddress(bmc))}</b></small><small><i>管理地址</i><b>${esc(topologyPortAddress(management))}</b></small></span></span>
    ${dpus.length ? `<span class="topology-dpu-count">${topologyIcon("dpu")} ${dpus.length} DPU</span>` : ""}
    <span class="topology-power ${powerClass}" title="${esc(powerLabel + powerTime)}" aria-label="${esc(powerLabel)}"></span>
  </button>`;
@@ -120,16 +130,30 @@ function topologyOrdered(rackId, zone, rows) {
     )
     .map((item) => item.row);
 }
+// When every server in the section has a recorded U, show it top of rack first;
+// otherwise keep the automatic or manual order unchanged. While the manual
+// layout is being edited, the saved order is shown so dragging stays visible.
+function topologyByUnit(rows) {
+  if (state.topologyEditing) return rows;
+  const units = rows.map(topologyUnit);
+  if (!rows.length || units.some((u) => !u)) return rows;
+  return rows
+    .map((row, index) => ({ row, unit: units[index].unit }))
+    .sort((a, b) => b.unit - a.unit)
+    .map((item) => item.row);
+}
 function topologyRack(rackId, devices) {
   const switches = topologyOrdered(
       rackId,
       "network",
       devices.filter((d) => d.kind === "switch"),
     ),
-    servers = topologyOrdered(
-      rackId,
-      "compute",
-      devices.filter((d) => d.kind === "server"),
+    servers = topologyByUnit(
+      topologyOrdered(
+        rackId,
+        "compute",
+        devices.filter((d) => d.kind === "server"),
+      ),
     ),
     power = topologyOrdered(
       rackId,
@@ -183,7 +207,13 @@ function topologyPage() {
       button("编辑布局", "topology-edit", true);
   let body = heading("机柜拓扑", "按 Rack 查看设备及管理地址。", actions);
   body += `<section class="topology-summary"><div><span>Rack</span><strong>${racks.filter((x) => x !== "unassigned").length}</strong></div><div><span>服务器</span><strong>${count("server")}</strong></div><div><span>DPU 节点</span><strong>${count("dpu")}</strong></div><div><span>交换机</span><strong>${count("switch")}</strong></div><div><span>供电框</span><strong>${count("power_shelf")}</strong></div></section>`;
-  body += `<div class="topology-note ${state.topologyEditing ? "editing" : ""}"><img src="/icons/building-warehouse.svg" alt="">${state.topologyEditing ? "拖动设备调整同一分区内的顺序，服务器按从左到右、从上到下排列。" : "这是按 NICo Rack 归属生成的逻辑拓扑。当前数据没有 U 位信息，因此不推测设备的物理高度和安装位置。"}</div>`;
+  body += `<div class="topology-note ${state.topologyEditing ? "editing" : ""}"><img src="/icons/building-warehouse.svg" alt="">${
+    state.topologyEditing
+      ? "拖动设备调整同一分区内的顺序，服务器按从左到右、从上到下排列。"
+      : state.rackOperations && state.rackUnits?.positions.length
+        ? "这是按 NICo Rack 归属生成的逻辑拓扑。U 位由 PXEye 记录（在服务器页导入）；计算托盘中每台服务器都有 U 位时，按 U 位从高到低排列。"
+        : "这是按 NICo Rack 归属生成的逻辑拓扑。当前数据没有 U 位信息，因此不推测设备的物理高度和安装位置。"
+  }</div>`;
   body += grouped.size
     ? `<div class="rack-grid">${[...grouped].map(([id, rows]) => topologyRack(id, rows)).join("")}</div>`
     : `<div class="topology-empty"><img src="/icons/building-warehouse.svg" alt=""><strong>暂无机柜设备</strong><span>请先在设备规划中关联 Rack。</span></div>`;
@@ -283,7 +313,7 @@ registerActions(
     if (!action) return;
     try {
       if (action.dataset.live === "topology-refresh") {
-        await refreshPage("topology");
+        await Promise.all([refreshPage("topology"), topologyReadUnits()]);
         return toast("机柜拓扑已刷新。");
       }
       if (action.dataset.live === "topology-edit") {
@@ -317,6 +347,20 @@ registerActions(
     }
   },
 );
+
+async function topologyReadUnits() {
+  if (state.rackOperations && sectionReads.rackUnits)
+    await readSection("rackUnits", sectionReads.rackUnits);
+}
+// device_status.js sets state.rackOperations in its own readiness hook, which
+// runs after this one; read the flag from the readiness itself.
+registerHook("readiness", (readiness) => {
+  if (readiness?.rack_operations === true && state.page === "topology")
+    setTimeout(topologyReadUnits);
+});
+window.addEventListener("hashchange", () => {
+  if (location.hash.slice(1) === "topology") topologyReadUnits();
+});
 
 observeUI("click", "topology-device", async (e) => {
   const device = e.target.closest("[data-topology-device]");

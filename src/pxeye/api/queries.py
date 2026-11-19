@@ -117,6 +117,12 @@ class QueryRoutes:
                 self.send_header("Cache-Control", "no-store")
                 self.end_headers()
                 return self.wfile.write(data)
+            if path == "/api/rack-units" and self.app.config.get("rack_operations") is True:
+                from pxeye.services import rack_units
+
+                return self.respond(
+                    200, rack_units.view(self.app.store.rack_units(), rack_units.devices(self.app))
+                )
             if path == "/api/topology-layout":
                 return self.respond(200, self.app.store.topology_layout())
             if path.startswith("/api/equipment/bmc-jobs/") and len(path.split("/")) == 5:

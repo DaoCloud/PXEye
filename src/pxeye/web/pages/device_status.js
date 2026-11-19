@@ -35,13 +35,28 @@ state.deviceStatusFilters = { rack: "", status: "", search: "" };
 sectionReads.deviceStatus = async () => {
   state.deviceStatus = await api("/api/device-status");
 };
+// U positions are kept by PXEye (NICo has none for a general server) and read
+// only where the site enables rack operations.
+state.rackUnits = null;
+sectionReads.rackUnits = async () => {
+  state.rackUnits = await api("/api/rack-units");
+};
 async function deviceStatusReload() {
   await Promise.allSettled(
-    ["resources", "equipment", "deviceStatus"].map((key) =>
-      readSection(key, sectionReads[key]),
-    ),
+    [
+      "resources",
+      "equipment",
+      "deviceStatus",
+      ...(state.rackOperations ? ["rackUnits"] : []),
+    ].map((key) => readSection(key, sectionReads[key])),
   );
 }
+const deviceStatusUnitText = (p) =>
+  p.height > 1 ? `U${p.unit}–U${p.unit + p.height - 1}` : `U${p.unit}`;
+const deviceStatusUnit = (serial) =>
+  (state.rackUnits?.positions || []).find((p) => p.serial === serial) || null;
+const deviceStatusReadOnly = () =>
+  document.body.classList.contains("read-only");
 const deviceStatusTime = (value) =>
   value ? new Date(value).toLocaleString("zh-CN", { hour12: false }) : "—";
 // A server is matched to its Core machine by the machine the console already
@@ -93,11 +108,15 @@ const deviceStatusAttention = (reported) =>
     reported.lifecycle.above_sla ||
     deviceStatusAlerting(reported));
 function deviceStatusPlacement(d, reported) {
-  const rack = d.rack_id || reported?.rack_id;
+  const rack = d.rack_id || reported?.rack_id,
+    position = d.kind === "server" ? deviceStatusUnit(d.serial) : null,
+    unit = position
+      ? `<span class="live-small">${esc(deviceStatusUnitText(position))}</span>`
+      : "";
   if (!rack)
     // The rack is declared, not discovered; the existing editors own that field.
     return d.kind === "server"
-      ? `<button class="link-button" data-live="device-edit" ${eqAttr(d.legacy_id)}>填写机柜</button>`
+      ? `<button class="link-button" data-live="device-edit" ${eqAttr(d.legacy_id)}>填写机柜</button>${unit}`
       : `<button class="link-button" data-live="eq-edit" ${eqAttr(d.id)}>填写机柜</button>`;
   const place = reported?.placement || {},
     parts = [
@@ -106,6 +125,7 @@ function deviceStatusPlacement(d, reported) {
     ].filter(Boolean);
   return (
     esc(rack) +
+    unit +
     (parts.length
       ? `<span class="live-small">${esc(parts.join(" · "))}</span>`
       : "")
@@ -229,6 +249,9 @@ function deviceStatusPage(name) {
     page.label,
     page.description,
     button("刷新数据", "device-status-refresh") +
+      (page.kind === "server" && !deviceStatusReadOnly()
+        ? button("导入 U 位", "device-status-rack-units-open")
+        : "") +
       `<button class="button" data-page="devices">前往设备管理</button>`,
   );
   const data = state.equipment,
@@ -237,6 +260,9 @@ function deviceStatusPage(name) {
     state.readErrors?.equipment,
     state.readErrors?.deviceStatus,
     ...(reports?.errors || []),
+    page.kind === "server" && state.readErrors?.rackUnits
+      ? "U 位读取失败：" + state.readErrors.rackUnits
+      : "",
   ].filter(Boolean);
   if (errors.length)
     body += `<div class="live-error" role="alert">${esc([...new Set(errors)].join("；"))}</div>`;
@@ -263,6 +289,7 @@ function deviceStatusPage(name) {
       }在设备管理中纳管后，设备会出现在这里。</div>`
     );
   body += `<div class="summary-strip device-status-summary"><div><small>设备总数</small><strong>${all.length}</strong></div><div><small>NICo 已建立对象</small><strong>${all.filter(([, i]) => i).length}</strong></div><div><small>需要处理</small><strong>${all.filter(([, i]) => deviceStatusAttention(i)).length}</strong></div><div><small>未填写机柜</small><strong>${unracked}</strong></div></div>`;
+  if (page.kind === "server") body += deviceStatusRackUnitsNote();
   if (unracked)
     body += `<div class="live-note live-warning">${unracked} 台设备未填写机柜，不会出现在机柜拓扑的机柜分组里。机柜由人工声明，NICo 不会自动发现；在“机柜 / 位置”列点击“填写机柜”。</div>`;
   body += `<div class="equipment-device-filters">${selectField("device-status-filter-rack", "机柜", [["", "全部机柜"], ...(unracked ? [["-", "未填写机柜"]] : []), ...[...new Set(all.map(([d]) => d.rack_id).filter(Boolean))].map((id) => [id, id])], f.rack)}${selectField(
@@ -663,17 +690,121 @@ function deviceStatusValidation(data) {
     `<p class="live-small">来自 NICo 机器校验记录，共 ${data.runs.length} 次，读取于 ${esc(when(data.observed_at))}。</p>`
   );
 }
+// Names in a note: the first few, then the count.
+function deviceStatusFirstNames(names) {
+  return names.length > 3
+    ? `${names.slice(0, 3).join("、")} 等 ${names.length} 台`
+    : names.join("、");
+}
+function deviceStatusRackUnitsNote() {
+  const data = state.rackUnits;
+  if (!data || (!data.mismatches.length && !data.unknown.length)) return "";
+  const parts = [];
+  if (data.mismatches.length)
+    parts.push(
+      `${data.mismatches.length} 台服务器的 U 位记录机柜与设备管理中的机柜不一致（${esc(
+        deviceStatusFirstNames(
+          data.mismatches.map(
+            (m) =>
+              `${m.serial}：记录 ${m.recorded_rack || "空"}，设备 ${m.device_rack || "未填写"}`,
+          ),
+        ),
+      )}）`,
+    );
+  if (data.unknown.length)
+    parts.push(
+      `${data.unknown.length} 个序列号不在设备列表中（${esc(deviceStatusFirstNames(data.unknown))}）`,
+    );
+  return `<div class="live-note live-warning">${parts.join("；")}。机柜以设备管理为准，U 位导入不修改机柜。${
+    deviceStatusReadOnly()
+      ? ""
+      : ' <button class="link-button" data-live="device-status-rack-units-open">修改 U 位</button>'
+  }</div>`;
+}
+function deviceStatusRackUnitsOpen() {
+  if (deviceStatusReadOnly()) return;
+  const data = state.rackUnits;
+  if (!data) return toast("U 位尚未读取，请先刷新数据。");
+  state.wizard = { resource: "rack-units", revision: data.revision };
+  modal(
+    "导入 U 位",
+    "服务器 · 机柜内位置",
+    `<div class="live-form"><label for="device-status-rack-units-csv">U 位 CSV<textarea class="input live-code" id="device-status-rack-units-csv" rows="14" spellcheck="false">${esc(data.csv)}</textarea></label><div class="live-note">格式：首行为表头 <code>serial,rack,unit</code> 或 <code>serial,rack,unit,height</code>，每台服务器一行。unit 为设备最低占用的 U 位，height 为占用 U 数，均为 1 到 60 的整数，省略 height 列时为 1。rack 只用于与设备管理中的机柜比对，不会写入。保存后替换全部已有 U 位，不写入 NICo。</div></div><div id="device-status-rack-units-errors" role="alert"></div>`,
+    button("取消", "close") +
+      button("保存", "device-status-rack-units-save", true),
+  );
+}
+function deviceStatusRackUnitsErrors(data) {
+  const errors = data.errors || [];
+  return `<div class="live-error">${esc(data.error || "保存失败")}${
+    errors.length
+      ? `<ul>${errors
+          .map(
+            (e) =>
+              `<li>${e.line ? `第 ${esc(e.line)} 行` : "文件"} · <code>${esc(e.field)}</code>：${esc(e.message)}</li>`,
+          )
+          .join("")}</ul>`
+      : ""
+  }</div>`;
+}
+// The import answers with every line error, which api() would reduce to one
+// message, so this POST reads the response itself.
+async function deviceStatusRackUnitsSave(el) {
+  const w = state.wizard;
+  if (w?.resource !== "rack-units") return;
+  el.disabled = true;
+  try {
+    const response = await fetch("/api/rack-units", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRF-Token": state.csrf || "",
+      },
+      body: JSON.stringify({
+        csv: $("#device-status-rack-units-csv").value,
+        revision: w.revision,
+      }),
+      credentials: "same-origin",
+    });
+    const data = await response.json().catch(() => ({}));
+    if (state.wizard !== w) return;
+    if (!response.ok) {
+      $("#device-status-rack-units-errors").innerHTML =
+        deviceStatusRackUnitsErrors(data);
+      return;
+    }
+    state.rackUnits = data;
+    close();
+    render();
+    toast(`已保存 ${data.positions.length} 台服务器的 U 位。`);
+  } catch (e) {
+    if (state.wizard === w)
+      $("#device-status-rack-units-errors").innerHTML =
+        deviceStatusRackUnitsErrors({ error: e.message });
+  } finally {
+    el.disabled = false;
+  }
+}
 registerPage("servers", () => deviceStatusPage("servers"));
 registerPage("switches", () => deviceStatusPage("switches"));
 registerPage("power_shelves", () => deviceStatusPage("power_shelves"));
 registerActions(
   "device_status.js",
-  ["device-status-refresh", "device-status-open"],
+  [
+    "device-status-refresh",
+    "device-status-open",
+    "device-status-rack-units-open",
+    "device-status-rack-units-save",
+  ],
   async (e) => {
     const el = e.target.closest('[data-live^="device-status-"]');
     if (!el || el.disabled) return;
     if (el.dataset.live === "device-status-refresh")
       return await deviceStatusReload();
+    if (el.dataset.live === "device-status-rack-units-open")
+      return deviceStatusRackUnitsOpen();
+    if (el.dataset.live === "device-status-rack-units-save")
+      return await deviceStatusRackUnitsSave(el);
     return deviceStatusStatus(el.dataset.deviceStatus, el.dataset.id);
   },
 );
