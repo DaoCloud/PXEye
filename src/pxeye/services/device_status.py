@@ -390,3 +390,160 @@ def machine_firmware(adapter, machine_id):
         "note": "",
         **firmware(report),
     }
+
+
+def machine_health_history(adapter, machine_id):
+    """Alert periods of one machine from the health records Core keeps. Reads only.
+
+    An alert is identified by its probe id and target. It started when Core says it
+    went into alert (inAlertSince), or else at the first record that shows it; it was
+    last seen at the last record that still shows it, and it is still present when the
+    latest record shows it. A record without alerts is a healthy observation.
+    """
+    if not valid_machine_id(machine_id):
+        raise ValueError("机器 ID 无效。")
+    response = adapter.rpc("FindMachineHealthHistories", {"machineIds": [{"id": machine_id}]})
+    histories = (response or {}).get("histories") or {}
+    entry = histories.get(machine_id) if isinstance(histories, dict) else None
+    records = []
+    for record in (entry or {}).get("records") or []:
+        if not isinstance(record, dict):
+            continue
+        moment = record_time(record.get("time"))
+        if moment is not None:
+            records.append((moment, record.get("time"), record.get("health") or {}))
+    records.sort(key=lambda item: item[0])
+    periods = {}
+    for moment, raw, report in records:
+        for alert in (report if isinstance(report, dict) else {}).get("alerts") or []:
+            if not isinstance(alert, dict):
+                continue
+            key = (str(alert.get("id") or ""), str(alert.get("target") or ""))
+            since = alert.get("inAlertSince") or ""
+            period = periods.get(key)
+            if period is None:
+                period = periods[key] = {
+                    "id": key[0],
+                    "target": key[1],
+                    "since": since or raw,
+                    "_since": record_time(since) or moment,
+                }
+            elif since and (record_time(since) or moment) < period["_since"]:
+                period["since"], period["_since"] = since, record_time(since)
+            period.update(
+                last_seen=raw,
+                _last=moment,
+                message=alert.get("message") or "",
+                classifications=[
+                    str(c) for c in alert.get("classifications") or [] if isinstance(c, str)
+                ],
+            )
+    latest = records[-1][0] if records else None
+    alerts = sorted(periods.values(), key=lambda p: p["_since"], reverse=True)
+    for period in alerts:
+        period["active"] = period.pop("_last") == latest
+        period.pop("_since")
+    return {
+        "machine_id": machine_id,
+        "observed_at": time.time(),
+        "record_count": len(records),
+        "first_record": records[0][1] if records else "",
+        "last_record": records[-1][1] if records else "",
+        "alerts": alerts,
+    }
+
+
+VALIDATION_OUTPUT_LIMIT = 2000
+# forge.MachineValidationStatus is a oneof; proto JSON may leave a zero enum empty.
+VALIDATION_STATES = {
+    "started": ("started", "Started"),
+    "inProgress": ("in_progress", "InProgress"),
+    "completed": ("completed", "Success"),
+}
+
+
+def validation_status(status):
+    """A short state for a run status, e.g. {"completed": "Skipped"} -> completed/Skipped."""
+    if not isinstance(status, dict):
+        return {"phase": "", "outcome": "", "text": "", "total": None, "completed_tests": None}
+    phase, outcome = "", ""
+    for key, (name, zero) in VALIDATION_STATES.items():
+        if key in status:
+            value = status.get(key)
+            phase, outcome = name, value if isinstance(value, str) and value else zero
+            break
+    return {
+        "phase": phase,
+        "outcome": outcome,
+        "text": outcome or "",
+        "total": status.get("total"),
+        "completed_tests": status.get("completedTests"),
+    }
+
+
+def proto_duration(value):
+    """Proto JSON durations are text such as "12.5s"; anything else is unknown."""
+    if isinstance(value, str) and re.fullmatch(r"-?\d+(\.\d+)?s", value.strip()):
+        return float(value.strip()[:-1])
+    return None
+
+
+def clipped(value):
+    text = value if isinstance(value, str) else ""
+    return text[:VALIDATION_OUTPUT_LIMIT]
+
+
+def validation_result(item):
+    return {
+        "validation_id": value_id(item.get("validationId")) or "",
+        "test_id": item.get("testId") or "",
+        "name": item.get("name") or "",
+        "description": item.get("description") or "",
+        "context": item.get("context") or "",
+        "command": item.get("command") or "",
+        "args": item.get("args") or "",
+        # Proto JSON omits a zero exit code; zero is the default, not unknown.
+        "exit_code": item.get("exitCode") if isinstance(item.get("exitCode"), int) else 0,
+        "start": item.get("startTime") or "",
+        "end": item.get("endTime") or "",
+        "std_out": clipped(item.get("stdOut")),
+        "std_err": clipped(item.get("stdErr")),
+    }
+
+
+def machine_validation(adapter, machine_id):
+    """Hardware validation runs of one machine and their results. Reads only."""
+    if not valid_machine_id(machine_id):
+        raise ValueError("机器 ID 无效。")
+    body = {"machineId": {"id": machine_id}, "includeHistory": True}
+    runs_response = adapter.rpc("GetMachineValidationRuns", body) or {}
+    results_response = adapter.rpc("GetMachineValidationResults", body) or {}
+    results = {}
+    for item in results_response.get("results") or []:
+        if isinstance(item, dict):
+            shaped = validation_result(item)
+            results.setdefault(shaped["validation_id"], []).append(shaped)
+    runs = []
+    for run in runs_response.get("runs") or []:
+        if not isinstance(run, dict):
+            continue
+        status = run.get("status")
+        runs.append(
+            {
+                "validation_id": value_id(run.get("validationId")) or "",
+                "name": run.get("name") or "",
+                "context": run.get("context") or "",
+                "start": run.get("startTime") or "",
+                "end": run.get("endTime") or "",
+                "duration_seconds": proto_duration(run.get("durationToComplete")),
+                "status": validation_status(status),
+                "status_raw": status if isinstance(status, dict) else None,
+            }
+        )
+    runs.sort(key=lambda r: record_time(r["start"]) or 0, reverse=True)
+    return {
+        "machine_id": machine_id,
+        "observed_at": time.time(),
+        "runs": runs,
+        "results": results,
+    }
