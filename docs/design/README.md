@@ -24,6 +24,7 @@ Documents that explain why something is built the way it is and where it stops: 
 | Design documents | `docs/design/` | This directory. One document per topic, stating the current conclusion rather than a dated log |
 | Interaction rules | `docs/design/interaction-rules*.md` | The single set of interface and wording rules |
 | Page guides | `docs/user-guide/` | One per menu page, named after the menu entry |
+| Field survey | `docs/field-survey/` | One per rack operations page: CLI commands and interfaces to run at a site, checks, data the user provides |
 | Deployment, builds, field procedures | `docs/` root | Step-by-step operational documents |
 | Rules for AI collaborators | `AGENTS.md` in each directory | The root file covers repository workflow; `src/pxeye/AGENTS.md` covers code; `docs/AGENTS.md` covers documentation |
 | Contribution process for people | `CONTRIBUTING*.md` | Commit, check and reporting expectations |

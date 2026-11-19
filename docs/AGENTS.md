@@ -9,6 +9,7 @@ Read with the repository [AGENTS.md](../AGENTS.md).
 | Why something is built the way it is, scope, rules, data contracts | `docs/design/` |
 | How to use one menu page | `docs/user-guide/`, one document per page |
 | Deployment, builds, field procedures | `docs/` |
+| Field survey of a rack operations page: commands, checks, data the user provides | `docs/field-survey/`, one document per page |
 | Rules for AI collaborators | `AGENTS.md` in the directory they apply to |
 
 The index of each directory lists every document in it. Add, rename or remove a document and
@@ -31,6 +32,9 @@ its index row in the same commit, and keep every relative link working.
   current stage.
 - [design/rack-operations-data-contract](design/rack-operations-data-contract.md) holds the Core
   interfaces and fields, with verification marks.
+- [field-survey](field-survey/README.md) holds, per page, the NICo CLI commands and interfaces to
+  run at a site, what to check, where results are kept, and what the user must provide. A new
+  page, or a page that reads new data, gets or updates its document in the same commit.
 
 A design change is reflected in these documents in the commit that makes it.
 

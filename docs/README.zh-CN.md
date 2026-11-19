@@ -36,6 +36,19 @@ PXEye 公开项目文档均提供内容对应的中英文版本。首次使用�
 | 机柜运维：范围与现状 | [Read](design/rack-operations.md) | [阅读](design/rack-operations.zh-CN.md) | 机柜方向做什么、做到哪一步。 |
 | 机柜运维：NICo 数据契约 | [Read](design/rack-operations-data-contract.md) | [阅读](design/rack-operations-data-contract.zh-CN.md) | 每个页面使用的 Core 接口和字段，及验证标记。 |
 
+## 现场采集
+
+到站点后，按[现场采集指南](field-survey/README.zh-CN.md)为每个机柜运维页面收集真实数据：用哪些 NICo 命令行和接口、怎么核对、存到哪里、需要用户补充什么。
+
+| 页面 | English | 简体中文 |
+| --- | --- | --- |
+| 共同准备和规则 | [Read](field-survey/README.md) | [阅读](field-survey/README.zh-CN.md) |
+| 服务器 | [Read](field-survey/servers.md) | [阅读](field-survey/servers.zh-CN.md) |
+| 交换机 | [Read](field-survey/switches.md) | [阅读](field-survey/switches.zh-CN.md) |
+| 供电框 | [Read](field-survey/power-shelves.md) | [阅读](field-survey/power-shelves.zh-CN.md) |
+| 布线 | [Read](field-survey/cabling.md) | [阅读](field-survey/cabling.zh-CN.md) |
+| 发现诊断 | [Read](field-survey/discovery-diagnostics.md) | [阅读](field-survey/discovery-diagnostics.zh-CN.md) |
+
 ## 页面使用指南
 
 按菜单查阅页面作用、字段填写、操作步骤和结果确认；每个大页面单独维护，统一结构见[页面使用指南索引](user-guide/README.zh-CN.md)。

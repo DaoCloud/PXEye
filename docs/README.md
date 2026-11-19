@@ -36,6 +36,19 @@ Scope, system design, interaction rules and data contracts are in [design](desig
 | Rack operations: scope and status | [Read](design/rack-operations.md) | [阅读](design/rack-operations.zh-CN.md) | What the rack line of work does and has reached. |
 | Rack operations: NICo data contract | [Read](design/rack-operations-data-contract.md) | [阅读](design/rack-operations-data-contract.zh-CN.md) | Core interfaces and fields per page, with verification marks. |
 
+## Field survey
+
+At a site, follow the [field survey guide](field-survey/README.md) to collect real data for each rack operations page: which NICo CLI commands and interfaces to use, how to check, where to keep results and what the user has to provide.
+
+| Page | English | 简体中文 |
+| --- | --- | --- |
+| Common preparation and rules | [Read](field-survey/README.md) | [阅读](field-survey/README.zh-CN.md) |
+| Servers | [Read](field-survey/servers.md) | [阅读](field-survey/servers.zh-CN.md) |
+| Switches | [Read](field-survey/switches.md) | [阅读](field-survey/switches.zh-CN.md) |
+| Power shelves | [Read](field-survey/power-shelves.md) | [阅读](field-survey/power-shelves.zh-CN.md) |
+| Cabling | [Read](field-survey/cabling.md) | [阅读](field-survey/cabling.zh-CN.md) |
+| Discovery diagnostics | [Read](field-survey/discovery-diagnostics.md) | [阅读](field-survey/discovery-diagnostics.zh-CN.md) |
+
 ## Page guides
 
 Browse by menu for purpose, field values, actions and result verification. Each main page has its own guide; see the [page guide index](user-guide/README.md) for the shared structure.

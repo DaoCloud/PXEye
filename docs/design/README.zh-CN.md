@@ -24,6 +24,7 @@
 | 设计文档 | `docs/design/` | 本目录。一个主题一份文档，写现行结论，不按日期追加过程 |
 | 交互规则 | `docs/design/interaction-rules*.md` | 界面和文案的统一规则，只有这一份 |
 | 页面使用指南 | `docs/user-guide/` | 一个菜单页面一份，文件名与菜单对应 |
+| 现场采集 | `docs/field-survey/` | 每个机柜运维页面一份：现场用哪些命令行和接口、怎么核对、需要用户补充什么 |
 | 部署、构建、现场操作 | `docs/` 根目录 | 面向操作的步骤说明 |
 | AI 协作规则 | 各目录的 `AGENTS.md` | 根目录管仓库流程；`src/pxeye/AGENTS.md` 管代码；`docs/AGENTS.md` 管文档 |
 | 人的贡献流程 | `CONTRIBUTING*.md` | 提交、检查、报告的要求 |
