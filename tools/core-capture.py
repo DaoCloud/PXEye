@@ -56,6 +56,8 @@ PAGE_READS = [
     "/api/install-profiles",
     "/api/device-status",
     "/api/exploration",
+    "/api/switch-labels",
+    "/api/rack-units",
 ]
 # Longest wait for one console read. A Core call has its own limit of 45 seconds; a
 # page read may make several, in parallel.
@@ -68,6 +70,8 @@ TABLES = [
     "topology_layout",
     "tasks",
     "batches",
+    "switch_labels",
+    "rack_units",
 ]
 
 
