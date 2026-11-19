@@ -2,7 +2,7 @@
 
 **English** · [简体中文](interaction-rules.zh-CN.md) · [Design documents](README.md)
 
-Rules to follow when adding or changing a page. They describe current practice, derived from the existing pages. Where a rule and a page disagree, decide which of the two should change instead of adding a third variant.
+Rules to follow when adding or changing a page. They describe current practice, derived from the existing pages. Two rules in section 2 (a column with no value is not shown; a page with nothing to show explains what it covers) and all of section 6 were set with the device status pages, and earlier pages do not all follow them yet. Where a rule and a page disagree, decide which of the two should change instead of adding a third variant.
 
 ## 1. Page ownership
 
@@ -73,7 +73,7 @@ Each piece of data has one place where it is maintained. Other pages reference i
 
 - Reuse the existing components: page heading, table, status badge, definition list, note, dialog, filter row, summary strip. Do not introduce a colour or component for a single page.
 - Identifiers, MAC addresses, IP addresses and IDs use the monospace font.
-- While a dialog is open the background is inert, and closing it returns to the previous position. Dynamic results are announced through the live region; errors use alert semantics.
+- While a dialog is open the background is inert, and focus moves into the dialog and stays within it. Dynamic results are announced through the live region; errors use alert semantics.
 - On narrow screens forms become a single column and tables scroll horizontally inside their own area; the page itself does not scroll sideways.
 - Respect the reduced-motion preference.
 

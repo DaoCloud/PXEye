@@ -13,13 +13,13 @@
 `tools/core-survey.py` 在一个 PXEye 容器里运行，使用该实例已有的 Core 地址和客户端身份，通过 gRPC 反射读取站点上实际部署的 Core。建议在只读观察实例里运行。
 
 ```bash
-POD='kubectl -n <namespace> exec -i deploy/<pxeye> -c pxeye -- python3 -'
+survey() { kubectl -n <namespace> exec -i deploy/<pxeye> -c pxeye -- python3 - "$@" < tools/core-survey.py; }
 
-$POD list < tools/core-survey.py                         # 可调用的读取方法
-$POD describe FindSwitches < tools/core-survey.py        # 方法的请求和响应定义
-$POD message forge.Machine < tools/core-survey.py        # 某个消息的完整定义
-$POD call 'FindRackIds={}' < tools/core-survey.py        # 实际调用，输出返回结构
-$POD call 'FindMachineStateHistories={"machineIds":[{"id":"MID"}]}' < tools/core-survey.py
+survey list                          # 可调用的读取方法
+survey describe FindSwitches         # 方法的请求和响应定义
+survey message forge.Machine         # 某个消息的完整定义
+survey call 'FindRackIds={}'         # 实际调用，输出返回结构
+survey call 'FindMachineStateHistories={"machineIds":[{"id":"MID"}]}'
 ```
 
 规则：
@@ -61,13 +61,13 @@ $POD call 'FindMachineStateHistories={"machineIds":[{"id":"MID"}]}' < tools/core
 | --- | --- | --- |
 | 运行状态 | `status.lifecycle.state`，回退 `state` | 已验证 |
 | 状态原因 | `status.lifecycle.state_reason.outcome_msg` | 已验证 |
-| 处理结果 | `status.lifecycle.state_reason.outcome`：`ERROR`、`TRANSITION`、`DO_NOTHING`、`TODO`；`WAIT` 是零值，不出现 | 已验证 |
+| 处理结果 | `status.lifecycle.state_reason.outcome`：`ERROR`、`TRANSITION`、`DO_NOTHING`、`TODO`；`WAIT` 是零值，不出现 | 已验证 `ERROR`；其余取值仅定义 |
 | 超出状态时限 | `status.lifecycle.sla.time_in_state_above_sla` | 已验证 |
-| 健康 | `status.health.alerts[]`：`id`、`target`、`message`、`in_alert_since`、`classifications`；`status.health.source`、`observed_at` | 已验证 |
+| 健康 | `status.health.alerts[]`：`id`、`target`、`message`、`in_alert_since`、`classifications`；`status.health.source`、`observed_at` | 已验证；`target` 仅定义 |
 | 电源 | 沿用 `/api/equipment` 的 `power_state`（来自 `GetPowerOptions`） | 已验证 |
 | BMC 地址 | `bmc.ip`、`bmc.mac`，回退 `bmc_info` | 已验证 |
 | 上联交换机、LLDP 邻居 | `status.lldp_neighbors[]`：`mac_address`、`lldp.name`、`lldp.local_port`、`lldp.id_value`、`lldp.remote_port_type`、`lldp.remote_port_value`、`lldp.med_inventory.{serial,manufacturer,model}`、`lldp.description` | 已验证 |
-| 硬件能力 | `status.capabilities.{cpu,gpu,memory,storage,network,infiniband,dpu}[]`：`name`、`count`、`vendor`、`capacity` | 已验证 |
+| 硬件能力 | `status.capabilities.{cpu,gpu,memory,storage,network,infiniband,dpu}[]`：`name`、`count`、`vendor`、`capacity` | 已验证 `cpu`、`memory`、`storage`、`network`；`gpu`、`infiniband`、`dpu` 仅定义 |
 | 故障详情、最近重启、Scout 版本 | `status.failure_details`、`status.last_reboot_time`、`status.last_scout_observed_version` | 已验证 |
 | 机柜 | `rack_id.value`。由预期设备声明的 `rack_id` 人工填写，Core 不自动发现 | 仅定义 |
 | 槽位、托盘 | `placement_in_rack.{slot_number,tray_index}`。预期设备声明里没有对应的输入字段 | 仅定义 |

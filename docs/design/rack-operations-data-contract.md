@@ -13,13 +13,13 @@ Which NICo Core interface and which fields each page uses, and whether they were
 `tools/core-survey.py` runs inside a PXEye container and uses the Core address and client identity that instance already has. It reads the Core actually deployed at the site through gRPC reflection. Run it in a read-only observer instance.
 
 ```bash
-POD='kubectl -n <namespace> exec -i deploy/<pxeye> -c pxeye -- python3 -'
+survey() { kubectl -n <namespace> exec -i deploy/<pxeye> -c pxeye -- python3 - "$@" < tools/core-survey.py; }
 
-$POD list < tools/core-survey.py                         # callable read methods
-$POD describe FindSwitches < tools/core-survey.py        # request and response of a method
-$POD message forge.Machine < tools/core-survey.py        # full definition of a message
-$POD call 'FindRackIds={}' < tools/core-survey.py        # call it and print the response structure
-$POD call 'FindMachineStateHistories={"machineIds":[{"id":"MID"}]}' < tools/core-survey.py
+survey list                          # callable read methods
+survey describe FindSwitches         # request and response of a method
+survey message forge.Machine         # full definition of a message
+survey call 'FindRackIds={}'         # call it and print the response structure
+survey call 'FindMachineStateHistories={"machineIds":[{"id":"MID"}]}'
 ```
 
 Rules:
@@ -61,13 +61,13 @@ Interface: `FindMachineIds {}`, then `FindMachinesByIds {"machineIds":[…],"inc
 | --- | --- | --- |
 | Status | `status.lifecycle.state`, falling back to `state` | verified |
 | State reason | `status.lifecycle.state_reason.outcome_msg` | verified |
-| Handler outcome | `status.lifecycle.state_reason.outcome`: `ERROR`, `TRANSITION`, `DO_NOTHING`, `TODO`; `WAIT` is the zero value and is absent | verified |
+| Handler outcome | `status.lifecycle.state_reason.outcome`: `ERROR`, `TRANSITION`, `DO_NOTHING`, `TODO`; `WAIT` is the zero value and is absent | `ERROR` verified; other values definition only |
 | Past the state time limit | `status.lifecycle.sla.time_in_state_above_sla` | verified |
-| Health | `status.health.alerts[]`: `id`, `target`, `message`, `in_alert_since`, `classifications`; `status.health.source`, `observed_at` | verified |
+| Health | `status.health.alerts[]`: `id`, `target`, `message`, `in_alert_since`, `classifications`; `status.health.source`, `observed_at` | verified; `target` definition only |
 | Power | `power_state` from `/api/equipment` (from `GetPowerOptions`) | verified |
 | BMC address | `bmc.ip`, `bmc.mac`, falling back to `bmc_info` | verified |
 | Uplink switches, LLDP neighbours | `status.lldp_neighbors[]`: `mac_address`, `lldp.name`, `lldp.local_port`, `lldp.id_value`, `lldp.remote_port_type`, `lldp.remote_port_value`, `lldp.med_inventory.{serial,manufacturer,model}`, `lldp.description` | verified |
-| Hardware capabilities | `status.capabilities.{cpu,gpu,memory,storage,network,infiniband,dpu}[]`: `name`, `count`, `vendor`, `capacity` | verified |
+| Hardware capabilities | `status.capabilities.{cpu,gpu,memory,storage,network,infiniband,dpu}[]`: `name`, `count`, `vendor`, `capacity` | `cpu`, `memory`, `storage`, `network` verified; `gpu`, `infiniband`, `dpu` definition only |
 | Failure details, last reboot, Scout version | `status.failure_details`, `status.last_reboot_time`, `status.last_scout_observed_version` | verified |
 | Rack | `rack_id.value`. Declared by hand through `rack_id` of the expected device; Core does not discover it | definition only |
 | Slot, tray | `placement_in_rack.{slot_number,tray_index}`. The expected device declaration has no input for it | definition only |

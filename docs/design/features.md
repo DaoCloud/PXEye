@@ -80,7 +80,7 @@ External DHCP is an optional mode for fixed-lease x86_64/Flat hosts without a DP
 
 ## Current operating envelope
 
-- One site, one service replica, one operator and serial installation execution.
+- One site, one service replica and one operator. A batch runs with the concurrency set for the site (5 by default); batches run in creation order.
 - No distributed queue, multi-site management or complete user/tenant RBAC.
 - Principal physical validation: Ubuntu Server 24.04, x86_64 and UEFI.
 - ARM64, GB200/GB300, other distributions and OEM-specific boot behavior require separate validation.

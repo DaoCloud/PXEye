@@ -15,8 +15,9 @@ to fix a defect in installation or discovery, in a commit that says so:
 - `services/discovery.py`, `services/site_explorer.py`, `services/device_identity.py`
 - `web/pages/onboarding.js`
 
-A new feature reads what these modules expose. It does not edit them, and it does not change
-the behaviour of `services/equipment.py` or `services/addresses.py`, which they depend on.
+A new feature reads what these modules expose and does not edit them. It also leaves the
+behaviour of `services/equipment.py`, `services/addresses.py` and `services/resources.py`
+unchanged: device management, planning and installation are built on them.
 
 ## Adding a feature
 

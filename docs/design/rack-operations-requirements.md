@@ -163,7 +163,7 @@ It draws on the bare-metal lifecycle, device orchestration, network isolation, t
 
 | What NICo Core provides | PXEye today | Conclusion and next step | Pages |
 | --- | --- | --- | --- |
-| Main line of the product | Present | Outside this work | Installation tasks, operating systems, installation profiles |
+| OS definitions, instance allocation and boot intent interfaces; DHCP and PXE services | Installation tasks, operating systems and installation profiles exist; supported scope is in [features and boundaries](features.md) | Main line of the product, outside rack operations development | Installation tasks, operating systems, installation profiles |
 
 ### 6.6 Network and interconnect resources
 
@@ -222,7 +222,7 @@ It draws on the bare-metal lifecycle, device orchestration, network isolation, t
 
 | What NICo Core provides | PXEye today | Conclusion and next step | Pages |
 | --- | --- | --- | --- |
-| Instance management | Present | Outside this work | Instance management |
+| Instance allocation and release interfaces; instance type interfaces exist | An instance is created on first installation; instance management lists and releases them | Resource pools, instance types and verification of release cleaning are not done; outside rack operations development | Instance management |
 
 ### 6.10 Faults, repair and retirement
 
