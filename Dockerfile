@@ -10,13 +10,6 @@ RUN bash /build-tools/build.sh --output /boot-media
 
 FROM ${BASE_IMAGE}
 ARG DEBIAN_FRONTEND=noninteractive
-ARG VCS_REF=unknown
-ARG VERSION=unknown
-LABEL org.opencontainers.image.title="PXEye" \
-      org.opencontainers.image.source="https://github.com/DaoCloud/PXEye" \
-      org.opencontainers.image.revision="${VCS_REF}" \
-      org.opencontainers.image.version="${VERSION}" \
-      org.opencontainers.image.licenses="Apache-2.0"
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 python3-pip python3-venv openssh-client ipmitool ca-certificates libgcc-s1 xorriso mtools openssl sshpass skopeo \
     && rm -rf /var/lib/apt/lists/* \
@@ -27,9 +20,21 @@ COPY bin/helm /usr/local/bin/helm
 COPY --from=boot-media-builder /boot-media/ /usr/share/pxeye/boot-media/x86_64/
 COPY tools/import-oci-bundle.py /usr/local/bin/pxeye-import-oci-bundle
 RUN chmod 0755 /usr/local/bin/pxeye-import-oci-bundle
+COPY pyproject.toml /tmp/pxeye-build/pyproject.toml
+RUN python3 -m venv /opt/pxeye \
+    && python3 -c 'import tomllib; p=tomllib.load(open("/tmp/pxeye-build/pyproject.toml", "rb")); print("\\n".join(p["build-system"]["requires"] + p["project"].get("dependencies", [])))' > /tmp/pxeye-build/requirements.txt \
+    && /opt/pxeye/bin/pip install --no-cache-dir -r /tmp/pxeye-build/requirements.txt \
+    && rm -rf /tmp/pxeye-build
 COPY pyproject.toml README.md LICENSE /app/
 COPY src/ /app/src/
-RUN python3 -m venv /opt/pxeye && /opt/pxeye/bin/pip install --no-cache-dir /app
+RUN /opt/pxeye/bin/pip install --no-cache-dir --no-deps --no-build-isolation /app
+ARG VCS_REF=unknown
+ARG VERSION=unknown
+LABEL org.opencontainers.image.title="PXEye" \
+      org.opencontainers.image.source="https://github.com/DaoCloud/PXEye" \
+      org.opencontainers.image.revision="${VCS_REF}" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.licenses="Apache-2.0"
 ENV PATH="/opt/pxeye/bin:$PATH"
 USER 1000:1000
 WORKDIR /app
