@@ -4,6 +4,7 @@ import json
 import sqlite3
 import time
 import threading
+import uuid
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -64,6 +65,9 @@ class Store:
                 CREATE TABLE IF NOT EXISTS topology_layout (
                     id INTEGER PRIMARY KEY CHECK (id = 1), data TEXT NOT NULL, updated REAL NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS switch_labels (
+                    id INTEGER PRIMARY KEY CHECK (id = 1), data TEXT NOT NULL
+                );
             """)
             db.execute(
                 "INSERT OR IGNORE INTO schema_migrations(version,applied) VALUES(1,?)",
@@ -112,6 +116,34 @@ class Store:
                 (json.dumps(saved, ensure_ascii=False), updated),
             )
         return {"racks": saved["racks"], "updated_at": updated}
+
+    def switch_labels(self):
+        with self.db() as db:
+            row = db.execute("SELECT data FROM switch_labels WHERE id=1").fetchone()
+        if not row:
+            return {"switches": [], "ports": [], "updated": None, "revision": ""}
+        return json.loads(row["data"])
+
+    def save_switch_labels(self, switches, ports, revision):
+        """Replace both tables unless someone saved since `revision`; None on conflict."""
+        saved = {
+            "switches": switches,
+            "ports": ports,
+            "updated": time.time(),
+            "revision": uuid.uuid4().hex,
+        }
+        with self.db() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute("SELECT data FROM switch_labels WHERE id=1").fetchone()
+            current = json.loads(row["data"])["revision"] if row else ""
+            if current != revision:
+                return None
+            db.execute(
+                """INSERT INTO switch_labels(id,data) VALUES(1,?)
+                          ON CONFLICT(id) DO UPDATE SET data=excluded.data""",
+                (json.dumps(saved, ensure_ascii=False),),
+            )
+        return saved
 
     def get(self, task_id):
         with self.db() as db:

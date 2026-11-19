@@ -61,6 +61,8 @@ class QueryRoutes:
                 from pxeye.services.device_status import DeviceStatus
 
                 return self.respond(200, DeviceStatus(self.app.adapter).view())
+            if path == "/api/switch-labels" and self.app.config.get("rack_operations") is True:
+                return self.respond(200, self.app.store.switch_labels())
             if path == "/api/exploration" and self.app.config.get("rack_operations") is True:
                 from pxeye.services.exploration import exploration
 

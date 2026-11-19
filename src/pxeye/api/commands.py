@@ -23,6 +23,15 @@ class CommandRoutes:
             )
         if path == "/api/resources/refresh":
             return self.respond(200, self.app.plan(self.app.resources.refresh_inventory))
+        if path == "/api/switch-labels" and self.app.config.get("rack_operations") is True:
+            from pxeye.services import switch_labels
+
+            try:
+                return self.respond(200, switch_labels.save(self.app.store, body))
+            except switch_labels.SwitchLabelsError as error:
+                return self.respond(400, {"error": str(error), "errors": error.errors})
+            except switch_labels.SwitchLabelsConflict as error:
+                return self.respond(409, {"error": str(error), "code": "REVISION_CONFLICT"})
         if path == "/api/topology-layout":
             layout = normalize_topology_layout(self.app, body)
             return self.respond(200, self.app.store.save_topology_layout(layout))

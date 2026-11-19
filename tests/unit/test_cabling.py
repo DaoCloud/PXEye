@@ -15,6 +15,7 @@ const noop = () => {};
 const ctx = {
   state: {}, deviceStatusPages: { servers: {} }, registerPage: noop,
   deviceStatusAddNavChild: noop, deviceStatusReload: noop, registerActions: noop, observeUI: noop,
+  sectionReads: {}, registerHook: noop, table: (h, rows) => rows.join(""), badge: (t) => t,
   esc: (x) => String(x),
 };
 vm.createContext(ctx);
@@ -83,6 +84,50 @@ class CablingTest(unittest.TestCase):
         self.assertTrue(text.endswith("等 25 台"))
         self.assertNotIn("S20", text)
         self.assertEqual(run("cablingNames([{name: 'n1'}])"), "n1")
+
+
+LABELS = """{switches: [
+    {chassis_mac: "aa:bb:cc:00:00:01", name: "LEAF-A", model: "M-1", serial: "SN-SW1",
+     management_ip: "192.0.2.10", rack: "R1"},
+    {chassis_mac: "aa:bb:cc:00:00:09", name: "GHOST"}],
+  ports: [{chassis_mac: "aa:bb:cc:00:00:01", port_id: "11:22:33:44:55:01", port_name: "Eth1/1"},
+    {chassis_mac: "aa:bb:cc:00:00:01", port_id: "p-none", port_name: "X"}]}"""
+LINK = (
+    "{device: {serial: 'SN-A'}, reported: {}, switchKey: 'AA-BB-CC-00-00-01', neighbor: "
+    "{switch_id: 'AA-BB-CC-00-00-01', switch: 'lldp-name', remote_port: '11:22:33:44:55:01', "
+    "remote_port_type: 'mac'}}"
+)
+
+
+class CablingLabelTest(unittest.TestCase):
+    def test_switch_title_uses_label(self):
+        out = run(f"cablingSwitchTitle({LINK}.neighbor, cablingLabelIndex({LABELS}))")
+        self.assertEqual(out["title"], "LEAF-A")
+        self.assertIn("LLDP lldp-name AA-BB-CC-00-00-01", out["detail"])
+        self.assertIn("管理 IP 192.0.2.10", out["detail"])
+
+    def test_switch_title_without_label(self):
+        out = run(f"cablingSwitchTitle({LINK}.neighbor, cablingLabelIndex(null))")
+        self.assertEqual(out["title"], "lldp-name")
+
+    def test_port_name_first(self):
+        html = run(f"cablingRow({LINK}, false, cablingLabelIndex({LABELS}))")
+        self.assertLess(html.index("Eth1/1"), html.index("11:22:33:44:55:01"))
+        plain = run(f"cablingRow({LINK}, false)")
+        self.assertNotIn("Eth1/1", plain)
+
+    def test_counts_unmatched(self):
+        out = run(f"cablingLabelCounts([{LINK}], {LABELS})")
+        self.assertEqual(
+            out, {"switches": 1, "switchesUnmatched": 1, "ports": 1, "portsUnmatched": 1}
+        )
+
+    def test_csv_round_trip_quotes(self):
+        out = run(
+            "cablingCsv(cablingPortColumns, [{chassis_mac: 'm', port_id: 'a,b', port_name: 'q\"'}])"
+        )
+        self.assertEqual(out, 'chassis_mac,port_id,port_name\nm,"a,b","q"""')
+        self.assertEqual(run("cablingCsv(cablingPortColumns, [])"), "")
 
 
 if __name__ == "__main__":
