@@ -87,6 +87,7 @@ def stand_in_core(failures=None):
                 "chassis_serial_number": "SN-0001",
                 "bmc_username": "admin",
                 "bmc_password": SECRET,
+                "bmc_retain_credentials": True,
                 "host_nics": [],
             }
         ]
@@ -175,6 +176,8 @@ class CaptureReplayTests(unittest.TestCase):
     def test_a_capture_replays_into_the_responses_it_recorded(self):
         capture = self.capture()
         self.assertNotIn(SECRET, json.dumps(capture))
+        # A credential flag is a setting, not a secret, and replays unchanged.
+        self.assertIn('"bmc_retain_credentials": true', json.dumps(capture))
         responses = capture["pxeye_responses"]
         self.assertEqual(
             responses[f"/api/device-status/machines/{MACHINE_ID}/history"]["status"], 200

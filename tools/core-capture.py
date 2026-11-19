@@ -71,9 +71,10 @@ TABLES = [
 
 
 def redact(value):
+    """Hide credential text. Flags such as bmc_retain_credentials stay: they are settings."""
     if isinstance(value, dict):
         return {
-            k: ("<redacted>" if SENSITIVE.search(k) and v not in (None, "", {}, []) else redact(v))
+            k: ("<redacted>" if SENSITIVE.search(k) and isinstance(v, str) and v else redact(v))
             for k, v in value.items()
         }
     if isinstance(value, list):
