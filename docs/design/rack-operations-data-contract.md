@@ -29,6 +29,7 @@ Rules:
 - Output redacts fields whose names look like credentials and shortens long values. It shows the structure of a response, not a copy of the site's data.
 - `MID` in a `call` body is replaced with the first machine ID the Core returns.
 - Raw site responses do not enter this repository. Test samples use placeholder values.
+- This tool shows structure only. To keep responses verbatim, use `tools/core-capture.py` in section 5.
 
 Conventions in the responses:
 
@@ -200,11 +201,107 @@ For an endpoint explored successfully, `report` has the same structure as in 3.2
 
 None of these has been called; the list is for planning only: power control and reset of machines and components, power shelf power, machine maintenance marks, rack maintenance, host quarantine, component firmware updates and update windows, SKU creation, assignment and verification, on-demand machine validation, manual health report insertion and removal, rack and rack group declaration, switch and power shelf decommissioning, NVLink domains and partitions.
 
-## 5. Checklist for a new site
+## 5. Field survey
 
-1. `list`, and compare the methods with this document.
-2. `call` the interface of each page in section 2 once and record the number of rows. A kind with no rows has no content on its page at that site.
-3. If the site has switches or power shelves, check 2.2 and 2.3 field by field and change “definition only” to “verified”, or record the difference.
-4. Open the pages and compare with the `call` output: row counts, status, health, and the join between servers and machines.
-5. Take one machine's data for each item in section 3 and confirm the structure.
-6. Update this document and the samples in `tests/unit/test_device_status.py` with any difference.
+Follow this section at a site. It has two aims: confirm the pages are correct at that site, and bring Core's real responses back verbatim so later development and tests use them instead of hand-written data.
+
+### 5.1 Preparation
+
+- Run a read-only observer instance at the site (`readOnly: true`, `rackOperations: true`) connected to the site's Core. Run every command in its container, never in the console that is installing.
+- The instance image must contain the current `tools/` of this repository, or pass the scripts on standard input as the commands below do.
+- Prepare a directory outside the repository, readable only by project members, for the captures, for example `operations/runs/<run id>/`.
+
+`survey` and `capture` below mean:
+
+```bash
+survey()  { kubectl -n <namespace> exec -i deploy/<pxeye> -c pxeye -- python3 - "$@" < tools/core-survey.py; }
+capture() { kubectl -n <namespace> exec -i deploy/<pxeye> -c pxeye -- python3 - < tools/core-capture.py; }
+```
+
+### 5.2 Checking the interfaces
+
+1. `survey list`, and compare the methods with sections 2 and 3. A missing method means the corresponding feature is unavailable at that site; note it.
+2. Run `survey call` once for the interface of each page in section 2 and note the number of rows:
+
+   ```bash
+   survey call 'FindMachineIds={}' 'FindSwitches={}' 'FindPowerShelves={}'
+   ```
+
+   A kind with no rows has no content on its page at that site and needs no further checking.
+3. For the two implemented items in section 3, take one machine:
+
+   ```bash
+   survey call 'FindMachineStateHistories={"machineIds":[{"id":"MID"}]}' \
+               'GetComponentInventory={"machineIds":{"machineIds":[{"id":"MID"}]}}'
+   ```
+
+4. The output shows structure only (long values shortened, lists reduced to their first item). Use it to compare with the field tables here, never as test data.
+
+### 5.3 Capturing verbatim
+
+```bash
+capture > operations/runs/<run id>/capture-<site>.json
+chmod 600 operations/runs/<run id>/capture-<site>.json
+```
+
+`tools/core-capture.py` starts a private copy of the console inside the instance container, listening on loopback only and working on a copy of the instance data: unfinished tasks are cancelled, Core and Redfish accept reads only, and Kubernetes cannot be written. It requests the device pages' API reads in turn and stops the copy when done. The running instance is not affected.
+
+A capture holds:
+
+| Part | Content |
+| --- | --- |
+| `core_calls` | Every Core RPC, Core CLI call and Redfish request, with the response verbatim |
+| `pxeye_responses` | The console's API responses at that time, the expected results of a replay |
+| `inputs` | Local data the pages depend on: site configuration, device plans, topology order, tasks |
+
+Only fields whose names look like credentials (password, secret, token, key and similar) are replaced with `<redacted>`; everything else is verbatim. The file therefore holds site addresses, serial numbers and machine IDs: **it must not enter this repository** and is kept only in the restricted directory.
+
+At the end the command prints the number of calls and failures on standard error. Failed calls are recorded too and fail the same way on replay.
+
+### 5.4 Developing and testing with a capture
+
+Run from the root of a local checkout; no site or Core is needed:
+
+```bash
+PYTHONPATH=src python3 tools/core-replay.py check capture-<site>.json
+PYTHONPATH=src python3 tools/core-replay.py serve capture-<site>.json --port 18930
+```
+
+- `check` recomputes each API response with the current code and compares it field by field with the captured one, ignoring times and digests that change on every read. It exits 0 when all match.
+- `serve` starts a local console whose Core reads all come from the capture; pages, backend conversion and joins are the real code. Use it for manual page checks and browser tests.
+- When the code sends Core a request the capture does not hold, that request fails and is listed as `UNRECORDED`. The code reads a new interface or its parameters changed, and the site has to be captured again.
+
+After changing code:
+
+| `check` result | Meaning | Action |
+| --- | --- | --- |
+| All OK | Behaviour unchanged | None |
+| DIFF, expected from this change | Output changed as intended | Confirm each line, then save a copy with `--write <new file>`; the Core responses in it stay verbatim |
+| DIFF, not expected | Regression | Fix the code |
+| UNRECORDED | The code needs new Core data | Capture the site again |
+
+### 5.5 Page by page
+
+Open the pages on the observer and compare with the results of 5.2:
+
+| Page | What to check | What to record when it differs |
+| --- | --- | --- |
+| Servers | Row count equals the servers in device management; every row is joined to a Core machine (the “NICo objects” count); state, health and power match `FindMachinesByIds`; devices under “needs attention” really have a failed handler run, an exceeded time limit or an alert | For an unjoined device: its BMC MAC and the `bmc.mac` of the Core machine |
+| Servers → status → state timeline | Stays and their order match `FindMachineStateHistories`; the current state matches the list; times show in the local time zone | The raw `time` format; any new structure in `event` |
+| Servers → status → firmware inventory | Entry count equals the `FirmwareInventory` entries; entries with an empty version still show | The fields of a non-empty `secureBootStatus`; machines without a report |
+| Switches, power shelves | Only when 5.2 returned rows; field by field against 2.2 and 2.3 | Whether each “definition only” field has a value |
+| Sites with DPUs | Whether a host returns both host and DPU machines; that no DPU is shown as a server | The values of `machineType` |
+
+### 5.6 What to bring back
+
+1. The capture, in the restricted directory, noting the kind of site (general server or whole rack) and the Core version.
+2. The results of 5.5: change “definition only” to “verified” in this document, or record the difference.
+3. Structures seen for the first time (new states, alerts, device kinds) go into `tests/unit/test_device_status.py`, with only the fields needed and placeholder values. Unit tests never read a capture.
+4. When the implementation status changes, update the [capability requirements](rack-operations-requirements.md) by its maintenance rules.
+
+### 5.7 Limits
+
+- A capture is one moment. How states change is seen only through repeated captures or the state history.
+- A device kind the site lacks is absent from the capture; switches and power shelves wait for a site that has them.
+- Replay has no Kubernetes; the cluster-dependent parts of site settings show as unavailable.
+- Captures are reads. Writes (power, maintenance, firmware updates) cannot be verified by replay.

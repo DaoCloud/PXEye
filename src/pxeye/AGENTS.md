@@ -60,6 +60,11 @@ updated, or that none applied.
   `tools/core-survey.py`, not from memory or from online documentation.
 - A page states only what was read. An absent report is unknown, not healthy.
 - Record which fields were verified on a real site in the data contract of the feature.
+- Test against a capture from a real site, not hand-written Core responses:
+  `PYTHONPATH=src python3 tools/core-replay.py check <capture.json>`. Captures are made with
+  `tools/core-capture.py` (data contract, section 5) and contain site data: never add one to
+  the repository. An `UNRECORDED` request means the code needs data the capture lacks; say so
+  instead of inventing a response.
 
 ## Checks before a commit
 

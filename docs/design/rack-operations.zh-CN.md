@@ -99,7 +99,8 @@ Core 提供电源、维护、隔离、固件、校验、退役等操作接口。
 ## 7. 开发方式
 
 - 用一个只读观察实例接真实数据：同一个镜像，开启 `readOnly`，连接现有站点的 Core。它拒绝一切写请求，不参与装机，可以和正在使用的控制台并存。
-- 新站点上先用 `tools/core-survey.py` 核对接口，再对照[数据契约](rack-operations-data-contract.zh-CN.md)第 5 节的清单。
+- 到站点后按[数据契约](rack-operations-data-contract.zh-CN.md)第 5 节调研：核对接口、原样采集 Core 的返回、逐页核对。
+- 离开站点后用采集文件回放（`tools/core-replay.py`）开发和测试，不再手写 Core 的返回。
 - 站点的原始返回数据和操作记录不进入本仓库。
 
 ## 8. 待确认

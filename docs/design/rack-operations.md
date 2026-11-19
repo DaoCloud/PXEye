@@ -99,7 +99,8 @@ Core offers power, maintenance, quarantine, firmware, validation and decommissio
 ## 7. How this is developed
 
 - A read-only observer instance provides real data: the same image with `readOnly` on, connected to the Core of an existing site. It rejects every write, takes no part in installation, and can run beside the console in use.
-- At a new site, check the interfaces with `tools/core-survey.py` first, then follow the checklist in section 5 of the [data contract](rack-operations-data-contract.md).
+- At a site, follow section 5 of the [data contract](rack-operations-data-contract.md): check the interfaces, capture Core's responses verbatim, check page by page.
+- Away from the site, develop and test by replaying the capture (`tools/core-replay.py`) instead of writing Core responses by hand.
 - Raw site responses and operation records do not enter this repository.
 
 ## 8. Awaiting confirmation

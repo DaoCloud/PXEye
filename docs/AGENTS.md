@@ -40,6 +40,7 @@ A design change is reflected in these documents in the commit that makes it.
   appending dated sections; history belongs in Git.
 - Separate what is implemented, what was verified and how, and what is only planned. Do not
   describe a rendered example as a result observed on hardware.
-- No site addresses, serial numbers, credentials, personal names or raw site responses. Use
+- No site addresses, serial numbers, credentials, personal names, raw site responses or
+  captures made with `tools/core-capture.py`. Use
   placeholders such as `<namespace>` and `<machine ID>`.
 - Screenshots use authored data with a stated source.
