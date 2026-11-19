@@ -2300,6 +2300,7 @@ body.read-only .topbar::after {
 .nav-item[data-page="servers"],
 .nav-item[data-page="switches"],
 .nav-item[data-page="power_shelves"],
+.nav-item[data-page="alerts"],
 .nav-item[data-page="cabling"],
 .nav-item[data-page="exploration"] {
   position: relative;
@@ -2311,6 +2312,7 @@ body.read-only .topbar::after {
 .nav-item[data-page="servers"]::before,
 .nav-item[data-page="switches"]::before,
 .nav-item[data-page="power_shelves"]::before,
+.nav-item[data-page="alerts"]::before,
 .nav-item[data-page="cabling"]::before,
 .nav-item[data-page="exploration"]::before {
   content: "";
