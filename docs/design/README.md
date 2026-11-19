@@ -11,6 +11,7 @@ Documents that explain why something is built the way it is and where it stops: 
 | Features and boundaries | [Read](features.md) | [阅读](features.zh-CN.md) | What each feature maps to in NICo and how far it is supported |
 | Architecture | [Read](architecture.md) | [阅读](architecture.zh-CN.md) | Runtime, module responsibilities, which system owns which data |
 | Interaction rules | [Read](interaction-rules.md) | [阅读](interaction-rules.zh-CN.md) | How pages, wording, states and dangerous operations are designed |
+| Rack operations: capability requirements | [Read](rack-operations-requirements.md) | [阅读](rack-operations-requirements.zh-CN.md) | The whole of the target capabilities: scope, lifecycle, ten functional areas |
 | Rack operations: scope and status | [Read](rack-operations.md) | [阅读](rack-operations.zh-CN.md) | What the rack line of work does, does not do, and has reached |
 | Rack operations: NICo data contract | [Read](rack-operations-data-contract.md) | [阅读](rack-operations-data-contract.zh-CN.md) | Which Core interface and field each page uses, and which were verified on a real site |
 | Code structure review | [Read](code-structure-review.md) | [阅读](code-structure-review.zh-CN.md) | Historical static findings and the refactor delivered |
