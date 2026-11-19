@@ -97,6 +97,16 @@ function explorationLastRun(run) {
     `<span class="live-small">${run.success ? badge("完成", "green") : badge("失败", "red")}${run.error ? " " + esc(run.error) : ""}</span>`
   );
 }
+// A failed run is the first thing to show: when Site Explorer cannot run at all
+// (for example without BMC credentials) there are no endpoints to explain it.
+function explorationRunFailure(run) {
+  if (!run || run.success !== false) return "";
+  const hint =
+    run.failure_category === "missing_credentials"
+      ? "站点发现没有可用的 BMC 凭据，因此不会探测任何地址；请在可写的控制台的站点设置中初始化站点凭据。"
+      : "";
+  return `<div class="live-error" role="alert">NICo 站点发现上次运行失败（${esc(explorationTime(run.finished_at || run.started_at))}）：${esc(run.error || "未报告原因")}${run.failure_category ? `<span class="live-small">类别 ${esc(run.failure_category)}</span>` : ""}${hint ? `<span class="live-small">${hint}</span>` : ""}</div>`;
+}
 function explorationPage() {
   const title = "发现诊断",
     description =
@@ -121,6 +131,7 @@ function explorationPage() {
       (error ? "" : '<div class="live-empty">正在读取站点发现报告…</div>')
     );
   const all = data.endpoints || [];
+  body += explorationRunFailure(data.last_run);
   if (!all.length)
     return (
       body +

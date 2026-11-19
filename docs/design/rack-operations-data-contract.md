@@ -175,7 +175,9 @@ For an endpoint explored successfully, `report` has the same structure as in 3.2
 
 Implementation: `GET /api/exploration` (only with `rack_operations` on). The `report` of a successful endpoint is a full Redfish inventory; only the address, type, vendor, ingestion stage, latency, error code / text / mitigation, the `Type` in `lastExplorationError` (raw text when not JSON), report version, reset and reboot times, whether it is a managed host, and for successful endpoints the system serial and model are kept. `lastRun` counts arrive as strings and are converted to integers. The page joins endpoints to devices by address.
 
-To verify: serial and model have never been extracted from a full real report; a failed `lastRun` or a `machineId` have not been seen.
+A failed `lastRun` has been seen at a real site: `success` false, `error` “Site Explorer credentials are missing or invalid”, `failureCategory` `missing_credentials`, all counts 0 and no endpoints. The page shows this failure and its cause at the top.
+
+To verify: serial and model have never been extracted from a full real report; a `machineId` has not been seen; other values of `failureCategory`.
 
 ### 3.4 Hardware validation (partly verified, implemented)
 

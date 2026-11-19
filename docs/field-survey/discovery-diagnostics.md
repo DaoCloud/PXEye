@@ -101,6 +101,7 @@ curl -sk -o /dev/null -w '%{http_code}\n' --max-time 10 https://<BMC address>/re
 
 | Observation | Meaning |
 | --- | --- |
+| The page shows “site exploration last run failed” at the top, category `missing_credentials`, and no endpoints | Site Explorer has no BMC credentials, so no exploration ran at all; it is not a problem with one address. Ask the user to initialize the site credentials in site settings on a writable console; the read-only observer cannot do it |
 | Error code `NICO-SITEEXPLORER-101`, connection refused | The address is reachable, but Redfish is off on the BMC, or the address is not a BMC (for example a switch or PDU got an address in the same subnet) |
 | Type shown as `Unknown` | Exploration did not succeed, so NICo cannot tell the device type |
 | A device is in the expected list but its address is not on the page | The BMC did not get an address, or it is outside the subnets NICo explores |

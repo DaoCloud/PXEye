@@ -41,7 +41,7 @@ export SURVEY_NAMESPACE=<namespace> SURVEY_DEPLOYMENT=<pxeye> SURVEY_DIR=<survey
 tools/site-survey.sh check
 ```
 
-`check` prints the Core version and the number of machines, switches and power shelves. Note `build_version` and `git_sha`; every page conclusion afterwards states the Core version it applies to.
+`check` prints the versions of Core (`carbide-api`) and of the CLI (`nico-admin-cli`), and the number of machines, switches and power shelves. Note `build_version` and `git_sha` of both; every page conclusion afterwards states the Core version it applies to. The two can differ: the CLI ships with the PXEye image, Core with the site deployment.
 
 The script has four uses:
 

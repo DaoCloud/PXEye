@@ -175,7 +175,9 @@ Core 的供电框没有插口，机柜 PDU 不在 Core 里。接口：`FindPower
 
 实现：接口 `GET /api/exploration`（只在 `rack_operations` 开启时存在）。成功端点的 `report` 是完整的 Redfish 清单，只保留地址、类型、厂商、接入阶段、耗时、错误码/文字/处理建议、`lastExplorationError` 里的 `Type`（不是 JSON 时保留原文）、报告版本、重置和重启时间、是否为已纳管主机，以及成功端点的系统序列号和型号。`lastRun` 的计数原为字符串，转为整数。页面按地址和设备管理里设备的地址关联。
 
-待核对：成功端点的序列号和型号从未在完整的真实报告上提取过；`lastRun` 失败、`machineId` 出现等情况未见过。
+`lastRun` 失败已在真实站点见过：`success` 为 false，`error` 为 “Site Explorer credentials are missing or invalid”，`failureCategory` 为 `missing_credentials`，计数全为 0、没有端点。页面在顶部显示这次失败和原因。
+
+待核对：成功端点的序列号和型号从未在完整的真实报告上提取过；`machineId` 出现的情况未见过；`failureCategory` 的其他取值。
 
 ### 3.4 硬件校验（部分验证，已实现）
 

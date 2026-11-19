@@ -41,7 +41,7 @@ export SURVEY_NAMESPACE=<namespace> SURVEY_DEPLOYMENT=<pxeye> SURVEY_DIR=<采集
 tools/site-survey.sh check
 ```
 
-`check` 打印 Core 版本，以及机器、交换机、供电框的数量。记下 `build_version` 和 `git_sha`，之后各页面的结论都要注明 Core 版本。
+`check` 打印 Core（`carbide-api`）和命令行（`nico-admin-cli`）的版本，以及机器、交换机、供电框的数量。两者的 `build_version`、`git_sha` 都要记下，之后各页面的结论都要注明 Core 版本。两者可能不同：命令行随 PXEye 镜像发布，Core 随站点部署更新。
 
 脚本有四种用法：
 
