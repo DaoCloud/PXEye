@@ -1,10 +1,10 @@
 # 文档设计参考
 
-[English](documentation-references.md) · **简体中文** · [文档中心](README.zh-CN.md)
+[English](documentation-references.md) · **简体中文** · [文档中心](../README.zh-CN.md)
 
 查阅日期：**2026-11-07**。以下是上游公开文档参考，不代表 PXEye 实现了这些项目的能力。分支页面会变化，本次结论以查阅时内容为准。未复制其他项目的介绍正文、截图或徽章。
 
-**2026-11-08** 增补入门结构，参考 [Tinkerbell Getting Started](https://tinkerbell.org/docs/v0.22/setup/getting_started/)、[Metal3 Quick Start](https://book.metal3.io/quick-start) 和 [Argo CD Getting Started](https://argo-cd.readthedocs.io/en/stable/getting_started/)：先列前提，再部署并完成首次操作，详细配置独立成文；PXEye 在 README 展示 8 项摘要，完整[装机前检查清单](pre-installation-checklist.zh-CN.md)单独维护。
+**2026-11-08** 增补入门结构，参考 [Tinkerbell Getting Started](https://tinkerbell.org/docs/v0.22/setup/getting_started/)、[Metal3 Quick Start](https://book.metal3.io/quick-start) 和 [Argo CD Getting Started](https://argo-cd.readthedocs.io/en/stable/getting_started/)：先列前提，再部署并完成首次操作，详细配置独立成文；PXEye 在 README 展示 8 项摘要，完整[装机前检查清单](../pre-installation-checklist.zh-CN.md)单独维护。
 
 ## 采用的组织方式
 
@@ -34,4 +34,4 @@ Tinkerbell 和 Metal3 将启动、硬件检查和清理写成具体能力，而�
 
 ## 技术参考
 
-NICo [模板化 iPXE](https://docs.nvidia.com/infra-controller/documentation/configuration-day-1/templated-i-pxe-operating-systems)、[网络配置](https://docs.nvidia.com/infra-controller/documentation/provisioning-day-0/ip-and-network-configuration)和 [Rack 状态机](https://docs.nvidia.com/infra-controller/documentation/architecture/state-machines/rack-machine-switch-power-shelf)用于核对原生术语。[参考集群](reference-cluster.zh-CN.md)列明硬件架构来源。在线资料仍需与集成 Core 版本核对。
+NICo [模板化 iPXE](https://docs.nvidia.com/infra-controller/documentation/configuration-day-1/templated-i-pxe-operating-systems)、[网络配置](https://docs.nvidia.com/infra-controller/documentation/provisioning-day-0/ip-and-network-configuration)和 [Rack 状态机](https://docs.nvidia.com/infra-controller/documentation/architecture/state-machines/rack-machine-switch-power-shelf)用于核对原生术语。[参考集群](../reference-cluster.zh-CN.md)列明硬件架构来源。在线资料仍需与集成 Core 版本核对。

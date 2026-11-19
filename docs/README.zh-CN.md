@@ -17,12 +17,23 @@ PXEye 公开项目文档均提供内容对应的中英文版本。首次使用�
 | 部署指南 | [Read](deployment.md) | [阅读](deployment.zh-CN.md) | 镜像构建、通用 UEFI 介质、站点配置、凭据和持久化发布。 |
 | NICo 集群部署 | [Read](nico-deployment.md) | [阅读](nico-deployment.zh-CN.md) | 独立启动 PXEye、在线/离线 Helm 部署、权限与站点连接。 |
 | 首台装机 | [Read](getting-started.md) | [阅读](getting-started.zh-CN.md) | 从纳管到验收的首次单机流程。 |
-| 功能与边界 | [Read](features.md) | [阅读](features.zh-CN.md) | 原生映射、设备能力和安装范围。 |
-| 系统架构 | [Read](architecture.md) | [阅读](architecture.zh-CN.md) | 运行环境、模块职责和数据归属。 |
-| 代码结构评审 | [Read](code-structure-review.md) | [阅读](code-structure-review.zh-CN.md) | 静态问题、优先级与建议的调整顺序。 |
+| 功能与边界 | [Read](design/features.md) | [阅读](design/features.zh-CN.md) | 原生映射、设备能力和安装范围。 |
+| 系统架构 | [Read](design/architecture.md) | [阅读](design/architecture.zh-CN.md) | 运行环境、模块职责和数据归属。 |
+| 代码结构评审 | [Read](design/code-structure-review.md) | [阅读](design/code-structure-review.zh-CN.md) | 静态问题、优先级与建议的调整顺序。 |
 | 参考集群 | [Read](reference-cluster.md) | [阅读](reference-cluster.zh-CN.md) | GB200 架构示例与截图生成。 |
-| 文档设计参考 | [Read](documentation-references.md) | [阅读](documentation-references.zh-CN.md) | NetBox、Tinkerbell、Metal3、Argo CD 调研。 |
+| 文档设计参考 | [Read](design/documentation-references.md) | [阅读](design/documentation-references.zh-CN.md) | NetBox、Tinkerbell、Metal3、Argo CD 调研。 |
 | 公开发布准备 | [Read](publishing.md) | [阅读](publishing.zh-CN.md) | 仓库边界与发布职责。 |
+
+## 设计文档
+
+产品范围、系统设计、交互规则和数据契约集中在[设计文档](design/README.zh-CN.md)。
+
+| 文档 | English | 简体中文 | 用途 |
+| --- | --- | --- | --- |
+| 设计文档索引 | [Read](design/README.md) | [阅读](design/README.zh-CN.md) | 各类内容放在哪；命名规则。 |
+| 交互规则 | [Read](design/interaction-rules.md) | [阅读](design/interaction-rules.zh-CN.md) | 页面归属、文案、状态、危险操作。 |
+| 机柜运维：范围与现状 | [Read](design/rack-operations.md) | [阅读](design/rack-operations.zh-CN.md) | 机柜方向做什么、做到哪一步。 |
+| 机柜运维：NICo 数据契约 | [Read](design/rack-operations-data-contract.md) | [阅读](design/rack-operations-data-contract.zh-CN.md) | 每个页面使用的 Core 接口和字段，及验证标记。 |
 
 ## 页面使用指南
 

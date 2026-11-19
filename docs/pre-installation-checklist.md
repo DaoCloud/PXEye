@@ -73,4 +73,4 @@ BFB is the DPU system bundle; DPF is the management framework. PXEye's server OS
 
 Keep each check to one sentence; put commands and explanations in the relevant guide and link them here. Maintain the English and Chinese versions together. Use this page for the complete checklist and the root README for its short summary.
 
-NVIDIA documentation is the primary technical reference; confirm its requirements against the integrated NICo version and the actual hardware workflow. Prepared ARM64 artifacts, a Ready Pod or a simulated run do not establish physical ARM64/Grace compatibility; see [Features and support boundaries](features.md).
+NVIDIA documentation is the primary technical reference; confirm its requirements against the integrated NICo version and the actual hardware workflow. Prepared ARM64 artifacts, a Ready Pod or a simulated run do not establish physical ARM64/Grace compatibility; see [Features and support boundaries](design/features.md).

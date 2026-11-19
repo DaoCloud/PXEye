@@ -17,3 +17,10 @@
   data out of this repository.
 - Follow the repository's bilingual documentation policy for public documentation changes.
 
+## Rules by area
+
+- Application code, protected installation and discovery paths, naming:
+  [src/pxeye/AGENTS.md](src/pxeye/AGENTS.md).
+- Documentation layout, naming and bilingual policy: [docs/AGENTS.md](docs/AGENTS.md).
+- Design documents and interaction rules: [docs/design](docs/design/README.md).
+

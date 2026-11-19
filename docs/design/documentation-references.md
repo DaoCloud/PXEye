@@ -1,10 +1,10 @@
 # Documentation design references
 
-**English** · [简体中文](documentation-references.zh-CN.md) · [Documentation](README.md)
+**English** · [简体中文](documentation-references.zh-CN.md) · [Documentation](../README.md)
 
 Reviewed on **2026-11-07**. These are upstream public documentation references, not claims that PXEye implements their capabilities. Branch pages can change; this review reflects the content available on that date. No project introduction, screenshot or badge was copied into PXEye.
 
-The onboarding structure was extended on **2026-11-08** using [Tinkerbell Getting Started](https://tinkerbell.org/docs/v0.22/setup/getting_started/), [Metal3 Quick Start](https://book.metal3.io/quick-start) and [Argo CD Getting Started](https://argo-cd.readthedocs.io/en/stable/getting_started/): prerequisites precede deployment and a first operation, while detailed configuration stays in separate guides. PXEye places an eight-item summary in its README and maintains the complete [pre-installation checklist](pre-installation-checklist.md) separately.
+The onboarding structure was extended on **2026-11-08** using [Tinkerbell Getting Started](https://tinkerbell.org/docs/v0.22/setup/getting_started/), [Metal3 Quick Start](https://book.metal3.io/quick-start) and [Argo CD Getting Started](https://argo-cd.readthedocs.io/en/stable/getting_started/): prerequisites precede deployment and a first operation, while detailed configuration stays in separate guides. PXEye places an eight-item summary in its README and maintains the complete [pre-installation checklist](../pre-installation-checklist.md) separately.
 
 ## What we adopted
 
@@ -34,4 +34,4 @@ Each public page has an English/Chinese counterpart with matching intent. Comman
 
 ## Technical references
 
-NICo [templated iPXE](https://docs.nvidia.com/infra-controller/documentation/configuration-day-1/templated-i-pxe-operating-systems), [network configuration](https://docs.nvidia.com/infra-controller/documentation/provisioning-day-0/ip-and-network-configuration), and [Rack state machine](https://docs.nvidia.com/infra-controller/documentation/architecture/state-machines/rack-machine-switch-power-shelf) inform the native terminology. The [reference cluster](reference-cluster.md) identifies the hardware architecture sources. Online docs must be checked against the integrated Core revision.
+NICo [templated iPXE](https://docs.nvidia.com/infra-controller/documentation/configuration-day-1/templated-i-pxe-operating-systems), [network configuration](https://docs.nvidia.com/infra-controller/documentation/provisioning-day-0/ip-and-network-configuration), and [Rack state machine](https://docs.nvidia.com/infra-controller/documentation/architecture/state-machines/rack-machine-switch-power-shelf) inform the native terminology. The [reference cluster](../reference-cluster.md) identifies the hardware architecture sources. Online docs must be checked against the integrated Core revision.

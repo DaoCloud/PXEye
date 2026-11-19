@@ -1,6 +1,6 @@
 # Code structure review and implementation
 
-**English** · [简体中文](code-structure-review.zh-CN.md) · [Documentation](README.md)
+**English** · [简体中文](code-structure-review.zh-CN.md) · [Documentation](../README.md)
 
 ## Scope
 
@@ -12,13 +12,13 @@ The initial snapshot had 32 runtime Python files and nine global frontend script
 
 | Priority | Historical finding | Delivered change and current source |
 | --- | --- | --- |
-| P1 | List reads exported CSV through a shared `machines.tmp` file. | [Atomic text/JSON writer](../src/pxeye/common.py) uses unique exclusive temporary files, flush/fsync, replacement and cleanup. [Resource refresh](../src/pxeye/services/resources.py) owns export and missing-plan seeding; device GETs no longer do these writes. |
-| P2 | Scripts captured and replaced dialog/page functions; listeners and legacy views overlapped. | [UI runtime](../src/pxeye/web/shared/ui_runtime.js) registers one owner per page/action, delegates events and controls polling. Named helpers and lifecycle hooks replace function capture. Old duplicate page renderers and discovery polling are removed. |
-| P2 | Transport and planning services constructed each other; common contracts lived in large services. | [Clients](../src/pxeye/clients/core.py) separate Core/Redfish/SSH/process transport. Common helpers and [Machine contracts](../src/pxeye/domain/machines.py) are independent. [Bootstrap](../src/pxeye/bootstrap.py) injects resources, plans and profiles into the execution facade. |
-| P2 | Constructors repeated schema/legacy setup; projections repeatedly scanned operations. | [Store](../src/pxeye/persistence/store.py) centralizes schema and version recording, with path-keyed wrappers and per-operation connections. Legacy profile import is explicit at bootstrap. [Device projection](../src/pxeye/services/device_view.py) owns list composition; address snapshots load proofs, plans and operation records once. |
-| P2 | HTTP composition owned task recovery, scheduling and locking. | [Task coordinator](../src/pxeye/services/tasks.py) owns those operations; [HTTP transport](../src/pxeye/api/http.py), queries and commands are separate modules. Application retains thin compatibility forwards. |
-| P2 | Failures lacked safe, consistent diagnostic context. | [Error translation](../src/pxeye/api/errors.py) returns codes and request IDs for GET/POST/uploads; logs preserve stack locations without raw exception messages, arguments or credential contents. |
-| P3 | Runtime, optional validation and site tools shared the root; frontend code was dense. | [Package metadata](../pyproject.toml), `src/pxeye/`, `tests/unit/`, `tools/` and [deployment skeleton](../deploy/kubernetes.yaml) establish boundaries. Python/JS/CSS/HTML are formatted; 12 superseded topology base declarations are removed without moving remaining rules or media blocks. |
+| P1 | List reads exported CSV through a shared `machines.tmp` file. | [Atomic text/JSON writer](../../src/pxeye/common.py) uses unique exclusive temporary files, flush/fsync, replacement and cleanup. [Resource refresh](../../src/pxeye/services/resources.py) owns export and missing-plan seeding; device GETs no longer do these writes. |
+| P2 | Scripts captured and replaced dialog/page functions; listeners and legacy views overlapped. | [UI runtime](../../src/pxeye/web/shared/ui_runtime.js) registers one owner per page/action, delegates events and controls polling. Named helpers and lifecycle hooks replace function capture. Old duplicate page renderers and discovery polling are removed. |
+| P2 | Transport and planning services constructed each other; common contracts lived in large services. | [Clients](../../src/pxeye/clients/core.py) separate Core/Redfish/SSH/process transport. Common helpers and [Machine contracts](../../src/pxeye/domain/machines.py) are independent. [Bootstrap](../../src/pxeye/bootstrap.py) injects resources, plans and profiles into the execution facade. |
+| P2 | Constructors repeated schema/legacy setup; projections repeatedly scanned operations. | [Store](../../src/pxeye/persistence/store.py) centralizes schema and version recording, with path-keyed wrappers and per-operation connections. Legacy profile import is explicit at bootstrap. [Device projection](../../src/pxeye/services/device_view.py) owns list composition; address snapshots load proofs, plans and operation records once. |
+| P2 | HTTP composition owned task recovery, scheduling and locking. | [Task coordinator](../../src/pxeye/services/tasks.py) owns those operations; [HTTP transport](../../src/pxeye/api/http.py), queries and commands are separate modules. Application retains thin compatibility forwards. |
+| P2 | Failures lacked safe, consistent diagnostic context. | [Error translation](../../src/pxeye/api/errors.py) returns codes and request IDs for GET/POST/uploads; logs preserve stack locations without raw exception messages, arguments or credential contents. |
+| P3 | Runtime, optional validation and site tools shared the root; frontend code was dense. | [Package metadata](../../pyproject.toml), `src/pxeye/`, `tests/unit/`, `tools/` and [deployment skeleton](../../deploy/kubernetes.yaml) establish boundaries. Python/JS/CSS/HTML are formatted; 12 superseded topology base declarations are removed without moving remaining rules or media blocks. |
 
 ## Runtime and compatibility
 

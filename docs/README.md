@@ -17,12 +17,23 @@ Public PXEye documentation is maintained in English and Simplified Chinese. Star
 | Deployment | [Read](deployment.md) | [阅读](deployment.zh-CN.md) | Image build, generic UEFI media, site config, credentials and persistent publication. |
 | NICo cluster deployment | [Read](nico-deployment.md) | [阅读](nico-deployment.zh-CN.md) | Independent startup, online/offline Helm deployment, permissions and site connection. |
 | Install your first server | [Read](getting-started.md) | [阅读](getting-started.zh-CN.md) | First-device path from enrollment to acceptance. |
-| Features and boundaries | [Read](features.md) | [阅读](features.zh-CN.md) | Native mappings, device capabilities and installation scope. |
-| Architecture | [Read](architecture.md) | [阅读](architecture.zh-CN.md) | Runtime, module responsibilities and authoritative data. |
-| Code structure review | [Read](code-structure-review.md) | [阅读](code-structure-review.zh-CN.md) | Historical findings, delivered refactor and verification limits. |
+| Features and boundaries | [Read](design/features.md) | [阅读](design/features.zh-CN.md) | Native mappings, device capabilities and installation scope. |
+| Architecture | [Read](design/architecture.md) | [阅读](design/architecture.zh-CN.md) | Runtime, module responsibilities and authoritative data. |
+| Code structure review | [Read](design/code-structure-review.md) | [阅读](design/code-structure-review.zh-CN.md) | Historical findings, delivered refactor and verification limits. |
 | Reference cluster | [Read](reference-cluster.md) | [阅读](reference-cluster.zh-CN.md) | GB200-inspired view data and screenshot capture. |
-| Documentation references | [Read](documentation-references.md) | [阅读](documentation-references.zh-CN.md) | Review of NetBox, Tinkerbell, Metal3 and Argo CD. |
+| Documentation references | [Read](design/documentation-references.md) | [阅读](design/documentation-references.zh-CN.md) | Review of NetBox, Tinkerbell, Metal3 and Argo CD. |
 | Public release preparation | [Read](publishing.md) | [阅读](publishing.zh-CN.md) | Repository boundary and release responsibilities. |
+
+## Design documents
+
+Scope, system design, interaction rules and data contracts are in [design](design/README.md).
+
+| Document | English | 简体中文 | Purpose |
+| --- | --- | --- | --- |
+| Design index | [Read](design/README.md) | [阅读](design/README.zh-CN.md) | Where each kind of content lives; naming rules. |
+| Interaction rules | [Read](design/interaction-rules.md) | [阅读](design/interaction-rules.zh-CN.md) | Page ownership, wording, state, dangerous operations. |
+| Rack operations: scope and status | [Read](design/rack-operations.md) | [阅读](design/rack-operations.zh-CN.md) | What the rack line of work does and has reached. |
+| Rack operations: NICo data contract | [Read](design/rack-operations-data-contract.md) | [阅读](design/rack-operations-data-contract.zh-CN.md) | Core interfaces and fields per page, with verification marks. |
 
 ## Page guides
 

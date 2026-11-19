@@ -1,16 +1,22 @@
 # 功能与支持边界
 
-[English](features.md) · **简体中文** · [文档中心](README.zh-CN.md)
+[English](features.md) · **简体中文** · [文档中心](../README.zh-CN.md)
 
 本文描述当前代码能力。页面渲染、示例数据展示和真实硬件验证提供不同层级的证据。正式交付前，需要按照实际 NICo 版本和硬件核对流程。
 
 ## NICo 集群部署
 
-PXEye 可在未配置 Core 时独立启动，在当前 Kubernetes 在线下载 Chart 或上传离线材料部署 NICo。默认在线，页面填写参数、预览 Helm 命令，无需挂载部署包。查看服务、副本、初始化、存储与 Boot 材料，全部就绪后明确应用到站点设置。已有 Kubernetes 和准备齐全的站点 Chart/values 是部署前提。参见[集群页面指南](user-guide/nico-cluster.zh-CN.md)。
+PXEye 可在未配置 Core 时独立启动，在当前 Kubernetes 在线下载 Chart 或上传离线材料部署 NICo。默认在线，页面填写参数、预览 Helm 命令，无需挂载部署包。查看服务、副本、初始化、存储与 Boot 材料，全部就绪后明确应用到站点设置。已有 Kubernetes 和准备齐全的站点 Chart/values 是部署前提。参见[集群页面指南](../user-guide/nico-cluster.zh-CN.md)。
 
 ## 机柜拓扑
 
 按机柜汇总服务器、DPU 端点、NVLink 交换机和供电框，展示序列号、实际管理地址和已回报的电源状态。同类设备区域支持拖拽，显示顺序保存在 PXEye SQLite；不修改 NICo Rack 归属、U 位或布线。绿色状态点表示最近回报为开机，不代表 OS 健康检查通过。
+
+## 设备运行状态（预览）
+
+开启站点开关 `rackOperations` 后，设备管理下增加服务器、交换机、供电框三个二级页面。它们列出设备管理里已有的设备，并显示 NICo Core 回报的运行状态、健康告警、电源状态和 LLDP 邻居。页面只读；纳管、地址和机柜归属仍在设备管理中维护。交换机页只包含 NVLink 交换机，供电框页只包含 Core 管理的供电框；第三方接入交换机和机柜 PDU 不由 Core 管理。目前只有服务器页用真实数据验证过。见[机柜运维](rack-operations.zh-CN.md)。
+
+以 `readOnly` 运行的第二个控制台可以连接已由另一个 PXEye 操作的 Core：除登录外拒绝所有命令，对 Core 和 BMC 只发送读取请求。
 
 ## 发现与纳管
 
@@ -22,7 +28,7 @@ DHCP 发现要求设备启用 DHCP，且请求能够正确转发。使用未知�
 
 设备管理分为设备规划、发现设备和纳管设备。设备规划使用独立的 CSV 清单，维护 SN、管理地址/MAC、管理子网 CIDR、BMC 地址/MAC及机柜，并与纳管设备配置对比。纳管后按唯一 SN 一键匹配，管理 MAC 指定真实接口，CIDR精确关联已有子网；机柜只用于对比。
 
-服务器通过系统配置维护 hostname、目标 OS 和安装方案，并保留逐机配置版本；其他设备使用原有地址管理。字段和操作见[设备管理使用指南](user-guide/device-management.zh-CN.md)。
+服务器通过系统配置维护 hostname、目标 OS 和安装方案，并保留逐机配置版本；其他设备使用原有地址管理。字段和操作见[设备管理使用指南](../user-guide/device-management.zh-CN.md)。
 
 保存规划仅持久化产品数据和派生文件。批量操作分别执行：
 
@@ -37,7 +43,7 @@ DHCP 发现要求设备启用 DHCP，且请求能够正确转发。使用未知�
 
 ## 网络管理
 
-页面入口、字段格式和操作步骤见[网络管理使用指南](user-guide/network-management.zh-CN.md)。
+页面入口、字段格式和操作步骤见[网络管理使用指南](../user-guide/network-management.zh-CN.md)。
 
 查看 NICo `NetworkSegment` 前缀、网关、MTU、接口引用和地址策略。当前新增表单提供 HostInband、Admin 和 Underlay，地址策略为动态分配；已有生效子网在当前 UI 只读，集成版本没有原位更新接口。删除生效子网受引用检查及 NICo 生命周期约束。
 
@@ -69,7 +75,7 @@ Scout 在业务 OS 安装前的发现环境运行。站点接入策略可能清�
 
 站点设置展示 Core 连接、mTLS 客户端身份、存储和配套服务端点；名称和 Core 地址的有限修改使用当前身份验证。状态区分 TCP 可达、存在配置和协议检查。
 
-外部 DHCP 是无 DPU、固定租约的 x86_64/Flat 主机可选模式。配套 Core/Scout 负责虚拟介质引导与清理；PXEye 保持 Kea 停止并使用明确的引导 HTTP 端点。默认仍使用 Nico DHCP。见[前提与验收边界](external-dhcp.zh-CN.md)。
+外部 DHCP 是无 DPU、固定租约的 x86_64/Flat 主机可选模式。配套 Core/Scout 负责虚拟介质引导与清理；PXEye 保持 Kea 停止并使用明确的引导 HTTP 端点。默认仍使用 Nico DHCP。见[前提与验收边界](../external-dhcp.zh-CN.md)。
 
 ## 当前运行范围
 
@@ -79,4 +85,4 @@ Scout 在业务 OS 安装前的发现环境运行。站点接入策略可能清�
 - ARM64、GB200/GB300、其他发行版和 OEM 启动差异需要独立验证。
 - DPU、NVLink 交换机和供电框写操作依赖实际管理接口。
 
-参阅[系统架构](architecture.zh-CN.md)、[操作指南](getting-started.zh-CN.md)和[安全说明](../SECURITY.zh-CN.md)。
+参阅[系统架构](architecture.zh-CN.md)、[操作指南](../getting-started.zh-CN.md)和[安全说明](../../SECURITY.zh-CN.md)。

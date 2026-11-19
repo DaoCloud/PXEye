@@ -1,6 +1,6 @@
 # 系统架构
 
-[English](architecture.md) · **简体中文** · [文档中心](README.zh-CN.md)
+[English](architecture.md) · **简体中文** · [文档中心](../README.zh-CN.md)
 
 ## 系统位置
 
@@ -37,6 +37,8 @@ PXEye 是操作界面和编排层，NICo 管理基础设施生命周期状态。
 | 发现、接入与硬件 | `services/discovery.py`、`services/onboarding.py`、`services/hardware.py` |
 | OS 与方案生命周期 | `services/os_library.py`、`services/profiles.py` |
 | 实例与当前系统观测 | `services/instances.py`、`services/current_systems.py` |
+| 设备运行状态（只读，预览） | `services/device_status.py` |
+| 只读观察模式 | `read_only.py` |
 | 任务认领、队列、恢复与锁策略 | `services/tasks.py` |
 | 安装器生成、磁盘策略、启动与验收 | `installation/` |
 

@@ -1,6 +1,6 @@
 # 代码结构评审与实施
 
-[English](code-structure-review.md) · **简体中文** · [文档中心](README.zh-CN.md)
+[English](code-structure-review.md) · **简体中文** · [文档中心](../README.zh-CN.md)
 
 ## 范围
 
@@ -12,13 +12,13 @@
 
 | 优先级 | 历史发现 | 已完成调整与当前源码 |
 | --- | --- | --- |
-| P1 | 列表读取通过共享的 `machines.tmp` 导出 CSV。 | [原子文本/JSON 写入](../src/pxeye/common.py)使用唯一排他临时文件、刷新/fsync、替换与清理。[资源刷新](../src/pxeye/services/resources.py)负责导出及缺失规划补录；设备 GET 不再执行这些写入。 |
-| P2 | 脚本捕获并覆盖弹窗/页面函数，监听器及旧视图重复。 | [UI 运行模块](../src/pxeye/web/shared/ui_runtime.js)统一页面/操作归属、事件分发和轮询生命周期。具名工具与生命周期钩子替代函数捕获，删除重复页面渲染及旧发现轮询。 |
-| P2 | 传输与规划服务互相构造，公共契约藏在大型服务内。 | [客户端](../src/pxeye/clients/core.py)拆分 Core/Redfish/SSH/进程传输。公共工具及 [Machine 契约](../src/pxeye/domain/machines.py)独立，[启动组装](../src/pxeye/bootstrap.py)向执行组合层注入资源、设备规划和方案。 |
-| P2 | 构造时重复初始化表结构/历史方案，视图反复扫描操作。 | [Store](../src/pxeye/persistence/store.py)集中初始化表结构及版本记录，复用按路径缓存的包装器，连接仍按操作使用。启动显式导入历史方案。[设备视图](../src/pxeye/services/device_view.py)负责列表组合，地址快照一次读取验证、规划和操作记录。 |
-| P2 | HTTP 组装负责恢复、调度与锁。 | [任务协调器](../src/pxeye/services/tasks.py)管理相关操作，[HTTP 传输](../src/pxeye/api/http.py)、查询和命令拆分。Application 保留薄兼容转发。 |
-| P2 | 错误缺少安全、一致的定位上下文。 | [错误转换](../src/pxeye/api/errors.py)统一 GET/POST/上传的错误码和请求编号；日志记录堆栈位置，省略原始异常文本、命令参数和凭据内容。 |
-| P3 | 运行代码、可选验证和现场工具混放，前端代码密集。 | [软件包元数据](../pyproject.toml)、`src/pxeye/`、`tests/unit/`、`tools/` 和[部署骨架](../deploy/kubernetes.yaml)明确目录边界。统一 Python/JS/CSS/HTML 格式；删除 12 个已被后续覆盖的拓扑基础声明，不移动剩余规则或响应式块。 |
+| P1 | 列表读取通过共享的 `machines.tmp` 导出 CSV。 | [原子文本/JSON 写入](../../src/pxeye/common.py)使用唯一排他临时文件、刷新/fsync、替换与清理。[资源刷新](../../src/pxeye/services/resources.py)负责导出及缺失规划补录；设备 GET 不再执行这些写入。 |
+| P2 | 脚本捕获并覆盖弹窗/页面函数，监听器及旧视图重复。 | [UI 运行模块](../../src/pxeye/web/shared/ui_runtime.js)统一页面/操作归属、事件分发和轮询生命周期。具名工具与生命周期钩子替代函数捕获，删除重复页面渲染及旧发现轮询。 |
+| P2 | 传输与规划服务互相构造，公共契约藏在大型服务内。 | [客户端](../../src/pxeye/clients/core.py)拆分 Core/Redfish/SSH/进程传输。公共工具及 [Machine 契约](../../src/pxeye/domain/machines.py)独立，[启动组装](../../src/pxeye/bootstrap.py)向执行组合层注入资源、设备规划和方案。 |
+| P2 | 构造时重复初始化表结构/历史方案，视图反复扫描操作。 | [Store](../../src/pxeye/persistence/store.py)集中初始化表结构及版本记录，复用按路径缓存的包装器，连接仍按操作使用。启动显式导入历史方案。[设备视图](../../src/pxeye/services/device_view.py)负责列表组合，地址快照一次读取验证、规划和操作记录。 |
+| P2 | HTTP 组装负责恢复、调度与锁。 | [任务协调器](../../src/pxeye/services/tasks.py)管理相关操作，[HTTP 传输](../../src/pxeye/api/http.py)、查询和命令拆分。Application 保留薄兼容转发。 |
+| P2 | 错误缺少安全、一致的定位上下文。 | [错误转换](../../src/pxeye/api/errors.py)统一 GET/POST/上传的错误码和请求编号；日志记录堆栈位置，省略原始异常文本、命令参数和凭据内容。 |
+| P3 | 运行代码、可选验证和现场工具混放，前端代码密集。 | [软件包元数据](../../pyproject.toml)、`src/pxeye/`、`tests/unit/`、`tools/` 和[部署骨架](../../deploy/kubernetes.yaml)明确目录边界。统一 Python/JS/CSS/HTML 格式；删除 12 个已被后续覆盖的拓扑基础声明，不移动剩余规则或响应式块。 |
 
 ## 运行与兼容
 

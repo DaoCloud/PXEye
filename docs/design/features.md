@@ -1,16 +1,22 @@
 # Features and support boundaries
 
-**English** · [简体中文](features.zh-CN.md) · [Documentation](README.md)
+**English** · [简体中文](features.zh-CN.md) · [Documentation](../README.md)
 
 This guide describes current code capabilities. UI rendering, fixture-based demonstrations and physical hardware validation provide different evidence. Validate the workflow against your NICo revision and hardware before using it for delivery.
 
 ## NICo cluster deployment
 
-Start PXEye before Core is configured, then deploy online Charts or browser-uploaded offline material in its current Kubernetes cluster. Online is the default; enter Chart parameters and preview Helm commands without a package mount. Inspect services, replicas, initialization, storage and Boot delivery; explicitly connect the ready deployment to site settings. Kubernetes provisioning and preparation of complete site Charts/values remain prerequisites. See the [cluster guide](user-guide/nico-cluster.md).
+Start PXEye before Core is configured, then deploy online Charts or browser-uploaded offline material in its current Kubernetes cluster. Online is the default; enter Chart parameters and preview Helm commands without a package mount. Inspect services, replicas, initialization, storage and Boot delivery; explicitly connect the ready deployment to site settings. Kubernetes provisioning and preparation of complete site Charts/values remain prerequisites. See the [cluster guide](../user-guide/nico-cluster.md).
 
 ## Rack topology
 
 Group servers, DPU endpoints, NVLink switches and power shelves by rack. View serial numbers, observed management addresses and reported power state. Drag devices within their category and save display order in PXEye SQLite. Layout changes do not change NICo Rack membership, U positions or cabling. A green indicator means the latest reported power state is on; it is not an OS health check.
+
+## Device status (preview)
+
+With the site switch `rackOperations` on, device management gains three second-level pages: servers, switches and power shelves. They list the devices device management already holds and add the lifecycle state, health alerts, power state and LLDP neighbours NICo Core reports. They are read-only; enrollment, addresses and rack assignment stay in device management. The switch page covers NVLink switches and the power shelf page covers power shelves managed by Core; third-party access switches and rack PDUs are not managed by Core. Only the server page has been verified with real data. See [rack operations](rack-operations.md).
+
+A second console can attach to a Core that another PXEye operates when it runs with `readOnly`: it rejects every command except sign-in and sends only reads to Core and BMCs.
 
 ## Discovery and enrollment
 
@@ -22,7 +28,7 @@ DHCP discovery requires an enabled DHCP client and correctly routed requests. A 
 
 Device management has Device plans, Discovered devices and Managed devices tabs. An independent planning CSV stores SN, management IP/MAC, management subnet CIDR, BMC IP/MAC and rack for comparison with managed device configuration. After enrollment, matching uses a unique SN, locates the actual interface by management MAC and resolves an exact CIDR to an existing subnet. Rack values are only compared.
 
-Server system configuration maintains hostname, target OS and installation profile with versioned device settings. Other equipment retains the existing address management flow. See the [Device management guide](user-guide/device-management.md) for fields and actions.
+Server system configuration maintains hostname, target OS and installation profile with versioned device settings. Other equipment retains the existing address management flow. See the [Device management guide](../user-guide/device-management.md) for fields and actions.
 
 Saving a plan persists product data and derived files. Batch actions perform separate operations:
 
@@ -37,7 +43,7 @@ The list distinguishes current and planned addresses. Expected Machine declarati
 
 ## Network management
 
-For page navigation, field values and actions, see the [network management guide](user-guide/network-management.md).
+For page navigation, field values and actions, see the [network management guide](../user-guide/network-management.md).
 
 Inspect NICo `NetworkSegment` prefixes, gateways, MTU, interface references and allocation policies. The current create form exposes HostInband, Admin and Underlay with dynamic allocation. Existing live segments are read-only in the current UI; native in-place updates are not available in the integrated revision. Deleting a live segment is subject to reference checks and NICo lifecycle constraints.
 
@@ -70,7 +76,7 @@ Inspect Instances and associated Machines, OS definitions and lifecycle state. R
 Site settings display Core connectivity, the mTLS client identity, storage and configured service endpoints. Limited name/Core edits are validated using the current identity. Service indicators distinguish TCP reachability, configuration presence and protocol checks.
 
 
-External DHCP is an optional mode for fixed-lease x86_64/Flat hosts without a DPU. The matching Core/Scout build owns VirtualMedia boot and cleanup; PXEye keeps Kea stopped and uses an explicit boot HTTP endpoint. Native Nico DHCP remains the default. See [requirements and validation boundaries](external-dhcp.md).
+External DHCP is an optional mode for fixed-lease x86_64/Flat hosts without a DPU. The matching Core/Scout build owns VirtualMedia boot and cleanup; PXEye keeps Kea stopped and uses an explicit boot HTTP endpoint. Native Nico DHCP remains the default. See [requirements and validation boundaries](../external-dhcp.md).
 
 ## Current operating envelope
 
@@ -80,4 +86,4 @@ External DHCP is an optional mode for fixed-lease x86_64/Flat hosts without a DP
 - ARM64, GB200/GB300, other distributions and OEM-specific boot behavior require separate validation.
 - DPU, NVLink switch and power-shelf write operations depend on their actual management interfaces.
 
-See the [architecture](architecture.md), [operator guide](getting-started.md) and [security policy](../SECURITY.md).
+See the [architecture](architecture.md), [operator guide](../getting-started.md) and [security policy](../../SECURITY.md).

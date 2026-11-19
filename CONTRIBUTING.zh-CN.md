@@ -2,7 +2,7 @@
 
 [English](CONTRIBUTING.md) · **简体中文**
 
-参与修改时，先说明运维场景、对应 NICo 资源，以及复现所需的硬件或网络条件。调整流程前阅读[系统架构](docs/architecture.zh-CN.md)和[功能边界](docs/features.zh-CN.md)。
+参与修改时，先说明运维场景、对应 NICo 资源，以及复现所需的硬件或网络条件。调整流程前阅读[系统架构](docs/design/architecture.zh-CN.md)和[功能边界](docs/design/features.zh-CN.md)；修改页面前阅读[交互规则](docs/design/interaction-rules.zh-CN.md)。各类文档和规则的位置见[设计文档索引](docs/design/README.zh-CN.md)。
 
 ## 设计原则
 

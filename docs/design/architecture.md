@@ -1,6 +1,6 @@
 # Architecture
 
-**English** · [简体中文](architecture.zh-CN.md) · [Documentation](README.md)
+**English** · [简体中文](architecture.zh-CN.md) · [Documentation](../README.md)
 
 ## System context
 
@@ -37,6 +37,8 @@ The frontend and backend have separate source modules but are served by one proc
 | Discovery, ingestion and hardware | `services/discovery.py`, `services/onboarding.py`, `services/hardware.py` |
 | OS and profile lifecycle | `services/os_library.py`, `services/profiles.py` |
 | Instances and current OS observations | `services/instances.py`, `services/current_systems.py` |
+| Device status (read-only, preview) | `services/device_status.py` |
+| Read-only observer mode | `read_only.py` |
 | Task claiming, queues, recovery and lock policy | `services/tasks.py` |
 | Installer generation, disk policy, boot and acceptance | `installation/` |
 

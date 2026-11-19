@@ -2,7 +2,7 @@
 
 **English** · [简体中文](CONTRIBUTING.zh-CN.md)
 
-Contributions should start with the operator scenario, the relevant NICo resource and the hardware or network conditions needed to reproduce it. Read the [architecture](docs/architecture.md) and [feature boundaries](docs/features.md) before changing a workflow.
+Contributions should start with the operator scenario, the relevant NICo resource and the hardware or network conditions needed to reproduce it. Read the [architecture](docs/design/architecture.md) and [feature boundaries](docs/design/features.md) before changing a workflow, and the [interaction rules](docs/design/interaction-rules.md) before changing a page. The [design index](docs/design/README.md) says where each kind of document and rule lives.
 
 ## Design principles
 

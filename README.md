@@ -3,7 +3,7 @@
 <p align="center"><strong>See it. Plan it. Boot it.</strong></p>
 <p align="center">A bare-metal operations console for NVIDIA Infra Controller.</p>
 <p align="center"><strong>English</strong> · <a href="README.zh-CN.md">简体中文</a></p>
-<p align="center"><a href="docs/features.md">Features</a> · <a href="#getting-started">Getting started</a> · <a href="docs/user-guide/README.md">User guides</a> · <a href="docs/architecture.md">Architecture</a> · <a href="docs/README.md">Documentation</a></p>
+<p align="center"><a href="docs/design/features.md">Features</a> · <a href="#getting-started">Getting started</a> · <a href="docs/user-guide/README.md">User guides</a> · <a href="docs/design/architecture.md">Architecture</a> · <a href="docs/README.md">Documentation</a></p>
 
 PXEye brings device discovery, inventory, address planning and operating-system installation into one interface. Built on [NVIDIA Infra Controller (NICo)](https://docs.nvidia.com/infra-controller/documentation/home), it helps infrastructure teams move from newly arrived hardware to verified OS delivery, with explicit execution steps and persistent installation records.
 
@@ -33,7 +33,7 @@ PXEye is an independent community project. NICo provides the infrastructure cont
 | NICo cluster | Deploy online Charts or uploaded offline material, inspect service status and connect site settings. |
 | Instances and site | Inspect and release Instances; view Core connectivity, client identity, storage and supporting services. |
 
-See [Features and support boundaries](docs/features.md) for native resource mappings and hardware requirements.
+See [Features and support boundaries](docs/design/features.md) for native resource mappings and hardware requirements.
 
 ## Getting started
 
@@ -90,7 +90,7 @@ PXEye uses a Python HTTP backend, SQLite/WAL persistence and native JavaScript/C
 
 The current **technical preview** targets a single site, one service replica and a single operator, with configurable installation concurrency within a batch (default: 5). The principal physical validation path is Ubuntu Server 24.04 on x86_64 UEFI hardware. ARM64, GB200/GB300 and other OEM workflows require separate validation. Address operations depend on each device's Redfish or NVOS capabilities.
 
-Kubernetes provisioning, workload scheduling, firmware distribution, fabric configuration and multi-tenant RBAC are outside the current product scope. See [Architecture](docs/architecture.md) and [Security](SECURITY.md).
+Kubernetes provisioning, workload scheduling, firmware distribution, fabric configuration and multi-tenant RBAC are outside the current product scope. See [Architecture](docs/design/architecture.md) and [Security](SECURITY.md).
 
 ## Documentation
 
