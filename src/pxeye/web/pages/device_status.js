@@ -586,30 +586,37 @@ observeUI(
 );
 // The pages join the navigation only where the site enables them, so a site
 // without the setting keeps exactly the navigation it had.
+// Second-level pages under 设备管理, in navigation order. Other rack operations
+// page scripts add theirs with deviceStatusAddNavChild; each says how to reload.
+const deviceStatusNavChildren = Object.entries(deviceStatusPages).map(
+  ([name, page]) => ({ name, label: page.label, reload: deviceStatusReload }),
+);
+function deviceStatusAddNavChild(name, label, reload) {
+  deviceStatusNavChildren.push({ name, label, reload });
+}
+const deviceStatusNavChild = (name) =>
+  deviceStatusNavChildren.find((child) => child.name === name);
 registerHook("readiness", (readiness) => {
   state.rackOperations = readiness?.rack_operations === true;
   if (!state.rackOperations) return;
   const group = groups.find(([, pages]) => pages.includes("devices"));
-  for (const [name, page] of Object.entries(deviceStatusPages)) {
-    labels[name] = page.label;
-    if (group && !group[1].includes(name))
-      group[1].splice(
-        group[1].indexOf("devices") +
-          Object.keys(deviceStatusPages).indexOf(name) +
-          1,
-        0,
-        name,
-      );
-  }
+  deviceStatusNavChildren.forEach((child, index) => {
+    labels[child.name] = child.label;
+    if (group && !group[1].includes(child.name))
+      group[1].splice(group[1].indexOf("devices") + index + 1, 0, child.name);
+  });
   // A reload lands here before the navigation knew these pages existed.
-  if (deviceStatusPages[location.hash.slice(1)]) {
-    state.page = location.hash.slice(1);
-    deviceStatusReload();
+  const child = deviceStatusNavChild(location.hash.slice(1));
+  if (child) {
+    state.page = child.name;
+    child.reload();
   }
 });
 window.addEventListener("hashchange", () => {
-  if (state.rackOperations && deviceStatusPages[location.hash.slice(1)]) {
+  const child =
+    state.rackOperations && deviceStatusNavChild(location.hash.slice(1));
+  if (!child) return;
+  if (deviceStatusPages[child.name])
     state.deviceStatusFilters = { rack: "", status: "", search: "" };
-    deviceStatusReload();
-  }
+  child.reload();
 });
