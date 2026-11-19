@@ -2284,3 +2284,24 @@ body.read-only .topbar::after {
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+/* The per-kind pages are children of 设备管理: indented, lighter, on a guide line. */
+.nav-item[data-page="servers"],
+.nav-item[data-page="switches"],
+.nav-item[data-page="power_shelves"] {
+  position: relative;
+  width: auto;
+  margin: 1px 0 1px 20px;
+  padding: 8px 12px 8px 16px;
+  font-size: 12.5px;
+}
+.nav-item[data-page="servers"]::before,
+.nav-item[data-page="switches"]::before,
+.nav-item[data-page="power_shelves"]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: -1px;
+  bottom: -1px;
+  border-left: 1px solid #d5dce1;
+}
