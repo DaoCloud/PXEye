@@ -7,6 +7,8 @@ VCS_REF := $(shell git -C "$(REPO_ROOT)" rev-parse HEAD)
 IMAGE_TAG := $(VERSION)-$(BUILD_TIME)-$(shell git -C "$(REPO_ROOT)" rev-parse --short=7 HEAD)
 IMAGE ?= pxeye:$(IMAGE_TAG)
 PUBLISH_IMAGE := $(REGISTRY)/pxeye:$(IMAGE_TAG)
+BUILD_CACHE_IMAGE ?= $(if $(REGISTRY),$(REGISTRY)/pxeye:build-cache,)
+CACHE_FROM ?=
 BASE_IMAGE ?= ubuntu:24.04
 BUILD_CONFIG ?= $(REPO_ROOT)/outputs_/build-config.json
 BUILD_WORK_DIRECTORY ?= $(REPO_ROOT)/outputs_
@@ -61,16 +63,20 @@ image:
 	test -x bin/nico-admin-cli
 	test -x bin/grpcurl
 	test -x bin/helm
-	docker build --build-arg BASE_IMAGE="$(BASE_IMAGE)" --build-arg VCS_REF="$(VCS_REF)" --build-arg VERSION="$(VERSION)" -t "$(IMAGE)" .
+	DOCKER_BUILDKIT=1 docker build $(if $(CACHE_FROM),--cache-from "$(CACHE_FROM)",) --build-arg BUILDKIT_INLINE_CACHE=1 --build-arg BASE_IMAGE="$(BASE_IMAGE)" --build-arg VCS_REF="$(VCS_REF)" --build-arg VERSION="$(VERSION)" -t "$(IMAGE)" .
 	@echo "BUILT_IMAGE=$(IMAGE)"
 
 # PXEye-only fast path, using prepared local Linux CLI/Helm/grpcurl binaries.
 pxeye-images:
 	@test -n "$(REGISTRY)" || { echo "Set REGISTRY=host:port" >&2; exit 1; }
-	$(MAKE) --no-print-directory -f "$(REPO_ROOT)/Makefile" image IMAGE="$(PUBLISH_IMAGE)" VCS_REF="$(VCS_REF)" VERSION="$(VERSION)"
+	@docker pull "$(BUILD_CACHE_IMAGE)" >/dev/null 2>&1 || echo "BUILD_CACHE_MISS=$(BUILD_CACHE_IMAGE)"
+	$(MAKE) --no-print-directory -f "$(REPO_ROOT)/Makefile" image IMAGE="$(PUBLISH_IMAGE)" VCS_REF="$(VCS_REF)" VERSION="$(VERSION)" CACHE_FROM="$(BUILD_CACHE_IMAGE)"
 	@case "$(REGISTRY_INSECURE)" in 1|true|yes) echo "HTTP Registry: Docker daemon must trust $(REGISTRY) as an insecure registry" ;; esac
 	docker push "$(PUBLISH_IMAGE)"
+	docker tag "$(PUBLISH_IMAGE)" "$(BUILD_CACHE_IMAGE)"
+	docker push "$(BUILD_CACHE_IMAGE)"
 	@echo "PUBLISHED_PXEYE_IMAGE=$(PUBLISH_IMAGE)"
+	@echo "PUBLISHED_BUILD_CACHE=$(BUILD_CACHE_IMAGE)"
 	@echo "Set image in charts/pxeye/values.yaml to $(PUBLISH_IMAGE) before make cache-images / make bundles"
 
 # Resolve each maintained main once, validate Cargo's libredfish revision,
