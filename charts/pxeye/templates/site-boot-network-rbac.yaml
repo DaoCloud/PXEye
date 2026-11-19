@@ -1,7 +1,7 @@
 {{- if .Values.components.pxeye.enabled }}
 {{- $bootNetwork := default (dict) .Values.siteBootNetwork }}
 {{- $targetNamespace := default .Release.Namespace $bootNetwork.namespace }}
-{{- if ne $targetNamespace .Release.Namespace }}
+{{- if and (ne $targetNamespace .Release.Namespace) (not .Values.readOnly) }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:

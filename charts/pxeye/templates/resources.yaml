@@ -11,6 +11,21 @@ metadata:
   name: {{ .Release.Name }}-nico-installer
   namespace: {{ .Release.Namespace }}
 rules:
+{{- if .Values.readOnly }}
+# A read-only observer only watches workloads; it receives no installer rights and no Secret access here.
+- apiGroups: ['']
+  resources: [pods, services, persistentvolumeclaims]
+  verbs: [get, list, watch]
+- apiGroups: [apps]
+  resources: [deployments, statefulsets, daemonsets]
+  verbs: [get, list, watch]
+- apiGroups: [batch]
+  resources: [jobs]
+  verbs: [get, list, watch]
+- apiGroups: [cert-manager.io]
+  resources: [certificates]
+  verbs: [get, list, watch]
+{{- else }}
 - apiGroups:
   - ''
   resources:
@@ -124,6 +139,7 @@ rules:
   - update
   - patch
   - delete
+{{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

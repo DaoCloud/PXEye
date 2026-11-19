@@ -1,0 +1,31 @@
+{{- $bootstrap := default (dict) .Values.siteBootstrap }}
+{{- $namespace := default .Release.Namespace $bootstrap.namespace }}
+{{- if and .Values.components.pxeye.enabled .Values.readOnly $bootstrap.enabled (ne $namespace .Release.Namespace) }}
+# A read-only observer in its own namespace reads exactly the two Core identity Secrets it is told to use.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ .Release.Name }}-core-identity
+  namespace: {{ $namespace }}
+rules:
+- apiGroups: ['']
+  resources: [secrets]
+  resourceNames:
+  - {{ required "Set siteBootstrap.clientSecret" $bootstrap.clientSecret | quote }}
+  - {{ required "Set siteBootstrap.caSecret" $bootstrap.caSecret | quote }}
+  verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ .Release.Name }}-core-identity
+  namespace: {{ $namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ .Release.Name }}-core-identity
+subjects:
+- kind: ServiceAccount
+  name: {{ .Release.Name }}
+  namespace: {{ .Release.Namespace }}
+{{- end }}
