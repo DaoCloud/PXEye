@@ -393,6 +393,9 @@ function deviceStatusStatus(name, id) {
       (i.id
         ? '<h3>状态时间线</h3><div id="device-status-history"><p class="live-small">正在读取状态记录…</p></div>'
         : "") +
+      (i.id
+        ? '<h3>健康历史</h3><div id="device-status-health" aria-live="polite"><p class="live-small">正在读取健康记录…</p></div><h3>硬件校验</h3><div id="device-status-validation" aria-live="polite"><p class="live-small">正在读取校验记录…</p></div>'
+        : "") +
       "<h3>LLDP 邻居</h3>" +
       table(
         ["本机接口", "邻居交换机", "邻居端口", "交换机 SN"],
@@ -433,6 +436,22 @@ function deviceStatusStatus(name, id) {
   );
   if (page.kind === "server" && i.id) {
     deviceStatusReadHistory(w, i.id);
+    deviceStatusSectionRead(
+      w,
+      i.id,
+      "health",
+      "#device-status-health",
+      "健康记录",
+      deviceStatusHealthHistory,
+    );
+    deviceStatusSectionRead(
+      w,
+      i.id,
+      "validation",
+      "#device-status-validation",
+      "校验记录",
+      deviceStatusValidation,
+    );
     deviceStatusFirmwareRead(w, i.id);
   }
 }
@@ -543,6 +562,105 @@ function deviceStatusFirmware(data) {
       ),
     ) +
     `<p class="live-small">来自 NICo 站点发现的 BMC 探测报告（GetComponentInventory），共 ${data.entries.length} 项，读取于 ${esc(when(data.observed_at))}。</p>`
+  );
+}
+// Per-machine sections read after the dialog opens; like the timeline, only the
+// dialog that asked writes into its own section.
+async function deviceStatusSectionRead(
+  w,
+  machineId,
+  part,
+  selector,
+  what,
+  show,
+) {
+  const place = () => (state.wizard === w ? $(selector) : null);
+  if (!/^[a-z0-9]{1,128}$/.test(machineId || "")) {
+    if (place())
+      place().innerHTML = `<div class="live-note">此设备的 NICo 机器 ID 无法用于读取${esc(what)}。</div>`;
+    return;
+  }
+  let html;
+  try {
+    html = show(
+      await api(
+        "/api/device-status/machines/" +
+          encodeURIComponent(machineId) +
+          "/" +
+          part,
+      ),
+    );
+  } catch (e) {
+    html = `<div class="live-error" role="alert">${esc(what)}读取失败：${esc(e.message)}</div>`;
+  }
+  if (place()) place().innerHTML = html;
+}
+const deviceStatusTags = (items) =>
+  (items || []).map((c) => badge(c)).join(" ");
+function deviceStatusHealthHistory(data) {
+  if (!data.record_count)
+    return '<p class="live-small">NICo 没有这台机器的健康记录。</p>';
+  const span = `${data.record_count} 条记录（${esc(deviceStatusTime(data.first_record))} 至 ${esc(deviceStatusTime(data.last_record))}）`;
+  if (!data.alerts.length)
+    return `<p class="live-small">这台机器在 ${span}中没有告警。</p>`;
+  return (
+    table(
+      ["告警", "开始", "最后出现", "状态", "说明"],
+      data.alerts.map(
+        (a) =>
+          `<tr><td><code>${esc(a.id || "—")}</code>${a.target ? `<span class="live-small">${esc(a.target)}</span>` : ""}</td><td>${esc(deviceStatusTime(a.since))}</td><td>${esc(deviceStatusTime(a.last_seen))}</td><td>${a.active ? badge("仍存在", "amber") : badge("已恢复", "green")}</td><td>${esc(a.message || "—")}${a.classifications.length ? `<div>${deviceStatusTags(a.classifications)}</div>` : ""}</td></tr>`,
+      ),
+    ) +
+    `<p class="live-small">来自 NICo 保存的健康记录，共 ${span}，读取于 ${esc(when(data.observed_at))}。</p>`
+  );
+}
+const deviceStatusValidationTones = {
+  Success: "green",
+  Failed: "red",
+  Skipped: "gray",
+};
+const deviceStatusValidationLabels = {
+  Success: "通过",
+  Failed: "失败",
+  Skipped: "已跳过",
+};
+function deviceStatusValidation(data) {
+  if (!data.runs.length)
+    return '<p class="live-small">NICo 没有这台机器的校验记录。</p>';
+  const rows = data.runs.map((r) => {
+    const results = data.results[r.validation_id] || [],
+      s = r.status,
+      label =
+        s.phase === "completed"
+          ? deviceStatusValidationLabels[s.outcome] || s.outcome
+          : s.phase === "in_progress"
+            ? "进行中"
+            : s.phase === "started"
+              ? "已开始"
+              : "未报告",
+      tone =
+        s.phase === "completed"
+          ? deviceStatusValidationTones[s.outcome] || "gray"
+          : s.phase
+            ? "amber"
+            : "gray",
+      progress =
+        s.total != null
+          ? `<span class="live-small">${esc(s.completed_tests ?? 0)} / ${esc(s.total)} 项</span>`
+          : "",
+      detail = results.length
+        ? results
+            .map(
+              (t) =>
+                `<div>${esc(t.name || t.test_id || "—")} ${t.exit_code === 0 ? badge("通过", "green") : badge("失败", "red")} 退出码 ${esc(t.exit_code)} · ${esc(deviceStatusTime(t.start))}</div>`,
+            )
+            .join("")
+        : '<span class="live-small">这次校验没有结果记录。</span>';
+    return `<tr><td>${esc(r.name || r.validation_id || "—")}<span class="live-small">${esc(r.context || "—")}</span></td><td>${esc(deviceStatusTime(r.start))}</td><td>${r.duration_seconds != null ? esc(deviceStatusDuration(r.duration_seconds)) : "—"}</td><td><span title="${esc(s.text || s.outcome || "")}">${badge(label, tone)}</span>${progress}</td></tr><tr><td colspan="4">${detail}</td></tr>`;
+  });
+  return (
+    table(["名称 / 场景", "开始", "耗时", "结果"], rows) +
+    `<p class="live-small">来自 NICo 机器校验记录，共 ${data.runs.length} 次，读取于 ${esc(when(data.observed_at))}。</p>`
   );
 }
 registerPage("servers", () => deviceStatusPage("servers"));

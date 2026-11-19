@@ -69,6 +69,8 @@ class QueryRoutes:
                     MACHINE_ID,
                     DeviceStatus,
                     machine_firmware,
+                    machine_health_history,
+                    machine_validation,
                 )
 
                 parts = path.split("/")
@@ -79,6 +81,10 @@ class QueryRoutes:
                         )
                     if parts[5] == "firmware":
                         return self.respond(200, machine_firmware(self.app.adapter, parts[4]))
+                    if parts[5] == "health":
+                        return self.respond(200, machine_health_history(self.app.adapter, parts[4]))
+                    if parts[5] == "validation":
+                        return self.respond(200, machine_validation(self.app.adapter, parts[4]))
                 return self.respond(404, {"error": "接口不存在。"})
             if path == "/api/equipment":
                 snapshot = self.app.management_addresses.snapshot()
