@@ -668,6 +668,8 @@ def main():
     parser.add_argument('--rust-mirror', default='', help='Rust distribution mirror base, e.g. https://rsproxy.cn; rustup retains component hash checks')
     parser.add_argument('--jobs', type=int, default=8, help='Maximum concurrent Cargo jobs in build images (default: 8)')
     parser.add_argument('--image-mirror', default='', help='Optional Docker Hub mirror prefix, e.g. m.daocloud.io; preserves pinned digests')
+    parser.add_argument('--package-cache', type=Path,
+                        help='Absolute persistent mkosi package-cache directory used by ARM64 assembly')
     args = parser.parse_args()
     if args.resume and args.target != 'images':
         parser.error('--resume currently supports images only')
@@ -677,6 +679,15 @@ def main():
         parser.error('images requires --registry (Make: REGISTRY=host:port)')
     if args.target in ('boot', 'images', 'boot-arm64') and (not args.scout_ca or not args.scout_ca.is_file()):
         parser.error('boot/images requires --scout-ca (Make: SCOUT_CA_FILE=/path/to/core-ca.crt)')
+    if args.package_cache and not (args.target == 'boot-arm64'
+                                   or (args.target == 'images' and args.with_arm64)):
+        parser.error('--package-cache requires boot-arm64 or images --with-arm64')
+    if args.package_cache:
+        args.package_cache = args.package_cache.expanduser()
+        if not args.package_cache.is_absolute():
+            parser.error('--package-cache must be an absolute directory')
+        args.package_cache.mkdir(parents=True, exist_ok=True)
+        args.package_cache = args.package_cache.resolve()
     args.output = args.output or args.repo / 'outputs_/source-builds'
     try:
         Build(args).execute()

@@ -14,7 +14,12 @@ def build(owner):
     common = ['docker', 'run', '--rm', '--platform', 'linux/amd64',
               '-e', 'GIT_CONFIG_COUNT=1', '-e', 'GIT_CONFIG_KEY_0=safe.directory',
               '-e', 'GIT_CONFIG_VALUE_0=/code', '-e', f'VERSION={version}',
-              '-v', f'{owner.core}:/code', '-v', f'{target}:/code/target', '-w', '/code']
+              '-v', f'{owner.core}:/code', '-v', f'{target}:/code/target']
+    if owner.args.package_cache:
+        common.extend(('-v', f'{owner.args.package_cache}:/code/pxe/.mkosi-package-cache'))
+        owner.state['arm64_package_cache'] = str(owner.args.package_cache)
+        owner.save()
+    common.extend(('-w', '/code'))
     if getattr(owner, 'arm64_reuse', False):
         finish(owner, version, common, owner.state['builders']['arm-mkosi-builder']['reference'])
         return
