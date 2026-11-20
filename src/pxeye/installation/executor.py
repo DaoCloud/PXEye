@@ -243,6 +243,10 @@ class Console:
         )
 
 
+class TaskCloseRequested(Exception):
+    """Cooperatively stop a task after an operator close request."""
+
+
 class Executor:
     def __init__(self, adapter, store):
         self.adapter, self.store = adapter, store
@@ -262,6 +266,63 @@ class Executor:
             ),
             flush=True,
         )
+
+    def check_close_requested(self, task):
+        current = self.store.get(task["id"])
+        if current and current.get("close_request", {}).get("state") == "requested":
+            task["close_request"] = current["close_request"]
+            raise TaskCloseRequested
+
+    def finish_close_requested(self, task):
+        """Acknowledge a close request from the task's own execution thread."""
+        current = self.store.get(task["id"]) or task
+        request = current.get("close_request") or task.get("close_request")
+        if not request or request.get("state") != "requested":
+            return current
+        try:
+            self.boot_transport.cancel(current)
+        except Exception as error:
+            request.update(state="failed", error=str(error))
+            current.update(
+                status="needs_attention", error="结束任务时清理本轮引导失败：" + str(error)
+            )
+            current.setdefault("events", []).append(
+                {
+                    "at": time.time(),
+                    "stage": current.get("stage", "prepare"),
+                    "message": current["error"],
+                }
+            )
+            self.store.save(current)
+            return current
+        now = time.time()
+        request.update(state="completed", completed_at=now)
+        current.update(
+            status="cancelled",
+            stage="cancelled",
+            error=None,
+            observation_deadline=0,
+            resume_available=False,
+            prepare_available=False,
+            retry_available=False,
+            restart_available=False,
+            recovery_observing=False,
+            closed_at=now,
+            closed_by=request["actor"],
+        )
+        current.setdefault("events", []).append(
+            {
+                "at": now,
+                "stage": "cancelled",
+                "message": (
+                    "Core 已取消本轮引导并确认介质清理；释放设备占用，保留任务与 NICo 资源。"
+                    if external_boot(current)
+                    else "操作员结束任务并释放设备占用；保留任务历史和 NICo 资源。"
+                ),
+            }
+        )
+        self.store.save(current)
+        return current
 
     def request_scout_discovery_retry(self, task, observed):
         """Request one explicit discovery reboot per operator-confirmed preparation attempt."""
@@ -388,6 +449,7 @@ class Executor:
         folder.mkdir(parents=True, mode=0o700, exist_ok=True)
         console = None
         try:
+            self.check_close_requested(task)
             self.boot_transport.release_for_native(task)
             if task.get("deferred_bootstrap"):
                 self.bootstrap_first(task, folder)
@@ -492,6 +554,7 @@ class Executor:
             known = folder / "known_hosts"
             initial = None
             while time.monotonic() < deadline:
+                self.check_close_requested(task)
                 console.poll()
                 text = console.text
                 signed_key = self.observe_installation(task, device, known)
@@ -631,6 +694,8 @@ class Executor:
                 initial,
                 int(bool(task.get("automatic_recovery"))) + int(exit_recovered),
             )
+        except TaskCloseRequested:
+            self.finish_close_requested(task)
         except Exception as error:
             task["status"] = "needs_attention"
             task["error"] = str(error)
@@ -1722,6 +1787,7 @@ class Executor:
         last_progress = None
         next_guard_check = time.monotonic() + 30
         while time.monotonic() < deadline:
+            self.check_close_requested(task)
             if external_boot(task):
                 self.boot_transport.observe(task)
             observed = onboarding.observed([row])[task["device"]]
@@ -1937,6 +2003,7 @@ class Executor:
         """Explicit UI continuation only: no update-os, PXE, Release or reinstall."""
         console = None
         try:
+            self.check_close_requested(task)
             if not self.can_resume(task):
                 raise RuntimeError("缺少本轮安装退出和可信 SSH 证据，不能继续验收。")
             device = self.task_device(task)
@@ -1961,6 +2028,7 @@ class Executor:
             initial = task.get("initial") if task.get("normal_reboot_requested") else None
             recovered = bool(task.get("disk_exit_recovery_requested"))
             while initial is None and time.monotonic() < deadline:
+                self.check_close_requested(task)
                 self.observe_installation(task, device, known)
                 for _ in range(6):
                     console.poll()
@@ -2007,6 +2075,8 @@ class Executor:
                 initial,
                 sum(bool(e.get("recovery")) for e in task.get("events", [])),
             )
+        except TaskCloseRequested:
+            self.finish_close_requested(task)
         except Exception as error:
             task["status"] = "needs_attention"
             task["error"] = str(error)
@@ -2046,6 +2116,7 @@ print('NORMAL_REBOOT_REQUESTED')
             after = None
             reboot_deadline = time.monotonic() + 480
             while time.monotonic() < reboot_deadline:
+                self.check_close_requested(task)
                 refresh_skips(self, task)
                 if "normal_reboot" in task["acceptance_skips"]:
                     after = json.loads(json.dumps(initial))
