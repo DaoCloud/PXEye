@@ -158,7 +158,7 @@ PYTHONPATH=src python3 tools/core-replay.py serve /tmp/demo.json --writable
 
 - 数据是编写的示例占位数据（站点“演示站点（示例数据）”，`"demo": true`，序列号 `DEMO-…`，MAC `02:…`，地址取自 192.0.2.0/24 和 198.51.100.0/24），从来不是站点结果：不能作为已验证依据，也不能据此标记数据契约字段。
 - `tools/demo-capture.py` 列出了每个页面有意展示的内容（各类状态、告警、端口冲突、交换机信息、U 位机柜不一致、发现失败）；`tests/unit/test_demo_capture.py` 校验它。
-- `--writable` 解除控制台的整个只读限制，所有命令都可用，不只是 PXEye 本地导入（交换机信息、U 位，回放停止后即丢弃）。写 Core 和 Redfish 仍以 `UNRECORDED` 失败；SSH 因回放没有 SSH 密钥和 known hosts 而失败。`--host` 指定监听地址（默认 127.0.0.1）。
+- `--writable` 只放行 PXEye 本地的两项导入（交换机信息、U 位，回放停止后即丢弃），其他命令仍按只读拒绝；写 Core 和 Redfish 在任何情况下都不可能，因为回放只应答已记录的读取。`--host` 指定监听地址（默认 127.0.0.1），`--password-file` 从文件读取登录口令（默认每次随机）。
 - 生成的文件与其他采集一样不放进仓库。
 
 ## 4. 用户补充的数据

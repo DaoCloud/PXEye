@@ -7,7 +7,7 @@ site, keyed by method and request. A request that was not recorded fails loudly 
 is listed, which is how drift between the code and the capture shows up.
 
     PYTHONPATH=src python3 tools/core-replay.py serve <capture.json> [--port 18930]
-        [--host 127.0.0.1] [--writable]
+        [--host 127.0.0.1] [--writable] [--password-file FILE]
     PYTHONPATH=src python3 tools/core-replay.py check <capture.json>
     PYTHONPATH=src python3 tools/core-replay.py check <capture.json> --write <new.json>
 
@@ -17,14 +17,14 @@ responses with the recorded ones, ignoring times that change on every read. It e
 non-zero when a response differs or a request was not recorded.
 
 The replayed console is read-only, like the observer the capture was made in. With
-`--writable` the console's whole read-only gate is lifted, so every command is enabled,
-not only PXEye-local imports (switch labels, rack units, kept in the replay's temporary
-data directory until it stops). Core and Redfish writes still fail as UNRECORDED, because
-the replay only answers recorded requests and a capture records reads. SSH is not
-stubbed: an action that reaches it fails because the replay has no SSH key and an empty
-known_hosts with strict host key checking, so it cannot write either. `--host` chooses
-the listening address (default 127.0.0.1); the console has a password, but the capture
-holds site data, so listen beyond loopback only on a trusted network.
+`--writable` it stays read-only except for the PXEye-local imports of the rack
+operations pages (switch labels, rack units), kept in the replay's temporary data
+directory until it stops; every other command is refused as on an observer. Core and
+Redfish writes are impossible in any case, because the replay only answers recorded
+requests and a capture records reads. `--host` chooses the listening address (default
+127.0.0.1). `--password-file` sets the sign-in password instead of a random one. The
+console has a password, but a site capture holds site data, so listen beyond loopback
+only on a trusted network.
 
 After a change that is meant to alter what the console returns, `--write` saves a copy
 whose expected responses are the replayed ones. Review the differences it reported
@@ -133,7 +133,7 @@ class Recorded:
         return copy.deepcopy(call["response"])
 
 
-def prepare(capture, work, writable=False):
+def prepare(capture, work, password=None):
     """A data directory holding the captured local inputs and a placeholder identity."""
     data = work / "data"
     for relative, text in capture["inputs"]["files"].items():
@@ -168,11 +168,11 @@ def prepare(capture, work, writable=False):
     config.update(
         core_url=capture["core_url"],
         core_identity_directory=str(identity),
-        read_only=not writable,
+        read_only=True,
         rack_operations=True,
         nico_deployment={"enabled": False, "namespace": "replay"},
     )
-    password = secrets.token_urlsafe(12)
+    password = password or secrets.token_urlsafe(12)
     secret_dir = work / "secrets"
     secret_dir.mkdir()
     import hashlib
@@ -183,11 +183,16 @@ def prepare(capture, work, writable=False):
     return config, data, secret_dir, password
 
 
-def start(capture, port, host="127.0.0.1", writable=False):
+# The only commands --writable admits: PXEye-local data owned by rack operations pages.
+WRITABLE_PATHS = ("/api/switch-labels", "/api/rack-units")
+
+
+def start(capture, port, host="127.0.0.1", writable=False, password=None):
     from pxeye.api.http import Handler
     from pxeye.bootstrap import Application
     from pxeye.clients.core import CoreClient
     from pxeye.clients.redfish import RedfishClient
+    from pxeye import read_only
     from pxeye.deployment import kubernetes
 
     recorded = Recorded(capture["core_calls"])
@@ -212,9 +217,14 @@ def start(capture, port, host="127.0.0.1", writable=False):
     CoreClient.check_core_certificate = lambda self: None
     RedfishClient.redfish_request = redfish
     kubernetes.CurrentCluster.request = no_cluster
+    if writable:
+        allowed = read_only.command_allowed
+        read_only.command_allowed = lambda config, path: (
+            path in WRITABLE_PATHS or allowed(config, path)
+        )
 
     work = Path(tempfile.mkdtemp(prefix="pxeye-replay-"))
-    config, data, secret_dir, password = prepare(capture, work, writable)
+    config, data, secret_dir, password = prepare(capture, work, password)
     static = Path(__file__).resolve().parent.parent / "src" / "pxeye" / "web"
     app = Application(config, str(secret_dir), data, str(static))
     server = ThreadingHTTPServer((host, port), Handler)
@@ -316,9 +326,10 @@ def main():
     parser.add_argument(
         "--writable",
         action="store_true",
-        help="lift the console read-only gate (all commands enabled); Core and Redfish writes "
-        "fail as UNRECORDED, SSH fails for lack of a key and known hosts",
+        help="allow the PXEye-local imports (switch labels, rack units); everything else "
+        "stays read-only, and Core and Redfish writes are impossible",
     )
+    parser.add_argument("--password-file", help="serve: read the sign-in password from this file")
     parser.add_argument(
         "--write",
         metavar="FILE",
@@ -331,7 +342,10 @@ def main():
     capture = json.loads(Path(options.capture).read_text())
     if capture.get("format") != 1:
         sys.exit("Unknown capture format.")
-    server, password, recorded, work = start(capture, options.port, options.host, options.writable)
+    fixed = Path(options.password_file).read_text().strip() if options.password_file else None
+    server, password, recorded, work = start(
+        capture, options.port, options.host, options.writable, fixed
+    )
     try:
         if options.mode == "check":
             replayed = {}
@@ -353,8 +367,8 @@ def main():
             sys.exit(1 if failures or missing else 0)
         print(
             f"Replay console: http://{options.host}:{server.server_address[1]}  "
-            f"password: {password}"
-            + ("  (writable: read-only gate lifted; Core/Redfish writes UNRECORDED, no SSH key)" if options.writable else ""),
+            + (f"password: {password}" if not fixed else "password: from --password-file")
+            + ("  (writable: local imports only)" if options.writable else ""),
             file=out,
             flush=True,
         )

@@ -29,6 +29,7 @@ class DemoCaptureTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         # The replay patches the clients for the whole process; restore them afterwards.
+        from pxeye import read_only
         from pxeye.clients.core import CoreClient
         from pxeye.clients.redfish import RedfishClient
         from pxeye.deployment import kubernetes
@@ -41,6 +42,7 @@ class DemoCaptureTests(unittest.TestCase):
             (kubernetes.CurrentCluster, "request"),
         ]
         saved = [(owner, name, owner.__dict__[name]) for owner, name in patched]
+        saved.append((read_only, "command_allowed", read_only.command_allowed))
         cls.addClassCleanup(lambda: [setattr(o, n, v) for o, n, v in saved])
         cls.demo = load("demo-capture")
         cls.capture, cls.code, _, cls.unanswered = cls.demo.capture()
@@ -147,9 +149,7 @@ class DemoCaptureTests(unittest.TestCase):
                     try:
                         report = io.StringIO()
                         failures = replay.check(self.capture, server, password, report)
-                        # Writable is a different console setting, so readiness differs.
-                        failures -= writable and "DIFF /api/readiness" in report.getvalue()
-                        status = self.import_units(server, password)
+                        status, other = self.import_units(server, password)
                     finally:
                         server.shutdown()
                         server.server_close()
@@ -158,6 +158,8 @@ class DemoCaptureTests(unittest.TestCase):
                     (failures, sorted(set(recorded.missing))), (0, []), report.getvalue()
                 )
                 self.assertEqual(status == 200, writable)
+                # Writable admits the local imports only; any other command stays refused.
+                self.assertEqual(other, 403)
 
     def import_units(self, server, password):
         base = f"http://127.0.0.1:{server.server_address[1]}"
@@ -190,7 +192,8 @@ class DemoCaptureTests(unittest.TestCase):
             "/api/rack-units",
             {"csv": "serial,rack,unit\nDEMO-SRV-008,,10\n", "revision": current["revision"]},
         )
-        return status
+        refused, _ = send("/api/tasks", {"devices": []})
+        return status, refused
 
 
 if __name__ == "__main__":
