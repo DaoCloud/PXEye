@@ -15,7 +15,7 @@ import urllib.request
 import uuid
 from pathlib import Path
 
-from pxeye.common import sha
+from pxeye.common import digest, sha
 from pxeye.services.boot_transport import BootTransport, external_boot
 from pxeye.installation.accept_config import validate_config
 from pxeye.installation.acceptance_skips import apply_skips, refresh_skips
@@ -264,18 +264,69 @@ class Executor:
         )
 
     def request_scout_discovery_retry(self, task, observed):
-        """Request one explicit discovery reboot per operator-confirmed preparation attempt."""
+        """Request one bounded Scout reboot for discovery or a prior cleanup failure."""
         machine = observed.get("machine") or {}
         state = str(machine.get("state") or "")
-        if state != "HostInitializing/WaitingForDiscovery":
+        failure = observed.get("failure_details")
+        cleanup_failed = state == "Failed/NVMECleanFailed" or "NVMECleanFailed" in str(failure)
+        if state != "HostInitializing/WaitingForDiscovery" and not cleanup_failed:
             return False
         if observed.get("instances"):
-            raise RuntimeError("设备已有 Instance，不能触发首次 Scout 发现重启。")
-        if observed.get("failure_details"):
+            raise RuntimeError("设备已有 Instance，不能触发首次 Scout 准备重启。")
+        if failure and not cleanup_failed:
             raise RuntimeError("NICo 设备准备已有失败详情；停止触发 Scout 发现重启。")
         machine_id = machine.get("id")
         if not isinstance(machine_id, str) or not machine_id:
             raise RuntimeError("NICo Machine 缺少有效 ID，不能触发 Scout 发现重启。")
+
+        if cleanup_failed:
+            if (task.get("impact_authorization") or {}).get("cleanup_scope") != "all_disks":
+                raise RuntimeError("Scout 清理恢复缺少本任务的全部磁盘清理确认。")
+            attempts = task.setdefault("scout_cleanup_reboots", [])
+            # A new task is a new explicitly authorized attempt. Never turn a
+            # single task into an unbounded cleanup/reboot loop.
+            if attempts:
+                return False
+            window = self.adapter.config.get("scout_cleanup_retry_seconds", 900)
+            if (
+                isinstance(window, bool)
+                or not isinstance(window, int)
+                or not 60 <= window <= 3600
+            ):
+                window = 900
+            attempt = {
+                "number": 1,
+                "machine_id": machine_id,
+                "state": "requesting",
+                "requested_at": time.time(),
+                "deadline_at": time.time() + window,
+                "failure_fingerprint": digest(failure),
+            }
+            attempts.append(attempt)
+            self.event(
+                task,
+                "prepare",
+                "新任务检测到上轮 Scout 磁盘清理失败；请求 NICo 重启主机并重新执行发现清理。",
+                machine_id=machine_id,
+                scout_cleanup_reboot=1,
+            )
+            try:
+                self.adapter.core(["machine", "reboot", "--machine", machine_id])
+            except Exception as error:
+                attempt.update(state="unknown", completed_at=time.time())
+                self.store.save(task)
+                raise RuntimeError(
+                    "NICo Scout 清理恢复重启结果未知；不会自动重复发送，请核对 BMC 电源和 Core 日志。"
+                ) from error
+            attempt.update(state="accepted", completed_at=time.time())
+            self.event(
+                task,
+                "prepare",
+                "NICo 已接受一次 Scout 清理恢复重启；等待新 user-data、清理回报和 Machine Ready。",
+                machine_id=machine_id,
+                scout_cleanup_reboot=1,
+            )
+            return True
 
         attempts = task.setdefault("scout_discovery_reboots", [])
         # The initial task confirmation permits one request. Every explicit
@@ -1746,6 +1797,9 @@ class Executor:
                 "scout_discovery_reboot": (
                     task.get("scout_discovery_reboots") or [{}]
                 )[-1].get("state"),
+                "scout_cleanup_reboot": (
+                    task.get("scout_cleanup_reboots") or [{}]
+                )[-1].get("state"),
             }
             if (
                 not discovery_window_started
@@ -1765,9 +1819,22 @@ class Executor:
                 task["preparation_observation"] = progress
                 self.event(task, "prepare", preparation_message(progress), observation=progress)
                 last_progress = progress
-            if str(machine.get("state", "")).startswith("Failed") or observed.get(
+            failed = str(machine.get("state", "")).startswith("Failed") or observed.get(
                 "failure_details"
-            ):
+            )
+            cleanup_attempt = (task.get("scout_cleanup_reboots") or [None])[-1]
+            waiting_for_cleanup_retry = bool(
+                failed
+                and cleanup_attempt
+                and cleanup_attempt.get("state") == "accepted"
+                and time.time() < cleanup_attempt.get("deadline_at", 0)
+                and (
+                    not observed.get("failure_details")
+                    or digest(observed["failure_details"])
+                    == cleanup_attempt.get("failure_fingerprint")
+                )
+            )
+            if failed and not waiting_for_cleanup_retry:
                 raise RuntimeError(
                     "NICo 设备准备失败："
                     + str(machine.get("state"))
