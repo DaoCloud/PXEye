@@ -27,6 +27,10 @@ What the data shows, on purpose:
 - Switch labels include one switch no server hears (unmatched). Rack units cover every
   server of DEMO-R01; DEMO-SRV-006 is recorded in DEMO-R01 although declared in DEMO-R02
   (a mismatch).
+- NICo rack objects: DEMO-R01 is a whole rack (profile GB200 NVL72, Ready, with a past
+  Maintenance(FirmwareUpgrade) in its history); RMS answers a demo version; NICo reports
+  DEMO-SRV-002 powered off. "demo_writes" holds the answers a stand-in Core gives to the
+  write RPCs of rack actions, used only by tools/core-replay.py --demo-writes.
 - Site exploration: successful BMC reports, and three NICO-SITEEXPLORER-101 refusals. No
   authentication failure: its error code has not been observed at a site, so none is made up.
 """
@@ -418,7 +422,7 @@ EXPECTED_SWITCHES = [
 SHELVES = [
     {
         "id": {"value": "demo-pshelf-0001"},
-        "rackId": {"value": "DEMO-R02"},
+        "rackId": {"value": "DEMO-R01"},
         "placementInRack": {"slotNumber": 1},
         "metadata": {"name": "demo-pshelf-1"},
         "config": {"capacity": 33000, "voltage": 48},
@@ -797,10 +801,128 @@ EXPLORATION = {
     },
 }
 
+# ------------------------------------------------------------- NICo rack objects
+# DEMO-R01 is a whole rack in Core (servers 1-4, both NVLink switches, the power
+# shelf); DEMO-R02 exists only in the PXEye declarations.
+RACK_ID = "DEMO-R01"
+RACK_PROFILE = "GB200 NVL72"
+RACK_GROUP = "demo-rack-group-1"
+RACKS = [
+    {
+        "id": {"id": RACK_ID},
+        "rackState": "Ready",
+        "created": at(0),
+        "updated": at(1300),
+        "metadata": {
+            "name": "demo-rack-01",
+            "labels": [{"key": "location", "value": "演示机房 A-01"}],
+        },
+        "version": "V12-T1795081318788528",
+        "config": {},
+        "rackGroupId": {"id": RACK_GROUP},
+        "status": {
+            "lifecycle": {"state": "Ready", "version": "V12-T1795081318788528"},
+            "health": {"source": "aggregate-rack-health", "observedAt": at(1430)},
+        },
+    }
+]
+EXPECTED_RACKS = {
+    "expectedRacks": [
+        {
+            "rackId": {"id": RACK_ID},
+            "rackProfileId": {"id": RACK_PROFILE},
+            "rackGroupId": {"id": RACK_GROUP},
+            "metadata": {
+                "name": "demo-rack-01",
+                "labels": [{"key": "location", "value": "演示机房 A-01"}],
+            },
+        }
+    ]
+}
+RACK_HISTORY = {
+    "histories": {
+        RACK_ID: {
+            "records": [
+                {"state": "Created", "version": "V1-T1795081318700000", "time": at(0)},
+                {"state": "Ready", "version": "V4-T1795081318710000", "time": at(120)},
+                {
+                    "state": "Maintenance(FirmwareUpgrade)",
+                    "version": "V8-T1795081318750000",
+                    "time": at(1100),
+                },
+                {"state": "Ready", "version": "V12-T1795081318788528", "time": at(1300)},
+            ]
+        }
+    }
+}
+RMS_VERSION = {"version": "0.0.0-demo-rms"}
+# Power as NICo observes it; DEMO-SRV-002 is off, as its health alert says.
+POWERED_OFF = {mid(2)}
+
+
+def power_details(body):
+    """GetComponentPowerDetails for the IDs in the request, in request order."""
+    ids = []
+    for target in ("machineIds", "switchIds", "powerShelfIds"):
+        group = (body or {}).get(target) or {}
+        for item in group.get("machineIds") or group.get("ids") or []:
+            ids.append(item.get("id"))
+    return {
+        "entries": [
+            {
+                "componentId": ident,
+                "actual": {
+                    "state": "COMPONENT_POWER_STATE_" + ("OFF" if ident in POWERED_OFF else "ON")
+                },
+                "desired": {},
+            }
+            for ident in ids
+        ]
+    }
+
+
+def by_ids(rows, field):
+    """A Find…ByIds answer: the rows whose ID is in the request."""
+
+    def answer(body):
+        wanted = {
+            item.get("id") if isinstance(item, dict) else item
+            for item in (body or {}).get(field) or []
+        }
+        return [r for r in rows if (r["id"].get("id") or r["id"].get("value")) in wanted]
+
+    return answer
+
+
+# The responses a stand-in Core gives to the write RPCs of rack actions. Only a demo
+# capture carries them, and only tools/core-replay.py --demo-writes answers with them.
+COMPONENT_OK = {"results": [{"status": "COMPONENT_MANAGER_STATUS_CODE_SUCCESS"}]}
+DEMO_WRITES = {
+    "AdminPowerControl": {"msg": "演示：已受理电源操作。"},
+    "SetMaintenance": {},
+    "SetManagedHostQuarantineState": {},
+    "ClearManagedHostQuarantineState": {
+        "priorQuarantineState": {"mode": "BLOCK_ALL_TRAFFIC", "reason": "演示"}
+    },
+    "TriggerManagedHostReset": {},
+    "AdminBmcReset": {},
+    "OnDemandMachineValidation": {
+        "validationId": {"value": "00000000-0000-4000-8000-0000000e0001"}
+    },
+    "VerifySkuForMachine": {},
+    "ComponentPowerControl": COMPONENT_OK,
+    "ComponentReset": COMPONENT_OK,
+    "DecommissionSwitch": {},
+    "UpdateComponentFirmware": COMPONENT_OK,
+    "SetPowerShelfMaintenance": {},
+    "DecommissionPowerShelf": {},
+    "OnDemandRackMaintenance": {},
+    "TerminateRackMaintenance": {},
+}
+
 # Answers that do not depend on the request.
 RPC = {
     "FindMachineIds": {"machineIds": [{"id": i} for i in MACHINE_IDS]},
-    "FindMachinesByIds": {"machines": MACHINES},
     "FindSwitches": {"switches": NVSWITCHES},
     "FindPowerShelves": {"powerShelves": SHELVES},
     "GetAllExpectedSwitches": {"expectedSwitches": EXPECTED_SWITCHES},
@@ -808,6 +930,22 @@ RPC = {
     "FindInterfaces": {"interfaces": INTERFACES},
     "GetPowerOptions": POWER,
     "GetSiteExplorationReport": EXPLORATION,
+    "FindRackIds": {"rackIds": [r["id"] for r in RACKS]},
+    "GetAllExpectedRacks": EXPECTED_RACKS,
+    "FindRackStateHistories": RACK_HISTORY,
+    "GetRmsVersion": RMS_VERSION,
+}
+# Answers computed from the whole request.
+BY_REQUEST = {
+    "FindMachinesByIds": lambda body: {
+        "machines": by_ids(MACHINES, "machineIds")(body)
+        if (body or {}).get("machineIds")
+        else MACHINES
+    },
+    "FindRacksByIds": lambda body: {"racks": by_ids(RACKS, "rackIds")(body)},
+    "FindSwitchesByIds": lambda body: {"switches": by_ids(NVSWITCHES, "switchIds")(body)},
+    "FindPowerShelvesByIds": lambda body: {"powerShelves": by_ids(SHELVES, "powerShelfIds")(body)},
+    "GetComponentPowerDetails": power_details,
 }
 # Answers per machine, from the machine ID in the request.
 PER_MACHINE = {
@@ -853,6 +991,8 @@ def stand_in_core():
     asked = set()
 
     def rpc(self, method, body):
+        if method in BY_REQUEST:
+            return copy.deepcopy(BY_REQUEST[method](body))
         if method in PER_MACHINE:
             ident = machine_in(body or {})
             return copy.deepcopy(PER_MACHINE[method](ident) if ident else {})
@@ -887,6 +1027,58 @@ def load(name):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def rack_action_reads():
+    """Core reads the rack actions pages make (catalog, racks, preview checks, read-back).
+
+    The capture is made on a read-only observer, where those pages are off, so these
+    requests are recorded here with the request shapes services/rack_actions.py sends.
+    """
+    one = lambda kind, ident: {  # noqa: E731
+        "machine": {"machineIds": {"machineIds": [{"id": ident}]}},
+        "switch": {"switchIds": {"ids": [{"id": ident}]}},
+        "power_shelf": {"powerShelfIds": {"ids": [{"id": ident}]}},
+    }[kind]
+    switches = [s["id"]["value"] for s in NVSWITCHES]
+    shelves = [s["id"]["value"] for s in SHELVES]
+    requests = [
+        ("GetRmsVersion", {}),
+        ("FindRackIds", {}),
+        ("GetAllExpectedRacks", {}),
+        ("FindRackStateHistories", {"rackIds": [{"id": RACK_ID}]}),
+        ("FindMachineIds", {}),
+        (
+            "FindMachinesByIds",
+            {"machineIds": [{"id": i} for i in MACHINE_IDS], "includeHistory": False},
+        ),
+        ("FindSwitches", {}),
+        ("FindPowerShelves", {}),
+    ]
+    requests += [("FindRacksByIds", {"rackIds": [r["id"]]}) for r in RACKS]
+    for ident in MACHINE_IDS:
+        requests.append(
+            ("FindMachinesByIds", {"machineIds": [{"id": ident}], "includeHistory": False})
+        )
+        requests.append(("GetComponentPowerDetails", one("machine", ident)))
+    for ident in switches:
+        requests.append(("FindSwitchesByIds", {"switchIds": [{"id": ident}]}))
+        requests.append(("GetComponentPowerDetails", one("switch", ident)))
+    for ident in shelves:
+        requests.append(("FindPowerShelvesByIds", {"powerShelfIds": [{"id": ident}]}))
+        requests.append(("GetComponentPowerDetails", one("power_shelf", ident)))
+    rpc = stand_in_core()[0]
+    return [
+        {
+            "kind": "rpc",
+            "method": method,
+            "request": body,
+            "response": rpc(None, method, body),
+            "at": 0,
+            "seconds": 0,
+        }
+        for method, body in requests
+    ]
 
 
 def capture():
@@ -942,6 +1134,8 @@ def capture():
                 code = stop.code
         document = json.loads(output.getvalue())
         document["demo"] = True
+        document["core_calls"] += rack_action_reads()
+        document["demo_writes"] = copy.deepcopy(DEMO_WRITES)
         return document, code, report.getvalue(), sorted(asked)
     finally:
         for owner, name, value in saved:
