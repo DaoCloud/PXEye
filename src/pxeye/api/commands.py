@@ -39,6 +39,21 @@ class CommandRoutes:
             from pxeye.services import rack_units
 
             return self.respond(*rack_units.save(self.app, body))
+        if path in ("/api/rack-actions/preview", "/api/rack-actions/execute"):
+            from pxeye.services import rack_actions
+
+            if rack_actions.enabled(self.app.config):
+                try:
+                    if path.endswith("/preview"):
+                        return self.respond(
+                            200, rack_actions.preview(self.app, body, session.get("token"))
+                        )
+                    return self.respond(
+                        200,
+                        rack_actions.execute(self.app, body, session, self.client_address[0]),
+                    )
+                except rack_actions.RackActionsInvalid as error:
+                    return self.respond(400, {"error": str(error)})
         if path.startswith("/api/equipment-planning/"):
             from pxeye.services.equipment_planning import EquipmentPlanning
             from pxeye.services.interface_planning import InterfacePlanning

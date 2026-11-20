@@ -72,6 +72,13 @@ class Store:
                 CREATE TABLE IF NOT EXISTS rack_units (
                     id INTEGER PRIMARY KEY CHECK (id = 1), data TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS rack_actions (
+                    id TEXT PRIMARY KEY, created REAL NOT NULL, updated REAL NOT NULL,
+                    operator TEXT NOT NULL, action TEXT NOT NULL, kind TEXT NOT NULL,
+                    targets TEXT NOT NULL, params TEXT NOT NULL, reason TEXT NOT NULL,
+                    checks TEXT NOT NULL, status TEXT NOT NULL, core_message TEXT NOT NULL,
+                    readback TEXT
+                );
             """)
             db.execute(
                 "INSERT OR IGNORE INTO schema_migrations(version,applied) VALUES(1,?)",
@@ -171,6 +178,67 @@ class Store:
                 (json.dumps(saved, ensure_ascii=False),),
             )
             return saved
+
+    def add_rack_action(self, row):
+        """Append one operation record; records are never deleted."""
+        now = time.time()
+        with self.db() as db:
+            db.execute(
+                "INSERT INTO rack_actions VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    row["id"],
+                    now,
+                    now,
+                    row["operator"],
+                    row["action"],
+                    row["kind"],
+                    json.dumps(row["targets"], ensure_ascii=False),
+                    json.dumps(row["params"], ensure_ascii=False),
+                    row["reason"],
+                    json.dumps(row["checks"], ensure_ascii=False),
+                    row["status"],
+                    row["core_message"],
+                    json.dumps(row["readback"], ensure_ascii=False),
+                ),
+            )
+
+    def update_rack_action(self, key, status, core_message, readback):
+        with self.db() as db:
+            db.execute(
+                "UPDATE rack_actions SET status=?,core_message=?,readback=?,updated=? WHERE id=?",
+                (status, core_message, json.dumps(readback, ensure_ascii=False), time.time(), key),
+            )
+
+    def rack_actions(self, limit=100, target=None):
+        """Newest first; `target` matches a target id or serial."""
+        with self.db() as db:
+            rows = db.execute("SELECT * FROM rack_actions ORDER BY created DESC").fetchall()
+        result = []
+        for row in rows:
+            item = dict(row)
+            for key in ("targets", "params", "checks", "readback"):
+                item[key] = json.loads(item[key]) if item[key] is not None else None
+            if target and not any(
+                target in (t.get("target"), t.get("serial")) for t in item["targets"]
+            ):
+                continue
+            result.append(item)
+            if len(result) >= limit:
+                break
+        return result
+
+    def claim_rack_action_preview(self, token, owner):
+        """Consume a rack action preview once; None when unknown, used, expired or foreign."""
+        with self.db() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute("SELECT * FROM preflights WHERE id=?", (token,)).fetchone()
+            if not row or row["used"] or row["expires"] < time.time():
+                return None
+            data = json.loads(row["data"])
+            if data.get("kind") != "rack_actions" or data.get("owner") != owner:
+                return None
+            db.execute("UPDATE preflights SET used=1 WHERE id=?", (token,))
+            return data
 
     def get(self, task_id):
         with self.db() as db:

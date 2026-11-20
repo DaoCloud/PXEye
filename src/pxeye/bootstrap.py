@@ -160,6 +160,9 @@ class Application:
             "site_bootstrap": getattr(self, "site_bootstrap_state", {}),
             "read_only": read_only.enabled(self.config),
             "rack_operations": self.config.get("rack_operations") is True,
+            "rack_actions": self.config.get("rack_operations") is True
+            and self.config.get("rack_actions") is True
+            and not read_only.enabled(self.config),
             "reason": "请先部署 NICo 并应用到站点，或在站点设置中连接已有 Core。",
         }
 

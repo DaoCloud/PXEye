@@ -92,6 +92,20 @@ class QueryRoutes:
                     if parts[5] == "validation":
                         return self.respond(200, machine_validation(self.app.adapter, parts[4]))
                 return self.respond(404, {"error": "接口不存在。"})
+            if path.startswith("/api/rack-actions/") or path == "/api/racks":
+                from pxeye.services import rack_actions
+
+                if rack_actions.enabled(self.app.config):
+                    if path == "/api/rack-actions/catalog":
+                        return self.respond(200, rack_actions.catalog(self.app.adapter))
+                    if path == "/api/rack-actions/records":
+                        try:
+                            query = parse_qs(urlsplit(self.path).query)
+                            return self.respond(200, rack_actions.records(self.app, query))
+                        except rack_actions.RackActionsInvalid as error:
+                            return self.respond(400, {"error": str(error)})
+                    if path == "/api/racks":
+                        return self.respond(200, rack_actions.racks(self.app.adapter))
             if path == "/api/equipment":
                 snapshot = self.app.management_addresses.snapshot()
                 data = self.app.equipment.view(snapshot)

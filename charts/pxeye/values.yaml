@@ -12,6 +12,9 @@ readOnly: false
 # Preview: per-kind device pages (servers, switches, power shelves) with the
 # operational state NICo Core reports. Off keeps the navigation and API as before.
 rackOperations: false
+# Preview: NICo-native operations (power, maintenance, quarantine, rack maintenance)
+# on top of rackOperations. Effective only with rackOperations on and readOnly off.
+rackActions: false
 service:
   type: NodePort
   port: 80
