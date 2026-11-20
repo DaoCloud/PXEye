@@ -16,7 +16,9 @@ FROM ${ITERATIVE_BASE_IMAGE} AS iterative
 USER 0:0
 COPY pyproject.toml README.md LICENSE /app/
 COPY src/ /app/src/
-RUN /opt/pxeye/bin/pip install --no-cache-dir --no-deps --no-build-isolation /app
+COPY src/pxeye/ /tmp/pxeye-overlay/
+RUN /opt/pxeye/bin/python -c 'import pathlib, shutil, site; source = pathlib.Path("/tmp/pxeye-overlay"); target = pathlib.Path(site.getsitepackages()[0]) / "pxeye"; shutil.rmtree(target); shutil.copytree(source, target); shutil.rmtree(source)' \
+    && /opt/pxeye/bin/python -c 'import pxeye; print(pxeye.__version__)'
 ARG VCS_REF=unknown
 ARG VERSION=unknown
 LABEL org.opencontainers.image.title="PXEye" \
