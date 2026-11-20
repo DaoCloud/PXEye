@@ -213,7 +213,9 @@ class DemoCaptureTests(unittest.TestCase):
         send = self.client(server, password)
         readiness = send("/api/readiness")[1]
         self.assertIs(readiness["rack_actions"], True)
-        self.assertIs(readiness["read_only"], True)
+        # The page is told it may operate; the server still refuses other commands.
+        self.assertIs(readiness["read_only"], False)
+        self.assertEqual(send("/api/tasks", {"devices": []})[0], 403)
         status, catalog = send("/api/rack-actions/catalog")
         self.assertEqual(status, 200)
         self.assertEqual(
