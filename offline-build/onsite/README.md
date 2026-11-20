@@ -160,7 +160,7 @@ tail -n 80 /srv/nico/bundle.onsite/run.log
 cat /srv/nico/bundle.onsite/progress.json
 ```
 
-This installs the control plane and starts Unbound with an external TCP/UDP 53 LoadBalancer Service. DHCP initially
-has zero replicas. The assigned DNS VIP, `.forge` records, DHCP option 6, PXE/Core external Services, NTP, material
-HTTP and physical boot networking still require the subsequent site-network action. Helm readiness and a Ready
-Unbound Pod do not by themselves mean physical provisioning is ready.
+This installs the control plane and creates PXE 80/8080, Core 443, Unbound TCP/UDP 53 and, for `--new-site`, PXEye
+LoadBalancer Services. DHCP initially has zero replicas. The subsequent site-network action reads their VIPs, writes
+the `.forge` records and Nico DHCP option 6, and derives the installer callback. External DHCP must advertise the
+displayed DNS VIP itself. Helm readiness does not by itself mean physical provisioning is ready.

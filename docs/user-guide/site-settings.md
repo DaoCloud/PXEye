@@ -48,7 +48,7 @@ Other information is read-only:
 
 ## 3. Boot-network service addresses
 
-The site page displays **DHCP / PXE boot addresses** separately from the **installation-material HTTP endpoint**. Use **Manage boot network (管理引导网络)** as the single entry for these settings and the DHCP mode. In the default **Nico DHCP** mode, values are read from Kea; applying them updates DHCP Option 54 and PXE/DNS/NTP advertisement settings, then rolls DHCP. In **External DHCP** mode, enter the complete boot HTTP endpoint and configure a fixed lease for the planned boot MAC/IP. PXEye keeps Kea stopped and leaves its allocation settings unchanged. It does not inspect, create, modify or take ownership of external Services, proxies or relays. See [external DHCP provisioning](../external-dhcp.md) for Core/Scout and hardware requirements.
+The site page displays **DHCP / PXE boot addresses** separately from the **installation-material HTTP endpoint**. A new-site installation creates external Services for PXE 80/8080, Core 443, Unbound TCP/UDP 53 and PXEye; **Manage boot network (管理引导网络)** reads their LoadBalancer addresses. Applying **Nico DHCP** writes the `.forge` records, updates Option 54 and PXE/DNS/NTP settings, then rolls the affected services. **External DHCP** keeps Kea stopped; configure a fixed lease for the boot MAC/IP and advertise the displayed Unbound address as Option 6. See [external DHCP provisioning](../external-dhcp.md) for Core/Scout and hardware requirements.
 
 Choose one of the two radio options: **Nico DHCP** or **External DHCP**. Nico mode shows **Nico DHCP address** and **PXE boot server IP**; external mode shows the **Boot HTTP endpoint** and fixed-lease requirements. Selecting an option does not apply it. Previously saved addresses for the inactive mode are retained, and the preview shows only the active mode's boot fields.
 
@@ -57,14 +57,14 @@ This is a site default because applying external mode stops the site's shared Ke
 | Boot field | Format and purpose |
 | --- | --- |
 | Nico DHCP address | IPv4 advertised as the DHCP Server Identifier (Option 54). |
-| PXE boot server IP | IPv4 without a scheme or port; the next-server/boot server address advertised by Nico DHCP. |
+| PXE boot server IP | IPv4 read from the shared PXE 80/8080 LoadBalancer and advertised by Nico DHCP. |
 | Boot HTTP endpoint | Complete `http://host:port` or `https://host:port`; embedded in external-mode bootstrap media to request `/api/v0/pxe/boot`. |
 | Installation materials HTTP address and port | Publishes the bootstrap ISO and new OS versions' ISO/kernel/initrd; shared by both modes. |
-| Installer event callback | A PXEye HTTP/HTTPS address reachable from the installer. A service base URL is accepted and saved with `/api/installer-events`; it carries signed progress and completion receipts. |
+| Installer event callback | Generated from the PXEye LoadBalancer with the fixed `/api/installer-events` path; it carries signed progress and completion receipts. |
 
 The boot HTTP endpoint controls only the bootstrap medium's first request into Nico. It does not update the Core/PXE service's own ports or the service URLs in subsequent scripts. Existing service configuration must still provide reachable URLs; this setting is not a global PXE port override.
 
-DNS and NTP addresses are optional; entered values must be valid IPv4 addresses. Leaving them blank clears the corresponding NICo DHCP hook service configuration without restoring its built-in defaults. This does not change NTP settings in installation profiles. Material or package URLs containing hostnames still require working DNS; offline sites can use internal services and IP URLs.
+The DNS address is read from the shared Unbound TCP/UDP 53 VIP and used for `.forge` records and Nico DHCP Option 6; it is not entered separately. NTP remains optional and must be a valid IPv4 address when set. This does not change NTP settings in installation profiles.
 
 The installation-material HTTP endpoint comes from `os_library.public_base_url`, including the address and port reachable by target hosts, for example `http://192.0.2.10:31880/public/blobs/internal/nico/os-library`. It is the base URL for ISO, kernel and initrd published for newly created OS versions; it is not a Kea setting, and existing NICo OS definitions retain their individual immutable material URLs.
 

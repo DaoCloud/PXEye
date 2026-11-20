@@ -1,13 +1,21 @@
 """Observe and explicitly initialize the site's default Flat instance network."""
 
+import base64
 import copy
 import json
+import os
 import shutil
 import time
+import uuid
 from pathlib import Path
+from threading import RLock
+from types import SimpleNamespace
 
 from pxeye.clients.core import CoreClient
+from pxeye.clients.process import run
 from pxeye.common import atomic_json, digest, value_id
+from pxeye.common import atomic_text
+from pxeye.deployment.kubernetes import CurrentCluster
 
 
 DEFAULT_TENANT = "physical-install"
@@ -237,3 +245,93 @@ class SiteNetworkContext:
                 return after
             finally:
                 shutil.rmtree(directory, ignore_errors=True)
+
+
+def _installed_config():
+    root = Path(os.environ.get("CONSOLE_DATA", "/data"))
+    config = json.loads(Path(os.environ.get("CONSOLE_CONFIG", "/config/site.json")).read_text())
+    for path in (root / "config/deployment-site.json", root / "config/site-settings.json"):
+        if path.exists():
+            config.update(json.loads(path.read_text()))
+    return root, config
+
+
+def _initializer_identity(root, cluster, source):
+    try:
+        namespace = source.get("namespace", cluster.namespace)
+        client = cluster.get("secrets", source["client_secret"], namespace)
+        ca = cluster.get("secrets", source["ca_secret"], namespace)
+    except (KeyError, TypeError):
+        raise ValueError("站点初始化身份引用不完整。") from None
+    if not client or not ca:
+        raise ValueError("站点初始化身份尚未生成。")
+    directory = root / "core-identity" / uuid.uuid4().hex
+    directory.mkdir(parents=True, mode=0o700)
+    values = {
+        "client.crt": client["data"][source.get("client_cert_key", "tls.crt")],
+        "client.key": client["data"][source.get("client_private_key", "tls.key")],
+        "ca.crt": ca["data"][source.get("ca_key", "tls.crt")],
+    }
+    try:
+        for name, value in values.items():
+            atomic_text(directory / name, base64.b64decode(value, validate=True).decode())
+        certificate = str(directory / "client.crt")
+        private_key = str(directory / "client.key")
+        root_ca = str(directory / "ca.crt")
+        run(["openssl", "x509", "-in", certificate, "-checkend", "300", "-noout"])
+        run(
+            [
+                "openssl",
+                "verify",
+                "-purpose",
+                "sslclient",
+                "-CAfile",
+                root_ca,
+                "-untrusted",
+                certificate,
+                certificate,
+            ]
+        )
+        if run(["openssl", "x509", "-in", certificate, "-pubkey", "-noout"]) != run(
+            ["openssl", "pkey", "-in", private_key, "-pubout"]
+        ):
+            raise ValueError("站点初始化证书与私钥不匹配。")
+        return directory
+    except Exception:
+        shutil.rmtree(directory, ignore_errors=True)
+        raise ValueError("站点初始化身份校验失败。") from None
+
+
+def initialize_new_site():
+    """Create only a missing default Tenant/Flat VPC for an explicit new-site install."""
+    root, config = _installed_config()
+    source = config.get("site_initializer_source") or {}
+    if not source:
+        print("SITE_NETWORK_CONTEXT missing-initializer")
+        return False
+    cluster = CurrentCluster(config.get("nico_deployment") or {}, root / "nico-deployment")
+    directory = _initializer_identity(root, cluster, source)
+    core = CoreClient()
+    core.config = config
+    core.core_secrets = Path(config.get("core_identity_directory", "/secrets"))
+    core.data = root
+    app = SimpleNamespace(
+        adapter=core,
+        config=config,
+        connection_lock=RLock(),
+        nico_deployment=SimpleNamespace(cluster=cluster),
+        _core_identity=lambda _source: (directory, {}),
+    )
+    service = SiteNetworkContext(app)
+    try:
+        before = service.view()
+        print("SITE_NETWORK_CONTEXT", before.get("state", "unknown"))
+        if before.get("state") == "ready":
+            return True
+        if before.get("state") != "missing":
+            return False
+        after = service.initialize({"confirm": True, "revision": before["revision"]})
+        print("SITE_NETWORK_CONTEXT", after.get("state", "unknown"))
+        return after.get("state") == "ready"
+    finally:
+        shutil.rmtree(directory, ignore_errors=True)

@@ -7,7 +7,7 @@ Use this optional mode when the network team supplies DHCP addresses but cannot 
 ## Requirements
 
 - An x86_64 UEFI host without a managed DPU, using Flat networking. BMC must support an optical VirtualMedia slot and one-time `Cd`/`Hdd` boot. Standard Redfish actions and Lenovo XCC1 `EXT` PATCH resources have adapters; a model's actual license and firmware require validation.
-- A fixed external DHCP lease for the boot MAC already saved in **Device planning**. iPXE, Scout and the installer must obtain the same IP. The matching HostInband prefix must exist in Core. Do not enter a second copy of this network plan.
+- A fixed external DHCP lease for the boot MAC already saved in **Device planning**. iPXE, Scout and the installer must obtain the same IP, and Option 6 must advertise the Unbound address displayed by PXEye. The matching HostInband prefix must exist in Core. Do not enter a second copy of this network plan.
 - The BMC can fetch the small ISO from the materials HTTP service. The host can reach the boot HTTP service, Core with valid TLS trust, and OS materials. Core identifies the host by the actual source address; SNAT must not conceal it.
 - A matching Core and Scout build implementing `SetHostBootIntent`, `GetHostBootIntent`, `AcknowledgeHostBoot`, `CancelHostBoot` and `ReleaseHostBootPolicy`. Old Core builds remain usable in Nico DHCP mode. Updating PXEye alone does not add the Core feature.
 - A PXEye image built through the normal `make images` entry point, including the pinned generic EFI/ESP assets. The image includes `mcopy` and `xorriso`; the site does not compile iPXE. See [image building](deployment.md).
@@ -35,7 +35,7 @@ Merging source code does not update a cluster or offline package. The default Ch
 
 1. Install the control plane using the existing onsite flow. External DHCP does not change the order of Helm installation.
 2. Open **Site → Manage boot network**, select **External DHCP**, and enter the **Boot HTTP endpoint**, including protocol and port. Keep the **Installation materials HTTP** address and port in the same form; these are separate endpoints with different purposes.
-3. Preview and apply. PXEye scales this site's Kea Deployment to zero and reads back that it has stopped. It does not change Kea allocation parameters, customer DHCP, relay settings or Services. Active installation tasks block a mode change.
+3. Preview and apply. PXEye writes the `.forge` records, scales this site's Kea Deployment to zero and reads back that it has stopped. It does not modify external DHCP or relay settings. Active installation tasks block a mode change.
 4. Confirm the fixed lease for the planned boot MAC/IP. Register a new OS version with the updated PXEye OS library and select it in the installation profile. Old immutable OS definitions remain unchanged; external mode requires the new boot acknowledgement parameters.
 5. Start the existing first-install or reinstall workflow. Task creation freezes the site mode. PXEye publishes immutable boot media and submits a per-device intent; the ordinary Core admission/allocation/reboot flow remains the execution entry point.
 6. Follow **Installation task → External DHCP / BMC boot** for the Core phase, generation and media cleanup. Normal installation and target-disk acceptance still determine completion.

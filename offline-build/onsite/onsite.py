@@ -589,8 +589,10 @@ class Onsite:
         dhcp = values.setdefault('nico-dhcp', {})
         require(dhcp.get('replicas') == 0,
                 'Initial delivery must keep nico-dhcp scaled to zero until physical boot settings are configured')
-        for component in ('nico-dhcp', 'nico-dns', 'nico-pxe', 'nico-ntp'):
+        for component in ('nico-dhcp', 'nico-dns', 'nico-ntp'):
             values.setdefault(component, {}).setdefault('externalService', {})['enabled'] = False
+        values.setdefault('nico-api', {}).setdefault('externalService', {})['enabled'] = True
+        values.setdefault('nico-pxe', {}).setdefault('externalService', {})['enabled'] = True
         unbound = values.setdefault('unbound', {})
         unbound['enabled'] = True
         unbound.setdefault('externalService', {})['enabled'] = True

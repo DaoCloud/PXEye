@@ -353,7 +353,7 @@ bootstrap_pxeye() {
     values="$directory/values.yaml"
     "$JQ" -n --arg release "$RELEASE" --arg ns "$NAMESPACE" --arg site "$("$JQ" -r '.site_name' "$CONFIG")" --argjson fresh "${NEW_SITE:-false}" --arg input "${SITE_CREDENTIALS_SECRET:-}" '{
         siteCredentials:{newSite:$fresh,existingSecret:$input},
-        nico:{enabled:true, allowClusterResources:true}, service:{type:"NodePort",nodePort:31808},
+        nico:{enabled:true, allowClusterResources:true}, service:(if $fresh then {type:"LoadBalancer",port:80} else {type:"NodePort",port:80,nodePort:31808} end),
         components:{pxeye:{enabled:true},certManager:{enabled:false},platform:{enabled:false},vaultBootstrap:{enabled:false},core:{enabled:false},materials:{enabled:false}},
         siteBootstrap:{enabled:true,siteName:$site,coreUrl:("https://"+$release+"-nico-api."+$ns+".svc.cluster.local:1079"),namespace:$ns,
           clientSecret:($release+"-nico-admin-client"),clientCertKey:"tls.crt",clientPrivateKey:"tls.key",caSecret:($release+"-nico-site-ca"),
@@ -411,6 +411,9 @@ check_pxeye_core() {
                 printf 'SITE_CREDENTIALS_NEW_SITE; generating missing BMC, Host UEFI and DPU UEFI defaults; existing values are preserved\n'
                 run pxeye-site-defaults timeout 60s kubectl --context "$CONTEXT" -n "$NAMESPACE" exec "deployment/$release" -- python3 -c 'from pxeye.services.site_credentials import initialize_new_site; raise SystemExit(0 if initialize_new_site() else 1)' || die 'Core connected but new-site credentials could not be initialized safely. Existing values are preserved; inspect PXEye and Core logs before retrying.'
                 printf 'SITE_CREDENTIALS_READY\n'
+                printf 'SITE_NETWORK_NEW_SITE; creating or reusing the default Tenant and Flat VPC\n'
+                run pxeye-site-network timeout 90s kubectl --context "$CONTEXT" -n "$NAMESPACE" exec "deployment/$release" -- python3 -c 'from pxeye.services.site_network_context import initialize_new_site; raise SystemExit(0 if initialize_new_site() else 1)' || die 'Core connected but the new-site Tenant and Flat VPC could not be initialized safely. Existing values are preserved; inspect PXEye and Core logs before retrying.'
+                printf 'SITE_NETWORK_READY\n'
             elif [[ -n ${SITE_CREDENTIALS_SECRET:-} ]]; then
                 run pxeye-site-defaults timeout 60s kubectl --context "$CONTEXT" -n "$NAMESPACE" exec "deployment/$release" -- python3 -c 'from pxeye.services.site_credentials import verify_installed; raise SystemExit(0 if verify_installed() else 1)' || die 'Core connected but site credentials are not ready. Check Site settings, then resume; existing values are preserved.'
                 printf 'SITE_CREDENTIALS_READY\n'

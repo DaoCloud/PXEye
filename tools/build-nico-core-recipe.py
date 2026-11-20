@@ -313,6 +313,8 @@ allocation_strategy = "reserved"
             nicoWebHostname: {{configMapName: "{prefix}-nico-web-hostname"}}
           dpf:
             rbacCreate: false
+          externalService:
+            enabled: true
         nico-bmc-proxy:
           image: {{repository: "{bmc_repository}", tag: "{bmc_tag}"}}
           envFrom:
@@ -328,6 +330,8 @@ allocation_strategy = "reserved"
             - name: boot-artifacts-x86-64
               image: "{boot_repository}:{boot_tag}"
               command: ["sh", "-c", "set -e; cp -r /x86_64 /forge-boot-artifacts/blobs/internal"]
+          externalService:
+            enabled: true
         nico-ntp:
           image:
             repository: "{chrony_repository}"
@@ -340,6 +344,7 @@ allocation_strategy = "reserved"
           enabled: false
         unbound:
           enabled: true
+          nameOverride: "{prefix}-unbound"
           image:
             repository: "m.daocloud.io/docker.io/mvance/unbound"
             tag: "1.22.0"
