@@ -2302,7 +2302,8 @@ body.read-only .topbar::after {
 .nav-item[data-page="power_shelves"],
 .nav-item[data-page="alerts"],
 .nav-item[data-page="cabling"],
-.nav-item[data-page="exploration"] {
+.nav-item[data-page="exploration"],
+.nav-item[data-page="racks"] {
   position: relative;
   width: calc(100% - 20px);
   margin: 1px 0 1px 20px;
@@ -2314,11 +2315,32 @@ body.read-only .topbar::after {
 .nav-item[data-page="power_shelves"]::before,
 .nav-item[data-page="alerts"]::before,
 .nav-item[data-page="cabling"]::before,
-.nav-item[data-page="exploration"]::before {
+.nav-item[data-page="exploration"]::before,
+.nav-item[data-page="racks"]::before {
   content: "";
   position: absolute;
   left: 0;
   top: -1px;
   bottom: -1px;
   border-left: 1px solid #d5dce1;
+}
+
+/* 机柜: maintenance dialog lists, one checkbox per line. */
+.racks-choices {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 6px 16px;
+  margin: 6px 0 12px;
+}
+.racks-choices label {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-weight: normal;
+}
+.racks-boundary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
 }
