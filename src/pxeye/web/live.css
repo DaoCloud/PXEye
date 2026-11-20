@@ -2113,14 +2113,16 @@
   }
 }
 
-/* Arrival planning shares the device table and editor components. */
-.equipment-planning-toolbar {
+/* List toolbars keep search labels, inputs and result counts aligned. */
+.equipment-planning-toolbar,
+.instance-toolbar {
   display: flex;
   align-items: center;
   gap: 24px;
   padding: 16px 0;
 }
-.equipment-planning-search {
+.equipment-planning-search,
+.instance-search {
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
   align-items: center;
@@ -2128,21 +2130,25 @@
   margin-left: auto;
   width: min(520px, 70%);
 }
-.equipment-planning-search label {
+.equipment-planning-search label,
+.instance-search label {
   white-space: nowrap;
   font-size: 12px;
   font-weight: 500;
 }
-.equipment-planning-search .input {
+.equipment-planning-search .input,
+.instance-search .input {
   width: 100%;
   min-width: 0;
 }
 @media (max-width: 700px) {
-  .equipment-planning-toolbar {
+  .equipment-planning-toolbar,
+  .instance-toolbar {
     flex-wrap: wrap;
     gap: 12px;
   }
-  .equipment-planning-search {
+  .equipment-planning-search,
+  .instance-search {
     margin: 0;
     width: 100%;
   }

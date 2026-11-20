@@ -44,7 +44,7 @@ function instancesPage() {
   );
   if (!data) return body + '<div class="live-empty">正在读取 NICo 实例…</div>';
   if (data.warning) body += `<div class="live-note">${esc(data.warning)}</div>`;
-  body += `<div class="live-tools"><label>搜索实例 <input class="input" id="instance-search" value="${esc(state.instanceQuery || "")}" placeholder="名称、ID、SN、主机名、IP" aria-label="搜索实例"></label><span class="live-small">${data.instances.length} 个当前实例 · 查询时间 ${when(data.checked_at)}</span></div>`;
+  body += `<div class="instance-toolbar"><span class="live-small">${data.instances.length} 个当前实例 · 查询时间 ${when(data.checked_at)}</span><div class="instance-search"><label for="instance-search">搜索实例</label><input class="input" id="instance-search" type="search" value="${esc(state.instanceQuery || "")}" placeholder="名称、ID、SN、主机名或 IP"></div></div>`;
   body += `<div id="instance-rows">${table(
     [
       "实例名称 / ID",
