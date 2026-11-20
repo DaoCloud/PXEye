@@ -225,7 +225,10 @@ def start(capture, port, host="127.0.0.1", writable=False, password=None):
 
     work = Path(tempfile.mkdtemp(prefix="pxeye-replay-"))
     config, data, secret_dir, password = prepare(capture, work, password)
-    static = Path(__file__).resolve().parent.parent / "src" / "pxeye" / "web"
+    # The web assets of the pxeye package in use, wherever this script is installed.
+    import pxeye
+
+    static = Path(pxeye.__file__).resolve().parent / "web"
     app = Application(config, str(secret_dir), data, str(static))
     server = ThreadingHTTPServer((host, port), Handler)
     server.app = app
