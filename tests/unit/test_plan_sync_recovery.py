@@ -23,6 +23,7 @@ class WireTests(unittest.TestCase):
     def test_native_readback_nulls_are_omitted_but_explicit_values_survive(self):
         row = {
             "id": "id",
+            "rack_id": "RACK1",
             "dpf_enabled": False,
             "host_lifecycle_profile": {"disable_lockdown": False},
             "interfaces": [
@@ -64,6 +65,7 @@ class WireTests(unittest.TestCase):
         self.assertEqual(nic["physical_ifname"], "")
         self.assertEqual(nic["ip_allocation"], 0)
         self.assertFalse(body["is_dpf_enabled"])
+        self.assertEqual(body["rack_id"], {"id": "RACK1"})
         self.assertEqual(body["metadata"]["labels"], [])
         self.assertEqual(row, original)
         # This deployed grpcurl uses object encoding for FieldMask. Preserve it.
