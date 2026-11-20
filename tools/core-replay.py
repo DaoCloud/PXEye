@@ -7,6 +7,7 @@ site, keyed by method and request. A request that was not recorded fails loudly 
 is listed, which is how drift between the code and the capture shows up.
 
     PYTHONPATH=src python3 tools/core-replay.py serve <capture.json> [--port 18930]
+        [--host 127.0.0.1] [--writable]
     PYTHONPATH=src python3 tools/core-replay.py check <capture.json>
     PYTHONPATH=src python3 tools/core-replay.py check <capture.json> --write <new.json>
 
@@ -14,6 +15,14 @@ is listed, which is how drift between the code and the capture shows up.
 checks. `check` requests the same API reads the capture recorded and compares the
 responses with the recorded ones, ignoring times that change on every read. It exits
 non-zero when a response differs or a request was not recorded.
+
+The replayed console is read-only, like the observer the capture was made in. With
+`--writable` it is not: PXEye-local imports (switch labels, rack units) can be tried and
+are kept in the replay's temporary data directory until it stops. Core and Redfish writes
+remain impossible either way, because the replay only answers requests that were
+recorded, and a capture records reads: any write fails as UNRECORDED. `--host` chooses
+the listening address (default 127.0.0.1); the console has a password, but the capture
+holds site data, so listen beyond loopback only on a trusted network.
 
 After a change that is meant to alter what the console returns, `--write` saves a copy
 whose expected responses are the replayed ones. Review the differences it reported
@@ -122,7 +131,7 @@ class Recorded:
         return copy.deepcopy(call["response"])
 
 
-def prepare(capture, work):
+def prepare(capture, work, writable=False):
     """A data directory holding the captured local inputs and a placeholder identity."""
     data = work / "data"
     for relative, text in capture["inputs"]["files"].items():
@@ -157,7 +166,7 @@ def prepare(capture, work):
     config.update(
         core_url=capture["core_url"],
         core_identity_directory=str(identity),
-        read_only=True,
+        read_only=not writable,
         rack_operations=True,
         nico_deployment={"enabled": False, "namespace": "replay"},
     )
@@ -172,7 +181,7 @@ def prepare(capture, work):
     return config, data, secret_dir, password
 
 
-def start(capture, port):
+def start(capture, port, host="127.0.0.1", writable=False):
     from pxeye.api.http import Handler
     from pxeye.bootstrap import Application
     from pxeye.clients.core import CoreClient
@@ -203,10 +212,10 @@ def start(capture, port):
     kubernetes.CurrentCluster.request = no_cluster
 
     work = Path(tempfile.mkdtemp(prefix="pxeye-replay-"))
-    config, data, secret_dir, password = prepare(capture, work)
+    config, data, secret_dir, password = prepare(capture, work, writable)
     static = Path(__file__).resolve().parent.parent / "src" / "pxeye" / "web"
     app = Application(config, str(secret_dir), data, str(static))
-    server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    server = ThreadingHTTPServer((host, port), Handler)
     server.app = app
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server, password, recorded, work
@@ -301,6 +310,13 @@ def main():
     parser.add_argument("mode", choices=("serve", "check"))
     parser.add_argument("capture")
     parser.add_argument("--port", type=int, default=0)
+    parser.add_argument("--host", default="127.0.0.1", help="listening address")
+    parser.add_argument(
+        "--writable",
+        action="store_true",
+        help="not read-only: PXEye-local imports can be tried; Core and Redfish writes still "
+        "fail as UNRECORDED",
+    )
     parser.add_argument(
         "--write",
         metavar="FILE",
@@ -313,7 +329,7 @@ def main():
     capture = json.loads(Path(options.capture).read_text())
     if capture.get("format") != 1:
         sys.exit("Unknown capture format.")
-    server, password, recorded, work = start(capture, options.port)
+    server, password, recorded, work = start(capture, options.port, options.host, options.writable)
     try:
         if options.mode == "check":
             replayed = {}
@@ -334,7 +350,9 @@ def main():
             )
             sys.exit(1 if failures or missing else 0)
         print(
-            f"Replay console: http://127.0.0.1:{server.server_address[1]}  password: {password}",
+            f"Replay console: http://{options.host}:{server.server_address[1]}  "
+            f"password: {password}"
+            + ("  (writable: PXEye-local data only)" if options.writable else ""),
             file=out,
             flush=True,
         )

@@ -147,6 +147,20 @@ jq '.summary' $C                                                       # 采集�
 
 采集不会因为某项读不到而中止，空返回、失败的调用、部分失败的接口都会原样记录，回放时同样出现，见第 6 节。
 
+### 3.3 演示数据
+
+没有站点和 Core 时，用演示采集展示所有机柜运维页面：
+
+```bash
+python3 tools/demo-capture.py > /tmp/demo.json
+PYTHONPATH=src python3 tools/core-replay.py serve /tmp/demo.json --writable
+```
+
+- 数据是编写的示例占位数据（站点“演示站点（示例数据）”，`"demo": true`，序列号 `DEMO-…`，MAC `02:…`，地址取自 192.0.2.0/24 和 198.51.100.0/24），从来不是站点结果：不能作为已验证依据，也不能据此标记数据契约字段。
+- `tools/demo-capture.py` 列出了每个页面有意展示的内容（各类状态、告警、端口冲突、交换机信息、U 位机柜不一致、发现失败）；`tests/unit/test_demo_capture.py` 校验它。
+- `--writable` 只允许试用 PXEye 本地导入（交换机信息、U 位），回放停止后即丢弃；写 Core 和 Redfish 仍以 `UNRECORDED` 失败。`--host` 指定监听地址（默认 127.0.0.1）。
+- 生成的文件与其他采集一样不放进仓库。
+
 ## 4. 用户补充的数据
 
 NICo 没有的数据由用户提供，统一存成 CSV：
