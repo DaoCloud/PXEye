@@ -17,10 +17,12 @@ responses with the recorded ones, ignoring times that change on every read. It e
 non-zero when a response differs or a request was not recorded.
 
 The replayed console is read-only, like the observer the capture was made in. With
-`--writable` it is not: PXEye-local imports (switch labels, rack units) can be tried and
-are kept in the replay's temporary data directory until it stops. Core and Redfish writes
-remain impossible either way, because the replay only answers requests that were
-recorded, and a capture records reads: any write fails as UNRECORDED. `--host` chooses
+`--writable` the console's whole read-only gate is lifted, so every command is enabled,
+not only PXEye-local imports (switch labels, rack units, kept in the replay's temporary
+data directory until it stops). Core and Redfish writes still fail as UNRECORDED, because
+the replay only answers recorded requests and a capture records reads. SSH is not
+stubbed: an action that reaches it fails because the replay has no SSH key and an empty
+known_hosts with strict host key checking, so it cannot write either. `--host` chooses
 the listening address (default 127.0.0.1); the console has a password, but the capture
 holds site data, so listen beyond loopback only on a trusted network.
 
@@ -314,8 +316,8 @@ def main():
     parser.add_argument(
         "--writable",
         action="store_true",
-        help="not read-only: PXEye-local imports can be tried; Core and Redfish writes still "
-        "fail as UNRECORDED",
+        help="lift the console read-only gate (all commands enabled); Core and Redfish writes "
+        "fail as UNRECORDED, SSH fails for lack of a key and known hosts",
     )
     parser.add_argument(
         "--write",
@@ -352,7 +354,7 @@ def main():
         print(
             f"Replay console: http://{options.host}:{server.server_address[1]}  "
             f"password: {password}"
-            + ("  (writable: PXEye-local data only)" if options.writable else ""),
+            + ("  (writable: read-only gate lifted; Core/Redfish writes UNRECORDED, no SSH key)" if options.writable else ""),
             file=out,
             flush=True,
         )

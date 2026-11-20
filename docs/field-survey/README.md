@@ -158,7 +158,7 @@ PYTHONPATH=src python3 tools/core-replay.py serve /tmp/demo.json --writable
 
 - The data is authored placeholder data (site “演示站点（示例数据）”, `"demo": true`, serials `DEMO-…`, MACs `02:…`, addresses from 192.0.2.0/24 and 198.51.100.0/24). It is never a site result: do not cite it as verified and do not mark data-contract fields from it.
 - `tools/demo-capture.py` lists what each page shows on purpose (states, alerts, a port conflict, switch labels, a rack unit mismatch, exploration failures). `tests/unit/test_demo_capture.py` checks it.
-- `--writable` only lets PXEye-local imports (switch labels, rack units) be tried; they last until the replay stops. Core and Redfish writes still fail as `UNRECORDED`. `--host` chooses the listening address (default 127.0.0.1).
+- `--writable` lifts the console's read-only gate, so every command is enabled, not only PXEye-local imports (switch labels, rack units, which last until the replay stops). Core and Redfish writes still fail as `UNRECORDED`; SSH fails because the replay has no SSH key and no known hosts. `--host` chooses the listening address (default 127.0.0.1).
 - Keep the generated file out of the repository like any capture.
 
 ## 4. Data the user provides
