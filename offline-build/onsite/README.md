@@ -160,5 +160,7 @@ tail -n 80 /srv/nico/bundle.onsite/run.log
 cat /srv/nico/bundle.onsite/progress.json
 ```
 
-This installs the control plane. DHCP initially has zero replicas. DNS, DHCP, PXE, NTP, material HTTP and physical
-boot networking are subsequent site settings. Helm readiness is separate from physical provisioning acceptance.
+This installs the control plane and starts Unbound with an external TCP/UDP 53 LoadBalancer Service. DHCP initially
+has zero replicas. The assigned DNS VIP, `.forge` records, DHCP option 6, PXE/Core external Services, NTP, material
+HTTP and physical boot networking still require the subsequent site-network action. Helm readiness and a Ready
+Unbound Pod do not by themselves mean physical provisioning is ready.

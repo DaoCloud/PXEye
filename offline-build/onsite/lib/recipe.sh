@@ -205,9 +205,11 @@ recipe_values() {
             .nicoCore["nico-dns"].externalService.enabled = false |
             .nicoCore["nico-pxe"].externalService.enabled = false |
             .nicoCore["nico-ntp"].externalService.enabled = false |
+            .nicoCore.unbound.enabled = true |
+            .nicoCore.unbound.externalService.enabled = true |
             .nicoCore["nico-pxe"].pxeyeStorage = {
               enabled:true, claimName:($owner+"-storage"), ownerRelease:$owner}
-        ' "$scratch/core.json" > "$scratch/substituted.json" || die "Cannot disable initial external boot Services"
+        ' "$scratch/core.json" > "$scratch/substituted.json" || die "Cannot configure initial boot-network Services"
     fi
     if [[ -n $NODE_NAME ]]; then
         placement_values "$scratch/substituted.json" "$scratch/placed.json"

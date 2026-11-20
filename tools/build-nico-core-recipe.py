@@ -339,7 +339,21 @@ allocation_strategy = "reserved"
         nico-postgres-exporter:
           enabled: false
         unbound:
-          enabled: false
+          enabled: true
+          image:
+            repository: "m.daocloud.io/docker.io/mvance/unbound"
+            tag: "1.22.0"
+          exporter:
+            enabled: false
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              printf 'server:\\n  interface: 0.0.0.0\\n  interface: ::0\\ninclude: "/etc/unbound/local.conf.d/*.conf"\\n' > /tmp/unbound.conf
+              exec unbound -d -c /tmp/unbound.conf
+          externalService:
+            enabled: true
+          localConfig:
+            forwarders.conf: ""
         """,
     )
 

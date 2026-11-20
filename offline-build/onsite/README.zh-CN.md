@@ -148,5 +148,6 @@ tail -n 80 /srv/nico/bundle.onsite/run.log
 cat /srv/nico/bundle.onsite/progress.json
 ```
 
-本步骤只安装控制面。DHCP 初始为零副本；DNS、DHCP、PXE、NTP、材料 HTTP 及物理引导网络由后续站点配置
-维护。Helm Ready 不等于真实装机验收通过。
+本步骤安装控制面，并默认启动 Unbound 及其 TCP/UDP 53 LoadBalancer Service。DHCP 初始为零副本；后续仍需由
+站点网络配置读取 DNS VIP、写入 `.forge` 记录和 DHCP Option 6，并配置 PXE/Core 外部 Service、NTP、材料 HTTP
+及物理引导网络。Helm Ready 或 Unbound Pod Ready 不等于真实装机验收通过。
