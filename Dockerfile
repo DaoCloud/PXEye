@@ -1,4 +1,5 @@
 ARG BASE_IMAGE=ubuntu:24.04
+ARG ITERATIVE_BASE_IMAGE=ubuntu:24.04
 FROM ${BASE_IMAGE} AS boot-media-builder
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -7,6 +8,24 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 COPY tools/boot-media/ /build-tools/
 RUN bash /build-tools/build.sh --output /boot-media
+
+# Application-only development builds may reuse a previously verified PXEye
+# runtime. This target leaves system packages, external tools and boot media
+# untouched and replaces only the installed application.
+FROM ${ITERATIVE_BASE_IMAGE} AS iterative
+USER 0:0
+COPY pyproject.toml README.md LICENSE /app/
+COPY src/ /app/src/
+RUN /opt/pxeye/bin/pip install --no-cache-dir --no-deps --no-build-isolation /app
+ARG VCS_REF=unknown
+ARG VERSION=unknown
+LABEL org.opencontainers.image.title="PXEye" \
+      org.opencontainers.image.source="https://github.com/DaoCloud/PXEye" \
+      org.opencontainers.image.revision="${VCS_REF}" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.licenses="Apache-2.0"
+USER 1000:1000
+WORKDIR /app
 
 FROM ${BASE_IMAGE}
 ARG DEBIAN_FRONTEND=noninteractive
