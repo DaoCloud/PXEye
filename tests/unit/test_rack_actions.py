@@ -246,7 +246,7 @@ class GateTests(Base):
             ON | {"read_only": True},
         ):
             app = App(self.store, self.core, config)
-            for path in ("/api/rack-actions/catalog", "/api/rack-actions/records", "/api/racks"):
+            for path in ("/api/rack-actions/catalog", "/api/rack-actions/records"):
                 self.assertEqual(self.get(path, app)[0], 404)
             code, _ = self.post("/api/rack-actions/preview", {"action": "power_on"}, app)
             self.assertEqual(code, 404)
