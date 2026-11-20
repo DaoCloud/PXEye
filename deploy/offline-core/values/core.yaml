@@ -1,7 +1,7 @@
 global:
   image:
-    repository: 127.0.0.1:1027/core
-    tag: main-7c7788a8c7f1-20261117T054943Z-51c9e035
+    repository: 127.0.0.1:1027/nico-offline/bundle-57f4a6f88c1e5f78bb92/images/core
+    tag: hotfix-28e4e982-api
     pullPolicy: IfNotPresent
   certificate:
     useCertManager: false
