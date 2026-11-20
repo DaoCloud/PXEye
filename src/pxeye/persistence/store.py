@@ -132,8 +132,22 @@ class Store:
                         data["receipt"]["acceptance_skips"] = skips
                 # Closing is also monotonic.  A running worker may hold an older
                 # in-memory copy when the operator asks it to stop.
-                if current.get("close_request"):
-                    data["close_request"] = current["close_request"]
+                saved_close = current.get("close_request")
+                incoming_close = data.get("close_request")
+                if saved_close and (
+                    not incoming_close
+                    or saved_close.get("at", 0) > incoming_close.get("at", 0)
+                    or (
+                        saved_close.get("at") == incoming_close.get("at")
+                        and {"requested": 0, "failed": 1, "completed": 1}.get(
+                            saved_close.get("state"), 0
+                        )
+                        > {"requested": 0, "failed": 1, "completed": 1}.get(
+                            incoming_close.get("state"), 0
+                        )
+                    )
+                ):
+                    data["close_request"] = saved_close
             db.execute(
                 "UPDATE tasks SET status=?,data=? WHERE id=?",
                 (data["status"], json.dumps(data), data["id"]),

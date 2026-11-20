@@ -277,6 +277,7 @@ const bmcLink = (ip) =>
     ? `<a class="link-button" href="https://${esc(ip)}" target="_blank" rel="noopener noreferrer">${esc(ip)} ↗</a>`
     : "—";
 const taskStatus = (t) =>
+  ["queued", "running", "needs_attention"].includes(t.status) &&
   t.close_request?.state === "requested"
     ? { label: "正在结束", tone: "amber" }
     : t.status === "needs_attention" && t.acceptance_summary?.state === "pending"
