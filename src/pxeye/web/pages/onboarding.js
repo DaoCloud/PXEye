@@ -136,7 +136,7 @@ function batchIdentityCells(d) {
   const i = d.selection_identity || {};
   return (
     `<td><strong>${esc(d.serial)}</strong>${d.server_name ? `<span class="live-small">${esc(d.server_name)}</span>` : ""}${d.rack_id ? `<span class="live-small">机柜 ${esc(d.rack_id?.value || d.rack_id)}</span>` : ""}<span class="live-small">${esc(/^lenovo\b/i.test(i.manufacturer || "") ? "Lenovo" : i.manufacturer || "")}</span></td>` +
-    `<td>${esc(i.architecture || "未采集")}<span class="live-small">${esc(i.cpu_models?.join(" / ") || "CPU型号未采集")}</span></td>` +
+    `<td>${esc(i.architecture || "架构未回报")}<span class="live-small">${esc(i.cpu_models?.join(" / ") || "CPU 型号未回报")}</span></td>` +
     `<td>${bmcLink(d.bmc_ip || d.bmc_ip_address)}<span class="live-small live-code">${esc(d.bmc_mac_address || "MAC 未登记")}</span>${d.bmc_ip && d.bmc_ip_address && d.bmc_ip !== d.bmc_ip_address ? `<span class="live-small">规划 ${esc(d.bmc_ip_address)}</span>` : ""}</td>`
   );
 }

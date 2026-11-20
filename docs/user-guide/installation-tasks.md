@@ -25,7 +25,8 @@ The wizard uses saved device configuration and has two steps: **Select devices (
 | Device selection | Filter by SN, architecture, management subnet or current system; at most 50 devices per batch. Devices with active tasks or incomplete releases cannot be selected. |
 | Query current system (查询当前系统) | Queries selected devices, or filtered devices when none are selected; 1–50 devices. Use results to review the current OS. |
 | Target OS / profile | Read from device system configuration; OS architecture must match the target host and profile. |
-| Hostname / management address | Read from device configuration; interface, address and subnet must correspond. |
+| CPU | Scout models take precedence. Before first installation, use Get device information or Refresh device details in Device Management to read processor information supported by the BMC. Refreshing the wizard reads existing records without starting Scout. |
+| Hostname / management address | Read from device configuration. The wizard shows the bound management subnet and prefix even on first installation. Without a binding, the address must match a unique HostInband prefix, independently of the DHCP pool. |
 | System disk | Shows the explicit disk or profile selection. When selection awaits Scout, check the later result and cleanup scope. |
 | Concurrency | Read from [Site settings](site-settings.md) and frozen when the batch is created. |
 | Execution confirmation | Confirm devices, addresses and disks, and allow installation and reboot. Initial onboarding cleanup also requires confirmation for all disks. |

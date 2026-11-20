@@ -395,7 +395,7 @@ class ManagementAddresses:
                 row, _ = self.context(iid, snapshot)
                 if row.get("role") in ("host", "nvos", "dpu_os"):
                     raise ValueError("此接口不提供 BMC 身份读取。")
-                identity = self.identity(row, row["addresses"][0], credential)
+                identity = self.identity(row, row["addresses"][0], credential, processors=True)
                 self.write(
                     "proofs",
                     iid,
@@ -406,6 +406,7 @@ class ManagementAddresses:
                         "model": identity["model"],
                         "manufacturer": identity["manufacturer"],
                         "evidence": identity["evidence"],
+                        "processor_inventory": identity.get("processor_inventory"),
                         "nics": identity.get("nics", []),
                         "credential": credential,
                         "verified_at": time.time(),
@@ -419,13 +420,15 @@ class ManagementAddresses:
         with ThreadPoolExecutor(max_workers=4) as pool:
             return {"rows": list(pool.map(read, ids))}
 
-    def identity(self, row, address, credential):
+    def identity(self, row, address, credential, *, processors=False):
         kind = (
             "dpu"
             if row.get("role", "").startswith("dpu_")
             else row.get("address_kind", row["kind"])
         )
-        identity = read_device_identity(self.adapter, address, row["mac_address"], credential)
+        identity = read_device_identity(
+            self.adapter, address, row["mac_address"], credential, processors=processors
+        )
         if row.get("serial") and row["serial"] != identity["serial"]:
             raise ValueError("BMC 返回的 SN 与地址规划不同。")
         if kind not in ("unknown", "other") and identity["kind"] != kind:
@@ -595,7 +598,7 @@ class ManagementAddresses:
                 credential = self.credentials(row, snapshot)
                 if not credential:
                     raise ValueError("未保存 BMC / PMC 凭据。")
-                identity = self.identity(row, row["addresses"][0], credential)
+                identity = self.identity(row, row["addresses"][0], credential, processors=True)
                 proof = {
                     "mac_address": row["mac_address"],
                     "serial": identity["serial"],
@@ -604,6 +607,7 @@ class ManagementAddresses:
                     "manufacturer": identity["manufacturer"],
                     "evidence": identity["evidence"],
                     "credential": credential,
+                    "processor_inventory": identity.get("processor_inventory"),
                     "nics": identity.get("nics", []),
                     "verified_at": time.time(),
                     "verified_ip": row["addresses"][0],

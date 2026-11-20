@@ -12,6 +12,34 @@ class DeviceProjection:
         self.adapter, self.store = resources.adapter, resources.store
         self.plans = DevicePlans(self.adapter, resources)
 
+    def redfish_processors(self, devices):
+        observations = {}
+        targets = {
+            (item["serial"], item["bmc_mac_address"].lower()): item.get("id") for item in devices
+        }
+        for directory in ("discovery", "management-addresses/proofs"):
+            for path in (self.adapter.data / "config" / directory).glob("*.json"):
+                proof = json.loads(path.read_text())
+                key = (
+                    proof.get("serial"),
+                    (proof.get("mac_address") or proof.get("bmc_mac") or "").lower(),
+                )
+                inventory = proof.get("processor_inventory")
+                if (
+                    key not in targets
+                    or proof.get("kind") != "server"
+                    or not isinstance(inventory, dict)
+                ):
+                    continue
+                if directory == "discovery" and (
+                    proof.get("status") != "registered" or proof.get("expected_id") != targets[key]
+                ):
+                    continue
+                checked = proof.get("verified_at") or 0
+                if checked > observations.get(key, (0, {}))[0]:
+                    observations[key] = (checked, inventory)
+        return {key: value for key, (_, value) in observations.items()}
+
     def read(self):
         plans = self.plans
         rows = plans.inventory()
@@ -194,12 +222,19 @@ class DeviceProjection:
                     can_install_with_current_bmc=False,
                     execution_reason=pending[item["serial"]]["detail"],
                 )
+        processors = self.redfish_processors(devices) if devices else {}
         for item in devices:
-            item["selection_identity"] = selection_identity(
+            identity = selection_identity(
                 item,
                 networks,
                 hardware_by_serial.get(item["serial"]),
                 history_by_serial.get(item["serial"]),
             )
-            item["selection_identity"]["networks_available"] = networks_available
+            inventory = processors.get((item["serial"], item["bmc_mac_address"].lower()), {})
+            if not identity["cpu_models"] and inventory.get("cpu_models"):
+                identity["cpu_models"] = inventory["cpu_models"]
+            if not identity["architecture"]:
+                identity["architecture"] = inventory.get("architecture")
+            identity["networks_available"] = networks_available
+            item["selection_identity"] = identity
         return devices
