@@ -7,7 +7,7 @@ site, keyed by method and request. A request that was not recorded fails loudly 
 is listed, which is how drift between the code and the capture shows up.
 
     PYTHONPATH=src python3 tools/core-replay.py serve <capture.json> [--port 18930]
-        [--host 127.0.0.1] [--writable] [--password-file FILE]
+        [--host 127.0.0.1] [--writable] [--demo-writes] [--password-file FILE]
     PYTHONPATH=src python3 tools/core-replay.py check <capture.json>
     PYTHONPATH=src python3 tools/core-replay.py check <capture.json> --write <new.json>
 
@@ -25,6 +25,14 @@ requests and a capture records reads. `--host` chooses the listening address (de
 127.0.0.1). `--password-file` sets the sign-in password instead of a random one. The
 console has a password, but a site capture holds site data, so listen beyond loopback
 only on a trusted network.
+
+`--demo-writes` is for a demo capture (tools/demo-capture.py, "demo": true) only; any
+other capture is refused. It turns rack actions on and answers the write RPCs listed
+in the capture's "demo_writes" with the authored response. The writes are kept in
+memory and change what later reads of the replay show (maintenance mark, quarantine,
+power, rack state, decommissioned objects), so read-back confirms them as on a site.
+The console stays read-only except for the rack actions routes and the local imports;
+nothing leaves the process.
 
 After a change that is meant to alter what the console returns, `--write` saves a copy
 whose expected responses are the replayed ones. Review the differences it reported
@@ -185,9 +193,137 @@ def prepare(capture, work, password=None):
 
 # The only commands --writable admits: PXEye-local data owned by rack operations pages.
 WRITABLE_PATHS = ("/api/switch-labels", "/api/rack-units")
+# --demo-writes admits these too: the rack actions of a demo capture.
+DEMO_WRITE_PATHS = ("/api/rack-actions/preview", "/api/rack-actions/execute")
 
 
-def start(capture, port, host="127.0.0.1", writable=False, password=None):
+class DemoWritesRefused(ValueError):
+    """--demo-writes asked for a capture that is not a demo."""
+
+
+def ids_in(body):
+    """The object IDs a write request names, in any of the rack actions request shapes."""
+    found = []
+
+    def walk(value, key=""):
+        if isinstance(value, dict):
+            for k, v in value.items():
+                walk(v, k)
+        elif isinstance(value, list):
+            for v in value:
+                walk(v, key)
+        elif isinstance(value, str) and key in ("id", "machineId", "value"):
+            found.append(value)
+
+    walk(body)
+    return found
+
+
+class DemoCore:
+    """Write answers of a demo capture, and what they change in later reads.
+
+    Only write methods listed in the capture are answered; the effects are a small
+    in-memory overlay on the recorded reads, never sent anywhere."""
+
+    POWER = {
+        "On": "ON",
+        "GracefulShutdown": "OFF",
+        "ForceOff": "OFF",
+        "GracefulRestart": "ON",
+        "ForceRestart": "ON",
+        "ACPowercycle": "ON",
+        "SYSTEM_POWER_CONTROL_ON": "ON",
+        "SYSTEM_POWER_CONTROL_FORCE_OFF": "OFF",
+        "SYSTEM_POWER_CONTROL_FORCE_RESTART": "ON",
+        "POWER_SHELF_MAINTENANCE_OPERATION_POWER_ON": "ON",
+        "POWER_SHELF_MAINTENANCE_OPERATION_POWER_OFF": "OFF",
+    }
+
+    def __init__(self, writes):
+        self.writes, self.sent, self.lock = writes, [], threading.Lock()
+        self.maintenance, self.quarantine, self.sku = {}, {}, set()
+        self.power, self.racks, self.gone = {}, {}, set()
+
+    def handles(self, method):
+        return method in self.writes
+
+    def write(self, method, body):
+        with self.lock:
+            self.sent.append({"method": method, "request": copy.deepcopy(body)})
+            targets = ids_in({k: v for k, v in body.items() if k != "scope"})
+            if method == "SetMaintenance":
+                for ident in targets:
+                    self.maintenance[ident] = (
+                        body.get("reference") or "demo" if body.get("operation") == "Enable" else ""
+                    )
+            elif method == "SetManagedHostQuarantineState":
+                for ident in targets:
+                    self.quarantine[ident] = body.get("quarantineState")
+            elif method == "ClearManagedHostQuarantineState":
+                for ident in targets:
+                    self.quarantine[ident] = None
+            elif method == "VerifySkuForMachine":
+                self.sku.update(targets)
+            elif method in ("AdminPowerControl", "ComponentPowerControl"):
+                for ident in targets:
+                    self.power[ident] = self.POWER.get(body.get("action"), "UNKNOWN")
+            elif method == "SetPowerShelfMaintenance":
+                for ident in targets:
+                    self.power[ident] = self.POWER.get(body.get("operation"), "UNKNOWN")
+            elif method == "OnDemandRackMaintenance":
+                for ident in targets:
+                    self.racks[ident] = "Maintenance(FirmwareUpgrade)"
+            elif method == "TerminateRackMaintenance":
+                for ident in targets:
+                    self.racks[ident] = "Ready"
+            elif method in ("DecommissionSwitch", "DecommissionPowerShelf"):
+                self.gone.update(targets)
+            return copy.deepcopy(self.writes[method])
+
+    def read(self, method, response):
+        """A recorded read, with the demo writes applied."""
+        with self.lock:
+            if method == "FindMachinesByIds":
+                for row in response.get("machines") or []:
+                    ident = (row.get("id") or {}).get("id")
+                    if ident in self.maintenance:
+                        config = row.setdefault("config", {})
+                        config.pop("maintenanceReference", None)
+                        if self.maintenance[ident]:
+                            config["maintenanceReference"] = self.maintenance[ident]
+                    status = row.setdefault("status", {})
+                    if ident in self.quarantine:
+                        status.pop("quarantine", None)
+                        if self.quarantine[ident]:
+                            status["quarantine"] = self.quarantine[ident]
+                    if ident in self.sku:
+                        status.setdefault("hwSku", {})["verifyRequestTime"] = "演示"
+            elif method == "GetComponentPowerDetails":
+                for entry in response.get("entries") or []:
+                    if entry.get("componentId") in self.power:
+                        entry["actual"] = {
+                            "state": "COMPONENT_POWER_STATE_" + self.power[entry["componentId"]]
+                        }
+            elif method == "FindRacksByIds":
+                for row in response.get("racks") or []:
+                    ident = (row.get("id") or {}).get("id")
+                    if ident in self.racks:
+                        row["rackState"] = self.racks[ident]
+                        row.setdefault("status", {}).setdefault("lifecycle", {})["state"] = (
+                            self.racks[ident]
+                        )
+            for field in ("switches", "powerShelves"):
+                if field in response:
+                    response[field] = [
+                        row
+                        for row in response[field]
+                        if (row.get("id") or {}).get("value") not in self.gone
+                        and (row.get("id") or {}).get("id") not in self.gone
+                    ]
+            return response
+
+
+def start(capture, port, host="127.0.0.1", writable=False, password=None, demo_writes=False):
     from pxeye.api.http import Handler
     from pxeye.bootstrap import Application
     from pxeye.clients.core import CoreClient
@@ -195,12 +331,21 @@ def start(capture, port, host="127.0.0.1", writable=False, password=None):
     from pxeye import read_only
     from pxeye.deployment import kubernetes
 
+    if demo_writes and capture.get("demo") is not True:
+        raise DemoWritesRefused("--demo-writes is only for a demo capture (tools/demo-capture.py).")
     recorded = Recorded(capture["core_calls"])
+    demo = DemoCore(capture.get("demo_writes") or {}) if demo_writes else None
+    recorded.demo = demo
 
     def rpc(self, method, body):
-        return recorded.answer(
+        if demo is not None and demo.handles(method):
+            return demo.write(method, body or {})
+        answer = recorded.answer(
             key("rpc", method=method, request=redact(body)), f"rpc {method} {json.dumps(body)}"
         )
+        if demo is not None and isinstance(answer, dict):
+            answer = demo.read(method, answer)
+        return answer
 
     def cli(self, args, *, data=False):
         return recorded.answer(key("cli", args=list(args), data=data), f"cli {' '.join(args)}")
@@ -217,14 +362,25 @@ def start(capture, port, host="127.0.0.1", writable=False, password=None):
     CoreClient.check_core_certificate = lambda self: None
     RedfishClient.redfish_request = redfish
     kubernetes.CurrentCluster.request = no_cluster
-    if writable:
+    if writable or demo_writes:
+        admitted = WRITABLE_PATHS + (DEMO_WRITE_PATHS if demo_writes else ())
         allowed = read_only.command_allowed
-        read_only.command_allowed = lambda config, path: (
-            path in WRITABLE_PATHS or allowed(config, path)
-        )
+        read_only.command_allowed = lambda config, path: (path in admitted or allowed(config, path))
 
     work = Path(tempfile.mkdtemp(prefix="pxeye-replay-"))
     config, data, secret_dir, password = prepare(capture, work, password)
+    if demo_writes:
+        # The instance stays a read-only observer; only the rack actions switch ignores
+        # it, so the routes above open and every other command is still refused.
+        from pxeye.bootstrap import Application as App
+        from pxeye.services import rack_actions
+
+        config["rack_actions"] = True
+        rack_actions.enabled = lambda config: (
+            config.get("rack_operations") is True and config.get("rack_actions") is True
+        )
+        readiness = App.readiness
+        App.readiness = lambda self: readiness(self) | {"rack_actions": True}
     # The web assets of the pxeye package in use, wherever this script is installed.
     import pxeye
 
@@ -332,6 +488,12 @@ def main():
         help="allow the PXEye-local imports (switch labels, rack units); everything else "
         "stays read-only, and Core and Redfish writes are impossible",
     )
+    parser.add_argument(
+        "--demo-writes",
+        action="store_true",
+        help="demo capture only: turn rack actions on and answer their Core writes with the "
+        "capture's demo answers, in memory; also allows the local imports",
+    )
     parser.add_argument("--password-file", help="serve: read the sign-in password from this file")
     parser.add_argument(
         "--write",
@@ -346,8 +508,10 @@ def main():
     if capture.get("format") != 1:
         sys.exit("Unknown capture format.")
     fixed = Path(options.password_file).read_text().strip() if options.password_file else None
+    if options.demo_writes and capture.get("demo") is not True:
+        sys.exit("--demo-writes is only for a demo capture (tools/demo-capture.py).")
     server, password, recorded, work = start(
-        capture, options.port, options.host, options.writable, fixed
+        capture, options.port, options.host, options.writable, fixed, options.demo_writes
     )
     try:
         if options.mode == "check":
@@ -371,7 +535,8 @@ def main():
         print(
             f"Replay console: http://{options.host}:{server.server_address[1]}  "
             + (f"password: {password}" if not fixed else "password: from --password-file")
-            + ("  (writable: local imports only)" if options.writable else ""),
+            + ("  (writable: local imports only)" if options.writable else "")
+            + ("  (demo writes: rack actions, in memory)" if options.demo_writes else ""),
             file=out,
             flush=True,
         )
