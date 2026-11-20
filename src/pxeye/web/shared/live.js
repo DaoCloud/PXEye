@@ -277,7 +277,10 @@ const bmcLink = (ip) =>
     ? `<a class="link-button" href="https://${esc(ip)}" target="_blank" rel="noopener noreferrer">${esc(ip)} ↗</a>`
     : "—";
 const taskStatus = (t) =>
-  t.status === "needs_attention" && t.acceptance_summary?.state === "pending"
+  ["queued", "running", "needs_attention"].includes(t.status) &&
+  t.close_request?.state === "requested"
+    ? { label: "正在结束", tone: "amber" }
+    : t.status === "needs_attention" && t.acceptance_summary?.state === "pending"
     ? { label: "待继续验收", tone: "amber" }
     : t.automatic_recovery &&
         !["completed", "blocked", "unknown"].includes(
@@ -298,13 +301,13 @@ const taskStatus = (t) =>
                     : "amber",
           };
 function endTaskButton(task) {
-  if (task.status !== "needs_attention") return "";
-  const reason = task.close_block_reason;
+  if (!["queued", "running", "needs_attention"].includes(task.status)) return "";
+  const ending = task.close_request?.state === "requested";
   return button(
-    "结束任务",
+    ending ? "正在结束…" : "结束任务",
     "task-close-dialog",
     false,
-    `data-id="${esc(task.id)}"${reason ? ` disabled title="${esc(reason)}"` : ""}`,
+    `data-id="${esc(task.id)}"${ending ? ' disabled title="正在停止当前步骤并清理本轮引导"' : ""}`,
   );
 }
 function taskRows() {
@@ -990,7 +993,7 @@ function detail(id) {
     "物理机安装记录",
     t.id,
     body,
-    `<div class="actions">${t.status === "needs_attention" ? button(t.automatic_recovery ? "查看自动修复" : t.recovery_observing ? "查看恢复进度" : "处理问题", "task-problem", true, `data-id="${esc(t.id)}"`) : ""}${t.receipt ? `<a class="button" href="/api/tasks/${esc(t.id)}/receipt" download>下载验收报告</a>` : ""}${button("关闭", "close")}</div>`,
+    `<div class="actions">${t.status === "needs_attention" ? button(t.automatic_recovery ? "查看自动修复" : t.recovery_observing ? "查看恢复进度" : "处理问题", "task-problem", true, `data-id="${esc(t.id)}"`) : ""}${endTaskButton(t)}${t.receipt ? `<a class="button" href="/api/tasks/${esc(t.id)}/receipt" download>下载验收报告</a>` : ""}${button("关闭", "close")}</div>`,
   );
   state.detail = id;
   refreshLogs(id);
@@ -1053,14 +1056,14 @@ function problemFooter(task, { refresh = false, end = false } = {}) {
 
 function closeTaskDialog(id) {
   const task = state.tasks.find((item) => item.id === id);
-  if (!task || task.status !== "needs_attention" || task.close_block_reason)
+  if (!task || !["queued", "running", "needs_attention"].includes(task.status) || task.close_request?.state === "requested")
     return;
   state.detail = null;
   state.wizard = { resource: "close-task", id, serial: task.device };
   modal(
     "结束任务",
     `${task.device} · ${task.id}`,
-    `<p>结束后释放设备占用，任务历史和日志仍会保留。</p><div class="live-note">${task.boot_network?.dhcp_mode === "external" ? "此操作请求 Core 停止本轮引导并清理本轮拥有的虚拟介质，确认清理后释放设备占用。不会强行停止正在运行的安装器或擦除磁盘。" : "此操作不会停止物理机上可能仍在运行的安装程序，也不会修改 NICo Instance、Machine、BMC、启动顺序或磁盘。"}</div><label class="live-check"><input id="close-task-confirm" type="checkbox">确认现场已经停止处理，并结束此任务。</label><div id="resource-error" class="live-error"></div>`,
+    `<p>系统将停止当前步骤，清理本轮引导后释放设备占用；任务历史和日志仍会保留。</p><div class="live-note">${task.boot_network?.dhcp_mode === "external" ? "此操作请求 Core 停止本轮引导并清理本轮拥有的虚拟介质。不会强行中断已经开始的磁盘写入。" : "当前步骤会在下一次状态检查时停止；不会删除 NICo Instance、Machine 或修改磁盘内容。"}</div><label class="live-check"><input id="close-task-confirm" type="checkbox">确认结束此任务，并允许随后创建新任务。</label><div id="resource-error" class="live-error"></div>`,
     button("取消", "close") + button("确认结束", "task-close-confirm", true),
   );
 }
@@ -1069,12 +1072,12 @@ async function closeTask() {
   return busy(async () => {
     if (!$("#close-task-confirm").checked) throw Error("请确认结束任务。");
     const wizard = state.wizard;
-    await api("/api/tasks/" + encodeURIComponent(wizard.id) + "/close", {
+    const result = await api("/api/tasks/" + encodeURIComponent(wizard.id) + "/close", {
       confirm_serial: wizard.serial,
     });
     close();
     await load();
-    toast("任务已结束，设备占用已释放。");
+    toast(result.status === "cancelled" ? "任务已结束，设备占用已释放。" : "已请求结束，正在停止当前步骤。" );
   });
 }
 function automaticRecoveryDialog(t) {

@@ -134,8 +134,6 @@ class TaskCoordinator:
     def task_view(self, task):
         """Reconcile operator waivers and refresh available recovery actions."""
         task = self.reconcile_acceptance_skips(task)
-        if task.get("status") == "needs_attention":
-            task = dict(task, close_block_reason=self.close_block_reason(task))
         if task.get("status") != "needs_attention" or not task.get("execution_device"):
             return task
         result = dict(task)
@@ -289,75 +287,57 @@ class TaskCoordinator:
         finally:
             self.worker_lock.release()
 
-    def close_block_reason(self, task):
-        if task["status"] != "needs_attention":
-            return "只有已经停止并等待处理的任务可以结束。"
-        if self.recovery_observation_active(task):
-            return "任务仍在等待本轮安装结果，请等待观察结束后再结束任务。"
-        if (task.get("automatic_recovery") or {}).get("state") in (
-            "diagnosing",
-            "config_requesting",
-            "reset_requesting",
-            "observing",
-            "waiting_reboot",
-            "waiting_installation",
-            "fallback_config_requesting",
-            "fallback_reset_requesting",
-            "waiting_installation_retry",
-            "standard_pxe_override_requesting",
-            "standard_pxe_reset_requesting",
-            "waiting_standard_pxe_retry",
-            "failed_bios_reset_requesting",
-        ):
-            return "自动修复仍在执行，请等待它停止后再结束任务。"
-        return None
-
     def close_task(self, task_id, body, actor):
-        """Close a stopped incident after Core releases any owned boot medium."""
+        """Request cooperative closure for any unfinished task."""
 
-        def claim():
-            task = self.store.get(task_id)
-            if task is None:
+        with self.store.db() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute("SELECT data FROM tasks WHERE id=?", (task_id,)).fetchone()
+            if row is None:
                 raise ValueError("任务不存在。")
+            task = json.loads(row["data"])
             if set(body) != {"confirm_serial"} or body["confirm_serial"] != task["device"]:
                 raise ValueError("请确认要结束任务的设备序列号。")
-            blocked = self.close_block_reason(task)
-            if blocked:
-                raise ValueError(blocked)
-            BootTransport(self.adapter, self.store).cancel(task)
-            now = time.time()
-            task.update(
-                status="cancelled",
-                stage="cancelled",
-                error=None,
-                observation_deadline=0,
-                resume_available=False,
-                prepare_available=False,
-                retry_available=False,
-                restart_available=False,
-                recovery_observing=False,
-                closed_at=now,
-                closed_by=actor,
-            )
-            task.setdefault("events", []).append(
-                {
-                    "at": now,
-                    "stage": "cancelled",
-                    "message": (
-                        "Core 已取消本轮引导并确认介质清理；释放设备占用，保留任务与 NICo 资源。"
-                        if external_boot(task)
-                        else "操作员结束任务并释放设备占用；保留任务历史和 NICo 资源，"
-                        "未向设备、BMC 或 NICo 下发操作。"
-                    ),
-                }
-            )
-            self.store.save(task)
-            return task
+            if task["status"] not in ("queued", "running", "needs_attention"):
+                raise ValueError("任务已经结束。")
+            if not task.get("close_request") or task["close_request"].get("state") == "failed":
+                now = time.time()
+                task["close_request"] = {"at": now, "actor": actor, "state": "requested"}
+                task.setdefault("events", []).append(
+                    {
+                        "at": now,
+                        "stage": task.get("stage", "queued"),
+                        "message": "操作员请求结束任务；正在停止当前步骤并清理本轮引导。",
+                    }
+                )
+                db.execute("UPDATE tasks SET data=? WHERE id=?", (json.dumps(task), task_id))
 
-        task = self.configure(claim)
-        if self.store.queued():
-            self.start_queue()
-        return task
+        # If no worker owns the coordinator, finish synchronously. Otherwise
+        # the running worker observes close_request at its next bounded poll.
+        if self.worker_lock.acquire(blocking=False):
+            task = self.store.get(task_id)
+            try:
+                task = self.executor.finish_close_requested(task)
+            finally:
+                self.worker_lock.release()
+            if self.store.queued():
+                self.start_queue()
+        else:
+
+            def finish_when_idle():
+                with self.worker_lock:
+                    current = self.store.get(task_id)
+                    if current:
+                        self.executor.finish_close_requested(current)
+                if self.store.queued():
+                    self.start_queue()
+
+            threading.Thread(
+                target=finish_when_idle,
+                daemon=True,
+                name=task_id + "-close",
+            ).start()
+        return self.task_view(self.store.get(task_id))
 
     def start_recovered(self, task_ids, auto_repair=None):
         auto_repair = auto_repair or set()
@@ -367,6 +347,9 @@ class TaskCoordinator:
                 for task_id in task_ids:
                     task = self.store.get(task_id)
                     if not task or task["status"] != "needs_attention":
+                        continue
+                    if task.get("close_request"):
+                        self.executor.finish_close_requested(task)
                         continue
                     if task_id in auto_repair:
                         try:
@@ -397,6 +380,9 @@ class TaskCoordinator:
                         # task so recovery progress and any concurrent state change are never
                         # hidden by the object captured before the reboot.
                         task = self.store.get(task_id) or task
+                        if task.get("close_request"):
+                            self.executor.finish_close_requested(task)
+                            break
                         if task.get("status") not in ("needs_attention", "running"):
                             break
                         remaining = max(
