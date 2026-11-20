@@ -261,9 +261,70 @@ CSV 格式。交换机表和端口表的表头必须完全一致（列名前后�
 - `GetNetworkTopology {}` 返回空。布线信息只能从机器的 `status.lldp_neighbors` 取。
 - `GetMachinePositionInfo` 只返回机器 ID，没有位置。
 
-## 4. Core 提供但未集成的操作
+## 4. 写接口（未在站点验证）
 
-以下都没有调用过，只列出类别供规划参考：机器和组件的电源控制与复位、供电框上下电、机器维护标记、机柜维护、主机隔离、组件固件更新和更新时间窗口、SKU 的创建分配与校验、按需机器校验、健康报告的人工写入与撤销、机柜和机柜组的声明、交换机和供电框的退役、NVLink 域和分区。
+只在开启 `rackActions` 时使用。请求结构依据 Core `7c7788a` 版本的接口定义和 NICo 源码；这些写接口从未对真实 Core 调用过，只在演示采集上用 `tools/core-replay.py --demo-writes` 运行过。后端 `services/rack_actions.py`；接口 `GET /api/rack-actions/catalog`、`GET /api/rack-actions/records`、`POST /api/rack-actions/preview`、`POST /api/rack-actions/execute`。规则见[操作类功能规则](rack-operations-actions.zh-CN.md)。
+
+### 4.1 请求和读回
+
+PXEye 对每个目标调用一次 Core，然后读回状态。读回一致才算成功；“无”表示除非 Core 报告失败，结果保持未知。
+
+| 接口 | PXEye 发送的请求 | 读回方式 |
+| --- | --- | --- |
+| `AdminPowerControl` | `{"machineId":"<machine ID>","action":"On"}`；动作 `On`, `GracefulShutdown`, `ForceOff`, `GracefulRestart`, `ForceRestart`, `ACPowercycle` | `GetComponentPowerDetails`（机器） |
+| `SetMaintenance` | `{"operation":"Enable","hostId":{"id":…},"reference":"<reason>"}`；`Disable` 不带 `reference` | `FindMachinesByIds`：`config.maintenance_reference` |
+| `SetManagedHostQuarantineState` | `{"machineId":{"id":…},"quarantineState":{"mode":"BLOCK_ALL_TRAFFIC","reason":…}}` | `FindMachinesByIds`：`status.quarantine` |
+| `ClearManagedHostQuarantineState` | `{"machineId":{"id":…}}` | `FindMachinesByIds`：`status.quarantine` |
+| `TriggerManagedHostReset` | `{"machineId":{"id":…},"mode":"Set","initiator":"AdminCli"}` | `FindMachinesByIds`：只读状态 |
+| `AdminBmcReset` | `{"deviceId":{"machineId":{"id":…}}}` | 无 |
+| `OnDemandMachineValidation` | `{"machineId":{"id":…},"action":"Start","tags":[…],"contexts":[…]}` | 返回中的 `validationId` |
+| `VerifySkuForMachine` | `{"id":"<machine ID>"}` | `FindMachinesByIds`：`status.hw_sku.verify_request_time` |
+| `ComponentPowerControl` | `{"machineIds":{"machineIds":[{"id":…}]}`，或 `{"switchIds":{"ids":[…]}}`，加上 `"action":"SYSTEM_POWER_CONTROL_ON"` / `_FORCE_OFF` / `_FORCE_RESTART` | `GetComponentPowerDetails` |
+| `ComponentReset` | `{"switchIds":{"ids":[{"id":…}]},"action":"COMPONENT_RESET_ACTION_…"}` | 无 |
+| `SetPowerShelfMaintenance` | `{"powerShelfIds":[{"id":…}],"operation":"POWER_SHELF_MAINTENANCE_OPERATION_POWER_ON"}`；`_POWER_OFF` 另带 `graceful`；`reference` 可选 | `GetComponentPowerDetails`（供电框） |
+| `DecommissionSwitch` / `DecommissionPowerShelf` | `{"switchId":{"id":…}}` / `{"powerShelfId":{"id":…}}` | `FindSwitches` / `FindPowerShelves`：`deleted` 或退役状态 |
+| `OnDemandRackMaintenance` | `{"rackId":{"id":…},"scope":{"activities":[{"firmwareUpgrade":{"firmwareVersion":<SOT JSON>,…}},{"nvosUpdate":{"configJson":…}},{"powerSequence":{}},{"configureNmxCluster":{}}],"machineIds":[…],"switchIds":[…],"powerShelfIds":[…]}}` | `FindRacksByIds`：维护状态 |
+| `TerminateRackMaintenance` | `{"rackId":{"id":…}}` | `FindRacksByIds`：不再处于维护 |
+| `UpdateComponentFirmware` | `{"computeTrays":{"machineIds":{"machineIds":[…]},"components":[…]}}`、`{"switches":{"switchIds":{"ids":[…]},…}}`，或 `{"racks":{"rackIds":{"rackIds":[…]}}}`，加上 `targetVersion`，`forceUpdate` 可选 | 无 |
+
+`ComponentPowerControl`、`ComponentReset`、`SetPowerShelfMaintenance`、`UpdateComponentFirmware` 以及 `OnDemandRackMaintenance` 的固件、NVOS、NMX-C 步骤，在对应的组件管理后端为 `rms`（NICo chart 默认值）时由 RMS 执行。组件管理调用的每个目标结果带状态码；`…OUTCOME_UNKNOWN` 记为结果未知，其他非成功码记为失败。
+
+### 4.2 RMS 可达性
+
+| 接口 | 返回 | 用途 |
+| --- | --- | --- |
+| `GetRmsVersion {}` | `version`；RMS 不响应时返回错误 | 在操作对话框中作为信息显示；从不阻止操作 |
+
+### 4.3 机柜读取
+
+| 接口 | 请求 | 返回 | 使用者 |
+| --- | --- | --- | --- |
+| `FindRackIds` | `{}` | `rackIds[]` | 机柜页 |
+| `FindRacksByIds` | `{"rackIds":[{"id":…}]}` | `racks[]`：`id`、`rack_state`、`config`、`status`、`rack_group_id` | 机柜页、机柜读回 |
+| `GetAllExpectedRacks` | `{}` | `expected_racks[]`：`rack_id`、`rack_profile_id` | 机柜页（机柜型号） |
+| `FindRackStateHistories` | `{"rackIds":[{"id":…}]}` | `histories.<机柜 ID>.records[]` | 机柜历史 |
+| `FindRackHealthHistories` | `{"rackIds":[{"id":…}]}` | `histories.<机柜 ID>.records[]` | 机柜历史 |
+
+结构来自接口定义和演示采集；验证站点上这些读取没有返回机柜。
+
+### 4.4 审计表 `rack_actions`
+
+PXEye 数据库中只追加的 SQLite 表。每个目标一行，记录从不删除。
+
+| 列 | 内容 |
+| --- | --- |
+| `id`、`created`、`updated` | 记录 ID；请求时间；最后一次状态变化时间 |
+| `operator` | `session:<会话摘要>@<来源地址>` |
+| `action`、`kind` | 目录中的操作 ID；`machine`、`switch`、`power_shelf` 或 `rack` |
+| `targets` | 对象 ID、序列号和名称 |
+| `params`、`reason` | 发送的参数，类似凭据的键已脱敏；原因或工单链接 |
+| `checks` | 执行时的检查结果 |
+| `status` | `refused`、`sent`、`succeeded`、`failed` 或 `unknown`；`sent` 在调用 Core 之前写入 |
+| `core_message`、`readback` | Core 返回的消息；读回的状态 |
+
+### 4.5 未集成
+
+PXEye 不调用：整机柜电源控制、更新时间窗口、SKU 的创建和分配、健康报告的人工写入与撤销、机柜和机柜组的声明、NVLink 域和分区。
 
 ## 5. 现场采集
 

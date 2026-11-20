@@ -58,6 +58,7 @@ PAGE_READS = [
     "/api/exploration",
     "/api/switch-labels",
     "/api/rack-units",
+    "/api/racks",
 ]
 # Longest wait for one console read. A Core call has its own limit of 45 seconds; a
 # page read may make several, in parallel.

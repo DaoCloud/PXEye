@@ -13,7 +13,7 @@ Each piece of data has one place where it is maintained. Other pages reference i
 | Overview | Rack topology | Devices by rack; manual display order |
 | Installation | Installation tasks | Device selection, checks, confirmation, execution, logs and acceptance |
 | Resources | Device management | Device planning, discovery, enrollment, addresses, rack assignment, per-device installation settings |
-| Resources | Device management → Servers / Switches / Power shelves / Alerts / Cabling / Discovery diagnostics | Read-only: the operational status, health alerts, LLDP connections and site exploration results NICo reports. Owns no data, except that Servers owns rack unit positions and Cabling owns switch and port labels; both are PXEye-local, imported by CSV and not offered on a read-only observer |
+| Resources | Device management → Servers / Switches / Power shelves / Alerts / Cabling / Discovery diagnostics / Racks / Operation records | The operational status, health alerts, LLDP connections, site exploration results and rack objects NICo reports. Owns no data, except that Servers owns rack unit positions and Cabling owns switch and port labels; both are PXEye-local, imported by CSV and not offered on a read-only observer. With `rackActions` on, operations are started only from the Servers, Switches and Power shelves pages (operation dialog) and the Racks page; Operation records only lists them and owns no data. Operations are hidden on a read-only observer |
 | Resources | Instance management | Instance inspection and release |
 | Resources | Operating systems | ISOs, boot artifacts, OS definitions |
 | Resources | Network management | Segments, address ranges, network services |

@@ -1,84 +1,95 @@
-# 机柜运维：操作类功能规则（草案）
+# 机柜运维：操作类功能规则
 
 [English](rack-operations-actions.md) · **简体中文** · [设计文档](README.zh-CN.md)
 
-- 状态：**草案，没有实现**。第 8 节的事项确定之前不写代码。
-- 范围：会改变设备状态的操作，例如电源、维护标记、隔离、按需校验。只读页面见[范围与现状](rack-operations.zh-CN.md)，能力目标见[能力需求](rack-operations-requirements.zh-CN.md)第 6.3、6.10 节。
-- 依据：现有代码（安装任务的设备占用、只读模式）和站点 Core 版本 `7c7788a8c7f1` 的接口定义。接口写入从未在站点上调用过。
+- 状态：**已在 `rackActions` 开关下实现，没有在站点验证。** 没有向真实 Core 发出过任何写请求。这些操作只在演示采集上用 `tools/core-replay.py --demo-writes` 运行过。
+- 范围：通过 NICo Core 改变设备或机柜状态的操作。只读页面见[范围与现状](rack-operations.zh-CN.md)；各领域的实现状态见[能力需求](rack-operations-requirements.zh-CN.md)；请求结构和审计表见[数据契约](rack-operations-data-contract.zh-CN.md)第 4 节。
+- 依据：`src/pxeye/services/rack_actions.py` 和站点 Core 版本 `7c7788a` 的 NICo 源码。命令行一列是调用同一接口的 `nico-admin-cli` 子命令；PXEye 不运行它们。
 
-## 1. 候选操作和风险
+## 1. 操作
 
-| 操作 | Core 接口 | 对设备的影响 | 可逆 | 风险 |
-| --- | --- | --- | --- | --- |
-| 维护标记 | `SetMaintenance`（`Enable` 带工单链接 / `Disable`） | 不动硬件；Core 不再把这台主机分配出去 | 是 | 低 |
-| 开机 | `AdminPowerControl`（`On`） | 主机上电，可能进入 PXE 或系统启动 | 是 | 中 |
-| 正常关机、正常重启 | `AdminPowerControl`（`GracefulShutdown`、`GracefulRestart`） | 由操作系统执行；系统无响应时可能不生效 | 是 | 中 |
-| 强制断电、强制重启、断电重上 | `AdminPowerControl`（`ForceOff`、`ForceRestart`、`ACPowercycle`） | 不经过操作系统，正在写盘时可能损坏数据 | 否（数据） | 高 |
-| 隔离 | `SetManagedHostQuarantineState`（`BLOCK_ALL_TRAFFIC`）/ `ClearManagedHostQuarantineState` | 切断主机全部业务网络 | 是 | 高 |
-| 按需校验 | `OnDemandMachineValidation` | 在主机上运行测试，可能重启并改变状态机 | 部分 | 高 |
-| 健康覆盖 | `InsertHealthReportOverride` / `RemoveHealthReportOverride` | 人为标记健康，影响能否分配 | 是 | 中 |
-| 固件更新 | `UpdateComponentFirmware` | 刷写固件 | 否 | 很高，不在本方向内 |
+PXEye 只调用 NICo Core，自己从不直接访问 BMC 或 RMS。操作从服务器、交换机、供电框页的操作对话框（“操作”或“批量操作”）和机柜页发起，每个操作都列在操作记录页。
 
-机柜级操作（整柜上下电）：通用服务器站点 Core 没有机柜对象，只能由 PXEye 把单台操作按机柜编排。整机柜站点有 `OnDemandRackMaintenance`，未验证。
+| 操作 | NICo 接口 | 对应的 `nico-admin-cli` | 风险 | 需要 RMS | 状态 |
+| --- | --- | --- | --- | --- | --- |
+| 上电；正常关机；正常重启 | `AdminPowerControl` (`On`, `GracefulShutdown`, `GracefulRestart`) | `bmc-machine admin-power-control` | 中 | 否：经主机 BMC | 已实现 |
+| 强制下电；强制重启；AC 断电重启 | `AdminPowerControl` (`ForceOff`, `ForceRestart`, `ACPowercycle`) | `bmc-machine admin-power-control` | 高 | 否：经主机 BMC | 已实现 |
+| 设置 / 清除维护标记 | `SetMaintenance` (`Enable` with `reference`, `Disable`) | `managed-host maintenance on` / `off` | 低 | 否：只改 NICo 状态 | 已实现 |
+| 隔离 | `SetManagedHostQuarantineState` (`BLOCK_ALL_TRAFFIC`) | `managed-host quarantine on` | 高 | 否：NICo 网络控制 | 已实现 |
+| 解除隔离 | `ClearManagedHostQuarantineState` | `managed-host quarantine off` | 中 | 否：NICo 网络控制 | 已实现 |
+| 重置主机 | `TriggerManagedHostReset` | `managed-host reset` | 高 | 否 | 已实现 |
+| 重启 BMC | `AdminBmcReset` | `bmc-machine bmc-reset` | 中 | 否：经主机 BMC | 已实现 |
+| 按需硬件校验 | `OnDemandMachineValidation` (`Start`) | `machine-validation on-demand start` | 高 | 否 | 已实现 |
+| 核对 SKU | `VerifySkuForMachine` | `sku verify` | 低 | 否 | 已实现 |
+| 计算托盘上电 / 下电 / 重启 | `ComponentPowerControl` (machine IDs) | `component-manager component-power-control` | 中（上电）、高 | 是，`compute_tray_backend` 为 `rms` 时；为 `core`（NICo 自身的 Redfish）时否 | 已实现 |
+| 交换机上电 / 下电 / 重启 | `ComponentPowerControl` (switch IDs) | `component-manager component-power-control` | 中（上电）、高 | 是：交换机电源经 RMS | 已实现 |
+| 交换机复位（BMC 复位，BMC / NVOS / SDN 恢复出厂） | `ComponentReset` | `component-manager component-reset` | 高 | 是：组件复位经 RMS | 已实现 |
+| 交换机退役 | `DecommissionSwitch` | `managed-switch decommission` | 高 | 否 | 已实现 |
+| 供电框上电 / 下电 | `SetPowerShelfMaintenance` (`POWER_ON`, `POWER_OFF`) | `power-shelf maintenance` | 中（上电）、高 | 是，`power_shelf_backend` 为 `rms` 时 | 已实现 |
+| 供电框退役 | `DecommissionPowerShelf` | `power-shelf decommission` | 高 | 否 | 已实现 |
+| 机柜维护（固件、NVOS、电源序列、NMX-C） | `OnDemandRackMaintenance` | `rack maintenance start` | 高 | 是：NICo 编排，固件、NVOS、NMX-C 步骤经 RMS | 已实现 |
+| 终止机柜维护 | `TerminateRackMaintenance` | `rack maintenance terminate` | 中 | 是：同机柜维护 | 已实现 |
+| 组件固件更新（计算托盘、交换机、机柜） | `UpdateComponentFirmware` | `component-manager update-firmware` | 高 | 是：组件固件经 RMS | 已实现 |
+| 机柜上电 / 下电 | — | — | 高 | — | NICo 不提供 （第 2 节） |
+| 机柜冷重启 | — | — | 高 | — | NICo 不提供 （第 2 节） |
+| 供电框固件更新 | — | — | — | — | NICo 不提供，不提供入口（第 2 节） |
 
-## 2. 和装机的避让
+RMS 是 NVIDIA Rack Management Service，以 Apache-2.0 开源（[源码](https://github.com/dsx-ai-factory/nv-rms)，[文档](https://docs.nvidia.com/rms/documentation/home/)）。组件管理后端为 `rms`（NICo chart 默认值）时，NICo 把托盘、交换机和供电框电源、组件复位、组件固件和机柜维护的步骤交给 RMS；`compute_tray_backend` 也可以是 `core`，即 NICo 自己的 Redfish 路径。RMS 只支持 NVIDIA 整机柜硬件：GB200 和 GB300 计算托盘、NVSwitch 托盘、LiteOn 和 Delta 供电框；VR NVL72 在开发中。Core 配置为 `rms` 而没有部署 RMS 时，这些操作会失败。对话框把 `GetRmsVersion` 的结果作为信息显示，不据此阻止操作。
 
-1. 设备有进行中的安装任务（`tasks` 表中状态为 `queued`、`running`、`needs_attention`）时，拒绝一切操作，提示先处理安装任务。
-2. 操作进行中时，同一设备不能新建安装任务。这需要在安装预检里读取操作记录，涉及受保护的安装代码，必须单独评审后修改（见第 8 节）。修改之前，第 1 阶段只开放不改变电源和网络的维护标记。
-3. 设备在 NICo 状态机中处于装机相关状态（如 `HostInit`、`Assigned/…` 的安装阶段）时，电源和隔离操作一律拒绝；维护标记允许。
-4. 检查在提交时由服务端重新执行，页面上的判断不能代替服务端检查。
+PXEye 没有实现：健康覆盖（`InsertHealthReportOverride`、`RemoveHealthReportOverride`）。
 
-## 3. 确认
+## 2. NICo 不提供的机柜级操作
 
-- 确认框写明对象和影响：设备序列号、机器 ID、当前状态、操作的后果（例如“强制断电，不经过操作系统，正在写盘时可能损坏数据”）。
-- 单台高风险操作要求输入设备序列号确认。
-- 批量操作一次最多 10 台，逐台列出并逐台确认通过检查的设备；没有通过检查的设备列出原因，不执行。
-- 维护标记的“启用”必须填写原因或工单链接，写入 Core 的 `reference`。
-- 确认后检查结果有效 5 分钟，过期重新检查。
+- **机柜上电和下电。** NICo 机柜状态机中电源序列的 `PoweringOn` 和 `PoweringOff` 是空实现。只实现了 `PowerReset`，即正常重启机柜内的计算主机；它通过机柜维护的 `power_sequence` 项目执行。
+- **机柜冷重启。** 只有 RMS 提供（`ExecuteColdReboot`），NICo 不调用。
+- **供电框固件更新。** NICo 没有实现。
 
-## 4. 执行和结果
+机柜页把机柜上电/下电和机柜冷重启显示为不可用的按钮，并写明原因。供电框固件更新不提供入口。
 
-- 先记录“请求已发出”，再调用 Core；调用超时或结果未知时，**不自动重发**，先读回状态：电源读 `GetComponentPowerDetails`，维护和隔离读机器对象。
-- 读回与期望一致才标为完成；不一致标为“结果未知”，给出读回的值和下一步。
-- 批量操作逐台执行、逐台记录，一台失败不影响其他设备，不自动回滚已成功的设备。
-- 机柜级电源按机柜内顺序执行，台与台之间留间隔（默认 10 秒，可配置），遇到第一台失败时停止后续设备并报告。
+## 3. 和装机的避让
 
-## 5. 审计
+1. 目标有状态为 `queued`、`running` 或 `needs_attention` 的安装任务时，任何操作都拒绝。机柜检查放在其中的机器的序列号。
+2. 机器的 NICo 生命周期状态与装机相关时（以 `HostInit` 开头，或以 `Assigned` 开头但不是 `Assigned/Ready`），拒绝电源、隔离、重置主机、校验和计算托盘固件操作。维护标记和核对 SKU 不受此限制。
+3. 检查在服务端预览时执行，执行时再执行一次；页面上的判断不能代替服务端检查。
+4. 未做：操作进行中时，安装预检不会拒绝同一设备的新安装任务。这需要预检读取操作记录，属于受保护的安装代码，要单独评审。
 
-新建 `rack_actions` 表，只追加，不修改：
+## 4. 确认
 
-| 字段 | 内容 |
+- 预览在服务端执行，逐个检查目标：在 Core 中存在、没有进行中的安装任务、生命周期状态允许、必填参数齐全。一次最多 10 个目标。
+- 预览逐个列出目标的序列号、当前状态、操作的影响；未通过的目标列出原因。只执行通过的目标。
+- 预览有效 5 分钟，只能使用一次；过期后重新预览。
+- 高风险操作要求逐个输入目标的序列号（没有序列号时输入对象 ID）。
+- 设置维护标记和隔离必须填写原因或工单链接；维护标记的原因写入 Core 的 `reference`。
+
+## 5. 执行和结果
+
+- 先以 `sent` 状态写入记录，再调用 Core。每个目标调用一次。
+- 超时或结果未知时**从不自动重发**。调用后读回状态：电源读 `GetComponentPowerDetails`，维护、隔离和核对 SKU 读机器对象，机柜维护读机柜对象，退役读交换机或供电框列表。
+- 读回一致才记为 `succeeded`；Core 报告失败或请求没有发出时记为 `failed`；其他情况记为 `unknown`，并附上读回的值。下一步由操作人决定。
+- 批量操作逐个执行；一个失败不影响其他目标，不回滚。
+- PXEye 不在机柜内编排设备顺序；机柜级工作由 NICo 的机柜维护完成。
+
+## 6. 审计
+
+每次执行的每个目标在 SQLite 表 `rack_actions` 中有一行：时间、操作者、操作、目标、参数（类似凭据的键已脱敏）、原因、检查、状态、Core 返回的消息和读回的状态。各列见[数据契约](rack-operations-data-contract.zh-CN.md)第 4 节。记录不删除；操作记录页列出记录，不提供删除。
+
+## 7. 开关和环境
+
+- `rackActions`（chart）/ `rack_actions`（`site.json`），默认关闭。只在 `rackOperations` 开启且实例不是只读观察实例时生效。
+- 只读观察实例永远不能执行操作：它在 HTTP 层拒绝写请求，也不显示操作按钮。
+- 验证必须在可写环境中的指定测试设备上做，不在装机批次进行时做。验证站点是通用服务器，没有 NICo 机柜对象；它的 Core 把三个后端都配置为 `rms`，但没有部署 RMS，所以经 RMS 的操作在那里会失败。
+
+## 8. 已实现和剩余
+
+| 事项 | 状态 |
 | --- | --- |
-| 时间 | 请求时间、完成时间 |
-| 操作者 | 登录会话（当前控制台只有一个操作员身份，记录会话和来源地址） |
-| 对象 | 设备序列号、机器 ID |
-| 操作 | 接口和参数（不含凭据） |
-| 原因 | 用户填写的原因或工单链接 |
-| 检查 | 执行前检查的结果 |
-| 结果 | 已发出 / 成功 / 失败 / 结果未知；Core 返回的消息；读回的状态 |
+| 操作目录、预览、执行、读回、审计表、记录接口 | 已实现 |
+| 服务器、交换机、供电框页的操作对话框；机柜页；操作记录页 | 已实现 |
+| 带 GB200 NVL72 机柜的演示采集和 `tools/core-replay.py --demo-writes` | 已实现；只用于演示采集，其他命令仍然拒绝 |
+| 在站点验证，经 RMS 的操作要部署 RMS | 未做 |
+| 安装预检读取操作记录（第 3 节第 4 条） | 未做；受保护代码 |
 
-页面提供按设备和时间查看的记录列表，不提供删除。
+## 9. 待决定
 
-## 6. 开关和环境
-
-- 新开关 `rackActions`，默认关闭，独立于 `rackOperations`。只读页面可以开，操作保持关闭。
-- 只读观察实例永远不能执行：它在 HTTP 层拒绝写请求，也不会显示操作按钮。
-- 验证只在指定的测试设备上做，不在装机批次进行时做；需要一个可写的测试环境，观察实例不能用来验证写操作。
-
-## 7. 分期
-
-| 阶段 | 操作 | 前提 |
-| --- | --- | --- |
-| 1 | 维护标记（启用、取消）；审计表和记录页面 | 第 8 节第 1、3、4 项 |
-| 2 | 开机、正常关机、正常重启；单台和批量 | 安装预检读取操作记录（第 2 节第 2 条）已评审并实现 |
-| 3 | 强制断电、强制重启；机柜级编排 | 阶段 2 在测试设备上稳定运行 |
-| 4 | 隔离、健康覆盖、按需校验 | 逐项评审 |
-| 不做 | 固件更新、断电重上（`ACPowercycle`） | — |
-
-## 8. 待决定
-
-1. 是否开始阶段 1。
-2. 是否允许为阶段 2 修改安装预检（受保护的安装代码）：在安装任务提交前检查操作记录。
-3. 批量上限、确认方式、间隔时间是否采用本草案的值。
-4. 用哪个环境、哪几台设备验证写操作。
-5. 操作者身份：现在只有一个登录口令，审计只能记到会话；是否需要区分操作人。
+1. 操作者身份：现在只有一个登录口令，记录里只有会话和来源地址。是否需要区分操作人。
+2. 用哪个环境、哪几台设备验证写操作，该环境是否有 RMS。

@@ -261,9 +261,70 @@ To verify: whether the number of records is capped for a long-running machine; a
 - `GetNetworkTopology {}` returns nothing. Cabling is available only from `status.lldp_neighbors` of machines.
 - `GetMachinePositionInfo` returns machine IDs without a position.
 
-## 4. Operations Core offers that are not integrated
+## 4. Write interfaces (not verified at a site)
 
-None of these has been called; the list is for planning only: power control and reset of machines and components, power shelf power, machine maintenance marks, rack maintenance, host quarantine, component firmware updates and update windows, SKU creation, assignment and verification, on-demand machine validation, manual health report insertion and removal, rack and rack group declaration, switch and power shelf decommissioning, NVLink domains and partitions.
+Used only with `rackActions` on. The request shapes follow the Core definitions at version `7c7788a` and the NICo source; none of these writes has been called against a real Core. They were run only against `tools/core-replay.py --demo-writes` on the demo capture. Backend `services/rack_actions.py`; endpoints `GET /api/rack-actions/catalog`, `GET /api/rack-actions/records`, `POST /api/rack-actions/preview`, `POST /api/rack-actions/execute`. Rules are in [rules for operations](rack-operations-actions.md).
+
+### 4.1 Requests and read-back
+
+PXEye calls Core once per target and then reads the state back. Only a matching read-back counts as succeeded; "None" means the result stays unknown unless Core reports failure.
+
+| Interface | Request as PXEye sends it | Read back with |
+| --- | --- | --- |
+| `AdminPowerControl` | `{"machineId":"<machine ID>","action":"On"}`; actions `On`, `GracefulShutdown`, `ForceOff`, `GracefulRestart`, `ForceRestart`, `ACPowercycle` | `GetComponentPowerDetails` (machine) |
+| `SetMaintenance` | `{"operation":"Enable","hostId":{"id":…},"reference":"<reason>"}`; `Disable` without `reference` | `FindMachinesByIds`: `config.maintenance_reference` |
+| `SetManagedHostQuarantineState` | `{"machineId":{"id":…},"quarantineState":{"mode":"BLOCK_ALL_TRAFFIC","reason":…}}` | `FindMachinesByIds`: `status.quarantine` |
+| `ClearManagedHostQuarantineState` | `{"machineId":{"id":…}}` | `FindMachinesByIds`: `status.quarantine` |
+| `TriggerManagedHostReset` | `{"machineId":{"id":…},"mode":"Set","initiator":"AdminCli"}` | `FindMachinesByIds`: state only |
+| `AdminBmcReset` | `{"deviceId":{"machineId":{"id":…}}}` | None |
+| `OnDemandMachineValidation` | `{"machineId":{"id":…},"action":"Start","tags":[…],"contexts":[…]}` | `validationId` in the response |
+| `VerifySkuForMachine` | `{"id":"<machine ID>"}` | `FindMachinesByIds`: `status.hw_sku.verify_request_time` |
+| `ComponentPowerControl` | `{"machineIds":{"machineIds":[{"id":…}]}` or `{"switchIds":{"ids":[…]}}`, plus `"action":"SYSTEM_POWER_CONTROL_ON"` / `_FORCE_OFF` / `_FORCE_RESTART` | `GetComponentPowerDetails` |
+| `ComponentReset` | `{"switchIds":{"ids":[{"id":…}]},"action":"COMPONENT_RESET_ACTION_…"}` | None |
+| `SetPowerShelfMaintenance` | `{"powerShelfIds":[{"id":…}],"operation":"POWER_SHELF_MAINTENANCE_OPERATION_POWER_ON"}`; `_POWER_OFF` adds `graceful`; optional `reference` | `GetComponentPowerDetails` (power shelf) |
+| `DecommissionSwitch` / `DecommissionPowerShelf` | `{"switchId":{"id":…}}` / `{"powerShelfId":{"id":…}}` | `FindSwitches` / `FindPowerShelves`: `deleted` or a decommission state |
+| `OnDemandRackMaintenance` | `{"rackId":{"id":…},"scope":{"activities":[{"firmwareUpgrade":{"firmwareVersion":<SOT JSON>,…}},{"nvosUpdate":{"configJson":…}},{"powerSequence":{}},{"configureNmxCluster":{}}],"machineIds":[…],"switchIds":[…],"powerShelfIds":[…]}}` | `FindRacksByIds`: maintenance state |
+| `TerminateRackMaintenance` | `{"rackId":{"id":…}}` | `FindRacksByIds`: no longer in maintenance |
+| `UpdateComponentFirmware` | `{"computeTrays":{"machineIds":{"machineIds":[…]},"components":[…]}}`, `{"switches":{"switchIds":{"ids":[…]},…}}` or `{"racks":{"rackIds":{"rackIds":[…]}}}`, plus `targetVersion`, optional `forceUpdate` | None |
+
+`ComponentPowerControl`, `ComponentReset`, `SetPowerShelfMaintenance`, `UpdateComponentFirmware` and the firmware, NVOS and NMX-C steps of `OnDemandRackMaintenance` are carried out by RMS when the matching component manager backend is `rms` (the NICo chart default). Per-target results of component manager calls carry a status code; `…OUTCOME_UNKNOWN` is recorded as unknown, other non-success codes as failed.
+
+### 4.2 RMS reachability
+
+| Interface | Returns | Use |
+| --- | --- | --- |
+| `GetRmsVersion {}` | `version`; an error when RMS does not answer | Shown in the operation dialog as information; never blocks an action |
+
+### 4.3 Rack reads
+
+| Interface | Request | Returns | Used by |
+| --- | --- | --- | --- |
+| `FindRackIds` | `{}` | `rackIds[]` | Racks page |
+| `FindRacksByIds` | `{"rackIds":[{"id":…}]}` | `racks[]`: `id`, `rack_state`, `config`, `status`, `rack_group_id` | Racks page, rack read-back |
+| `GetAllExpectedRacks` | `{}` | `expected_racks[]`: `rack_id`, `rack_profile_id` | Racks page (profile) |
+| `FindRackStateHistories` | `{"rackIds":[{"id":…}]}` | `histories.<rack ID>.records[]` | Rack history |
+| `FindRackHealthHistories` | `{"rackIds":[{"id":…}]}` | `histories.<rack ID>.records[]` | Rack history |
+
+The shapes come from the definitions and the demo capture; at the verification site these reads returned no rack.
+
+### 4.4 Audit table `rack_actions`
+
+Append-only SQLite table in the PXEye database. One row per target; rows are never deleted.
+
+| Column | Content |
+| --- | --- |
+| `id`, `created`, `updated` | Record ID; time requested; time of the last status change |
+| `operator` | `session:<hash of the session>@<source address>` |
+| `action`, `kind` | Catalog action ID; `machine`, `switch`, `power_shelf` or `rack` |
+| `targets` | Object ID, serial and name |
+| `params`, `reason` | Parameters as sent, with credential-like keys redacted; the reason or ticket link |
+| `checks` | Result of the checks at execution |
+| `status` | `refused`, `sent`, `succeeded`, `failed` or `unknown`; `sent` is written before Core is called |
+| `core_message`, `readback` | Core's message; the state read back |
+
+### 4.5 Not integrated
+
+Not called by PXEye: power control of whole racks, update windows, SKU creation and assignment, manual health report insertion and removal, rack and rack group declaration, NVLink domains and partitions.
 
 ## 5. Field survey
 

@@ -35,7 +35,7 @@ For each of the ten functional areas, the target, what Core actually provides an
 
 ### 4.1 Done
 
-Six pages sit under device management as second-level entries. Servers, switches and power shelves list the same devices as device management, split by kind, with the operational status Core reports; alerts gathers their current health alerts; cabling and discovery diagnostics summarise by switch and by BMC address.
+Eight pages sit under device management as second-level entries. Servers, switches and power shelves list the same devices as device management, split by kind, with the operational status Core reports; alerts gathers their current health alerts; cabling and discovery diagnostics summarise by switch and by BMC address; racks lists the rack objects NICo keeps; operation records lists the operations PXEye sent.
 
 | Page | Purpose | What the user can do | Verification |
 | --- | --- | --- | --- |
@@ -45,8 +45,10 @@ Six pages sit under device management as second-level entries. Servers, switches
 | Alerts | See which current health alerts affect which servers, switches and power shelves | Group by alert or by device; filter by device kind and classification, search; see how many alerts carry `PreventAllocations`; open a device's status dialog | Reads only the health already returned for the device lists (no new Core interface); verified with authored sample data only |
 | Cabling | See, per switch, which port each server interface is connected to; find a port reported by more than one interface; find servers without LLDP data | Filter by switch, search; open a server's hardware details; import switch names and panel port names (“导入交换机信息”) | The data comes from servers' LLDP neighbours, whose structure was verified with real data (one server, one switch); the page was verified with authored sample data only. It shows observed connections and is not compared with a plan |
 | Discovery diagnostics | See the result of NICo site exploration for each BMC address, to find why a device was not discovered | Filter by result, search by address, serial or error code; failures first, with error code and mitigation; open the details of a joined device | The response structure was verified with real data (5 addresses, 4 refused connections); the page was verified with authored sample data only |
+| Racks | See the rack objects NICo keeps for declared whole racks: profile, state, member counts, state and health history | Open a rack's history; with `rackActions` on, start or terminate rack maintenance and rack firmware updates | Verified with the demo capture only (one GB200 NVL72 rack); a general server site has no rack object and the page says so |
+| Operation records | See every operation PXEye sent, with checks, result and the state read back | Filter by action and result; search by object ID, serial, name, reason or operator; no deletion | Verified with the demo capture and `tools/core-replay.py --demo-writes` only |
 
-The pages start no write to NICo. Two pages own data that PXEye keeps in its own database, imported as CSV and never written to NICo; neither import is offered on a read-only observer:
+With `rackActions` off, the pages start no write to NICo. With it on (and `rackOperations` on, not a read-only observer), the servers, switches and power shelves pages offer an operation dialog (操作, or 批量操作 for up to 10 selected devices) and the racks page offers rack actions; the rules are in [rules for operations](rack-operations-actions.md). Two pages own data that PXEye keeps in its own database, imported as CSV and never written to NICo; neither import is offered on a read-only observer:
 
 - The server page owns rack unit positions (`serial,rack,unit[,height]`). The server list shows `U<n>` (`U<n>–U<m>` when the height is above 1); the rack topology orders a compute section by unit, top first, when every server in it has one and the layout is not being edited. The rack column is only compared with the device's rack.
 - The cabling page owns switch labels (switches and panel ports, matched to LLDP by chassis MAC and port). The page shows the imported names next to what LLDP reports.
@@ -78,7 +80,7 @@ Nothing is decided. A candidate from 4.3 is listed here once chosen.
 - Outlet-level power management: a Core power shelf has no outlets.
 - Leak detection response: Core has no dedicated interface.
 - Ports and configuration of third-party switches: not managed by Core.
-- Switch OS installation, DPU and firmware upgrades: explicitly deferred.
+- Switch OS installation, DPU upgrades, firmware baselines: explicitly deferred. Single component firmware updates through NICo exist under `rackActions`.
 - Arrival planning: explicitly deferred. Device planning in device management already imports and compares by serial number and is where it would be extended.
 
 ## 5. Design rules
@@ -96,15 +98,13 @@ General rules are in [interaction rules](interaction-rules.md). This work adds:
 
 ## 6. Preconditions for operations
 
-A draft of the rules is in [rules for operations](rack-operations-actions.md): candidate operations and risk, yielding to installation, confirmation, execution, audit, stages and open decisions.
+Operations are implemented behind the `rackActions` switch and are not verified at a site. The operations, their NICo interfaces, RMS dependency, yielding to installation, confirmation, execution, audit and what NICo does not provide are in [rules for operations](rack-operations-actions.md); implementation status per area is in the [capability requirements](rack-operations-requirements.md).
 
-Core offers power, maintenance, quarantine, firmware, validation and decommission operations. None is integrated or verified. Before starting, decide:
+Still open:
 
-- Yielding to installation: whether a device with an installation task in progress is always refused.
-- Confirmation: which operations need a second confirmation, and the limit for batches.
-- Audit: what an operation record keeps and where it is stored.
-- Verification scope: on designated test devices first, not while an installation batch is running.
-- Rack-level operations: a general server site has no rack object, so a whole-rack operation can only be PXEye sequencing single-device operations by rack, with an order and interval it defines itself.
+- Verification: a writable test environment with designated devices, and RMS for the actions that need it.
+- The installation preflight does not yet read operation records; it is protected installation code and needs its own review.
+- Operator identity: records hold the session and source address only.
 
 ## 7. How this is developed
 
@@ -117,7 +117,7 @@ Core offers power, maintenance, quarantine, firmware, validation and decommissio
 
 1. Whether the target site is a general server site or a whole-rack site. This decides whether the switch page, the power shelf page and rack features are meaningful.
 2. Which candidates to build.
-3. Whether to build operations, and the rules in section 6.
+3. Where operations are verified first (section 6).
 
 ## 9. Stages
 
@@ -126,4 +126,5 @@ Core offers power, maintenance, quarantine, firmware, validation and decommissio
 | 1 | Read-only observer instance; server, switch and power shelf pages | Done |
 | 2 | State timeline, firmware inventory, health history, hardware validation, cabling, discovery diagnostics; alerts page, switch label import, rack unit import | Done; to be checked at a real site |
 | 3 | Verify switch, power shelf and rack fields at a site that has them; decide the candidates | Awaiting a site |
-| 4 | Operations | After section 6 is settled |
+| 4 | Operations under `rackActions`; racks and operation records pages | Implemented; not verified at a site |
+| 5 | Verify operations on test devices, with RMS where needed; installation preflight reading operation records | Awaiting a writable test environment and review |

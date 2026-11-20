@@ -49,6 +49,7 @@ PXEye 公开项目文档均提供内容对应的中英文版本。首次使用�
 | 告警 | [Read](field-survey/alerts.md) | [阅读](field-survey/alerts.zh-CN.md) |
 | 布线 | [Read](field-survey/cabling.md) | [阅读](field-survey/cabling.zh-CN.md) |
 | 发现诊断 | [Read](field-survey/discovery-diagnostics.md) | [阅读](field-survey/discovery-diagnostics.zh-CN.md) |
+| 机柜 | [Read](field-survey/racks.md) | [阅读](field-survey/racks.zh-CN.md) |
 
 ## 页面使用指南
 

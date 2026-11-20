@@ -49,6 +49,7 @@ At a site, follow the [field survey guide](field-survey/README.md) to collect re
 | Alerts | [Read](field-survey/alerts.md) | [阅读](field-survey/alerts.zh-CN.md) |
 | Cabling | [Read](field-survey/cabling.md) | [阅读](field-survey/cabling.zh-CN.md) |
 | Discovery diagnostics | [Read](field-survey/discovery-diagnostics.md) | [阅读](field-survey/discovery-diagnostics.zh-CN.md) |
+| Racks | [Read](field-survey/racks.md) | [阅读](field-survey/racks.zh-CN.md) |
 
 ## Page guides
 

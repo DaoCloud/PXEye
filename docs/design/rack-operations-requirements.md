@@ -135,7 +135,7 @@ It draws on the bare-metal lifecycle, device orchestration, network isolation, t
 
 | What NICo Core provides | PXEye today | Conclusion and next step | Pages |
 | --- | --- | --- | --- |
-| Desired and actual power state; power and reset interfaces exist; rack-level orchestration is for whole racks only; no power readings | Power state is shown | Operations not done. A rack power total cannot be built from Core | Rack topology, device management (power state only) |
+| Desired and actual power state; host power through the host BMC (`AdminPowerControl`); tray, switch and power shelf power through RMS when the component manager backends are `rms`; rack maintenance (`OnDemandRackMaintenance`) for whole racks only, whose power sequence is a graceful restart of the compute hosts; rack power on/off are stubs in NICo; rack cold reboot exists only in RMS; no power readings | Power state is shown. With `rackActions` on: host power, tray, switch and power shelf power, and rack maintenance from the operation dialog and the Racks page, with server-side preview, serial confirmation for high risk, read-back and an audit record ([rules for operations](rack-operations-actions.md)) | Implemented, not verified at a site. RMS-backed actions need RMS deployed; the operations NICo does not provide are shown disabled with the reason. No sequencing across devices beyond NICo's rack maintenance. A rack power total cannot be built from Core | Device management → Servers, Switches, Power shelves, Racks, Operation records |
 
 ### 6.4 Firmware, UEFI and DPU
 
@@ -149,7 +149,7 @@ It draws on the bare-metal lifecycle, device orchestration, network isolation, t
 
 | What NICo Core provides | PXEye today | Conclusion and next step | Pages |
 | --- | --- | --- | --- |
-| Per-machine firmware inventory, lockdown state, secure boot state (verified); update interfaces exist; the verification site has no host firmware baseline | The server status dialog shows the actual firmware version of each component, the model, part number, lockdown and secure boot state | Inventory done. Difference detection and compliance lack a host firmware baseline. Bulk updates not done | Device management → Servers (status dialog) |
+| Per-machine firmware inventory, lockdown state, secure boot state (verified); update interfaces exist; the verification site has no host firmware baseline | The server status dialog shows the actual firmware version of each component, the model, part number, lockdown and secure boot state | Inventory done. With `rackActions` on, compute tray, switch and rack component firmware updates (`UpdateComponentFirmware`, through RMS) can be started, not verified at a site; NICo does not implement power shelf firmware updates. Difference detection and compliance lack a host firmware baseline | Device management → Servers (status dialog), Switches, Racks |
 
 ### 6.5 Operating system installation and boot
 
@@ -193,7 +193,7 @@ It draws on the bare-metal lifecycle, device orchestration, network isolation, t
 
 | What NICo Core provides | PXEye today | Conclusion and next step | Pages |
 | --- | --- | --- | --- |
-| Health alerts and health history per object (verified); no time series; no dedicated leak or liquid-cooling interface | The server page shows health and alerts; the status dialog shows health history (start, last seen and recovery of each alert); the alerts page groups the current alerts of servers, switches and power shelves by alert or by device | Per-device health and history and a read-only roll-up of current alerts are done. Acknowledgement, suppression and notification are not. Charts need a monitoring system | Device management → Servers, Switches, Power shelves, Alerts |
+| Health alerts and health history per object (verified); no time series; no dedicated leak or liquid-cooling interface | The server page shows health and alerts; the status dialog shows health history (start, last seen and recovery of each alert); the alerts page groups the current alerts of servers, switches and power shelves by alert or by device | Per-device health and history and a read-only roll-up of current alerts are done. Acknowledgement, suppression and notification are not. Policy-triggered actions are not done; the manual operations they would use (graceful shutdown, quarantine, maintenance mark) exist under `rackActions` ([rules for operations](rack-operations-actions.md)). Charts need a monitoring system | Device management → Servers, Switches, Power shelves, Alerts |
 
 ### 6.8 Security and trust
 
@@ -236,7 +236,7 @@ It draws on the bare-metal lifecycle, device orchestration, network isolation, t
 
 | What NICo Core provides | PXEye today | Conclusion and next step | Pages |
 | --- | --- | --- | --- |
-| Quarantine, maintenance marks, machine validation, SKU and decommission interfaces exist; at the verification site validation was skipped and there is no SKU | The status dialog shows quarantine, maintenance, the state timeline (states passed through and time in each) and hardware validation runs | Viewing partly done; where a machine is held and what validation found can be seen. Operations not done | Device management → Servers (status dialog) |
+| Quarantine, maintenance marks, machine validation, SKU and decommission interfaces exist; at the verification site validation was skipped and there is no SKU | The status dialog shows quarantine, maintenance, the state timeline (states passed through and time in each) and hardware validation runs. With `rackActions` on: maintenance mark, quarantine, host reset, BMC reset, on-demand validation, SKU check, switch and power shelf decommission, each with an audit record ([rules for operations](rack-operations-actions.md)) | Viewing partly done. Operations implemented, not verified at a site; switch reset needs RMS. Ticket association is a free-text reason only | Device management → Servers, Switches, Power shelves, Operation records |
 
 ## 7. Suggested core state model
 
@@ -264,10 +264,10 @@ Implementation rule: pages show the state text the NICo state machine reports an
 
 | Stage | Focus | Result | PXEye progress |
 | --- | --- | --- | --- |
-| 1: Basic enrollment | Asset model, device discovery, BMC/Redfish, basic topology, state machine, audit | Devices can be connected, inventoried, queried and operated at a basic level | Partial: discovery, enrollment and basic topology exist; no operation audit |
+| 1: Basic enrollment | Asset model, device discovery, BMC/Redfish, basic topology, state machine, audit | Devices can be connected, inventoried, queried and operated at a basic level | Partial: discovery, enrollment and basic topology exist; operations and their audit records are implemented under `rackActions`, not verified at a site |
 | 2: Installation and initialization | Firmware baseline, DPU initialization, DHCP/PXE/iPXE, OS installation, basic network | An automated flow from device connection to system boot | Partial: OS installation exists; firmware baseline not started; DPU initialization is done by NICo, not PXEye |
 | 3: Delivery and isolation | Resource pools, instance types, Ethernet/IB/NVLink partitions, release cleanup | Resources can be delivered, isolated, released and safely reused | Partial: instances are created and released; partitions and pools not started |
-| 4: Rack-level orchestration | Power sequencing, tray and NVL domain orchestration, power coordination, rack workflows | Rack-level maintenance and operations with complex dependencies | Not started |
+| 4: Rack-level orchestration | Power sequencing, tray and NVL domain orchestration, power coordination, rack workflows | Rack-level maintenance and operations with complex dependencies | Partial: the Racks page shows NICo rack objects and starts or terminates NICo rack maintenance (through RMS), not verified at a site; rack power on/off and cold reboot are not provided by NICo |
 | 5: Monitoring and intelligent operations | Rack health, BMS, leak, alert policy, automatic isolation and recovery | Monitoring, alerting, response and closed-loop operations | Partial: read-only per-device health |
 | 6: Scale and ecosystem | Multiple sites, adapters, higher-level APIs, ticket, monitoring and identity integration | Large deployments and cooperation with external systems | Not started |
 

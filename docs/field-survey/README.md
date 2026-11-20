@@ -14,6 +14,9 @@ For the full field mapping see the [data contract](../design/rack-operations-dat
 | Device management → Alerts | [Alerts](alerts.md) | Current health alerts of servers, switches and power shelves | Nothing required; optionally the alerts the site treats as known |
 | Device management → Cabling | [Cabling](cabling.md) | LLDP links from server interfaces to switch ports | Switch names and models, mapping of port MACs to panel port names, expected cabling |
 | Device management → Discovery diagnostics | [Discovery diagnostics](discovery-diagnostics.md) | Probe result, error code and mitigation for each BMC address | Expected list of BMC addresses, network reachability |
+| Device management → Racks | [Racks](racks.md) | Rack objects, state, health, state and health history, rack profile, RMS reachability | Whether the site is a whole-rack site, whether RMS is deployed, rack profiles |
+
+Operations (the operation dialog, the racks page actions, any NICo write command) are never executed during a field survey.
 
 ## 1. Preparation
 
