@@ -1,4 +1,4 @@
-image: 10.20.1.50:1027/pxeye:0.22.16-202611201013-464edfa
+image: 10.20.1.50:1027/pxeye:0.22.16-202611202155-d06ee64
 storageClass: ''
 # Shared by PXEye (read/write) and NICo PXE (HTTP subtree, read-only).
 # RWO requires same-node multi-Pod support; PXE follows PXEye using Pod affinity.
