@@ -380,7 +380,9 @@ def start(capture, port, host="127.0.0.1", writable=False, password=None, demo_w
             config.get("rack_operations") is True and config.get("rack_actions") is True
         )
         readiness = App.readiness
-        App.readiness = lambda self: readiness(self) | {"rack_actions": True}
+        # The page hides every operation on a read-only instance, so report the console
+        # as writable to the browser; the server still refuses every other command.
+        App.readiness = lambda self: readiness(self) | {"rack_actions": True, "read_only": False}
     # The web assets of the pxeye package in use, wherever this script is installed.
     import pxeye
 

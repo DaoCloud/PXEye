@@ -2404,11 +2404,18 @@ body.read-only .topbar::after {
   gap: 6px 16px;
   margin: 6px 0 12px;
 }
-.racks-choices label {
+.modal .racks-choices label {
   display: flex;
+  grid-template-columns: none;
   gap: 8px;
   align-items: flex-start;
+  justify-content: flex-start;
   font-weight: normal;
+}
+.modal .racks-choices input {
+  width: auto;
+  flex: 0 0 auto;
+  margin-top: 3px;
 }
 .racks-boundary {
   display: flex;
