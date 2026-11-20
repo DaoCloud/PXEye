@@ -2302,7 +2302,8 @@ body.read-only .topbar::after {
 .nav-item[data-page="power_shelves"],
 .nav-item[data-page="alerts"],
 .nav-item[data-page="cabling"],
-.nav-item[data-page="exploration"] {
+.nav-item[data-page="exploration"],
+.nav-item[data-page="action_records"] {
   position: relative;
   width: calc(100% - 20px);
   margin: 1px 0 1px 20px;
@@ -2314,11 +2315,83 @@ body.read-only .topbar::after {
 .nav-item[data-page="power_shelves"]::before,
 .nav-item[data-page="alerts"]::before,
 .nav-item[data-page="cabling"]::before,
-.nav-item[data-page="exploration"]::before {
+.nav-item[data-page="exploration"]::before,
+.nav-item[data-page="action_records"]::before {
   content: "";
   position: absolute;
   left: 0;
   top: -1px;
   bottom: -1px;
   border-left: 1px solid #d5dce1;
+}
+
+/* Device operations (rack_actions): the batch bar and the operation dialog. */
+.device-status-action-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 16px 0 12px;
+}
+.device-status-action-group {
+  border: 0;
+  margin: 0 0 14px;
+  padding: 0;
+}
+.device-status-action-group legend {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.device-status-action-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid #e3e8ec;
+  border-radius: 6px;
+  margin-bottom: 6px;
+  cursor: pointer;
+}
+.device-status-action-item input {
+  margin-top: 4px;
+}
+.device-status-action-item .live-small {
+  display: block;
+}
+.device-status-action-item.unavailable {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.device-status-action-multi {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+.device-status-action-multi legend {
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+.device-status-action-table .live-table {
+  white-space: normal;
+}
+.device-status-action-table .live-table td:first-child {
+  min-width: 240px;
+}
+.device-status-action-table .live-code {
+  word-break: break-all;
+}
+.device-status-action-table pre {
+  white-space: pre;
+  max-height: 240px;
+  overflow: auto;
+}
+.rack-action-records-table .live-table td:nth-child(7) {
+  white-space: normal;
+  min-width: 220px;
+}
+.rack-action-records-json {
+  max-height: 320px;
+  overflow: auto;
+  white-space: pre;
+  font-size: 12px;
 }
