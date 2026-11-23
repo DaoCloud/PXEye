@@ -2,7 +2,7 @@
 
 LLDP often carries no switch name and identifies ports by MAC, so the cabling
 page cannot say which physical switch or panel port a server is plugged into.
-The site supplies two CSV tables (docs/field-survey/cabling.md section 4);
+The site supplies two CSV tables (docs/archive/rack-operations-v1/field-survey/cabling.md section 4);
 PXEye keeps them in its own database and only uses them for display. Nothing
 here is written to NICo Core or to a switch.
 """

@@ -19,37 +19,21 @@ Public PXEye documentation is maintained in English and Simplified Chinese. Star
 | Install your first server | [Read](getting-started.md) | [阅读](getting-started.zh-CN.md) | First-device path from enrollment to acceptance. |
 | Features and boundaries | [Read](design/features.md) | [阅读](design/features.zh-CN.md) | Native mappings, device capabilities and installation scope. |
 | Architecture | [Read](design/architecture.md) | [阅读](design/architecture.zh-CN.md) | Runtime, module responsibilities and authoritative data. |
-| Code structure review | [Read](design/code-structure-review.md) | [阅读](design/code-structure-review.zh-CN.md) | Historical findings, delivered refactor and verification limits. |
 | Reference cluster | [Read](reference-cluster.md) | [阅读](reference-cluster.zh-CN.md) | GB200-inspired view data and screenshot capture. |
-| Documentation references | [Read](design/documentation-references.md) | [阅读](design/documentation-references.zh-CN.md) | Review of NetBox, Tinkerbell, Metal3 and Argo CD. |
 | Public release preparation | [Read](publishing.md) | [阅读](publishing.zh-CN.md) | Repository boundary and release responsibilities. |
 
 ## Design documents
 
-Scope, system design, interaction rules and data contracts are in [design](design/README.md).
+Design documents are collected under [design](design/README.md).
 
 | Document | English | 简体中文 | Purpose |
 | --- | --- | --- | --- |
-| Design index | [Read](design/README.md) | [阅读](design/README.zh-CN.md) | Where each kind of content lives; naming rules. |
-| Interaction rules | [Read](design/interaction-rules.md) | [阅读](design/interaction-rules.zh-CN.md) | Page ownership, wording, state, dangerous operations. |
-| Rack operations: capability requirements | [Read](design/rack-operations-requirements.md) | [阅读](design/rack-operations-requirements.zh-CN.md) | Target capabilities and the implementation status of each functional area. |
-| Rack operations: scope and status | [Read](design/rack-operations.md) | [阅读](design/rack-operations.zh-CN.md) | What the rack line of work does and has reached. |
-| Rack operations: NICo data contract | [Read](design/rack-operations-data-contract.md) | [阅读](design/rack-operations-data-contract.zh-CN.md) | Core interfaces and fields per page, with verification marks. |
+| Design documents index | [Read](design/README.md) | [阅读](design/README.zh-CN.md) | What the design directory holds. |
+| Whole-rack operations frontend design | [Read](design/frontend/README.md) | [阅读](design/frontend/README.zh-CN.md) | Page design and page descriptions for GB200 / GB300 whole racks. |
 
-## Field survey
+## Archive
 
-At a site, follow the [field survey guide](field-survey/README.md) to collect real data for each rack operations page: which NICo CLI commands and interfaces to use, how to check, where to keep results and what the user has to provide.
-
-| Page | English | 简体中文 |
-| --- | --- | --- |
-| Common preparation and rules | [Read](field-survey/README.md) | [阅读](field-survey/README.zh-CN.md) |
-| Servers | [Read](field-survey/servers.md) | [阅读](field-survey/servers.zh-CN.md) |
-| Switches | [Read](field-survey/switches.md) | [阅读](field-survey/switches.zh-CN.md) |
-| Power shelves | [Read](field-survey/power-shelves.md) | [阅读](field-survey/power-shelves.zh-CN.md) |
-| Alerts | [Read](field-survey/alerts.md) | [阅读](field-survey/alerts.zh-CN.md) |
-| Cabling | [Read](field-survey/cabling.md) | [阅读](field-survey/cabling.zh-CN.md) |
-| Discovery diagnostics | [Read](field-survey/discovery-diagnostics.md) | [阅读](field-survey/discovery-diagnostics.zh-CN.md) |
-| Racks | [Read](field-survey/racks.md) | [阅读](field-survey/racks.zh-CN.md) |
+Superseded documents that are no longer maintained are in the [archive](archive/README.md): the design documents and the field survey guide of the first rack operations design.
 
 ## Page guides
 

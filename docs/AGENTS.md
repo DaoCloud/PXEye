@@ -25,14 +25,14 @@ its index row in the same commit, and keep every relative link working.
 
 ## Documents that track the product
 
-- [design/rack-operations-requirements](design/rack-operations-requirements.md) holds the target
+- [design/rack-operations-requirements](archive/rack-operations-v1/design/rack-operations-requirements.md) holds the target
   capabilities and, per functional area, the implementation status. It is the single place where
   that status is maintained; other documents link to it and do not restate it.
-- [design/rack-operations](design/rack-operations.md) holds the pages, rules and plan of the
+- [design/rack-operations](archive/rack-operations-v1/design/rack-operations.md) holds the pages, rules and plan of the
   current stage.
-- [design/rack-operations-data-contract](design/rack-operations-data-contract.md) holds the Core
+- [design/rack-operations-data-contract](archive/rack-operations-v1/design/rack-operations-data-contract.md) holds the Core
   interfaces and fields, with verification marks.
-- [field-survey](field-survey/README.md) holds, per page, the NICo CLI commands and interfaces to
+- [field-survey](archive/rack-operations-v1/field-survey/README.md) holds, per page, the NICo CLI commands and interfaces to
   run at a site, what to check, where results are kept, and what the user must provide. A new
   page, or a page that reads new data, gets or updates its document in the same commit.
 

@@ -19,37 +19,21 @@ PXEye 公开项目文档均提供内容对应的中英文版本。首次使用�
 | 首台装机 | [Read](getting-started.md) | [阅读](getting-started.zh-CN.md) | 从纳管到验收的首次单机流程。 |
 | 功能与边界 | [Read](design/features.md) | [阅读](design/features.zh-CN.md) | 原生映射、设备能力和安装范围。 |
 | 系统架构 | [Read](design/architecture.md) | [阅读](design/architecture.zh-CN.md) | 运行环境、模块职责和数据归属。 |
-| 代码结构评审 | [Read](design/code-structure-review.md) | [阅读](design/code-structure-review.zh-CN.md) | 静态问题、优先级与建议的调整顺序。 |
 | 参考集群 | [Read](reference-cluster.md) | [阅读](reference-cluster.zh-CN.md) | GB200 架构示例与截图生成。 |
-| 文档设计参考 | [Read](design/documentation-references.md) | [阅读](design/documentation-references.zh-CN.md) | NetBox、Tinkerbell、Metal3、Argo CD 调研。 |
 | 公开发布准备 | [Read](publishing.md) | [阅读](publishing.zh-CN.md) | 仓库边界与发布职责。 |
 
 ## 设计文档
 
-产品范围、系统设计、交互规则和数据契约集中在[设计文档](design/README.zh-CN.md)。
+设计文档集中在[设计文档](design/README.zh-CN.md)。
 
 | 文档 | English | 简体中文 | 用途 |
 | --- | --- | --- | --- |
-| 设计文档索引 | [Read](design/README.md) | [阅读](design/README.zh-CN.md) | 各类内容放在哪；命名规则。 |
-| 交互规则 | [Read](design/interaction-rules.md) | [阅读](design/interaction-rules.zh-CN.md) | 页面归属、文案、状态、危险操作。 |
-| 机柜运维：能力需求 | [Read](design/rack-operations-requirements.md) | [阅读](design/rack-operations-requirements.zh-CN.md) | 目标能力全貌和各功能域的实现状态。 |
-| 机柜运维：范围与现状 | [Read](design/rack-operations.md) | [阅读](design/rack-operations.zh-CN.md) | 机柜方向做什么、做到哪一步。 |
-| 机柜运维：NICo 数据契约 | [Read](design/rack-operations-data-contract.md) | [阅读](design/rack-operations-data-contract.zh-CN.md) | 每个页面使用的 Core 接口和字段，及验证标记。 |
+| 设计文档索引 | [Read](design/README.md) | [阅读](design/README.zh-CN.md) | 设计目录里有什么。 |
+| 整机柜运维前端设计稿 | [Read](design/frontend/README.md) | [阅读](design/frontend/README.zh-CN.md) | GB200 / GB300 整机柜的页面设计与页面功能说明。 |
 
-## 现场采集
+## 归档
 
-到站点后，按[现场采集指南](field-survey/README.zh-CN.md)为每个机柜运维页面收集真实数据：用哪些 NICo 命令行和接口、怎么核对、存到哪里、需要用户补充什么。
-
-| 页面 | English | 简体中文 |
-| --- | --- | --- |
-| 共同准备和规则 | [Read](field-survey/README.md) | [阅读](field-survey/README.zh-CN.md) |
-| 服务器 | [Read](field-survey/servers.md) | [阅读](field-survey/servers.zh-CN.md) |
-| 交换机 | [Read](field-survey/switches.md) | [阅读](field-survey/switches.zh-CN.md) |
-| 供电框 | [Read](field-survey/power-shelves.md) | [阅读](field-survey/power-shelves.zh-CN.md) |
-| 告警 | [Read](field-survey/alerts.md) | [阅读](field-survey/alerts.zh-CN.md) |
-| 布线 | [Read](field-survey/cabling.md) | [阅读](field-survey/cabling.zh-CN.md) |
-| 发现诊断 | [Read](field-survey/discovery-diagnostics.md) | [阅读](field-survey/discovery-diagnostics.zh-CN.md) |
-| 机柜 | [Read](field-survey/racks.md) | [阅读](field-survey/racks.zh-CN.md) |
+被取代、不再维护的文档在[归档目录](archive/README.zh-CN.md)：机柜运维第一版的设计文档和现场采集指南。
 
 ## 页面使用指南
 

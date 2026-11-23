@@ -2,7 +2,7 @@
 
 [English](CONTRIBUTING.md) · **简体中文**
 
-参与修改时，先说明运维场景、对应 NICo 资源，以及复现所需的硬件或网络条件。调整流程前阅读[系统架构](docs/design/architecture.zh-CN.md)和[功能边界](docs/design/features.zh-CN.md)；修改页面前阅读[交互规则](docs/design/interaction-rules.zh-CN.md)。各类文档和规则的位置见[设计文档索引](docs/design/README.zh-CN.md)。
+参与修改时，先说明运维场景、对应 NICo 资源，以及复现所需的硬件或网络条件。调整流程前阅读[系统架构](docs/design/architecture.zh-CN.md)和[功能边界](docs/design/features.zh-CN.md)；修改页面前阅读[交互规则](docs/archive/rack-operations-v1/design/interaction-rules.zh-CN.md)。各类文档和规则的位置见[设计文档索引](docs/design/README.zh-CN.md)。
 
 ## 设计原则
 
@@ -16,7 +16,7 @@
 
 1. 说明问题、目标 NICo 版本和当前行为。
 2. 在已授权环境或隔离示例中复现。
-3. 完成最小且完整的修改，同步两种语言的文档。涉及机柜运维的功能增减、做法变化或需求不成立时，在同一个提交里更新[能力需求](docs/design/rack-operations-requirements.zh-CN.md)中对应功能域的实现状态。
+3. 完成最小且完整的修改，同步两种语言的文档。涉及机柜运维的功能增减、做法变化或需求不成立时，在同一个提交里更新[能力需求](docs/archive/rack-operations-v1/design/rack-operations-requirements.zh-CN.md)中对应功能域的实现状态。
 4. 检查 Python/JavaScript 语法，只执行现场已授权的验证；硬件写入使用专用设备并明确影响范围。
 5. 每项完整修改先提交 Git commit，再从干净的已提交工作树构建镜像；镜像标签包含版本和短 Git SHA，构建时通过 `VCS_REF` 写入完整 SHA。
 6. 在变更说明中记录最终行为、验证证据、部署所用 commit 与镜像，以及剩余限制。
