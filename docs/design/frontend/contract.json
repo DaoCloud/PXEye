@@ -5,6 +5,314 @@
     "version": "v2.5.0 之后",
     "note": "接口、参数和字段取自这个提交的源码。换版本时逐项重新核对。"
   },
+  "components": [
+    {
+      "id": "core",
+      "name": "NICo Core",
+      "workload": "nico-api（含站点发现和各状态机）、数据库、密钥库",
+      "level": "必需",
+      "provides": "全部 Core gRPC：子网、设备声明、发现、设备读取与单设备操作、实例、健康报告",
+      "missing": "平台不可用",
+      "source": "helm/charts/nico-api",
+      "calls": [
+        "core.version",
+        "rms.status",
+        "rest.site",
+        "credential.readiness",
+        "credential.write",
+        "explorer.last-run",
+        "explorer.config",
+        "rack-profile.list",
+        "rule.list",
+        "nmxc.endpoints",
+        "segment.list",
+        "segment.create",
+        "segment.delete",
+        "segment.dhcp-range",
+        "segment.dhcp-range.write",
+        "interface.list",
+        "interface.addresses",
+        "rack-group.list",
+        "rack-group.write",
+        "expected-rack.list",
+        "expected-rack.write",
+        "expected-machine.list",
+        "expected-machine.write",
+        "expected-switch.list",
+        "expected-switch.write",
+        "expected-shelf.list",
+        "expected-shelf.write",
+        "expected-domain.write",
+        "explorer.endpoints",
+        "explorer.managed-hosts",
+        "explorer.unexpected",
+        "explorer.retry",
+        "ingestion.state",
+        "ingestion.allow",
+        "rack.list",
+        "rack.history",
+        "rack.rest",
+        "rack.validation",
+        "tray.rest",
+        "domain.list",
+        "machine.list",
+        "host.states",
+        "dpu.list",
+        "switch.list",
+        "shelf.list",
+        "device.history",
+        "device.inventory",
+        "device.power-state",
+        "firmware.desired",
+        "firmware.status",
+        "machine.validation",
+        "device.identify",
+        "tray.power",
+        "tray.firmware",
+        "device.power-direct",
+        "shelf.power",
+        "machine.maintenance",
+        "machine.quarantine",
+        "machine.validate",
+        "machine.sku",
+        "device.bmc-reset",
+        "device.decommission",
+        "rack.bringup",
+        "rack.power",
+        "rack.firmware",
+        "domain.power",
+        "domain.firmware",
+        "task-run",
+        "task.list",
+        "task.cancel",
+        "rack.maintenance",
+        "os.list",
+        "os.write",
+        "instance.allocate",
+        "instance.list",
+        "instance.release",
+        "instance-type.write",
+        "health.reports",
+        "health.history"
+      ],
+      "pages": [
+        "全部调用 NICo 的页面"
+      ]
+    },
+    {
+      "id": "dhcp",
+      "name": "DHCP 服务",
+      "workload": "nico-dhcp",
+      "level": "必需",
+      "provides": "给各管理网段的设备分配地址，并在 Core 里留下设备接口；设备发现从这里开始",
+      "missing": "新设备拿不到地址，不会被发现；已发现的设备不受影响",
+      "source": "helm/charts/nico-dhcp",
+      "calls": [
+        "interface.list",
+        "interface.addresses",
+        "dhcp.metrics"
+      ],
+      "pages": [
+        "接入 › 网络规划 › DHCP 服务",
+        "接入 › 网络规划 › 地址分配",
+        "接入 › 设备发现"
+      ]
+    },
+    {
+      "id": "boot",
+      "name": "引导服务",
+      "workload": "nico-pxe、nico-dns、nico-ntp",
+      "level": "必需",
+      "provides": "iPXE 引导、装机材料、名称解析和时间",
+      "missing": "不能装机；新主机走不完接管流程",
+      "source": "helm/charts/nico-pxe",
+      "calls": [
+        "os.write",
+        "instance.allocate"
+      ],
+      "pages": [
+        "交付 › 机柜交付",
+        "配置 › 安装方案"
+      ]
+    },
+    {
+      "id": "health",
+      "name": "硬件健康服务",
+      "workload": "nico-hardware-health",
+      "level": "必需",
+      "provides": "采集 BMC 传感器和托盘泄漏检测，写成设备的健康报告",
+      "missing": "健康告警页只剩站点发现和手工写入的报告；托盘泄漏不会阻止分配",
+      "source": "helm/charts/nico-hardware-health",
+      "calls": [
+        "health.reports",
+        "health.history"
+      ],
+      "pages": [
+        "运维 › NVLink 域管理",
+        "运维 › 机柜管理 › 机柜详情",
+        "运维 › 健康告警",
+        "交付 › 机柜交付"
+      ]
+    },
+    {
+      "id": "rms",
+      "name": "RMS",
+      "workload": "Rack Management Service",
+      "level": "整机柜",
+      "provides": "整机柜里计算托盘、交换机、供电框的电源和固件；交换机的证书与口令配置、复位、退役；设备的槽位信息",
+      "missing": "设备和机柜的电源、固件操作不可用；交换机过不了配置阶段，机柜走不到就绪",
+      "source": "docs/configuration/rms.md",
+      "calls": [
+        "rms.status",
+        "device.power-state",
+        "firmware.desired",
+        "firmware.status",
+        "tray.power",
+        "tray.firmware",
+        "device.power-direct",
+        "shelf.power",
+        "device.decommission",
+        "rack.bringup",
+        "rack.power",
+        "rack.firmware",
+        "domain.power",
+        "domain.firmware",
+        "rack.maintenance"
+      ],
+      "pages": [
+        "配置 › 站点设置 › 站点概况",
+        "配置 › 站点设置 › 控制面",
+        "运维 › NVLink 域管理",
+        "运维 › 机柜管理 › 机柜详情",
+        "运维 › 设备管理 › 计算托盘",
+        "运维 › 设备管理 › 交换机",
+        "运维 › 设备管理 › 供电框",
+        "配置 › 固件基线"
+      ]
+    },
+    {
+      "id": "rest",
+      "name": "REST 接口",
+      "workload": "REST API、工作流、站点管理、站点代理、Temporal",
+      "level": "整机柜",
+      "provides": "机柜、托盘、NVLink 域和任务的 REST 接口；期望与实际的对账",
+      "missing": "机柜对账、机柜立面的槽位、任务列表不可用；机柜级任务无法提交",
+      "source": "rest-api/INSTALLATION.md",
+      "calls": [
+        "rest.site",
+        "rule.list",
+        "rack.rest",
+        "rack.validation",
+        "tray.rest",
+        "domain.list",
+        "tray.power",
+        "tray.firmware",
+        "rack.bringup",
+        "rack.power",
+        "rack.firmware",
+        "domain.power",
+        "domain.firmware",
+        "task-run",
+        "task.list",
+        "task.cancel"
+      ],
+      "pages": [
+        "配置 › 站点设置 › 站点概况",
+        "配置 › 站点设置 › 控制面",
+        "运维 › 机柜管理",
+        "运维 › NVLink 域管理",
+        "运维 › 机柜管理 › 机柜详情",
+        "运维 › 设备管理 › 计算托盘",
+        "运维 › 设备管理 › 交换机",
+        "运维 › 设备管理 › 供电框",
+        "运维 › 运维任务"
+      ]
+    },
+    {
+      "id": "flow",
+      "name": "Flow",
+      "workload": "nico-flow",
+      "level": "整机柜",
+      "provides": "机柜级任务的编排：上线、电源、固件、分阶段发布；机柜与托盘的清单和任务记录",
+      "missing": "机柜上线、机柜和域的电源与固件、运维任务不可用；单设备的状态类操作照常",
+      "source": "docs/architecture/flow.md",
+      "calls": [
+        "rule.list",
+        "rack.rest",
+        "rack.validation",
+        "tray.rest",
+        "domain.list",
+        "tray.power",
+        "tray.firmware",
+        "rack.bringup",
+        "rack.power",
+        "rack.firmware",
+        "domain.power",
+        "domain.firmware",
+        "task-run",
+        "task.list",
+        "task.cancel"
+      ],
+      "pages": [
+        "配置 › 站点设置 › 站点概况",
+        "运维 › 机柜管理",
+        "运维 › NVLink 域管理",
+        "运维 › 机柜管理 › 机柜详情",
+        "运维 › 设备管理 › 计算托盘",
+        "运维 › 设备管理 › 交换机",
+        "运维 › 设备管理 › 供电框",
+        "运维 › 运维任务"
+      ]
+    },
+    {
+      "id": "nmxc",
+      "name": "NMX-C",
+      "workload": "NMX-C 及其接入配置",
+      "level": "整机柜",
+      "provides": "NVLink 域的集群配置和域编号",
+      "missing": "NVLink 域管理没有数据；机柜上线里的 NMX-C 配置阶段无法完成",
+      "source": "docs/development/machine-a-tron-nmxc-mock.md",
+      "calls": [
+        "nmxc.endpoints",
+        "domain.list",
+        "domain.power",
+        "domain.firmware"
+      ],
+      "pages": [
+        "配置 › 站点设置 › 站点概况",
+        "运维 › NVLink 域管理"
+      ]
+    },
+    {
+      "id": "facility",
+      "name": "设施事件接入",
+      "workload": "nico-dsx-exchange-consumer、消息总线",
+      "level": "可选",
+      "provides": "把楼宇管理系统的泄漏事件写成机柜的健康报告",
+      "missing": "机柜级泄漏不会进入 NICo，不会自动阻止分配；安全联锁本来就不依赖它",
+      "source": "docs/operations/leak-detection-handling.md",
+      "calls": [],
+      "pages": [
+        "运维 › 机柜管理 › 机柜详情",
+        "运维 › 健康告警"
+      ]
+    },
+    {
+      "id": "metrics",
+      "name": "监控系统",
+      "workload": "Prometheus",
+      "level": "可选",
+      "provides": "DHCP 的请求、应答和丢弃计数；各子网的空闲地址数",
+      "missing": "DHCP 服务页没有请求计数，其余不受影响",
+      "source": "docs/observability/core_metrics.md",
+      "calls": [
+        "dhcp.metrics"
+      ],
+      "pages": [
+        "接入 › 网络规划 › DHCP 服务"
+      ]
+    }
+  ],
   "resources": [
     {
       "id": "core",

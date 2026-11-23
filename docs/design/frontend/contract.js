@@ -1,10 +1,11 @@
 "use strict";
 /* 接口契约：页面与 NICo 之间的约定。
-   四张表，来源只有这一个文件：
+   五张表，来源只有这一个文件：
    - NICO_RESOURCES：NICo 里的资源，以及它们之间的依赖。回答“这个页面要有数据，必须先有什么”。
    - NICO_CALLS：页面用到的 NICo 接口：属于哪一类接口、请求参数、用到的字段、对应的命令行、前置资源。
    - CONTRACT_GAPS：设计需要、但 NICo 没有直接提供的东西，以及待定的处理方式。
    - PAGE_CALLS：每个页面用到哪些接口和用途。
+   - NICO_COMPONENTS：要部署的组件。每个组件提供什么、哪些接口和页面离不开它、缺了它会怎样。
    这个文件只由实现参考版（internal.html）加载；对外版（index.html）不加载它。
 
    证据等级（evidence）：定义 = 只读过源码里的定义；模拟 = 在模拟环境里调用过；现场 = 在真实整机柜环境核对过。
@@ -442,6 +443,44 @@ const PAGE_CALLS = {
   ],
 };
 
+/* ================= 组件 =================
+   回答“这个功能需要部署什么”。一个接口需要某个组件，按三条规则判断，三条都由接口自己的记录推出，不另外维护对照：
+   - 接口的类型（surface）是这个组件对外提供的；
+   - 接口的执行方（executedBy）经过这个组件；
+   - 接口的前置资源（requires）里有这个组件负责的资源。
+   level：必需 = 任何功能都需要；整机柜 = 机柜级功能需要；可选 = 缺了只影响一部分信息。 */
+const NICO_COMPONENTS = [
+  { id: "core", name: "NICo Core", workload: "nico-api（含站点发现和各状态机）、数据库、密钥库", level: "必需", provides: "全部 Core gRPC：子网、设备声明、发现、设备读取与单设备操作、实例、健康报告",
+    missing: "平台不可用", surfaces: ["Core gRPC", "REST"], source: "helm/charts/nico-api" },
+  { id: "dhcp", name: "DHCP 服务", workload: "nico-dhcp", level: "必需", provides: "给各管理网段的设备分配地址，并在 Core 里留下设备接口；设备发现从这里开始",
+    missing: "新设备拿不到地址，不会被发现；已发现的设备不受影响", resources: ["dhcp-service", "dhcp-relay", "machine-interface"], surfaces: [], source: "helm/charts/nico-dhcp" },
+  { id: "boot", name: "引导服务", workload: "nico-pxe、nico-dns、nico-ntp", level: "必需", provides: "iPXE 引导、装机材料、名称解析和时间",
+    missing: "不能装机；新主机走不完接管流程", calls: ["instance.allocate", "os.write"], surfaces: [], source: "helm/charts/nico-pxe" },
+  { id: "health", name: "硬件健康服务", workload: "nico-hardware-health", level: "必需", provides: "采集 BMC 传感器和托盘泄漏检测，写成设备的健康报告",
+    missing: "健康告警页只剩站点发现和手工写入的报告；托盘泄漏不会阻止分配", resources: ["health-report"], surfaces: [], source: "helm/charts/nico-hardware-health" },
+  { id: "rms", name: "RMS", workload: "Rack Management Service", level: "整机柜", provides: "整机柜里计算托盘、交换机、供电框的电源和固件；交换机的证书与口令配置、复位、退役；设备的槽位信息",
+    missing: "设备和机柜的电源、固件操作不可用；交换机过不了配置阶段，机柜走不到就绪", resources: ["rms", "component-manager"], executors: ["硬件后端", "RMS"], surfaces: [], source: "docs/configuration/rms.md" },
+  { id: "rest", name: "REST 接口", workload: "REST API、工作流、站点管理、站点代理、Temporal", level: "整机柜", provides: "机柜、托盘、NVLink 域和任务的 REST 接口；期望与实际的对账",
+    missing: "机柜对账、机柜立面的槽位、任务列表不可用；机柜级任务无法提交", resources: ["rest-site", "rest-auth"], surfaces: ["REST"], source: "rest-api/INSTALLATION.md" },
+  { id: "flow", name: "Flow", workload: "nico-flow", level: "整机柜", provides: "机柜级任务的编排：上线、电源、固件、分阶段发布；机柜与托盘的清单和任务记录",
+    missing: "机柜上线、机柜和域的电源与固件、运维任务不可用；单设备的状态类操作照常", resources: ["flow", "flow-inventory", "flow-task", "operation-rule"], executors: ["Flow"], surfaces: [], source: "docs/architecture/flow.md" },
+  { id: "nmxc", name: "NMX-C", workload: "NMX-C 及其接入配置", level: "整机柜", provides: "NVLink 域的集群配置和域编号",
+    missing: "NVLink 域管理没有数据；机柜上线里的 NMX-C 配置阶段无法完成", resources: ["nmxc", "nvlink-domain"], surfaces: [], source: "docs/development/machine-a-tron-nmxc-mock.md" },
+  { id: "facility", name: "设施事件接入", workload: "nico-dsx-exchange-consumer、消息总线", level: "可选", provides: "把楼宇管理系统的泄漏事件写成机柜的健康报告",
+    missing: "机柜级泄漏不会进入 NICo，不会自动阻止分配；安全联锁本来就不依赖它", resources: ["facility-events"], pages: ["health", "rack"], surfaces: [], source: "docs/operations/leak-detection-handling.md" },
+  { id: "metrics", name: "监控系统", workload: "Prometheus", level: "可选", provides: "DHCP 的请求、应答和丢弃计数；各子网的空闲地址数",
+    missing: "DHCP 服务页没有请求计数，其余不受影响", surfaces: ["指标"], source: "docs/observability/core_metrics.md" },
+];
+const componentById = (id) => NICO_COMPONENTS.find((c) => c.id === id);
+/* 一个接口需要哪些组件。REST 接口最终落到 Core，所以也算 Core。 */
+const callNeeds = (k, c) => (k.surfaces || []).includes(c.surface) || (k.calls || []).includes(c.id) ||
+  (k.executors || []).some((e) => (c.executedBy || "").includes(e)) || (c.requires || []).some((r) => (k.resources || []).includes(r));
+const componentCalls = (k) => NICO_CALLS.filter((c) => callNeeds(k, c));
+const callComponents = (c) => NICO_COMPONENTS.filter((k) => callNeeds(k, c));
+/* 一个页面需要哪些组件：它用到的接口需要的，加上组件里直接点名的页面。 */
+const pageComponents = (page) => NICO_COMPONENTS.filter((k) => (k.pages || []).includes(page.id) || pageCalls(page).some((x) => x.call && callNeeds(k, x.call)));
+const componentPages = (k) => PAGE_ORDER.map((p) => PAGES[p]).filter((p) => p.spec && pageComponents(p).includes(k));
+
 const resourceById = (id) => NICO_RESOURCES.find((r) => r.id === id);
 const callById = (id) => NICO_CALLS.find((c) => c.id === id);
 /* 一组资源连同它们的全部前置，按“先准备的在前”排序。顺序取自整张资源表的排序，所以各页面看到的先后一致。 */
@@ -463,6 +502,8 @@ function contractProblems() {
   Object.keys(PAGE_CALLS).forEach((id) => { if (!PAGES[id]) out.push(`对照里的页面 ${id} 不存在`); });
   NICO_CALLS.forEach((c) => (c.requires || []).forEach((r) => { if (!resourceById(r)) out.push(`接口 ${c.id} 引用了未定义的资源 ${r}`); }));
   NICO_RESOURCES.forEach((r) => (r.requires || []).forEach((x) => { if (!resourceById(x)) out.push(`资源 ${r.id} 引用了未定义的资源 ${x}`); }));
+  NICO_COMPONENTS.forEach((k) => [...(k.resources || []).filter((r) => !resourceById(r)).map((r) => `资源 ${r}`), ...(k.calls || []).filter((c) => !callById(c)).map((c) => `接口 ${c}`), ...(k.pages || []).filter((p) => !PAGES[p]).map((p) => `页面 ${p}`)].forEach((x) => out.push(`组件 ${k.id} 引用了未定义的${x}`)));
+  NICO_CALLS.forEach((c) => { if (!callComponents(c).length) out.push(`接口 ${c.id} 没有对应的组件`); });
   NICO_CALLS.forEach((c) => { if (!callUsers(c.id).length) out.push(`接口 ${c.id} 没有页面使用`); });
   return out;
 }

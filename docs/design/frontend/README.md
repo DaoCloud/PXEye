@@ -35,8 +35,9 @@ Feature point types: **沿用** (kept) is the same as the existing product page,
 
 ## Interface contract (implementation reference)
 
-The interface contract is an internal implementation reference and is not used for external presentation. Only `internal.html` loads it. All of it is in `contract.js`; the page scripts contain no interfaces. It answers three questions:
+The interface contract is an internal implementation reference and is not used for external presentation. Only `internal.html` loads it. All of it is in `contract.js`; the page scripts contain no interfaces. It answers four questions:
 
+- **What has to be deployed for a function.** The component table lists what each component provides and which functions are unavailable without it. Which components an interface needs is derived from its kind, its executor and its prerequisite resources; no separate mapping is maintained.
 - **Which interfaces a page calls.** Each interface records its kind (Core gRPC, REST, metric), the matching command line, the request parameters, the fields used, what executes it, and where it is defined in the NICo source. `PAGE_CALLS` records which interfaces each page uses and what for.
 - **What must exist before a page has data.** The NICo resources form a dependency graph. Each resource states how it comes into being, what it depends on, and how to prepare it without a real whole rack.
 - **What the design needs and NICo does not provide directly.** The gap table records what the source actually does and the options for handling it.
@@ -45,8 +46,8 @@ It is shown in three ways:
 
 | View | Where | Use |
 | --- | --- | --- |
-| “NICo 接口” and “前置资源” in the page description panel | The panel on the right of any page in `internal.html` | The interfaces the current page uses and the resources to prepare first |
-| The interface contract page | “接口契约” in the top bar of `internal.html`, or [interface-contract.zh-CN.md](interface-contract.zh-CN.md) | The full resource dependencies, interface list, per-page mapping and gaps |
+| “需要的组件”, “NICo 接口” and “前置资源” in the page description panel | The panel on the right of any page in `internal.html` | The components the current page needs, the interfaces it uses and the resources to prepare first |
+| The interface contract page | “接口契约” in the top bar of `internal.html`, or [interface-contract.zh-CN.md](interface-contract.zh-CN.md) | The full component table, resource dependencies, interface list, per-page mapping and gaps |
 | `contract.json` | Generated together with the contract | Read by capture and replay tools |
 
 Each interface carries an evidence level: **定义** means only its definition in the source has been read, **模拟** means it has been called in a simulated environment, **现场** means it has been checked against a real whole-rack environment. After checking one, change its `evidence` in `contract.js` and regenerate. The NICo source version the contract is based on is `CONTRACT_SOURCE` in `contract.js`; recheck every item when the version changes.
