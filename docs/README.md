@@ -17,19 +17,21 @@ Public PXEye documentation is maintained in English and Simplified Chinese. Star
 | Deployment | [Read](deployment.md) | [阅读](deployment.zh-CN.md) | Image build, generic UEFI media, site config, credentials and persistent publication. |
 | NICo cluster deployment | [Read](nico-deployment.md) | [阅读](nico-deployment.zh-CN.md) | Independent startup, online/offline Helm deployment, permissions and site connection. |
 | Install your first server | [Read](getting-started.md) | [阅读](getting-started.zh-CN.md) | First-device path from enrollment to acceptance. |
-| Features and boundaries | [Read](design/features.md) | [阅读](design/features.zh-CN.md) | Native mappings, device capabilities and installation scope. |
-| Architecture | [Read](design/architecture.md) | [阅读](design/architecture.zh-CN.md) | Runtime, module responsibilities and authoritative data. |
+| Features and boundaries | [Read](features.md) | [阅读](features.zh-CN.md) | Native mappings, device capabilities and installation scope. |
+| Architecture | [Read](architecture.md) | [阅读](architecture.zh-CN.md) | Runtime, module responsibilities and authoritative data. |
 | Reference cluster | [Read](reference-cluster.md) | [阅读](reference-cluster.zh-CN.md) | GB200-inspired view data and screenshot capture. |
 | Public release preparation | [Read](publishing.md) | [阅读](publishing.zh-CN.md) | Repository boundary and release responsibilities. |
 
 ## Design documents
 
-Design documents are collected under [design](design/README.md).
+The target design for GB200 / GB300 whole racks is under [design](design/README.md). It says what is to be built; it does not describe implemented functionality.
 
 | Document | English | 简体中文 | Purpose |
 | --- | --- | --- | --- |
-| Design documents index | [Read](design/README.md) | [阅读](design/README.zh-CN.md) | What the design directory holds. |
-| Whole-rack operations frontend design | [Read](design/frontend/README.md) | [阅读](design/frontend/README.zh-CN.md) | Page design and page descriptions for GB200 / GB300 whole racks. |
+| Design documents index | [Read](design/README.md) | [阅读](design/README.zh-CN.md) | Layout of the design directory and how each part is maintained. |
+| Design specification | [Read](design/whole-rack-operations.md) | [阅读](design/whole-rack-operations.zh-CN.md) | Platform architecture, the end-to-end flow, modules and resources, design of operations. |
+| Frontend design | [Read](design/frontend/README.md) | [阅读](design/frontend/README.zh-CN.md) | Clickable page design; menu and wording rules. |
+| Page descriptions | — | [阅读](design/frontend/page-spec.zh-CN.md) | Feature points, fields, rules and dialogs of every page. |
 
 ## Archive
 

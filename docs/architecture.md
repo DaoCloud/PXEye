@@ -1,6 +1,6 @@
 # Architecture
 
-**English** · [简体中文](architecture.zh-CN.md) · [Documentation](../README.md)
+**English** · [简体中文](architecture.zh-CN.md) · [Documentation](README.md)
 
 ## System context
 

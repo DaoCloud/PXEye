@@ -165,7 +165,7 @@ It draws on the bare-metal lifecycle, device orchestration, network isolation, t
 
 | What NICo Core provides | PXEye today | Conclusion and next step | Pages |
 | --- | --- | --- | --- |
-| OS definitions, instance allocation and boot intent interfaces; DHCP and PXE services | Installation tasks, operating systems and installation profiles exist; supported scope is in [features and boundaries](../../../design/features.md) | Main line of the product, outside rack operations development | Installation tasks, operating systems, installation profiles |
+| OS definitions, instance allocation and boot intent interfaces; DHCP and PXE services | Installation tasks, operating systems and installation profiles exist; supported scope is in [features and boundaries](../../../features.md) | Main line of the product, outside rack operations development | Installation tasks, operating systems, installation profiles |
 
 ### 6.6 Network and interconnect resources
 

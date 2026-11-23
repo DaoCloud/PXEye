@@ -1,8 +1,10 @@
 # PXEye application code
 
 Read with the repository [AGENTS.md](../../AGENTS.md). Design context is in
-[docs/design](../../docs/design/README.md); interface and wording rules are in
-[interaction rules](../../docs/archive/rack-operations-v1/design/interaction-rules.md).
+[docs/design](../../docs/design/README.md): the
+[design specification](../../docs/design/whole-rack-operations.md) for the platform level and
+the [frontend design](../../docs/design/frontend/README.md) for the pages, which also holds the
+menu and wording rules.
 
 ## Protected paths
 
@@ -31,19 +33,25 @@ unchanged: device management, planning and installation are built on them.
 - New persistent data gets a new table. Do not rename, remove or repurpose an existing field,
   and do not change what is written to Core: an older image must still open the database.
 
-## Keeping the requirements current
+## Keeping the design current
 
-[Capability requirements](../../docs/archive/rack-operations-v1/design/rack-operations-requirements.md) is the long-lived
-record of what rack operations should do and what exists. Update the “Implementation status” of
-the affected functional area, in both languages, in the same commit that:
+The [design specification](../../docs/design/whole-rack-operations.md) and the
+[frontend design](../../docs/design/frontend/README.md) say what whole-rack operations should
+do. They are the target, not a record of what exists: the pages in this package are still the
+first-version pages, which the [archived documents](../../docs/archive/README.md) describe.
 
-- adds, changes or removes a feature in that area;
-- shows a requirement cannot be met, or builds it differently from what it says;
-- finds that Core provides something different, at a new version or a new kind of site;
-- drops an item.
+In the same commit as a change that:
 
-A change that does none of these leaves the document alone. Say in the hand-off which area was
-updated, or that none applied.
+- implements a page or an operation of the design: build it as the `spec` of that page under
+  `docs/design/frontend/pages/` says; when the implementation has to differ, change the `spec`
+  first and regenerate `page-spec.zh-CN.md`;
+- shows the design cannot be met, or finds that Core provides something different, at a new
+  version or a new kind of site: update the design specification, in both languages;
+- changes the menu, a page name or a fixed term: update `docs/design/frontend/README` in both
+  languages and the navigation section of the design specification.
+
+A change that does none of these leaves the documents alone. Say in the hand-off which
+document was updated, or that none applied.
 
 ## Naming
 
@@ -59,10 +67,12 @@ updated, or that none applied.
 - Field names and structures come from the Core deployed at a site, read with
   `tools/core-survey.py`, not from memory or from online documentation.
 - A page states only what was read. An absent report is unknown, not healthy.
-- Record which fields were verified on a real site in the data contract of the feature.
+- Record which fields were verified on a real site in the `spec` of the page that uses them. The
+  verified fields of the first-version pages are in the
+  [archived data contract](../../docs/archive/rack-operations-v1/design/rack-operations-data-contract.md).
 - Test against a capture from a real site, not hand-written Core responses:
   `PYTHONPATH=src python3 tools/core-replay.py check <capture.json>`. Captures are made with
-  `tools/core-capture.py` ([field survey guide](../../docs/archive/rack-operations-v1/field-survey/README.md)) and contain site data: never add one to
+  `tools/core-capture.py` ([archived field survey guide](../../docs/archive/rack-operations-v1/field-survey/README.md)) and contain site data: never add one to
   the repository. An `UNRECORDED` request means the code needs data the capture lacks; say so
   instead of inventing a response.
 

@@ -36,7 +36,7 @@ src/pxeye/
 └── web/             # 公共 UI、页面与静态资产
 ```
 
-安装 Python 软件包后提供 `pxeye` 和 `pxeye-sync-certificates` 入口。Dockerfile 安装同一个软件包；wheel 包含 UI 文件及独立安装脚本。既有 HTTP 路由、配置/凭据/数据/材料挂载和任务序列化格式继续使用。默认静态目录为包内 `pxeye/web`，仍可通过 `CONSOLE_STATIC` 覆盖。新增本地刷新入口见[架构说明](../../../design/architecture.zh-CN.md)。
+安装 Python 软件包后提供 `pxeye` 和 `pxeye-sync-certificates` 入口。Dockerfile 安装同一个软件包；wheel 包含 UI 文件及独立安装脚本。既有 HTTP 路由、配置/凭据/数据/材料挂载和任务序列化格式继续使用。默认静态目录为包内 `pxeye/web`，仍可通过 `CONSOLE_STATIC` 覆盖。新增本地刷新入口见[架构说明](../../../architecture.zh-CN.md)。
 
 本轮不重新设计装机状态转换、SN/MAC 核验、冻结版本、签名事件、清盘范围、设备锁、启动交接、验收或未知写入恢复。不删除任务/规划表或数据目录。更新仍需备份并遵守单执行器更新流程。
 

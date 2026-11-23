@@ -3,7 +3,7 @@
 <p align="center"><strong>See it. Plan it. Boot it.</strong></p>
 <p align="center">基于 NVIDIA Infra Controller 的裸金属运维控制台。</p>
 <p align="center"><a href="README.md">English</a> · <strong>简体中文</strong></p>
-<p align="center"><a href="docs/design/features.zh-CN.md">功能说明</a> · <a href="#快速开始">快速开始</a> · <a href="docs/user-guide/README.zh-CN.md">使用指南</a> · <a href="docs/design/architecture.zh-CN.md">系统架构</a> · <a href="docs/README.zh-CN.md">文档中心</a></p>
+<p align="center"><a href="docs/features.zh-CN.md">功能说明</a> · <a href="#快速开始">快速开始</a> · <a href="docs/user-guide/README.zh-CN.md">使用指南</a> · <a href="docs/architecture.zh-CN.md">系统架构</a> · <a href="docs/README.zh-CN.md">文档中心</a></p>
 
 PXEye 将设备发现、清单管理、地址规划和操作系统安装整合到统一界面。它基于 [NVIDIA Infra Controller（NICo）](https://docs.nvidia.com/infra-controller/documentation/home)，帮助基础设施团队从新到货硬件走到完成验收的操作系统交付，每次执行都有明确入口和持久安装记录。
 
@@ -33,7 +33,7 @@ PXEye 是独立社区项目。NICo 提供基础设施控制面，PXEye 提供操
 | NICo 集群 | 在线 Chart / 离线上传部署、服务状态与验证后站点连接。 |
 | 实例与站点 | 查询和回收 Instance，查看 Core 连接、客户端身份、存储和配套服务。 |
 
-原生资源映射和硬件前提见[功能与支持边界](docs/design/features.zh-CN.md)。
+原生资源映射和硬件前提见[功能与支持边界](docs/features.zh-CN.md)。
 
 ## 快速开始
 
@@ -90,7 +90,7 @@ PXEye 使用 Python HTTP 后端、SQLite/WAL 和原生 JavaScript/CSS。同一�
 
 当前版本为**技术预览**，采用单站点、单副本、单操作员模型，安装批次支持可配置并发（默认 5 台）。主要实机验证路径是 x86_64 UEFI 硬件上的 Ubuntu Server 24.04；ARM64、GB200/GB300 和其他 OEM 流程需要独立验证。地址更新依赖设备实际提供的 Redfish 或 NVOS 能力。
 
-Kubernetes 创建、工作负载调度、固件分发、Fabric 配置和多租户 RBAC 不属于当前产品范围。详见[系统架构](docs/design/architecture.zh-CN.md)和[安全说明](SECURITY.zh-CN.md)。
+Kubernetes 创建、工作负载调度、固件分发、Fabric 配置和多租户 RBAC 不属于当前产品范围。详见[系统架构](docs/architecture.zh-CN.md)和[安全说明](SECURITY.zh-CN.md)。
 
 ## 项目文档
 

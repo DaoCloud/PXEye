@@ -17,19 +17,21 @@ PXEye 公开项目文档均提供内容对应的中英文版本。首次使用�
 | 部署指南 | [Read](deployment.md) | [阅读](deployment.zh-CN.md) | 镜像构建、通用 UEFI 介质、站点配置、凭据和持久化发布。 |
 | NICo 集群部署 | [Read](nico-deployment.md) | [阅读](nico-deployment.zh-CN.md) | 独立启动 PXEye、在线/离线 Helm 部署、权限与站点连接。 |
 | 首台装机 | [Read](getting-started.md) | [阅读](getting-started.zh-CN.md) | 从纳管到验收的首次单机流程。 |
-| 功能与边界 | [Read](design/features.md) | [阅读](design/features.zh-CN.md) | 原生映射、设备能力和安装范围。 |
-| 系统架构 | [Read](design/architecture.md) | [阅读](design/architecture.zh-CN.md) | 运行环境、模块职责和数据归属。 |
+| 功能与边界 | [Read](features.md) | [阅读](features.zh-CN.md) | 原生映射、设备能力和安装范围。 |
+| 系统架构 | [Read](architecture.md) | [阅读](architecture.zh-CN.md) | 运行环境、模块职责和数据归属。 |
 | 参考集群 | [Read](reference-cluster.md) | [阅读](reference-cluster.zh-CN.md) | GB200 架构示例与截图生成。 |
 | 公开发布准备 | [Read](publishing.md) | [阅读](publishing.zh-CN.md) | 仓库边界与发布职责。 |
 
 ## 设计文档
 
-设计文档集中在[设计文档](design/README.zh-CN.md)。
+面向 GB200 / GB300 整机柜的目标设计集中在[设计文档](design/README.zh-CN.md)。它是要做成什么样的设计，不是已实现功能的说明。
 
 | 文档 | English | 简体中文 | 用途 |
 | --- | --- | --- | --- |
-| 设计文档索引 | [Read](design/README.md) | [阅读](design/README.zh-CN.md) | 设计目录里有什么。 |
-| 整机柜运维前端设计稿 | [Read](design/frontend/README.md) | [阅读](design/frontend/README.zh-CN.md) | GB200 / GB300 整机柜的页面设计与页面功能说明。 |
+| 设计文档索引 | [Read](design/README.md) | [阅读](design/README.zh-CN.md) | 设计目录的结构、每部分怎么维护。 |
+| 设计说明书 | [Read](design/whole-rack-operations.md) | [阅读](design/whole-rack-operations.zh-CN.md) | 平台架构、整体流程、模块与资源、操作设计。 |
+| 前端设计稿 | [Read](design/frontend/README.md) | [阅读](design/frontend/README.zh-CN.md) | 可点击的页面设计；菜单与用词规则。 |
+| 页面功能说明 | — | [阅读](design/frontend/page-spec.zh-CN.md) | 全部页面的功能点、字段、规则和弹窗。 |
 
 ## 归档
 

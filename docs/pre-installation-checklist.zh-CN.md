@@ -73,4 +73,4 @@ BFB 是 DPU 系统包，DPF 是管理框架；PXEye 的服务器 OS 安装任务
 
 每项保持一句话，命令和解释放到对应指南并在本表链接；同步维护中英文版本，完整检查统一更新本页，根 README 只保留简版摘要。
 
-NVIDIA 文档是主要技术依据，要求仍需与集成 NICo 版本及实际硬件流程核对；ARM64 材料齐备、Pod Ready 或模拟通过不代表 ARM64/Grace 实机兼容验证，支持范围见[功能与边界](design/features.zh-CN.md)。
+NVIDIA 文档是主要技术依据，要求仍需与集成 NICo 版本及实际硬件流程核对；ARM64 材料齐备、Pod Ready 或模拟通过不代表 ARM64/Grace 实机兼容验证，支持范围见[功能与边界](features.zh-CN.md)。

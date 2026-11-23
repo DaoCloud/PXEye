@@ -36,7 +36,7 @@ src/pxeye/
 └── web/             # shared UI runtime, pages and static assets
 ```
 
-Install the Python package to obtain `pxeye` and `pxeye-sync-certificates`. The Dockerfile installs the same package; wheel data includes UI files and the standalone installation scripts. Existing HTTP routes, config/secrets/data/material mounts and task serialization remain in use. The default static directory is packaged `pxeye/web`; `CONSOLE_STATIC` can still override it. The new local refresh endpoint is documented in [Architecture](../../../design/architecture.md).
+Install the Python package to obtain `pxeye` and `pxeye-sync-certificates`. The Dockerfile installs the same package; wheel data includes UI files and the standalone installation scripts. Existing HTTP routes, config/secrets/data/material mounts and task serialization remain in use. The default static directory is packaged `pxeye/web`; `CONSOLE_STATIC` can still override it. The new local refresh endpoint is documented in [Architecture](../../../architecture.md).
 
 The refactor does not redesign installation state transitions, serial/MAC checks, frozen revisions, signed installer events, disk scope, device reservations, boot handoff, acceptance or uncertain-write recovery. No task/plan table or data directory was deleted. Replacement still requires backups and the normal single-executor update procedure.
 

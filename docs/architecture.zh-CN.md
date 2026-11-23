@@ -1,6 +1,6 @@
 # 系统架构
 
-[English](architecture.md) · **简体中文** · [文档中心](../README.zh-CN.md)
+[English](architecture.md) · **简体中文** · [文档中心](README.zh-CN.md)
 
 ## 系统位置
 

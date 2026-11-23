@@ -2,7 +2,7 @@
 
 **English** · [简体中文](CONTRIBUTING.zh-CN.md)
 
-Contributions should start with the operator scenario, the relevant NICo resource and the hardware or network conditions needed to reproduce it. Read the [architecture](docs/design/architecture.md) and [feature boundaries](docs/design/features.md) before changing a workflow, and the [interaction rules](docs/archive/rack-operations-v1/design/interaction-rules.md) before changing a page. The [design index](docs/design/README.md) says where each kind of document and rule lives.
+Contributions should start with the operator scenario, the relevant NICo resource and the hardware or network conditions needed to reproduce it. Read the [architecture](docs/architecture.md) and [feature boundaries](docs/features.md) before changing a workflow, and the [frontend design](docs/design/frontend/README.md) before changing a page. The [design index](docs/design/README.md) says where each kind of document and rule lives.
 
 ## Design principles
 
@@ -16,7 +16,7 @@ Contributions should start with the operator scenario, the relevant NICo resourc
 
 1. Describe the problem, target NICo revision and current behavior.
 2. Reproduce with an authorized environment or an isolated fixture.
-3. Make the smallest coherent change and update both documentation languages. When a change adds, changes or removes a rack operations feature, or shows a requirement does not hold, update the implementation status of its functional area in the [capability requirements](docs/archive/rack-operations-v1/design/rack-operations-requirements.md) in the same commit.
+3. Make the smallest coherent change and update both documentation languages. When a change implements, changes or departs from the whole-rack design, update the [design specification](docs/design/whole-rack-operations.md) or the page `spec` in the [frontend design](docs/design/frontend/README.md) in the same commit, as the [design index](docs/design/README.md) describes.
 4. Check Python/JavaScript syntax; perform only the validation authorized for that environment. Hardware writes require designated devices and an explicit impact scope.
 5. Commit each coherent change before building an image. Build from a clean committed tree, tag the image with the version and short Git SHA, and pass the full SHA as `VCS_REF`.
 6. Describe the final behavior, verification evidence, deployed commit and image, and remaining limitations in the change request.
