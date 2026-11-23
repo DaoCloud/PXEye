@@ -1,10 +1,11 @@
 "use strict";
 /* 接口契约：页面与 NICo 之间的约定。
-   三张表，来源只有这一个文件：
+   四张表，来源只有这一个文件：
    - NICO_RESOURCES：NICo 里的资源，以及它们之间的依赖。回答“这个页面要有数据，必须先有什么”。
    - NICO_CALLS：页面用到的 NICo 接口：属于哪一类接口、请求参数、用到的字段、对应的命令行、前置资源。
    - CONTRACT_GAPS：设计需要、但 NICo 没有直接提供的东西，以及待定的处理方式。
-   每个页面在自己的 spec.calls 里声明用到哪些接口和用途，不在这里重复。
+   - PAGE_CALLS：每个页面用到哪些接口和用途。
+   这个文件只由实现参考版（internal.html）加载；对外版（index.html）不加载它。
 
    证据等级（evidence）：定义 = 只读过源码里的定义；模拟 = 在模拟环境里调用过；现场 = 在真实整机柜环境核对过。
    准备方式（prep）说明在没有真实整机柜时这个资源怎么得到。
@@ -235,6 +236,212 @@ G("交付用的租户和 VPC 由谁创建", ["机柜交付"], "Core 的创建租
 G("按机柜整柜交付", ["机柜交付"], "REST 的批量建实例按实例类型和数量挑设备，优先同一个 NVLink 域，不能指定机柜或设备列表。Core 的批量接口可以传入明确的设备列表，并且是一个事务", "按机柜交付走 Core：按机柜 ID 筛出主机，读可分配状态，再一次提交。“交给上层平台”则是建实例类型、关联设备和配额，不建实例", "crates/api-core/src/instance/mod.rs:2009");
 G("供电框的槽位和序列号", ["设备管理", "机柜详情"], "Core 的供电框对象没有位置字段，也没有序列号字段；交换机的序列号取自探测报告", "供电框的槽位读 REST 的托盘，序列号读设备声明或探测报告", "crates/rpc/proto/forge.proto:3087");
 
+/* ================= 页面与接口的对照 =================
+   每个页面用到哪些接口、做什么用：[接口编号, 用途]。键是页面编号（与地址栏 # 后面的路径一致）。
+   页面脚本里不写接口，全部在这里，所以对外版的设计稿不带任何接口内容。 */
+const PAGE_CALLS = {
+  "site": [
+    ["core.version", "Core 版本与运行配置"],
+    ["rms.status", "RMS 是否就绪"],
+    ["rest.site", "Flow 与站点代理是否在线"],
+    ["nmxc.endpoints", "NMX-C 接入"],
+    ["explorer.last-run", "站点发现最近一次扫描"],
+    ["explorer.config", "开关站点发现和自动建机"],
+    ["credential.readiness", "接管凭据是否齐备"],
+    ["credential.write", "补齐接管凭据"],
+    ["rack-profile.list", "支持的机柜规格"],
+    ["rule.list", "生效的电源和固件规则"],
+  ],
+  "site/cluster": [
+    ["core.version", "Core 版本"],
+    ["rms.status", "RMS 版本"],
+    ["rest.site", "站点代理与 Flow 的版本和在线状态"],
+  ],
+  "network": [
+    ["segment.list", "子网、状态和空闲地址"],
+    ["segment.create", "新增子网"],
+    ["segment.dhcp-range", "读取 DHCP 地址池"],
+    ["segment.dhcp-range.write", "修改 DHCP 地址池"],
+    ["segment.delete", "删除子网"],
+    ["expected-machine.list", "规划检查：计算托盘接口的数量"],
+    ["expected-switch.list", "规划检查：交换机接口的数量"],
+    ["expected-shelf.list", "规划检查：供电框接口的数量"],
+  ],
+  "network/dhcp": [
+    ["core.version", "DHCP 服务器地址"],
+    ["segment.list", "各子网的地址余量"],
+    ["segment.dhcp-range", "各子网的地址池范围"],
+    ["interface.list", "各子网最近一次请求"],
+    ["dhcp.metrics", "请求、应答和丢弃计数"],
+  ],
+  "network/leases": [
+    ["interface.list", "地址、MAC、归属和最近请求"],
+    ["interface.addresses", "分配方式，按地址反查归属"],
+  ],
+  "inventory": [
+    ["rack-profile.list", "核对机柜规格是否受支持"],
+    ["segment.list", "核对固定地址落在已有子网内"],
+    ["rack-group.list", "读取机柜组"],
+    ["rack-group.write", "写入机柜组"],
+    ["expected-rack.list", "读取机柜声明和推导出的规格"],
+    ["expected-rack.write", "写入机柜声明"],
+    ["expected-machine.list", "读取计算托盘声明"],
+    ["expected-machine.write", "写入计算托盘声明"],
+    ["expected-switch.list", "读取交换机声明"],
+    ["expected-switch.write", "写入交换机声明"],
+    ["expected-shelf.list", "读取供电框声明"],
+    ["expected-shelf.write", "写入供电框声明"],
+    ["expected-domain.write", "写入 NVLink 域声明"],
+  ],
+  "discovery": [
+    ["expected-machine.list", "计算托盘声明走到了哪一步"],
+    ["expected-switch.list", "交换机声明走到了哪一步"],
+    ["expected-shelf.list", "供电框声明走到了哪一步"],
+    ["interface.list", "有没有收到 DHCP 请求"],
+    ["explorer.endpoints", "探测结果和失败原因"],
+    ["explorer.managed-hosts", "主机与 DPU 的配对"],
+    ["explorer.unexpected", "未声明的主机"],
+    ["ingestion.state", "是否在等待放行"],
+    ["machine.list", "计算托盘的状态机阶段"],
+    ["switch.list", "交换机的状态机阶段"],
+    ["shelf.list", "供电框的状态机阶段"],
+    ["explorer.last-run", "最近一次扫描"],
+  ],
+  "racks": [
+    ["rack.list", "机柜状态与健康"],
+    ["expected-rack.list", "机柜规格，以及还没有出现的机柜"],
+    ["rack.rest", "托盘计数与任务计数"],
+    ["rack.validation", "对账差异数"],
+    ["task.list", "当前任务"],
+  ],
+  "rack": [
+    ["rack.list", "状态、原因与健康"],
+    ["rack-profile.list", "机柜规格"],
+    ["rack.history", "状态历史"],
+    ["rack.rest", "任务计数与所属域"],
+    ["rack.validation", "对账统计与差异"],
+    ["tray.rest", "机柜立面的槽位"],
+    ["machine.list", "设备表：计算托盘"],
+    ["switch.list", "设备表：交换机"],
+    ["shelf.list", "设备表：供电框"],
+    ["expected-machine.list", "对账：声明的序列号"],
+    ["explorer.endpoints", "对账：实测序列号和探测失败原因"],
+    ["explorer.retry", "重新发现、重新探测"],
+    ["ingestion.allow", "放行等待中的主机"],
+    ["expected-machine.write", "更换设备：更新声明"],
+    ["rack.bringup", "开始上线"],
+    ["rack.power", "机柜电源"],
+    ["rack.firmware", "固件更新"],
+    ["firmware.status", "固件阶段的逐台进度"],
+    ["task.list", "任务卡与阶段"],
+    ["task.cancel", "取消任务"],
+    ["rack.maintenance", "NVOS 更新与 NMX-C 配置（见缺口：机柜上线由谁推进）"],
+    ["health.reports", "机柜健康与泄漏告警"],
+  ],
+  "domains": [
+    ["domain.list", "域、成员机柜和 NMX-C 集群"],
+    ["switch.list", "交换机回报的域编号"],
+    ["device.inventory", "域内各设备的固件版本"],
+    ["health.reports", "域的健康报告"],
+    ["domain.power", "域级电源"],
+    ["domain.firmware", "域级固件更新"],
+    ["task-run", "分阶段发布"],
+    ["task.list", "域级任务的进度"],
+  ],
+  "devices": [
+    ["machine.list", "计算托盘的数量和需要处理的设备"],
+    ["switch.list", "交换机的数量和需要处理的设备"],
+    ["shelf.list", "供电框的数量和需要处理的设备"],
+    ["dpu.list", "DPU 的数量和需要处理的设备"],
+    ["device.identify", "按序列号、MAC、地址搜索"],
+  ],
+  "devices/compute": [
+    ["machine.list", "列表、状态、健康和地址"],
+    ["device.power-state", "电源状态"],
+    ["device.inventory", "固件版本"],
+    ["instance.list", "所属实例"],
+    ["device.history", "运行状态里的状态历史"],
+    ["machine.validation", "硬件校验结果"],
+    ["tray.power", "上电、关机、重启"],
+    ["tray.firmware", "固件更新"],
+    ["task.list", "任务进度"],
+    ["machine.maintenance", "设置和清除维护标记"],
+    ["machine.quarantine", "隔离和解除隔离"],
+    ["machine.validate", "按需硬件校验"],
+    ["machine.sku", "核对 SKU"],
+    ["device.bmc-reset", "重启 BMC"],
+    ["device.power-direct", "电源的直接执行路径（见缺口）"],
+  ],
+  "devices/switch": [
+    ["switch.list", "列表、状态、健康、地址和 Fabric Manager"],
+    ["device.power-state", "电源状态"],
+    ["device.inventory", "固件与 NVOS 版本"],
+    ["device.history", "运行状态里的状态历史"],
+    ["tray.power", "上电、关机、重启"],
+    ["tray.firmware", "固件更新"],
+    ["task.list", "任务进度"],
+    ["device.bmc-reset", "重启 BMC"],
+    ["device.decommission", "退役"],
+    ["device.power-direct", "电源的直接执行路径（见缺口）"],
+  ],
+  "devices/power-shelf": [
+    ["shelf.list", "列表、状态、健康、地址和供电规格"],
+    ["tray.rest", "槽位"],
+    ["expected-shelf.list", "序列号"],
+    ["device.power-state", "电源状态"],
+    ["device.inventory", "固件版本"],
+    ["device.history", "运行状态里的状态历史"],
+    ["tray.power", "上电、关机"],
+    ["task.list", "任务进度"],
+    ["device.decommission", "退役"],
+    ["shelf.power", "电源的直接执行路径（见缺口）"],
+  ],
+  "devices/dpu": [
+    ["dpu.list", "DPU 列表、状态和固件"],
+    ["machine.list", "所属主机"],
+  ],
+  "health": [
+    ["health.reports", "各对象当前的告警与分类"],
+    ["health.history", "告警历史"],
+    ["rack.list", "机柜级告警"],
+    ["machine.list", "有告警的计算托盘"],
+    ["switch.list", "有告警的交换机"],
+    ["shelf.list", "有告警的供电框"],
+  ],
+  "tasks": [
+    ["task.list", "任务、阶段和状态"],
+    ["task.cancel", "取消任务"],
+  ],
+  "delivery": [
+    ["rack.list", "机柜是否就绪"],
+    ["machine.list", "按机柜筛出计算托盘"],
+    ["host.states", "可交付的托盘数和不可交付的原因"],
+    ["health.reports", "机柜和域的告警"],
+    ["instance.list", "已交付的实例数"],
+    ["os.list", "可选的安装方案"],
+    ["instance.allocate", "装机并验收"],
+    ["instance-type.write", "交给上层平台"],
+  ],
+  "delivery/installs": [
+    ["instance.list", "实例状态"],
+    ["machine.list", "主机状态"],
+  ],
+  "delivery/instances": [
+    ["instance.list", "实例、租户和系统"],
+    ["machine.list", "机器状态与回收进度"],
+    ["instance.release", "删除（退租回收）"],
+  ],
+  "baselines": [
+    ["rack-profile.list", "机柜规格"],
+    ["firmware.desired", "NICo 里配置的期望版本和可用固件包"],
+    ["device.inventory", "偏差统计：探测到的版本"],
+  ],
+  "os-templates": [
+    ["os.list", "方案列表与状态"],
+    ["os.write", "新建、修改和停用方案"],
+  ],
+};
+
 const resourceById = (id) => NICO_RESOURCES.find((r) => r.id === id);
 const callById = (id) => NICO_CALLS.find((c) => c.id === id);
 /* 一组资源连同它们的全部前置，按“先准备的在前”排序。顺序取自整张资源表的排序，所以各页面看到的先后一致。 */
@@ -245,14 +452,15 @@ function resourceChain(ids) {
   ids.forEach(want); NICO_RESOURCES.forEach(place);
   return order.filter((r) => need.has(r.id));
 }
-/* 页面声明的接口，连同接口定义。声明了契约里没有的接口时保留下来并标出，方便发现漏项。 */
-const pageCalls = (page) => ((page.spec && page.spec.calls) || []).map(([id, use]) => ({ id, use, call: callById(id) }));
+/* 页面用到的接口，连同接口定义。对照里写了契约里没有的接口时保留下来并标出，方便发现漏项。 */
+const pageCalls = (page) => (PAGE_CALLS[page.id] || []).map(([id, use]) => ({ id, use, call: callById(id) }));
 const pageResources = (page) => resourceChain(pageCalls(page).flatMap((x) => (x.call ? x.call.requires || [] : [])));
 const callUsers = (id) => PAGE_ORDER.map((p) => PAGES[p]).filter((p) => pageCalls(p).some((x) => x.id === id));
-/* 契约自检：页面引用了不存在的接口、接口引用了不存在的资源、定义了却没有页面使用的接口。 */
+/* 契约自检：对照里的页面不存在、页面引用了不存在的接口、接口引用了不存在的资源、定义了却没有页面使用的接口。 */
 function contractProblems() {
   const out = [];
   PAGE_ORDER.map((p) => PAGES[p]).forEach((p) => pageCalls(p).forEach((x) => { if (!x.call) out.push(`页面 ${p.id} 引用了未定义的接口 ${x.id}`); }));
+  Object.keys(PAGE_CALLS).forEach((id) => { if (!PAGES[id]) out.push(`对照里的页面 ${id} 不存在`); });
   NICO_CALLS.forEach((c) => (c.requires || []).forEach((r) => { if (!resourceById(r)) out.push(`接口 ${c.id} 引用了未定义的资源 ${r}`); }));
   NICO_RESOURCES.forEach((r) => (r.requires || []).forEach((x) => { if (!resourceById(x)) out.push(`资源 ${r.id} 引用了未定义的资源 ${x}`); }));
   NICO_CALLS.forEach((c) => { if (!callUsers(c.id).length) out.push(`接口 ${c.id} 没有页面使用`); });

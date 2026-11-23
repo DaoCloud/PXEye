@@ -2,7 +2,7 @@
 
 [设计稿说明](README.zh-CN.md) · [页面功能说明](page-spec.zh-CN.md) · [设计文档](../README.zh-CN.md)
 
-本文件由 `tools/build-spec.mjs` 从 `contract.js` 和各页面脚本生成，不要直接修改。
+本文件由 `tools/build-spec.mjs` 从 `contract.js` 生成，不要直接修改。它是内部实现参考，不用于对外展示；可点击的版本是 `internal.html`。
 
 每个页面调用 NICo 的哪些接口、对应什么命令行、用到哪些字段，以及要让页面有数据必须先准备好哪些资源。接口、参数和字段取自 NICo 源码 `dsx-ai-factory/infra-controller` 的提交 `856eb1665`（v2.5.0 之后）。接口、参数和字段取自这个提交的源码。换版本时逐项重新核对。
 
@@ -37,7 +37,7 @@
 | 配置 › 固件基线 | 3 | 0 | NICo Core → 正向 DNS 域 → VLAN 与 VNI 资源池 → 机柜规格配置 → 站点默认凭据 → DHCP 与引导服务 → RMS → 组件管理器 → 子网 → 设备声明 → 现场 DHCP 中继 → 设备接口与地址 → 探测结果 |
 | 配置 › 安装方案 | 1 | 1 | NICo Core → 系统定义 |
 
-每个页面具体用到哪些接口，见[页面功能说明](page-spec.zh-CN.md)里各页的“NICo 接口”一节。
+每个页面具体用到哪些接口，见本文末尾的“各页面用到的接口”。
 
 ## 资源依赖与准备顺序
 
@@ -234,3 +234,279 @@
 | 交付用的租户和 VPC 由谁创建 | 机柜交付 | Core 的创建租户和创建 VPC 接口只对站点代理放行，管理端证书调不了。现有产品只读取已有的 VPC | 租户和 VPC 作为部署前提，由 REST 一侧或部署步骤建好；平台只读取并在交付时选择。计算托盘的 DPU 模式决定 VPC 类型，交付向导里要按它筛选 | `crates/api-core/src/auth/internal_rbac_rules.rs:75` |
 | 按机柜整柜交付 | 机柜交付 | REST 的批量建实例按实例类型和数量挑设备，优先同一个 NVLink 域，不能指定机柜或设备列表。Core 的批量接口可以传入明确的设备列表，并且是一个事务 | 按机柜交付走 Core：按机柜 ID 筛出主机，读可分配状态，再一次提交。“交给上层平台”则是建实例类型、关联设备和配额，不建实例 | `crates/api-core/src/instance/mod.rs:2009` |
 | 供电框的槽位和序列号 | 设备管理、机柜详情 | Core 的供电框对象没有位置字段，也没有序列号字段；交换机的序列号取自探测报告 | 供电框的槽位读 REST 的托盘，序列号读设备声明或探测报告 | `crates/rpc/proto/forge.proto:3087` |
+
+## 各页面用到的接口
+
+### 运维 › 机柜管理
+
+| 用途 | 接口 | 类型 | 命令行 | 用到的字段 |
+| --- | --- | --- | --- | --- |
+| 机柜状态与健康 | `FindRackIds → FindRacksByIds` | Core gRPC · 读 | `nico-admin-cli rack list；nico-admin-cli rack show <RACK_ID>` | id、rack_group_id、status.lifecycle.{state,state_reason}、status.health、status.health_sources、metadata、created、updated |
+| 机柜规格，以及还没有出现的机柜 | `GetAllExpectedRacks` | Core gRPC · 读 | `nico-admin-cli expected-rack show` | rack_id、rack_profile_id、rack_group_id、metadata |
+| 托盘计数与任务计数 | `GET /rack、GET /rack/{id}` | REST · 读 | `nicocli rack list --site-id <SITE>` | id、name、operationStatus、operationStatusDetails.trayCountsByType、nvLinkDomainIds、taskStats.{pendingTaskCount,activeTaskCount}、health、components[] |
+| 对账差异数 | `GET /rack/{id}/validation、GET /rack/validation` | REST · 读 | `nicocli rack validate --site-id <SITE>` | diffs[].{type,id,macAddress,fieldDiffs}、totalDiffs、missingCount、unexpectedCount、mismatchCount、matchCount |
+| 当前任务 | `GET /task、GET /rack/{id}/task、GET /tray/{id}/task、GET /task/{id}` | REST · 读 | `nicocli rack task get --site-id <SITE> <RACK_ID>` | id、status（Pending、Running、Succeeded、Failed、Terminated）、description、message、ruleId、started、finished、report |
+
+### 运维 › 机柜管理 › 机柜详情
+
+| 用途 | 接口 | 类型 | 命令行 | 用到的字段 |
+| --- | --- | --- | --- | --- |
+| 状态、原因与健康 | `FindRackIds → FindRacksByIds` | Core gRPC · 读 | `nico-admin-cli rack list；nico-admin-cli rack show <RACK_ID>` | id、rack_group_id、status.lifecycle.{state,state_reason}、status.health、status.health_sources、metadata、created、updated |
+| 机柜规格 | `ListRackProfiles / GetRackProfile` | Core gRPC · 读 | `nico-admin-cli rack profile list；nico-admin-cli rack profile show <RACK_ID>` | rack_profile_id、profile.rack_hardware_topology、profile.capabilities.{compute,switch,power_shelf}.count、profile.product_family |
+| 状态历史 | `FindRackStateHistories` | Core gRPC · 读 | `nico-admin-cli rack state-history <RACK_ID>` | histories[rack_id].records[].{state,version,time} |
+| 任务计数与所属域 | `GET /rack、GET /rack/{id}` | REST · 读 | `nicocli rack list --site-id <SITE>` | id、name、operationStatus、operationStatusDetails.trayCountsByType、nvLinkDomainIds、taskStats.{pendingTaskCount,activeTaskCount}、health、components[] |
+| 对账统计与差异 | `GET /rack/{id}/validation、GET /rack/validation` | REST · 读 | `nicocli rack validate --site-id <SITE>` | diffs[].{type,id,macAddress,fieldDiffs}、totalDiffs、missingCount、unexpectedCount、mismatchCount、matchCount |
+| 机柜立面的槽位 | `GET /tray、GET /tray/{id}` | REST · 读 | `nicocli tray list --site-id <SITE> --rack-id <RACK>` | id、type（Compute、NVSwitch、PowerShelf）、position.{slotId,trayIdx,hostId}、firmwareVersion、powerState、operationStatus、leakStatus、bmcs、rackId、nvLinkDomainId、taskStats、health |
+| 设备表：计算托盘 | `FindMachineIds → FindMachinesByIds` | Core gRPC · 读 | `nico-admin-cli machine show [--hosts]` | id、rack_id、placement_in_rack.{slot_number,tray_index}、state、state_reason.{outcome,outcome_msg}、state_sla.time_in_state_above_sla、status.health.alerts[]、bmc.{ip,mac}、status.bmc_status.firmware_version、status.discovery_info.dmi_data.chassis_serial、status.associated_dpu_machine_ids、config.maintenance_reference、status.quarantine、status.nvlink_info.domain_uuid、status.lldp_neighbors[]、inventory.components[] |
+| 设备表：交换机 | `FindSwitchIds → FindSwitchesByIds` | Core gRPC · 读 | `nico-admin-cli switch list；nico-admin-cli switch show <SWITCH_ID>` | id、rack_id、placement_in_rack、nvlink_domain_uuid、bmc_info.{ip,mac,firmware_version}、status.serial_number、status.power_state、status.controller_state、status.state_reason、status.health、status.fabric_manager_status_details、status.nvos_ports[].{mac,addresses,is_primary} |
+| 设备表：供电框 | `FindPowerShelfIds → FindPowerShelvesByIds` | Core gRPC · 读 | `nico-admin-cli power-shelf list；nico-admin-cli power-shelf show <ID>` | id、rack_id、bmc_info.{ip,mac,firmware_version}、config.{capacity,voltage}、status.power_state、status.controller_state、status.state_reason、status.health |
+| 对账：声明的序列号 | `GetAllExpectedMachines / GetAllExpectedMachinesLinked` | Core gRPC · 读 | `nico-admin-cli expected-machine show` | chassis_serial_number、bmc_mac_address、rack_id、bmc_ip_address、host_nics[]、metadata.labels、linked: interface_id、explored_endpoint_address、machine_id |
+| 对账：实测序列号和探测失败原因 | `FindExploredEndpointIds → FindExploredEndpointsByIds` | Core gRPC · 读 | `nico-admin-cli site-explorer get-report endpoint` | address、report.endpoint_type、report.vendor、report.systems[].serial_number、report.chassis[].serial_number、report.last_exploration_error_schema.{error_code,mitigation,text}、report.firmware_versions、preingestion_state、pause_remediation |
+| 重新发现、重新探测 | `ReExploreEndpoint / RefreshEndpointReport / ClearSiteExplorationError` | Core gRPC · 写 | `nico-admin-cli site-explorer re-explore；nico-admin-cli site-explorer refresh；nico-admin-cli site-explorer clear-error` | — |
+| 放行等待中的主机 | `AllowIngestionAndPowerOn` | Core gRPC · 写 | `nico-admin-cli managed-host power-options allow-ingestion-and-power-on --mac-address <MAC>` | — |
+| 更换设备：更新声明 | `CreateExpectedMachines / UpdateExpectedMachines / PatchExpectedMachine / DeleteExpectedMachine` | Core gRPC · 写 | `nico-admin-cli expected-machine add -a <BMC_MAC> -u <BMC_USER> -p <BMC_PASS> -s <SERIAL> [--rack_id] [--bmc-ip-address] [--interfaces] [--label]` | — |
+| 开始上线 | `POST /rack/{id}/bringup` | REST · 写 | `nicocli rack bringup --site-id <SITE> <RACK_ID>` | taskIds[] |
+| 机柜电源 | `PATCH /rack/{id}/power` | REST · 写 | `nicocli rack power --site-id <SITE> --data '{"state":"On"}' <RACK_ID>` | taskIds[] |
+| 固件更新 | `PATCH /rack/{id}/firmware` | REST · 写 | `nicocli rack firmware --site-id <SITE> <RACK_ID>` | taskIds[] |
+| 固件阶段的逐台进度 | `GetComponentFirmwareStatus` | Core gRPC · 读 | `nico-admin-cli component-manager get-firmware-update-status {compute-tray\|switch\|power-shelf\|rack}` | statuses[].state（QUEUED、IN_PROGRESS、VERIFYING、COMPLETED、FAILED、CANCELLED）、statuses[].target_version、statuses[].updated_at |
+| 任务卡与阶段 | `GET /task、GET /rack/{id}/task、GET /tray/{id}/task、GET /task/{id}` | REST · 读 | `nicocli rack task get --site-id <SITE> <RACK_ID>` | id、status（Pending、Running、Succeeded、Failed、Terminated）、description、message、ruleId、started、finished、report |
+| 取消任务 | `POST /task/{id}/cancel` | REST · 写 | `nicocli task cancel --site-id <SITE> <TASK_ID>` | status |
+| NVOS 更新与 NMX-C 配置（见缺口：机柜上线由谁推进） | `OnDemandRackMaintenance / TerminateRackMaintenance` | Core gRPC · 写 | `nico-admin-cli rack maintenance start --rack <ID> --activities <firmware-upgrade,nvos-update,power-sequence,configure-nmx-cluster>；nico-admin-cli rack maintenance terminate --rack <ID>` | — |
+| 机柜健康与泄漏告警 | `ListMachineHealthReports / ListSwitchHealthReports / ListPowerShelfHealthReports / ListRackHealthReports / ListNVLinkDomainHealthReports` | Core gRPC · 读 | `nico-admin-cli machine health-report show <ID>；nico-admin-cli nvl-domain health-report show` | health_report_entries[].mode、report.source、report.alerts[].{id,target,in_alert_since,message,classifications[]} |
+
+### 运维 › NVLink 域管理
+
+| 用途 | 接口 | 类型 | 命令行 | 用到的字段 |
+| --- | --- | --- | --- | --- |
+| 域、成员机柜和 NMX-C 集群 | `GET /domain/nvlink、GET /domain/nvlink/{id}` | REST · 读 | `nicocli domain list --site-id <SITE>` | id（等于机柜组编号）、name、nmxcClusterId、topology、operationStatus、components |
+| 交换机回报的域编号 | `FindSwitchIds → FindSwitchesByIds` | Core gRPC · 读 | `nico-admin-cli switch list；nico-admin-cli switch show <SWITCH_ID>` | id、rack_id、placement_in_rack、nvlink_domain_uuid、bmc_info.{ip,mac,firmware_version}、status.serial_number、status.power_state、status.controller_state、status.state_reason、status.health、status.fabric_manager_status_details、status.nvos_ports[].{mac,addresses,is_primary} |
+| 域内各设备的固件版本 | `GetComponentInventory` | Core gRPC · 读 | — | entries[].result.{component_id,status,error}、entries[].report.firmware_versions、entries[].report.systems[]、entries[].report.chassis[] |
+| 域的健康报告 | `ListMachineHealthReports / ListSwitchHealthReports / ListPowerShelfHealthReports / ListRackHealthReports / ListNVLinkDomainHealthReports` | Core gRPC · 读 | `nico-admin-cli machine health-report show <ID>；nico-admin-cli nvl-domain health-report show` | health_report_entries[].mode、report.source、report.alerts[].{id,target,in_alert_since,message,classifications[]} |
+| 域级电源 | `PATCH /domain/nvlink/{id}/power` | REST · 写 | — | taskIds[] |
+| 域级固件更新 | `PATCH /domain/nvlink/{id}/firmware` | REST · 写 | — | taskIds[] |
+| 分阶段发布 | `POST /task/run、GET /task/run、GET /task/run/{id}/target、POST /task/run/{id}/pause\|resume\|advance\|cancel` | REST · 写 | — | id、status、statusReason、totalPhases、targets[].{rackId,phaseIndex,taskId,status} |
+| 域级任务的进度 | `GET /task、GET /rack/{id}/task、GET /tray/{id}/task、GET /task/{id}` | REST · 读 | `nicocli rack task get --site-id <SITE> <RACK_ID>` | id、status（Pending、Running、Succeeded、Failed、Terminated）、description、message、ruleId、started、finished、report |
+
+### 运维 › 设备管理
+
+| 用途 | 接口 | 类型 | 命令行 | 用到的字段 |
+| --- | --- | --- | --- | --- |
+| 计算托盘的数量和需要处理的设备 | `FindMachineIds → FindMachinesByIds` | Core gRPC · 读 | `nico-admin-cli machine show [--hosts]` | id、rack_id、placement_in_rack.{slot_number,tray_index}、state、state_reason.{outcome,outcome_msg}、state_sla.time_in_state_above_sla、status.health.alerts[]、bmc.{ip,mac}、status.bmc_status.firmware_version、status.discovery_info.dmi_data.chassis_serial、status.associated_dpu_machine_ids、config.maintenance_reference、status.quarantine、status.nvlink_info.domain_uuid、status.lldp_neighbors[]、inventory.components[] |
+| 交换机的数量和需要处理的设备 | `FindSwitchIds → FindSwitchesByIds` | Core gRPC · 读 | `nico-admin-cli switch list；nico-admin-cli switch show <SWITCH_ID>` | id、rack_id、placement_in_rack、nvlink_domain_uuid、bmc_info.{ip,mac,firmware_version}、status.serial_number、status.power_state、status.controller_state、status.state_reason、status.health、status.fabric_manager_status_details、status.nvos_ports[].{mac,addresses,is_primary} |
+| 供电框的数量和需要处理的设备 | `FindPowerShelfIds → FindPowerShelvesByIds` | Core gRPC · 读 | `nico-admin-cli power-shelf list；nico-admin-cli power-shelf show <ID>` | id、rack_id、bmc_info.{ip,mac,firmware_version}、config.{capacity,voltage}、status.power_state、status.controller_state、status.state_reason、status.health |
+| DPU 的数量和需要处理的设备 | `FindMachineIds（include_dpus、exclude_hosts）→ FindMachinesByIds` | Core gRPC · 读 | `nico-admin-cli dpu status；nico-admin-cli dpu versions` | id、state、status.associated_host_machine_id、status.discovery_info.dpu_info.firmware_version、status.bmc_status.firmware_version、status.dpu_agent_version、status.health |
+| 按序列号、MAC、地址搜索 | `IdentifySerial / IdentifyMac / FindIpAddress` | Core gRPC · 读 | `nico-admin-cli ip find <IP>` | machine_id、matches[].{ip_type,owner_id} |
+
+### 运维 › 设备管理 › 计算托盘
+
+| 用途 | 接口 | 类型 | 命令行 | 用到的字段 |
+| --- | --- | --- | --- | --- |
+| 列表、状态、健康和地址 | `FindMachineIds → FindMachinesByIds` | Core gRPC · 读 | `nico-admin-cli machine show [--hosts]` | id、rack_id、placement_in_rack.{slot_number,tray_index}、state、state_reason.{outcome,outcome_msg}、state_sla.time_in_state_above_sla、status.health.alerts[]、bmc.{ip,mac}、status.bmc_status.firmware_version、status.discovery_info.dmi_data.chassis_serial、status.associated_dpu_machine_ids、config.maintenance_reference、status.quarantine、status.nvlink_info.domain_uuid、status.lldp_neighbors[]、inventory.components[] |
+| 电源状态 | `GetComponentPowerDetails / GetPowerOptions` | Core gRPC · 读 | `nico-admin-cli managed-host power-options show <MACHINE>` | entries[].actual.{state,source,observed_at}、entries[].desired.state、entries[].actions[].{status,operation,requested_at,initiator} |
+| 固件版本 | `GetComponentInventory` | Core gRPC · 读 | — | entries[].result.{component_id,status,error}、entries[].report.firmware_versions、entries[].report.systems[]、entries[].report.chassis[] |
+| 所属实例 | `FindInstanceIds → FindInstancesByIds / FindInstanceByMachineID` | Core gRPC · 读 | `nico-admin-cli instance show` | id、machine_id、config.tenant.{tenant_organization_id,hostname}、config.os、status.tenant.state、status.network、metadata |
+| 运行状态里的状态历史 | `FindMachineStateHistories / FindSwitchStateHistories / FindPowerShelfStateHistories` | Core gRPC · 读 | `nico-admin-cli machine show <ID> -c <条数>` | histories[id].records[].{state 或 event,version,time} |
+| 硬件校验结果 | `GetMachineValidationRuns / GetMachineValidationResults` | Core gRPC · 读 | `nico-admin-cli machine-validation runs show -m <MACHINE>` | runs[].{validation_id,status,start_time,end_time}、results[].{name,exit_code,std_out,std_err} |
+| 上电、关机、重启 | `PATCH /tray/{id}/power、PATCH /tray/power` | REST · 写 | `nicocli tray power --site-id <SITE> --data '{"state":"Off"}' <TRAY_ID>` | taskIds[] |
+| 固件更新 | `PATCH /tray/{id}/firmware、PATCH /tray/firmware` | REST · 写 | `nicocli tray firmware --site-id <SITE> <TRAY_ID>` | taskIds[] |
+| 任务进度 | `GET /task、GET /rack/{id}/task、GET /tray/{id}/task、GET /task/{id}` | REST · 读 | `nicocli rack task get --site-id <SITE> <RACK_ID>` | id、status（Pending、Running、Succeeded、Failed、Terminated）、description、message、ruleId、started、finished、report |
+| 设置和清除维护标记 | `SetMaintenance` | Core gRPC · 写 | `nico-admin-cli managed-host maintenance on --host <ID> --reference <原因>；… off --host <ID>` | — |
+| 隔离和解除隔离 | `SetManagedHostQuarantineState / ClearManagedHostQuarantineState` | Core gRPC · 写 | `nico-admin-cli managed-host quarantine on --host <ID> --reason <原因>；… off --host <ID>` | prior_quarantine_state |
+| 按需硬件校验 | `OnDemandMachineValidation` | Core gRPC · 写 | `nico-admin-cli machine-validation on-demand start -m <MACHINE>` | validation_id |
+| 核对 SKU | `VerifySkuForMachine` | Core gRPC · 写 | `nico-admin-cli sku verify <MACHINE_ID>` | — |
+| 重启 BMC | `AdminBmcReset` | Core gRPC · 写 | `nico-admin-cli bmc-machine bmc-reset [--machine <ID>\|--switch <ID>\|--power-shelf <ID>]` | — |
+| 电源的直接执行路径（见缺口） | `ComponentPowerControl` | Core gRPC · 写 | `nico-admin-cli component-manager component-power-control --action <on\|graceful-shutdown\|force-off\|graceful-restart\|force-restart\|a-c-powercycle> {compute-tray\|switch\|power-shelf} --machine-id <ID>` | results[].{component_id,status,error} |
+
+### 运维 › 设备管理 › 交换机
+
+| 用途 | 接口 | 类型 | 命令行 | 用到的字段 |
+| --- | --- | --- | --- | --- |
+| 列表、状态、健康、地址和 Fabric Manager | `FindSwitchIds → FindSwitchesByIds` | Core gRPC · 读 | `nico-admin-cli switch list；nico-admin-cli switch show <SWITCH_ID>` | id、rack_id、placement_in_rack、nvlink_domain_uuid、bmc_info.{ip,mac,firmware_version}、status.serial_number、status.power_state、status.controller_state、status.state_reason、status.health、status.fabric_manager_status_details、status.nvos_ports[].{mac,addresses,is_primary} |
+| 电源状态 | `GetComponentPowerDetails / GetPowerOptions` | Core gRPC · 读 | `nico-admin-cli managed-host power-options show <MACHINE>` | entries[].actual.{state,source,observed_at}、entries[].desired.state、entries[].actions[].{status,operation,requested_at,initiator} |
+| 固件与 NVOS 版本 | `GetComponentInventory` | Core gRPC · 读 | — | entries[].result.{component_id,status,error}、entries[].report.firmware_versions、entries[].report.systems[]、entries[].report.chassis[] |
+| 运行状态里的状态历史 | `FindMachineStateHistories / FindSwitchStateHistories / FindPowerShelfStateHistories` | Core gRPC · 读 | `nico-admin-cli machine show <ID> -c <条数>` | histories[id].records[].{state 或 event,version,time} |
+| 上电、关机、重启 | `PATCH /tray/{id}/power、PATCH /tray/power` | REST · 写 | `nicocli tray power --site-id <SITE> --data '{"state":"Off"}' <TRAY_ID>` | taskIds[] |
+| 固件更新 | `PATCH /tray/{id}/firmware、PATCH /tray/firmware` | REST · 写 | `nicocli tray firmware --site-id <SITE> <TRAY_ID>` | taskIds[] |
+| 任务进度 | `GET /task、GET /rack/{id}/task、GET /tray/{id}/task、GET /task/{id}` | REST · 读 | `nicocli rack task get --site-id <SITE> <RACK_ID>` | id、status（Pending、Running、Succeeded、Failed、Terminated）、description、message、ruleId、started、finished、report |
+| 重启 BMC | `AdminBmcReset` | Core gRPC · 写 | `nico-admin-cli bmc-machine bmc-reset [--machine <ID>\|--switch <ID>\|--power-shelf <ID>]` | — |
+| 退役 | `DecommissionSwitch / DecommissionPowerShelf / DecommissionManagedHost` | Core gRPC · 写 | `nico-admin-cli managed-switch decommission <SWITCH_ID>；nico-admin-cli power-shelf decommission <ID>；nico-admin-cli managed-host decommission <ID>` | — |
+| 电源的直接执行路径（见缺口） | `ComponentPowerControl` | Core gRPC · 写 | `nico-admin-cli component-manager component-power-control --action <on\|graceful-shutdown\|force-off\|graceful-restart\|force-restart\|a-c-powercycle> {compute-tray\|switch\|power-shelf} --machine-id <ID>` | results[].{component_id,status,error} |
+
+### 运维 › 设备管理 › 供电框
+
+| 用途 | 接口 | 类型 | 命令行 | 用到的字段 |
+| --- | --- | --- | --- | --- |
+| 列表、状态、健康、地址和供电规格 | `FindPowerShelfIds → FindPowerShelvesByIds` | Core gRPC · 读 | `nico-admin-cli power-shelf list；nico-admin-cli power-shelf show <ID>` | id、rack_id、bmc_info.{ip,mac,firmware_version}、config.{capacity,voltage}、status.power_state、status.controller_state、status.state_reason、status.health |
+| 槽位 | `GET /tray、GET /tray/{id}` | REST · 读 | `nicocli tray list --site-id <SITE> --rack-id <RACK>` | id、type（Compute、NVSwitch、PowerShelf）、position.{slotId,trayIdx,hostId}、firmwareVersion、powerState、operationStatus、leakStatus、bmcs、rackId、nvLinkDomainId、taskStats、health |
+| 序列号 | `GetAllExpectedPowerShelves / GetAllExpectedPowerShelvesLinked` | Core gRPC · 读 | `nico-admin-cli expected-power-shelf show` | shelf_serial_number、bmc_mac_address、rack_id、linked: power_shelf_id、explored_endpoint_address |
+| 电源状态 | `GetComponentPowerDetails / GetPowerOptions` | Core gRPC · 读 | `nico-admin-cli managed-host power-options show <MACHINE>` | entries[].actual.{state,source,observed_at}、entries[].desired.state、entries[].actions[].{status,operation,requested_at,initiator} |
+| 固件版本 | `GetComponentInventory` | Core gRPC · 读 | — | entries[].result.{component_id,status,error}、entries[].report.firmware_versions、entries[].report.systems[]、entries[].report.chassis[] |
+| 运行状态里的状态历史 | `FindMachineStateHistories / FindSwitchStateHistories / FindPowerShelfStateHistories` | Core gRPC · 读 | `nico-admin-cli machine show <ID> -c <条数>` | histories[id].records[].{state 或 event,version,time} |
+| 上电、关机 | `PATCH /tray/{id}/power、PATCH /tray/power` | REST · 写 | `nicocli tray power --site-id <SITE> --data '{"state":"Off"}' <TRAY_ID>` | taskIds[] |
+| 任务进度 | `GET /task、GET /rack/{id}/task、GET /tray/{id}/task、GET /task/{id}` | REST · 读 | `nicocli rack task get --site-id <SITE> <RACK_ID>` | id、status（Pending、Running、Succeeded、Failed、Terminated）、description、message、ruleId、started、finished、report |
+| 退役 | `DecommissionSwitch / DecommissionPowerShelf / DecommissionManagedHost` | Core gRPC · 写 | `nico-admin-cli managed-switch decommission <SWITCH_ID>；nico-admin-cli power-shelf decommission <ID>；nico-admin-cli managed-host decommission <ID>` | — |
+| 电源的直接执行路径（见缺口） | `SetPowerShelfMaintenance` | Core gRPC · 写 | `nico-admin-cli power-shelf maintenance power-off --power-shelf-id <ID> [--reference] [--graceful]；… power-on` | — |
+
+### 运维 › 设备管理 › DPU
+
+| 用途 | 接口 | 类型 | 命令行 | 用到的字段 |
+| --- | --- | --- | --- | --- |
+| DPU 列表、状态和固件 | `FindMachineIds（include_dpus、exclude_hosts）→ FindMachinesByIds` | Core gRPC · 读 | `nico-admin-cli dpu status；nico-admin-cli dpu versions` | id、state、status.associated_host_machine_id、status.discovery_info.dpu_info.firmware_version、status.bmc_status.firmware_version、status.dpu_agent_version、status.health |
+| 所属主机 | `FindMachineIds → FindMachinesByIds` | Core gRPC · 读 | `nico-admin-cli machine show [--hosts]` | id、rack_id、placement_in_rack.{slot_number,tray_index}、state、state_reason.{outcome,outcome_msg}、state_sla.time_in_state_above_sla、status.health.alerts[]、bmc.{ip,mac}、status.bmc_status.firmware_version、status.discovery_info.dmi_data.chassis_serial、status.associated_dpu_machine_ids、config.maintenance_reference、status.quarantine、status.nvlink_info.domain_uuid、status.lldp_neighbors[]、inventory.components[] |
+
+### 运维 › 健康告警
+
+| 用途 | 接口 | 类型 | 命令行 | 用到的字段 |
+| --- | --- | --- | --- | --- |
+| 各对象当前的告警与分类 | `ListMachineHealthReports / ListSwitchHealthReports / ListPowerShelfHealthReports / ListRackHealthReports / ListNVLinkDomainHealthReports` | Core gRPC · 读 | `nico-admin-cli machine health-report show <ID>；nico-admin-cli nvl-domain health-report show` | health_report_entries[].mode、report.source、report.alerts[].{id,target,in_alert_since,message,classifications[]} |
+| 告警历史 | `FindMachineHealthHistories / FindSwitchHealthHistories / FindPowerShelfHealthHistories / FindRackHealthHistories` | Core gRPC · 读 | `nico-admin-cli machine health-history <ID>；nico-admin-cli rack health-history <RACK_ID>` | histories[id].records[].{health,time} |
+| 机柜级告警 | `FindRackIds → FindRacksByIds` | Core gRPC · 读 | `nico-admin-cli rack list；nico-admin-cli rack show <RACK_ID>` | id、rack_group_id、status.lifecycle.{state,state_reason}、status.health、status.health_sources、metadata、created、updated |
+| 有告警的计算托盘 | `FindMachineIds → FindMachinesByIds` | Core gRPC · 读 | `nico-admin-cli machine show [--hosts]` | id、rack_id、placement_in_rack.{slot_number,tray_index}、state、state_reason.{outcome,outcome_msg}、state_sla.time_in_state_above_sla、status.health.alerts[]、bmc.{ip,mac}、status.bmc_status.firmware_version、status.discovery_info.dmi_data.chassis_serial、status.associated_dpu_machine_ids、config.maintenance_reference、status.quarantine、status.nvlink_info.domain_uuid、status.lldp_neighbors[]、inventory.components[] |
+| 有告警的交换机 | `FindSwitchIds → FindSwitchesByIds` | Core gRPC · 读 | `nico-admin-cli switch list；nico-admin-cli switch show <SWITCH_ID>` | id、rack_id、placement_in_rack、nvlink_domain_uuid、bmc_info.{ip,mac,firmware_version}、status.serial_number、status.power_state、status.controller_state、status.state_reason、status.health、status.fabric_manager_status_details、status.nvos_ports[].{mac,addresses,is_primary} |
+| 有告警的供电框 | `FindPowerShelfIds → FindPowerShelvesByIds` | Core gRPC · 读 | `nico-admin-cli power-shelf list；nico-admin-cli power-shelf show <ID>` | id、rack_id、bmc_info.{ip,mac,firmware_version}、config.{capacity,voltage}、status.power_state、status.controller_state、status.state_reason、status.health |
+
+### 运维 › 运维任务
+
+| 用途 | 接口 | 类型 | 命令行 | 用到的字段 |
+| --- | --- | --- | --- | --- |
+| 任务、阶段和状态 | `GET /task、GET /rack/{id}/task、GET /tray/{id}/task、GET /task/{id}` | REST · 读 | `nicocli rack task get --site-id <SITE> <RACK_ID>` | id、status（Pending、Running、Succeeded、Failed、Terminated）、description、message、ruleId、started、finished、report |
+| 取消任务 | `POST /task/{id}/cancel` | REST · 写 | `nicocli task cancel --site-id <SITE> <TASK_ID>` | status |
+
+### 运维 › 操作审计
+
+不调用 NICo，数据由平台自己保存。
+
+### 交付 › 机柜交付
+
+| 用途 | 接口 | 类型 | 命令行 | 用到的字段 |
+| --- | --- | --- | --- | --- |
+| 机柜是否就绪 | `FindRackIds → FindRacksByIds` | Core gRPC · 读 | `nico-admin-cli rack list；nico-admin-cli rack show <RACK_ID>` | id、rack_group_id、status.lifecycle.{state,state_reason}、status.health、status.health_sources、metadata、created、updated |
+| 按机柜筛出计算托盘 | `FindMachineIds → FindMachinesByIds` | Core gRPC · 读 | `nico-admin-cli machine show [--hosts]` | id、rack_id、placement_in_rack.{slot_number,tray_index}、state、state_reason.{outcome,outcome_msg}、state_sla.time_in_state_above_sla、status.health.alerts[]、bmc.{ip,mac}、status.bmc_status.firmware_version、status.discovery_info.dmi_data.chassis_serial、status.associated_dpu_machine_ids、config.maintenance_reference、status.quarantine、status.nvlink_info.domain_uuid、status.lldp_neighbors[]、inventory.components[] |
+| 可交付的托盘数和不可交付的原因 | `FindHostStatesByIds` | Core gRPC · 读 | — | state、state_reason、rack_id、nvlink_domain_id、bmc_ip、dpu_ids、health_alerts、quarantine、allocation.{allocatable,blocking_reason,blocking_detail}、explored.{bmc_version,uefi_version} |
+| 机柜和域的告警 | `ListMachineHealthReports / ListSwitchHealthReports / ListPowerShelfHealthReports / ListRackHealthReports / ListNVLinkDomainHealthReports` | Core gRPC · 读 | `nico-admin-cli machine health-report show <ID>；nico-admin-cli nvl-domain health-report show` | health_report_entries[].mode、report.source、report.alerts[].{id,target,in_alert_since,message,classifications[]} |
+| 已交付的实例数 | `FindInstanceIds → FindInstancesByIds / FindInstanceByMachineID` | Core gRPC · 读 | `nico-admin-cli instance show` | id、machine_id、config.tenant.{tenant_organization_id,hostname}、config.os、status.tenant.state、status.network、metadata |
+| 可选的安装方案 | `FindOperatingSystemIds → FindOperatingSystemsByIds` | Core gRPC · 读 | `nico-admin-cli operating-system show` | id、name、type、status、is_active、ipxe_template_id、ipxe_template_parameters、ipxe_template_artifacts[].{name,url,cached_url} |
+| 装机并验收 | `AllocateInstances / AllocateInstance` | Core gRPC · 写 | `nico-admin-cli instance allocate --machine-id <ID>... --transactional --os <OS_ID> [--flat-vpc-id\|--vpc-prefix-id]` | instances[].{id,machine_id,status} |
+| 交给上层平台 | `CreateInstanceType / AssociateMachinesWithInstanceType / CreateComputeAllocation` | Core gRPC · 写 | `nico-admin-cli instance-type create；nico-admin-cli instance-type associate；nico-admin-cli compute-allocation create` | — |
+
+### 交付 › 安装任务
+
+| 用途 | 接口 | 类型 | 命令行 | 用到的字段 |
+| --- | --- | --- | --- | --- |
+| 实例状态 | `FindInstanceIds → FindInstancesByIds / FindInstanceByMachineID` | Core gRPC · 读 | `nico-admin-cli instance show` | id、machine_id、config.tenant.{tenant_organization_id,hostname}、config.os、status.tenant.state、status.network、metadata |
+| 主机状态 | `FindMachineIds → FindMachinesByIds` | Core gRPC · 读 | `nico-admin-cli machine show [--hosts]` | id、rack_id、placement_in_rack.{slot_number,tray_index}、state、state_reason.{outcome,outcome_msg}、state_sla.time_in_state_above_sla、status.health.alerts[]、bmc.{ip,mac}、status.bmc_status.firmware_version、status.discovery_info.dmi_data.chassis_serial、status.associated_dpu_machine_ids、config.maintenance_reference、status.quarantine、status.nvlink_info.domain_uuid、status.lldp_neighbors[]、inventory.components[] |
+
+### 交付 › 实例管理
+
+| 用途 | 接口 | 类型 | 命令行 | 用到的字段 |
+| --- | --- | --- | --- | --- |
+| 实例、租户和系统 | `FindInstanceIds → FindInstancesByIds / FindInstanceByMachineID` | Core gRPC · 读 | `nico-admin-cli instance show` | id、machine_id、config.tenant.{tenant_organization_id,hostname}、config.os、status.tenant.state、status.network、metadata |
+| 机器状态与回收进度 | `FindMachineIds → FindMachinesByIds` | Core gRPC · 读 | `nico-admin-cli machine show [--hosts]` | id、rack_id、placement_in_rack.{slot_number,tray_index}、state、state_reason.{outcome,outcome_msg}、state_sla.time_in_state_above_sla、status.health.alerts[]、bmc.{ip,mac}、status.bmc_status.firmware_version、status.discovery_info.dmi_data.chassis_serial、status.associated_dpu_machine_ids、config.maintenance_reference、status.quarantine、status.nvlink_info.domain_uuid、status.lldp_neighbors[]、inventory.components[] |
+| 删除（退租回收） | `ReleaseInstance / ReleaseInstances` | Core gRPC · 写 | `nico-admin-cli instance release --instance <ID>` | results[].{id,status,error} |
+
+### 接入 › 网络规划 › 子网
+
+| 用途 | 接口 | 类型 | 命令行 | 用到的字段 |
+| --- | --- | --- | --- | --- |
+| 子网、状态和空闲地址 | `FindNetworkSegmentIds → FindNetworkSegmentsByIds` | Core gRPC · 读 | `nico-admin-cli network-segment show` | id、metadata.name、config.segment_type、config.mtu、config.subdomain_id、config.prefixes[].{prefix,gateway,reserve_first,free_ip_count_v2}、status.lifecycle.state |
+| 新增子网 | `CreateNetworkSegment / CreateNetworkSegmentWithDhcpRange` | Core gRPC · 写 | `nico-admin-cli network-segment create --name --segment-type --prefix --gateway --reserve-first --mtu --subdomain-id` | — |
+| 读取 DHCP 地址池 | `FindNetworkSegmentDhcpRanges` | Core gRPC · 读 | — | segment_id、prefix、range.{start,end}、revision |
+| 修改 DHCP 地址池 | `SetNetworkSegmentDhcpRange` | Core gRPC · 写 | — | range.{start,end}、revision |
+| 删除子网 | `DeleteNetworkSegment` | Core gRPC · 写 | `nico-admin-cli network-segment delete` | — |
+| 规划检查：计算托盘接口的数量 | `GetAllExpectedMachines / GetAllExpectedMachinesLinked` | Core gRPC · 读 | `nico-admin-cli expected-machine show` | chassis_serial_number、bmc_mac_address、rack_id、bmc_ip_address、host_nics[]、metadata.labels、linked: interface_id、explored_endpoint_address、machine_id |
+| 规划检查：交换机接口的数量 | `GetAllExpectedSwitches / GetAllExpectedSwitchesLinked` | Core gRPC · 读 | `nico-admin-cli expected-switch show` | switch_serial_number、bmc_mac_address、nvos_interfaces[]、rack_id、linked: switch_id、explored_endpoint_address |
+| 规划检查：供电框接口的数量 | `GetAllExpectedPowerShelves / GetAllExpectedPowerShelvesLinked` | Core gRPC · 读 | `nico-admin-cli expected-power-shelf show` | shelf_serial_number、bmc_mac_address、rack_id、linked: power_shelf_id、explored_endpoint_address |
+
+### 接入 › 网络规划 › DHCP 服务
+
+| 用途 | 接口 | 类型 | 命令行 | 用到的字段 |
+| --- | --- | --- | --- | --- |
+| DHCP 服务器地址 | `Version` | Core gRPC · 读 | `nico-admin-cli version --show-runtime-config` | build_version、git_sha、capabilities[]、runtime_config.dhcp_servers、runtime_config.networks、runtime_config.initial_domain_name、runtime_config.attestation_enabled |
+| 各子网的地址余量 | `FindNetworkSegmentIds → FindNetworkSegmentsByIds` | Core gRPC · 读 | `nico-admin-cli network-segment show` | id、metadata.name、config.segment_type、config.mtu、config.subdomain_id、config.prefixes[].{prefix,gateway,reserve_first,free_ip_count_v2}、status.lifecycle.state |
+| 各子网的地址池范围 | `FindNetworkSegmentDhcpRanges` | Core gRPC · 读 | — | segment_id、prefix、range.{start,end}、revision |
+| 各子网最近一次请求 | `FindInterfaces` | Core gRPC · 读 | `nico-admin-cli machine-interfaces show` | id、mac_address、address[]、segment_id、hostname、vendor、last_dhcp、machine_id、switch_id、power_shelf_id、association_type、interface_type、primary_interface |
+| 请求、应答和丢弃计数 | `carbide_dhcp_requests_total、carbide_dhcp_dropped_requests_total、carbide_dhcp_replies_sent_total、carbide_available_ips_count` | 指标 · 读 | — | message_type、reason、name、type、prefix |
+
+### 接入 › 网络规划 › 地址分配
+
+| 用途 | 接口 | 类型 | 命令行 | 用到的字段 |
+| --- | --- | --- | --- | --- |
+| 地址、MAC、归属和最近请求 | `FindInterfaces` | Core gRPC · 读 | `nico-admin-cli machine-interfaces show` | id、mac_address、address[]、segment_id、hostname、vendor、last_dhcp、machine_id、switch_id、power_shelf_id、association_type、interface_type、primary_interface |
+| 分配方式，按地址反查归属 | `FindInterfaceAddresses / FindIpAddress` | Core gRPC · 读 | `nico-admin-cli machine-interfaces show-addresses；nico-admin-cli ip find <IP>` | addresses[].{address,allocation_type}、matches[].{ip_type,owner_id,message} |
+
+### 接入 › 设备清单 › 期望清单
+
+| 用途 | 接口 | 类型 | 命令行 | 用到的字段 |
+| --- | --- | --- | --- | --- |
+| 核对机柜规格是否受支持 | `ListRackProfiles / GetRackProfile` | Core gRPC · 读 | `nico-admin-cli rack profile list；nico-admin-cli rack profile show <RACK_ID>` | rack_profile_id、profile.rack_hardware_topology、profile.capabilities.{compute,switch,power_shelf}.count、profile.product_family |
+| 核对固定地址落在已有子网内 | `FindNetworkSegmentIds → FindNetworkSegmentsByIds` | Core gRPC · 读 | `nico-admin-cli network-segment show` | id、metadata.name、config.segment_type、config.mtu、config.subdomain_id、config.prefixes[].{prefix,gateway,reserve_first,free_ip_count_v2}、status.lifecycle.state |
+| 读取机柜组 | `GetAllExpectedRackGroups` | Core gRPC · 读 | `nico-admin-cli expected-rack-group show` | rack_group_id、topology、protocol、racks[].rack_id、racks[].members[].{type,manufacturer,id} |
+| 写入机柜组 | `AddExpectedRackGroup / UpdateExpectedRackGroup / DeleteExpectedRackGroup` | Core gRPC · 写 | `nico-admin-cli expected-rack-group add [--rack <JSON>]... <RACK_GROUP_ID> <PROTOCOL> <TOPOLOGY>` | — |
+| 读取机柜声明和推导出的规格 | `GetAllExpectedRacks` | Core gRPC · 读 | `nico-admin-cli expected-rack show` | rack_id、rack_profile_id、rack_group_id、metadata |
+| 写入机柜声明 | `AddExpectedRack / UpdateExpectedRack / DeleteExpectedRack` | Core gRPC · 写 | `nico-admin-cli expected-rack add [--label K:V] <RACK_ID>` | — |
+| 读取计算托盘声明 | `GetAllExpectedMachines / GetAllExpectedMachinesLinked` | Core gRPC · 读 | `nico-admin-cli expected-machine show` | chassis_serial_number、bmc_mac_address、rack_id、bmc_ip_address、host_nics[]、metadata.labels、linked: interface_id、explored_endpoint_address、machine_id |
+| 写入计算托盘声明 | `CreateExpectedMachines / UpdateExpectedMachines / PatchExpectedMachine / DeleteExpectedMachine` | Core gRPC · 写 | `nico-admin-cli expected-machine add -a <BMC_MAC> -u <BMC_USER> -p <BMC_PASS> -s <SERIAL> [--rack_id] [--bmc-ip-address] [--interfaces] [--label]` | — |
+| 读取交换机声明 | `GetAllExpectedSwitches / GetAllExpectedSwitchesLinked` | Core gRPC · 读 | `nico-admin-cli expected-switch show` | switch_serial_number、bmc_mac_address、nvos_interfaces[]、rack_id、linked: switch_id、explored_endpoint_address |
+| 写入交换机声明 | `AddExpectedSwitch / PatchExpectedSwitch / DeleteExpectedSwitch` | Core gRPC · 写 | `nico-admin-cli expected-switch add -a <BMC_MAC> -u <USER> -p <PASS> -s <SERIAL> --nvos-interface <MAC[,primary]> [--rack_id]` | — |
+| 读取供电框声明 | `GetAllExpectedPowerShelves / GetAllExpectedPowerShelvesLinked` | Core gRPC · 读 | `nico-admin-cli expected-power-shelf show` | shelf_serial_number、bmc_mac_address、rack_id、linked: power_shelf_id、explored_endpoint_address |
+| 写入供电框声明 | `AddExpectedPowerShelf / PatchExpectedPowerShelf / DeleteExpectedPowerShelf` | Core gRPC · 写 | `nico-admin-cli expected-power-shelf add -a <BMC_MAC> -u <USER> -p <PASS> -s <SERIAL> [--rack_id]` | — |
+| 写入 NVLink 域声明 | `CreateExpectedNvLinkDomain / DeleteExpectedNvLinkDomain / FindExpectedNvLinkDomainIds` | Core gRPC · 写 | `nico-admin-cli expected-nvlink-domain create --member <MAC>... [--name] <RACK_GROUP_ID>` | — |
+
+### 接入 › 设备清单 › 版本记录
+
+不调用 NICo，数据由平台自己保存。
+
+### 接入 › 设备发现
+
+| 用途 | 接口 | 类型 | 命令行 | 用到的字段 |
+| --- | --- | --- | --- | --- |
+| 计算托盘声明走到了哪一步 | `GetAllExpectedMachines / GetAllExpectedMachinesLinked` | Core gRPC · 读 | `nico-admin-cli expected-machine show` | chassis_serial_number、bmc_mac_address、rack_id、bmc_ip_address、host_nics[]、metadata.labels、linked: interface_id、explored_endpoint_address、machine_id |
+| 交换机声明走到了哪一步 | `GetAllExpectedSwitches / GetAllExpectedSwitchesLinked` | Core gRPC · 读 | `nico-admin-cli expected-switch show` | switch_serial_number、bmc_mac_address、nvos_interfaces[]、rack_id、linked: switch_id、explored_endpoint_address |
+| 供电框声明走到了哪一步 | `GetAllExpectedPowerShelves / GetAllExpectedPowerShelvesLinked` | Core gRPC · 读 | `nico-admin-cli expected-power-shelf show` | shelf_serial_number、bmc_mac_address、rack_id、linked: power_shelf_id、explored_endpoint_address |
+| 有没有收到 DHCP 请求 | `FindInterfaces` | Core gRPC · 读 | `nico-admin-cli machine-interfaces show` | id、mac_address、address[]、segment_id、hostname、vendor、last_dhcp、machine_id、switch_id、power_shelf_id、association_type、interface_type、primary_interface |
+| 探测结果和失败原因 | `FindExploredEndpointIds → FindExploredEndpointsByIds` | Core gRPC · 读 | `nico-admin-cli site-explorer get-report endpoint` | address、report.endpoint_type、report.vendor、report.systems[].serial_number、report.chassis[].serial_number、report.last_exploration_error_schema.{error_code,mitigation,text}、report.firmware_versions、preingestion_state、pause_remediation |
+| 主机与 DPU 的配对 | `FindExploredManagedHostIds → FindExploredManagedHostsByIds` | Core gRPC · 读 | `nico-admin-cli site-explorer get-report managed-host` | host_bmc_ip、dpus[].{bmc_ip,host_pf_mac_address} |
+| 未声明的主机 | `GetAllUnexpectedMachines` | Core gRPC · 读 | — | address、bmc_mac_address、machine_id |
+| 是否在等待放行 | `DetermineMachineIngestionState` | Core gRPC · 读 | `nico-admin-cli managed-host power-options get-machine-ingestion-state --mac-address <MAC>` | NotDiscovered、WaitingForIngestion、IngestionMachineNotCreated、IngestionMachineCreated |
+| 计算托盘的状态机阶段 | `FindMachineIds → FindMachinesByIds` | Core gRPC · 读 | `nico-admin-cli machine show [--hosts]` | id、rack_id、placement_in_rack.{slot_number,tray_index}、state、state_reason.{outcome,outcome_msg}、state_sla.time_in_state_above_sla、status.health.alerts[]、bmc.{ip,mac}、status.bmc_status.firmware_version、status.discovery_info.dmi_data.chassis_serial、status.associated_dpu_machine_ids、config.maintenance_reference、status.quarantine、status.nvlink_info.domain_uuid、status.lldp_neighbors[]、inventory.components[] |
+| 交换机的状态机阶段 | `FindSwitchIds → FindSwitchesByIds` | Core gRPC · 读 | `nico-admin-cli switch list；nico-admin-cli switch show <SWITCH_ID>` | id、rack_id、placement_in_rack、nvlink_domain_uuid、bmc_info.{ip,mac,firmware_version}、status.serial_number、status.power_state、status.controller_state、status.state_reason、status.health、status.fabric_manager_status_details、status.nvos_ports[].{mac,addresses,is_primary} |
+| 供电框的状态机阶段 | `FindPowerShelfIds → FindPowerShelvesByIds` | Core gRPC · 读 | `nico-admin-cli power-shelf list；nico-admin-cli power-shelf show <ID>` | id、rack_id、bmc_info.{ip,mac,firmware_version}、config.{capacity,voltage}、status.power_state、status.controller_state、status.state_reason、status.health |
+| 最近一次扫描 | `GetSiteExplorerLastRun` | Core gRPC · 读 | — | started_at、finished_at、success、error、endpoint_explorations、endpoint_explorations_success、endpoint_explorations_failed、failure_category、last_successful_finished_at |
+
+### 配置 › 站点设置 › 站点概况
+
+| 用途 | 接口 | 类型 | 命令行 | 用到的字段 |
+| --- | --- | --- | --- | --- |
+| Core 版本与运行配置 | `Version` | Core gRPC · 读 | `nico-admin-cli version --show-runtime-config` | build_version、git_sha、capabilities[]、runtime_config.dhcp_servers、runtime_config.networks、runtime_config.initial_domain_name、runtime_config.attestation_enabled |
+| RMS 是否就绪 | `GetRmsVersion` | Core gRPC · 读 | `nico-admin-cli backend rms status` | version |
+| Flow 与站点代理是否在线 | `GET /site、GET /site/{id}` | REST · 读 | `nicocli site list` | id、status（Pending、Registered、Error）、isOnline、siteAgentVersion、siteControllerVersion、capabilities.flow、machineStats |
+| NMX-C 接入 | `ListNvlinkNmxcEndpoints` | Core gRPC · 读 | `nico-admin-cli nvlink-nmxc-endpoints` | chassis_serial、endpoint |
+| 站点发现最近一次扫描 | `GetSiteExplorerLastRun` | Core gRPC · 读 | — | started_at、finished_at、success、error、endpoint_explorations、endpoint_explorations_success、endpoint_explorations_failed、failure_category、last_successful_finished_at |
+| 开关站点发现和自动建机 | `SetDynamicConfig` | Core gRPC · 写 | — | — |
+| 接管凭据是否齐备 | `GetSiteCredentialReadiness` | Core gRPC · 读 | — | configured[]、missing[]、requires_recovery[] |
+| 补齐接管凭据 | `InitializeSiteCredentials / CreateCredential` | Core gRPC · 写 | `nico-admin-cli credential add-bmc；nico-admin-cli credential add-uefi` | — |
+| 支持的机柜规格 | `ListRackProfiles / GetRackProfile` | Core gRPC · 读 | `nico-admin-cli rack profile list；nico-admin-cli rack profile show <RACK_ID>` | rack_profile_id、profile.rack_hardware_topology、profile.capabilities.{compute,switch,power_shelf}.count、profile.product_family |
+| 生效的电源和固件规则 | `GET /task/rule` | REST · 读 | `nicocli rule list --site-id <SITE>` | id、name、operationType、operationCode、isDefault、ruleDefinition.steps[] |
+
+### 配置 › 站点设置 › 控制面
+
+| 用途 | 接口 | 类型 | 命令行 | 用到的字段 |
+| --- | --- | --- | --- | --- |
+| Core 版本 | `Version` | Core gRPC · 读 | `nico-admin-cli version --show-runtime-config` | build_version、git_sha、capabilities[]、runtime_config.dhcp_servers、runtime_config.networks、runtime_config.initial_domain_name、runtime_config.attestation_enabled |
+| RMS 版本 | `GetRmsVersion` | Core gRPC · 读 | `nico-admin-cli backend rms status` | version |
+| 站点代理与 Flow 的版本和在线状态 | `GET /site、GET /site/{id}` | REST · 读 | `nicocli site list` | id、status（Pending、Registered、Error）、isOnline、siteAgentVersion、siteControllerVersion、capabilities.flow、machineStats |
+
+### 配置 › 固件基线
+
+| 用途 | 接口 | 类型 | 命令行 | 用到的字段 |
+| --- | --- | --- | --- | --- |
+| 机柜规格 | `ListRackProfiles / GetRackProfile` | Core gRPC · 读 | `nico-admin-cli rack profile list；nico-admin-cli rack profile show <RACK_ID>` | rack_profile_id、profile.rack_hardware_topology、profile.capabilities.{compute,switch,power_shelf}.count、profile.product_family |
+| NICo 里配置的期望版本和可用固件包 | `GetDesiredFirmwareVersions / ListComponentFirmwareVersions` | Core gRPC · 读 | `nico-admin-cli component-manager get-firmware-versions {compute-tray\|switch\|power-shelf\|rack}` | entries[].{vendor,model,component_versions}、devices[].versions[]、devices[].compute_fw_versions[] |
+| 偏差统计：探测到的版本 | `GetComponentInventory` | Core gRPC · 读 | — | entries[].result.{component_id,status,error}、entries[].report.firmware_versions、entries[].report.systems[]、entries[].report.chassis[] |
+
+### 配置 › 安装方案
+
+| 用途 | 接口 | 类型 | 命令行 | 用到的字段 |
+| --- | --- | --- | --- | --- |
+| 方案列表与状态 | `FindOperatingSystemIds → FindOperatingSystemsByIds` | Core gRPC · 读 | `nico-admin-cli operating-system show` | id、name、type、status、is_active、ipxe_template_id、ipxe_template_parameters、ipxe_template_artifacts[].{name,url,cached_url} |
+| 新建、修改和停用方案 | `CreateOperatingSystem / UpdateOperatingSystem / DeleteOperatingSystem` | Core gRPC · 写 | `nico-admin-cli operating-system create；nico-admin-cli operating-system set-cached-url` | — |

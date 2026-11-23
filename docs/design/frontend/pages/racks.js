@@ -17,7 +17,6 @@ registerPage("racks", {
       note("新机柜不在这里创建。在“设备清单”导入到货清单后，NICo 发现带相同机柜 ID 的设备时会建立机柜对象。");
   },
   spec: {
-    calls: [["rack.list", "机柜状态与健康"], ["expected-rack.list", "机柜规格，以及还没有出现的机柜"], ["rack.rest", "托盘计数与任务计数"], ["rack.validation", "对账差异数"], ["task.list", "当前任务"]],
     purpose: "机柜是默认的操作单位。本页回答每个机柜处在流程的哪一步、有没有需要处理的问题。",
     entry: "运维 → 机柜管理（默认首页）", design: "5 整体操作运维流程；6.3 机柜与设备", existing: "设备管理 → 机柜（列与状态用词沿用）；机柜拓扑的统计条并入",
     points: [
@@ -48,7 +47,6 @@ registerPage("domains", {
       note("同一个 NVLink 域内的固件版本不一致会影响域的形成。固件更新的推荐单位是域；域级更新按机柜分批，每批并发一个机柜，失败后停止后续批次。");
   },
   spec: {
-    calls: [["domain.list", "域、成员机柜和 NMX-C 集群"], ["switch.list", "交换机回报的域编号"], ["device.inventory", "域内各设备的固件版本"], ["health.reports", "域的健康报告"], ["domain.power", "域级电源"], ["domain.firmware", "域级固件更新"], ["task-run", "分阶段发布"], ["task.list", "域级任务的进度"]],
     purpose: "NVLink 域是固件一致性和交付门控的单位。本页用来发现域内版本不一致，并以域为单位发起更新。",
     entry: "运维 → NVLink 域管理", design: "6.3 机柜与设备；10 非功能设计（固件一致性、分阶段发布）", existing: "新增页面。现有交换机详情里的“NVLink 域”字段是它的来源",
     points: [

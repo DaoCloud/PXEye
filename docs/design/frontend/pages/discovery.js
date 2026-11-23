@@ -43,7 +43,6 @@ registerPage("discovery", {
       `<div ${fp(5)}>${note("发现阶段依次是：等待通电 → 未收到 DHCP 请求 → 已获取地址 → 已探测 → 已接管。卡在“未收到 DHCP 请求”先看 DHCP 服务，卡在“已获取地址”或“已探测”去机柜对账处理。")}</div>`;
   },
   spec: {
-    calls: [["expected-machine.list", "计算托盘声明走到了哪一步"], ["expected-switch.list", "交换机声明走到了哪一步"], ["expected-shelf.list", "供电框声明走到了哪一步"], ["interface.list", "有没有收到 DHCP 请求"], ["explorer.endpoints", "探测结果和失败原因"], ["explorer.managed-hosts", "主机与 DPU 的配对"], ["explorer.unexpected", "未声明的主机"], ["ingestion.state", "是否在等待放行"], ["machine.list", "计算托盘的状态机阶段"], ["switch.list", "交换机的状态机阶段"], ["shelf.list", "供电框的状态机阶段"], ["explorer.last-run", "最近一次扫描"]],
     purpose: "跨机柜查看设备发现的进度和失败原因。它回答“为什么这台设备没有出现”，并把人带到 DHCP 服务或机柜对账去处理。",
     entry: "接入 → 设备发现；机柜详情的对账是同一批数据按机柜的视图", design: "5 整体操作运维流程（接入与对账）；6.3 机柜与设备；6.7 网络", existing: "设备管理 → 发现设备（DHCP 观察到的端点、来源子网）与 发现诊断（探测结果、错误码、处理建议）合并。整机柜不再逐台“确认纳管”",
     points: [

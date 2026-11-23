@@ -14,7 +14,6 @@ registerPage("inventory", {
       `<div ${fp(5)}>${table(["设备序列号", "类型", "机柜 / 槽位", "BMC 地址 / MAC", "厂商 / 型号", "配置对比"], list.slice(0, 40).map((t) => `<tr><td>${code(t.serial)}</td><td>${TYPE_LABEL[t.type]}</td><td>${t.rack}<span class="cell-sub">槽位 ${pad2(t.slot)}</span></td><td>${code(t.bmcIp)}<span class="cell-sub live-code">${t.bmcMac}</span></td><td>${t.vendor}<span class="cell-sub">${t.model}</span></td><td>${compare(t)}</td></tr>`), "没有符合筛选条件的设备。")}${list.length > 40 ? `<p class="live-small">显示前 40 条，共 ${list.length} 条。</p>` : ""}</div>`;
   },
   spec: {
-    calls: [["rack-profile.list", "核对机柜规格是否受支持"], ["segment.list", "核对固定地址落在已有子网内"], ["rack-group.list", "读取机柜组"], ["rack-group.write", "写入机柜组"], ["expected-rack.list", "读取机柜声明和推导出的规格"], ["expected-rack.write", "写入机柜声明"], ["expected-machine.list", "读取计算托盘声明"], ["expected-machine.write", "写入计算托盘声明"], ["expected-switch.list", "读取交换机声明"], ["expected-switch.write", "写入交换机声明"], ["expected-shelf.list", "读取供电框声明"], ["expected-shelf.write", "写入供电框声明"], ["expected-domain.write", "写入 NVLink 域声明"]],
     purpose: "把 DCIM 或出货清单变成 NICo 的期望清单。这是全流程唯一需要人工维护的数据。",
     entry: "接入 → 设备清单 → 期望清单", design: "6.2 清单；7.1 资源与归属", existing: "设备管理 → 设备规划（导入、对比）；服务器页的“导入 U 位”和布线页的“导入交换机信息”并入本页",
     points: [

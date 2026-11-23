@@ -24,7 +24,6 @@ registerPage("health", {
       note("泄漏告警同时来自托盘传感器和设施侧事件。断路器与冷却阀的联锁由 BMS 负责；平台只在检测到风险时拒绝上电和交付。");
   },
   spec: {
-    calls: [["health.reports", "各对象当前的告警与分类"], ["health.history", "告警历史"], ["rack.list", "机柜级告警"], ["machine.list", "有告警的计算托盘"], ["switch.list", "有告警的交换机"], ["shelf.list", "有告警的供电框"]],
     purpose: "汇总当前的健康告警，标出会阻止交付的条目，并把人带到处理的地方。页面本身不做监控曲线。",
     entry: "运维 → 健康告警", design: "6.5 健康；10 非功能设计（安全联锁、可观测性）", existing: "设备管理 → 告警。统计条、筛选、按告警 / 按设备切换和表头沿用",
     points: [

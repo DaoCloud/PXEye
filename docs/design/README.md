@@ -11,7 +11,7 @@ This directory holds the current target design: operations for GB200 / GB300 who
 | Design specification | [Read](whole-rack-operations.md) | [阅读](whole-rack-operations.zh-CN.md) | Platform architecture, the end-to-end flow, modules and resources, module dependencies, design of operations, non-functional design |
 | Frontend design | [Read](frontend/README.md) | [阅读](frontend/README.zh-CN.md) | What each page looks like and can do; clickable; menu and wording rules |
 | Page descriptions | — | [阅读](frontend/page-spec.zh-CN.md) | Purpose, feature points, fields, rules and dialogs of every page; generated from the frontend design |
-| Interface contract | — | [阅读](frontend/interface-contract.zh-CN.md) | Which NICo interfaces and command lines each page calls, which fields it uses, which resources must be prepared first, and the gaps between the design and NICo; generated from the frontend design |
+| Interface contract (internal implementation reference) | — | [阅读](frontend/interface-contract.zh-CN.md) | Which NICo interfaces and command lines each page calls, which fields it uses, which resources must be prepared first, and the gaps between the design and NICo; generated from the frontend design, not used for external presentation |
 
 ## Layout
 
@@ -19,15 +19,17 @@ This directory holds the current target design: operations for GB200 / GB300 who
 | --- | --- | --- |
 | `whole-rack-operations*.md` | The design specification, in both languages | By hand; when the menu, flow, modules or gates change, update both languages in the same commit |
 | `figures/` | The four figures of the design specification and their sources | Regenerate the images after changing a source; see below |
-| `frontend/` | The frontend design: clickable pages, each page script with its own description | Change a page together with its description, then regenerate the page descriptions |
+| `frontend/` | The frontend design: clickable pages, each page script with its own description. `index.html` is the external version | Change a page together with its description, then regenerate the page descriptions |
 | `frontend/page-spec.zh-CN.md` | Page descriptions | Generated; do not edit |
-| `frontend/contract.js` | Source of the interface contract: NICo resource dependencies, interface list and gaps | Edit when the interfaces a page uses change; each page declares its interfaces in `spec.calls` |
+| `frontend/internal.html` | The implementation reference version of the frontend design: the external version plus the interface contract | Generated; do not edit |
+| `frontend/contract.js` | Source of the interface contract: NICo resource dependencies, interface list, page-to-interface mapping and gaps | Edit when the interfaces a page uses change; the page scripts contain no interfaces |
 | `frontend/interface-contract.zh-CN.md`, `frontend/contract.json` | The interface contract as a document and as data | Generated; do not edit |
 
 Each piece of content has one source:
 
 - Page-level content (what a page has, fields, buttons, dialogs, gates) is written only in the `spec` of `frontend/pages/*.js`. The design specification does not repeat page details.
 - Platform-level content (architecture, flow, modules, resources, rules) is written only in the design specification.
+- The mapping between pages and NICo interfaces is written only in `frontend/contract.js`, which is an internal implementation reference. External presentation uses `frontend/index.html`, the page descriptions and the design specification; none of the three contains interface content.
 - Menu and wording rules are written only in `frontend/README`; the navigation section of the design specification is kept consistent with it.
 
 ## Regenerating

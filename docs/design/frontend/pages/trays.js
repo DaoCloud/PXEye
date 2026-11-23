@@ -26,13 +26,6 @@ const DEVICE_TEXT = {
   power_shelf: { sub: "查看供电框的地址、运行状态、健康、供电规格和固件，并直接执行上下电。", old: "设备管理 → 供电框", own: "容量 / 电压、电源模块", addr: "PMC 地址" },
 };
 
-/* 各类设备页用到的 NICo 接口：[接口编号, 用途]，定义在 contract.js。 */
-const DEVICE_CALLS = {
-  compute: [["machine.list", "列表、状态、健康和地址"], ["device.power-state", "电源状态"], ["device.inventory", "固件版本"], ["instance.list", "所属实例"], ["device.history", "运行状态里的状态历史"], ["machine.validation", "硬件校验结果"], ["tray.power", "上电、关机、重启"], ["tray.firmware", "固件更新"], ["task.list", "任务进度"], ["machine.maintenance", "设置和清除维护标记"], ["machine.quarantine", "隔离和解除隔离"], ["machine.validate", "按需硬件校验"], ["machine.sku", "核对 SKU"], ["device.bmc-reset", "重启 BMC"], ["device.power-direct", "电源的直接执行路径（见缺口）"]],
-  switch: [["switch.list", "列表、状态、健康、地址和 Fabric Manager"], ["device.power-state", "电源状态"], ["device.inventory", "固件与 NVOS 版本"], ["device.history", "运行状态里的状态历史"], ["tray.power", "上电、关机、重启"], ["tray.firmware", "固件更新"], ["task.list", "任务进度"], ["device.bmc-reset", "重启 BMC"], ["device.decommission", "退役"], ["device.power-direct", "电源的直接执行路径（见缺口）"]],
-  power_shelf: [["shelf.list", "列表、状态、健康、地址和供电规格"], ["tray.rest", "槽位"], ["expected-shelf.list", "序列号"], ["device.power-state", "电源状态"], ["device.inventory", "固件版本"], ["device.history", "运行状态里的状态历史"], ["tray.power", "上电、关机"], ["task.list", "任务进度"], ["device.decommission", "退役"], ["shelf.power", "电源的直接执行路径（见缺口）"]],
-};
-
 function devicePage(type) {
   const label = TYPE_LABEL[type], text = DEVICE_TEXT[type], cols = DEVICE_COLUMNS[type], K = (k) => `dev:${type}:${k}`;
   return {
@@ -53,7 +46,6 @@ function devicePage(type) {
         note("运行状态由 NICo 状态机回报。“需要处理”指状态机最近一次处理失败、超出状态时限或有健康告警。没有收到报告显示为未报告，不显示为正常。");
     },
     spec: {
-      calls: DEVICE_CALLS[type],
       purpose: `直接面向${label}运维：不需要先找到它在哪个机柜。地址、状态和固件在表里一眼可见，电源等操作在行上一步发起。`,
       entry: `运维 → 设备管理 → ${label}；设备管理的类型卡片；机柜详情的设备页签`, design: "6.3 机柜与设备；9 操作设计", existing: `${text.old}。统计条、筛选、表头、行操作和“需要处理”的规则沿用`,
       points: [
@@ -93,7 +85,6 @@ registerPage("devices", {
       `<div ${fp(4)}>${note("要看一个机柜里的全部设备及它们的关系，从“机柜 / 位置”进入机柜详情：那里有机柜立面、对账和机柜级操作。")}</div>`;
   },
   spec: {
-    calls: [["machine.list", "计算托盘的数量和需要处理的设备"], ["switch.list", "交换机的数量和需要处理的设备"], ["shelf.list", "供电框的数量和需要处理的设备"], ["dpu.list", "DPU 的数量和需要处理的设备"], ["device.identify", "按序列号、MAC、地址搜索"]],
     purpose: "设备运维的起点。知道序列号或地址时一步找到设备；不知道时先看哪些设备需要处理。",
     entry: "运维 → 设备管理", design: "6.3 机柜与设备", existing: "新增页面。现有产品要先选设备类型的页面再搜索",
     points: [
@@ -122,7 +113,6 @@ registerPage("devices/dpu", {
       note("DPU 是计算托盘的子对象，随主机一起接管、更新和交付。电源、固件和维护在所属计算托盘上执行。");
   },
   spec: {
-    calls: [["dpu.list", "DPU 列表、状态和固件"], ["machine.list", "所属主机"]],
     purpose: "把 DPU 作为一类设备单独列出来，回答“哪些 DPU 没就绪、固件是什么版本”。它不是独立的操作对象。",
     entry: "运维 → 设备管理 → DPU；计算托盘表里的 DPU 列", design: "6.3 机柜与设备；7.1 资源与归属", existing: "新增页面。现有产品只在设备管理的“DPU 子接口”和服务器运行状态的“关联 DPU”里出现",
     points: [

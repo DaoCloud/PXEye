@@ -2726,6 +2726,774 @@
       ]
     }
   ],
+  "pages": [
+    {
+      "id": "racks",
+      "name": "运维 › 机柜管理",
+      "calls": [
+        {
+          "id": "rack.list",
+          "use": "机柜状态与健康"
+        },
+        {
+          "id": "expected-rack.list",
+          "use": "机柜规格，以及还没有出现的机柜"
+        },
+        {
+          "id": "rack.rest",
+          "use": "托盘计数与任务计数"
+        },
+        {
+          "id": "rack.validation",
+          "use": "对账差异数"
+        },
+        {
+          "id": "task.list",
+          "use": "当前任务"
+        }
+      ]
+    },
+    {
+      "id": "rack",
+      "name": "运维 › 机柜管理 › 机柜详情",
+      "calls": [
+        {
+          "id": "rack.list",
+          "use": "状态、原因与健康"
+        },
+        {
+          "id": "rack-profile.list",
+          "use": "机柜规格"
+        },
+        {
+          "id": "rack.history",
+          "use": "状态历史"
+        },
+        {
+          "id": "rack.rest",
+          "use": "任务计数与所属域"
+        },
+        {
+          "id": "rack.validation",
+          "use": "对账统计与差异"
+        },
+        {
+          "id": "tray.rest",
+          "use": "机柜立面的槽位"
+        },
+        {
+          "id": "machine.list",
+          "use": "设备表：计算托盘"
+        },
+        {
+          "id": "switch.list",
+          "use": "设备表：交换机"
+        },
+        {
+          "id": "shelf.list",
+          "use": "设备表：供电框"
+        },
+        {
+          "id": "expected-machine.list",
+          "use": "对账：声明的序列号"
+        },
+        {
+          "id": "explorer.endpoints",
+          "use": "对账：实测序列号和探测失败原因"
+        },
+        {
+          "id": "explorer.retry",
+          "use": "重新发现、重新探测"
+        },
+        {
+          "id": "ingestion.allow",
+          "use": "放行等待中的主机"
+        },
+        {
+          "id": "expected-machine.write",
+          "use": "更换设备：更新声明"
+        },
+        {
+          "id": "rack.bringup",
+          "use": "开始上线"
+        },
+        {
+          "id": "rack.power",
+          "use": "机柜电源"
+        },
+        {
+          "id": "rack.firmware",
+          "use": "固件更新"
+        },
+        {
+          "id": "firmware.status",
+          "use": "固件阶段的逐台进度"
+        },
+        {
+          "id": "task.list",
+          "use": "任务卡与阶段"
+        },
+        {
+          "id": "task.cancel",
+          "use": "取消任务"
+        },
+        {
+          "id": "rack.maintenance",
+          "use": "NVOS 更新与 NMX-C 配置（见缺口：机柜上线由谁推进）"
+        },
+        {
+          "id": "health.reports",
+          "use": "机柜健康与泄漏告警"
+        }
+      ]
+    },
+    {
+      "id": "domains",
+      "name": "运维 › NVLink 域管理",
+      "calls": [
+        {
+          "id": "domain.list",
+          "use": "域、成员机柜和 NMX-C 集群"
+        },
+        {
+          "id": "switch.list",
+          "use": "交换机回报的域编号"
+        },
+        {
+          "id": "device.inventory",
+          "use": "域内各设备的固件版本"
+        },
+        {
+          "id": "health.reports",
+          "use": "域的健康报告"
+        },
+        {
+          "id": "domain.power",
+          "use": "域级电源"
+        },
+        {
+          "id": "domain.firmware",
+          "use": "域级固件更新"
+        },
+        {
+          "id": "task-run",
+          "use": "分阶段发布"
+        },
+        {
+          "id": "task.list",
+          "use": "域级任务的进度"
+        }
+      ]
+    },
+    {
+      "id": "devices",
+      "name": "运维 › 设备管理",
+      "calls": [
+        {
+          "id": "machine.list",
+          "use": "计算托盘的数量和需要处理的设备"
+        },
+        {
+          "id": "switch.list",
+          "use": "交换机的数量和需要处理的设备"
+        },
+        {
+          "id": "shelf.list",
+          "use": "供电框的数量和需要处理的设备"
+        },
+        {
+          "id": "dpu.list",
+          "use": "DPU 的数量和需要处理的设备"
+        },
+        {
+          "id": "device.identify",
+          "use": "按序列号、MAC、地址搜索"
+        }
+      ]
+    },
+    {
+      "id": "devices/compute",
+      "name": "运维 › 设备管理 › 计算托盘",
+      "calls": [
+        {
+          "id": "machine.list",
+          "use": "列表、状态、健康和地址"
+        },
+        {
+          "id": "device.power-state",
+          "use": "电源状态"
+        },
+        {
+          "id": "device.inventory",
+          "use": "固件版本"
+        },
+        {
+          "id": "instance.list",
+          "use": "所属实例"
+        },
+        {
+          "id": "device.history",
+          "use": "运行状态里的状态历史"
+        },
+        {
+          "id": "machine.validation",
+          "use": "硬件校验结果"
+        },
+        {
+          "id": "tray.power",
+          "use": "上电、关机、重启"
+        },
+        {
+          "id": "tray.firmware",
+          "use": "固件更新"
+        },
+        {
+          "id": "task.list",
+          "use": "任务进度"
+        },
+        {
+          "id": "machine.maintenance",
+          "use": "设置和清除维护标记"
+        },
+        {
+          "id": "machine.quarantine",
+          "use": "隔离和解除隔离"
+        },
+        {
+          "id": "machine.validate",
+          "use": "按需硬件校验"
+        },
+        {
+          "id": "machine.sku",
+          "use": "核对 SKU"
+        },
+        {
+          "id": "device.bmc-reset",
+          "use": "重启 BMC"
+        },
+        {
+          "id": "device.power-direct",
+          "use": "电源的直接执行路径（见缺口）"
+        }
+      ]
+    },
+    {
+      "id": "devices/switch",
+      "name": "运维 › 设备管理 › 交换机",
+      "calls": [
+        {
+          "id": "switch.list",
+          "use": "列表、状态、健康、地址和 Fabric Manager"
+        },
+        {
+          "id": "device.power-state",
+          "use": "电源状态"
+        },
+        {
+          "id": "device.inventory",
+          "use": "固件与 NVOS 版本"
+        },
+        {
+          "id": "device.history",
+          "use": "运行状态里的状态历史"
+        },
+        {
+          "id": "tray.power",
+          "use": "上电、关机、重启"
+        },
+        {
+          "id": "tray.firmware",
+          "use": "固件更新"
+        },
+        {
+          "id": "task.list",
+          "use": "任务进度"
+        },
+        {
+          "id": "device.bmc-reset",
+          "use": "重启 BMC"
+        },
+        {
+          "id": "device.decommission",
+          "use": "退役"
+        },
+        {
+          "id": "device.power-direct",
+          "use": "电源的直接执行路径（见缺口）"
+        }
+      ]
+    },
+    {
+      "id": "devices/power-shelf",
+      "name": "运维 › 设备管理 › 供电框",
+      "calls": [
+        {
+          "id": "shelf.list",
+          "use": "列表、状态、健康、地址和供电规格"
+        },
+        {
+          "id": "tray.rest",
+          "use": "槽位"
+        },
+        {
+          "id": "expected-shelf.list",
+          "use": "序列号"
+        },
+        {
+          "id": "device.power-state",
+          "use": "电源状态"
+        },
+        {
+          "id": "device.inventory",
+          "use": "固件版本"
+        },
+        {
+          "id": "device.history",
+          "use": "运行状态里的状态历史"
+        },
+        {
+          "id": "tray.power",
+          "use": "上电、关机"
+        },
+        {
+          "id": "task.list",
+          "use": "任务进度"
+        },
+        {
+          "id": "device.decommission",
+          "use": "退役"
+        },
+        {
+          "id": "shelf.power",
+          "use": "电源的直接执行路径（见缺口）"
+        }
+      ]
+    },
+    {
+      "id": "devices/dpu",
+      "name": "运维 › 设备管理 › DPU",
+      "calls": [
+        {
+          "id": "dpu.list",
+          "use": "DPU 列表、状态和固件"
+        },
+        {
+          "id": "machine.list",
+          "use": "所属主机"
+        }
+      ]
+    },
+    {
+      "id": "health",
+      "name": "运维 › 健康告警",
+      "calls": [
+        {
+          "id": "health.reports",
+          "use": "各对象当前的告警与分类"
+        },
+        {
+          "id": "health.history",
+          "use": "告警历史"
+        },
+        {
+          "id": "rack.list",
+          "use": "机柜级告警"
+        },
+        {
+          "id": "machine.list",
+          "use": "有告警的计算托盘"
+        },
+        {
+          "id": "switch.list",
+          "use": "有告警的交换机"
+        },
+        {
+          "id": "shelf.list",
+          "use": "有告警的供电框"
+        }
+      ]
+    },
+    {
+      "id": "tasks",
+      "name": "运维 › 运维任务",
+      "calls": [
+        {
+          "id": "task.list",
+          "use": "任务、阶段和状态"
+        },
+        {
+          "id": "task.cancel",
+          "use": "取消任务"
+        }
+      ]
+    },
+    {
+      "id": "audit",
+      "name": "运维 › 操作审计",
+      "calls": []
+    },
+    {
+      "id": "delivery",
+      "name": "交付 › 机柜交付",
+      "calls": [
+        {
+          "id": "rack.list",
+          "use": "机柜是否就绪"
+        },
+        {
+          "id": "machine.list",
+          "use": "按机柜筛出计算托盘"
+        },
+        {
+          "id": "host.states",
+          "use": "可交付的托盘数和不可交付的原因"
+        },
+        {
+          "id": "health.reports",
+          "use": "机柜和域的告警"
+        },
+        {
+          "id": "instance.list",
+          "use": "已交付的实例数"
+        },
+        {
+          "id": "os.list",
+          "use": "可选的安装方案"
+        },
+        {
+          "id": "instance.allocate",
+          "use": "装机并验收"
+        },
+        {
+          "id": "instance-type.write",
+          "use": "交给上层平台"
+        }
+      ]
+    },
+    {
+      "id": "delivery/installs",
+      "name": "交付 › 安装任务",
+      "calls": [
+        {
+          "id": "instance.list",
+          "use": "实例状态"
+        },
+        {
+          "id": "machine.list",
+          "use": "主机状态"
+        }
+      ]
+    },
+    {
+      "id": "delivery/instances",
+      "name": "交付 › 实例管理",
+      "calls": [
+        {
+          "id": "instance.list",
+          "use": "实例、租户和系统"
+        },
+        {
+          "id": "machine.list",
+          "use": "机器状态与回收进度"
+        },
+        {
+          "id": "instance.release",
+          "use": "删除（退租回收）"
+        }
+      ]
+    },
+    {
+      "id": "network",
+      "name": "接入 › 网络规划 › 子网",
+      "calls": [
+        {
+          "id": "segment.list",
+          "use": "子网、状态和空闲地址"
+        },
+        {
+          "id": "segment.create",
+          "use": "新增子网"
+        },
+        {
+          "id": "segment.dhcp-range",
+          "use": "读取 DHCP 地址池"
+        },
+        {
+          "id": "segment.dhcp-range.write",
+          "use": "修改 DHCP 地址池"
+        },
+        {
+          "id": "segment.delete",
+          "use": "删除子网"
+        },
+        {
+          "id": "expected-machine.list",
+          "use": "规划检查：计算托盘接口的数量"
+        },
+        {
+          "id": "expected-switch.list",
+          "use": "规划检查：交换机接口的数量"
+        },
+        {
+          "id": "expected-shelf.list",
+          "use": "规划检查：供电框接口的数量"
+        }
+      ]
+    },
+    {
+      "id": "network/dhcp",
+      "name": "接入 › 网络规划 › DHCP 服务",
+      "calls": [
+        {
+          "id": "core.version",
+          "use": "DHCP 服务器地址"
+        },
+        {
+          "id": "segment.list",
+          "use": "各子网的地址余量"
+        },
+        {
+          "id": "segment.dhcp-range",
+          "use": "各子网的地址池范围"
+        },
+        {
+          "id": "interface.list",
+          "use": "各子网最近一次请求"
+        },
+        {
+          "id": "dhcp.metrics",
+          "use": "请求、应答和丢弃计数"
+        }
+      ]
+    },
+    {
+      "id": "network/leases",
+      "name": "接入 › 网络规划 › 地址分配",
+      "calls": [
+        {
+          "id": "interface.list",
+          "use": "地址、MAC、归属和最近请求"
+        },
+        {
+          "id": "interface.addresses",
+          "use": "分配方式，按地址反查归属"
+        }
+      ]
+    },
+    {
+      "id": "inventory",
+      "name": "接入 › 设备清单 › 期望清单",
+      "calls": [
+        {
+          "id": "rack-profile.list",
+          "use": "核对机柜规格是否受支持"
+        },
+        {
+          "id": "segment.list",
+          "use": "核对固定地址落在已有子网内"
+        },
+        {
+          "id": "rack-group.list",
+          "use": "读取机柜组"
+        },
+        {
+          "id": "rack-group.write",
+          "use": "写入机柜组"
+        },
+        {
+          "id": "expected-rack.list",
+          "use": "读取机柜声明和推导出的规格"
+        },
+        {
+          "id": "expected-rack.write",
+          "use": "写入机柜声明"
+        },
+        {
+          "id": "expected-machine.list",
+          "use": "读取计算托盘声明"
+        },
+        {
+          "id": "expected-machine.write",
+          "use": "写入计算托盘声明"
+        },
+        {
+          "id": "expected-switch.list",
+          "use": "读取交换机声明"
+        },
+        {
+          "id": "expected-switch.write",
+          "use": "写入交换机声明"
+        },
+        {
+          "id": "expected-shelf.list",
+          "use": "读取供电框声明"
+        },
+        {
+          "id": "expected-shelf.write",
+          "use": "写入供电框声明"
+        },
+        {
+          "id": "expected-domain.write",
+          "use": "写入 NVLink 域声明"
+        }
+      ]
+    },
+    {
+      "id": "inventory/versions",
+      "name": "接入 › 设备清单 › 版本记录",
+      "calls": []
+    },
+    {
+      "id": "discovery",
+      "name": "接入 › 设备发现",
+      "calls": [
+        {
+          "id": "expected-machine.list",
+          "use": "计算托盘声明走到了哪一步"
+        },
+        {
+          "id": "expected-switch.list",
+          "use": "交换机声明走到了哪一步"
+        },
+        {
+          "id": "expected-shelf.list",
+          "use": "供电框声明走到了哪一步"
+        },
+        {
+          "id": "interface.list",
+          "use": "有没有收到 DHCP 请求"
+        },
+        {
+          "id": "explorer.endpoints",
+          "use": "探测结果和失败原因"
+        },
+        {
+          "id": "explorer.managed-hosts",
+          "use": "主机与 DPU 的配对"
+        },
+        {
+          "id": "explorer.unexpected",
+          "use": "未声明的主机"
+        },
+        {
+          "id": "ingestion.state",
+          "use": "是否在等待放行"
+        },
+        {
+          "id": "machine.list",
+          "use": "计算托盘的状态机阶段"
+        },
+        {
+          "id": "switch.list",
+          "use": "交换机的状态机阶段"
+        },
+        {
+          "id": "shelf.list",
+          "use": "供电框的状态机阶段"
+        },
+        {
+          "id": "explorer.last-run",
+          "use": "最近一次扫描"
+        }
+      ]
+    },
+    {
+      "id": "site",
+      "name": "配置 › 站点设置 › 站点概况",
+      "calls": [
+        {
+          "id": "core.version",
+          "use": "Core 版本与运行配置"
+        },
+        {
+          "id": "rms.status",
+          "use": "RMS 是否就绪"
+        },
+        {
+          "id": "rest.site",
+          "use": "Flow 与站点代理是否在线"
+        },
+        {
+          "id": "nmxc.endpoints",
+          "use": "NMX-C 接入"
+        },
+        {
+          "id": "explorer.last-run",
+          "use": "站点发现最近一次扫描"
+        },
+        {
+          "id": "explorer.config",
+          "use": "开关站点发现和自动建机"
+        },
+        {
+          "id": "credential.readiness",
+          "use": "接管凭据是否齐备"
+        },
+        {
+          "id": "credential.write",
+          "use": "补齐接管凭据"
+        },
+        {
+          "id": "rack-profile.list",
+          "use": "支持的机柜规格"
+        },
+        {
+          "id": "rule.list",
+          "use": "生效的电源和固件规则"
+        }
+      ]
+    },
+    {
+      "id": "site/cluster",
+      "name": "配置 › 站点设置 › 控制面",
+      "calls": [
+        {
+          "id": "core.version",
+          "use": "Core 版本"
+        },
+        {
+          "id": "rms.status",
+          "use": "RMS 版本"
+        },
+        {
+          "id": "rest.site",
+          "use": "站点代理与 Flow 的版本和在线状态"
+        }
+      ]
+    },
+    {
+      "id": "baselines",
+      "name": "配置 › 固件基线",
+      "calls": [
+        {
+          "id": "rack-profile.list",
+          "use": "机柜规格"
+        },
+        {
+          "id": "firmware.desired",
+          "use": "NICo 里配置的期望版本和可用固件包"
+        },
+        {
+          "id": "device.inventory",
+          "use": "偏差统计：探测到的版本"
+        }
+      ]
+    },
+    {
+      "id": "os-templates",
+      "name": "配置 › 安装方案",
+      "calls": [
+        {
+          "id": "os.list",
+          "use": "方案列表与状态"
+        },
+        {
+          "id": "os.write",
+          "use": "新建、修改和停用方案"
+        }
+      ]
+    }
+  ],
   "gaps": [
     {
       "need": "到货清单里的槽位写入 NICo 的期望清单",

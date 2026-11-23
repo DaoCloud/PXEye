@@ -1,0 +1,19 @@
+/* 实现参考版才加载：页面说明面板里的接口一节，以及接口契约页。 */
+.guide-call { padding: 7px 0; border-bottom: 1px solid #f3ecd8; }
+.guide-call b { display: block; font-weight: 600; }
+.guide-call .live-code { overflow-wrap: anywhere; color: #33404c; }
+.guide-call .kind { margin-left: 0; }
+.guide-cli { color: var(--muted) !important; margin-top: 2px; }
+.guide-cli::before { content: "$ "; }
+.guide-chain { margin: 0; padding-left: 20px; }
+.guide-chain li { margin-bottom: 7px; }
+.guide-chain p { margin: 1px 0 0; color: #4a5560; }
+.spec-doc.contract-doc { max-width: none; }
+.contract-doc .live-table { white-space: normal; }
+.contract-doc .live-table td { vertical-align: top; min-width: 90px; }
+.contract-doc section { overflow-x: auto; }
+.contract-doc .live-table code, .contract-doc .live-table .live-code { white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
+.contract-doc .live-table td:first-child { min-width: 150px; }
+.contract-doc .call-table td:first-child { min-width: 320px; }
+.contract-doc .call-table td:nth-child(2), .contract-doc .call-table td:nth-child(3) { min-width: 200px; }
+.contract-doc .cell-sub.guide-cli { display: block; }

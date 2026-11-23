@@ -22,7 +22,6 @@ registerPage("network", {
       `<div ${fp(5)}>${note("平台只在 NICo 里创建子网和地址池，不配置交换机。每个网段的 VLAN、网关和 DHCP 中继要在交换机上提前配好，中继指向“DHCP 服务”页签里的服务地址。DHCP 地址池可单独配置；子网名称、CIDR、网关及 MTU 创建后不可修改。")}</div>`;
   },
   spec: {
-    calls: [["segment.list", "子网、状态和空闲地址"], ["segment.create", "新增子网"], ["segment.dhcp-range", "读取 DHCP 地址池"], ["segment.dhcp-range.write", "修改 DHCP 地址池"], ["segment.delete", "删除子网"], ["expected-machine.list", "规划检查：计算托盘接口的数量"], ["expected-switch.list", "规划检查：交换机接口的数量"], ["expected-shelf.list", "规划检查：供电框接口的数量"]],
     purpose: "把“网段规划”变成导入设备清单之前的明确一步。回答三个问题：每类设备接口用哪个网段、地址够不够、NICo 里是否已经建好。",
     entry: "接入 → 网络规划 → 子网", design: "5 整体操作运维流程（网络规划）；6.7 网络", existing: "资源 → 网络管理。子网表头、状态和弹窗沿用；增加“用途”和规划检查",
     points: [
@@ -67,7 +66,6 @@ registerPage("network/dhcp", {
       `<div ${fp(4)}>${note("某个子网一直“未收到请求”，通常是交换机没有为这个网段配置 DHCP 中继，或中继没有指向服务地址。现场可用随平台提供的 DHCP 检查工具在该网段发一次请求，确认能否收到应答。")}</div>`;
   },
   spec: {
-    calls: [["core.version", "DHCP 服务器地址"], ["segment.list", "各子网的地址余量"], ["segment.dhcp-range", "各子网的地址池范围"], ["interface.list", "各子网最近一次请求"], ["dhcp.metrics", "请求、应答和丢弃计数"]],
     purpose: "把 DHCP 从“看不见的前提”变成可以检查的状态。设备发现不了时，先在这里判断是不是请求根本没有到达。",
     entry: "接入 → 网络规划 → DHCP 服务", design: "6.7 网络；8.3 外部依赖缺失时的行为", existing: "站点设置的“DHCP / PXE / DNS / NTP”面板和“管理引导网络”弹窗沿用；按子网的中继状态是新增",
     points: [
@@ -93,7 +91,6 @@ registerPage("network/leases", {
       `<div ${fp(2)}>${table(["地址", "MAC", "子网", "设备 / 序列号", "接口", "机柜 / 位置", "分配方式", "最近 DHCP"], list.slice(0, 40).map((i) => `<tr><td>${code(i.ip)}</td><td>${code(i.mac)}</td><td>${subnetLink(i.subnet)}</td><td><a class="link-button" data-live="tray-detail" data-id="${i.tray.id}">${code(i.tray.serial)}</a><span class="cell-sub">${TYPE_LABEL[i.tray.type]}</span></td><td>${i.iface}</td><td><a class="link-button" data-go="rack/${i.tray.rack}">${i.tray.rack}</a><span class="cell-sub">槽位 ${pad2(i.tray.slot)}</span></td><td>动态分配</td><td>${code(i.tray.lastSeen)}</td></tr>`), "没有符合筛选条件的地址。")}${list.length > 40 ? `<p class="live-small">显示前 40 个，共 ${list.length} 个。</p>` : ""}</div>`;
   },
   spec: {
-    calls: [["interface.list", "地址、MAC、归属和最近请求"], ["interface.addresses", "分配方式，按地址反查归属"]],
     purpose: "按地址查设备。排查地址冲突、确认某台设备拿到了哪个地址时使用。", entry: "接入 → 网络规划 → 地址分配", design: "6.7 网络", existing: "网络管理里的“子网地址分配”弹窗扩展为页签",
     points: [
       { n: 1, name: "筛选", kind: "新增", desc: "子网、设备类型和搜索（地址、MAC、序列号、机柜）。" },
