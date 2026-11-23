@@ -18,13 +18,33 @@
 | 页面上的编号标注 | 顶栏“功能点标注” | 编号与说明里的功能点一一对应；鼠标移到说明上会高亮页面元素 |
 | 全部页面说明 | 顶栏“全部页面说明”，或 [page-spec.zh-CN.md](page-spec.zh-CN.md) | 评审和打印 |
 
-`page-spec.zh-CN.md` 是生成的文件，不要直接修改。改了页面或它的 `spec` 之后重新生成：
+`page-spec.zh-CN.md`、`interface-contract.zh-CN.md` 和 `contract.json` 是生成的文件，不要直接修改。改了页面、它的 `spec` 或 `contract.js` 之后重新生成：
 
 ```bash
 node docs/design/frontend/tools/build-spec.mjs
 ```
 
 功能点的类型：**沿用**表示与现有产品页面一致，**调整**表示在现有基础上修改，**新增**表示现有产品没有。界面是简体中文，页面说明随界面只有简体中文。
+
+## 接口契约
+
+页面与 NICo 之间的约定写在 `contract.js` 里，回答三个问题：
+
+- **页面调用哪些接口。** 每个接口记录它属于哪一类（Core gRPC、REST、指标）、对应的命令行、请求参数、用到的字段、由谁执行，以及在 NICo 源码里的出处。
+- **页面要有数据，必须先有什么。** NICo 的资源连成一张依赖图，每个资源写明怎么得到、依赖什么，以及没有真实整机柜时怎么准备。
+- **设计需要、NICo 没有直接提供什么。** 缺口表记录源码里的实际情况和可选的处理方式。
+
+每个页面在自己的 `spec.calls` 里声明用到的接口和用途，格式是 `[接口编号, 用途]`。它有三种看法：
+
+| 看法 | 在哪 | 用途 |
+| --- | --- | --- |
+| 页面说明面板里的“NICo 接口”和“前置资源” | 任一页面右侧的面板 | 看当前页面用到的接口和要先准备的资源 |
+| 接口契约页 | 顶栏“接口契约”，或 [interface-contract.zh-CN.md](interface-contract.zh-CN.md) | 完整的资源依赖、接口清单和缺口 |
+| `contract.json` | 与契约同时生成 | 给采集和回放工具读取 |
+
+每个接口带一个证据等级：**定义**表示只读过源码里的定义，**模拟**表示在模拟环境里调用过，**现场**表示在真实整机柜环境核对过。核对之后在 `contract.js` 里改这个接口的 `evidence`，再重新生成。契约对应的 NICo 源码版本写在 `contract.js` 的 `CONTRACT_SOURCE` 里，换版本时逐项重新核对。
+
+生成器会自检：页面引用了未定义的接口、接口引用了未定义的资源、定义了却没有页面使用的接口，都会列在契约末尾。
 
 ## 左侧菜单
 
@@ -55,9 +75,10 @@ node docs/design/frontend/tools/build-spec.mjs
 | `design.css` | 设计稿新增的组件样式和标注层；进入实现时把新组件部分迁入产品样式 |
 | `app.js` | 运行时：`registerPage` / `registerAction`、`heading` / `table` / `button` / `badge` / `modal`，签名和类名与产品的 `shared/live.js` 一致 |
 | `data.js` | 示例数据和任务模拟；实现时替换为 NICo Core 与 Flow 的接口 |
-| `pages/*.js` | 页面脚本，每个页面带 `spec` |
+| `contract.js` | 接口契约：NICo 的资源依赖、接口清单和缺口 |
+| `pages/*.js` | 页面脚本，每个页面带 `spec`，其中 `calls` 声明用到的接口 |
 | `pages/operations.js` | 机柜、NVLink 域、设备的写操作和门控 |
-| `tools/build-spec.mjs` | 从页面脚本生成 `page-spec.zh-CN.md` |
+| `tools/build-spec.mjs` | 从页面脚本和 `contract.js` 生成 `page-spec.zh-CN.md`、`interface-contract.zh-CN.md` 和 `contract.json` |
 
 ## 讲解
 

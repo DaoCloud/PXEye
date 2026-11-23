@@ -26,6 +26,7 @@ registerPage("site", {
        <section class="live-card" ${fp(4)}><h2>机柜规格与规则</h2>${defs([["支持的机柜规格", code("GB200_NVL72R1_C2G4") + "　" + code("GB300_NVL72R1_C2G4")], ["兼容性核对", badge("当前组合在兼容列表内", "green")], ["电源规则", code("graceful-power-on") + "　" + code("graceful-power-off")], ["固件规则", code("rack-firmware-default")]])}</section></div>`;
   },
   spec: {
+    calls: [["core.version", "Core 版本与运行配置"], ["rms.status", "RMS 是否就绪"], ["rest.site", "Flow 与站点代理是否在线"], ["nmxc.endpoints", "NMX-C 接入"], ["explorer.last-run", "站点发现最近一次扫描"], ["explorer.config", "开关站点发现和自动建机"], ["credential.readiness", "接管凭据是否齐备"], ["credential.write", "补齐接管凭据"], ["rack-profile.list", "支持的机柜规格"], ["rule.list", "生效的电源和固件规则"]],
     purpose: "回答“平台现在能不能用”。把控制面、硬件后端和设施接入的就绪状态放在一页，并说明缺失时哪些操作受影响。",
     entry: "配置 → 站点设置 → 站点概况", design: "6.1 站点；8.3 外部依赖缺失时的行为", existing: "站点设置（概览、站点发现）与 NICo 集群（服务状态）合并而来；网络部分移到“网络规划”",
     points: [
@@ -51,6 +52,7 @@ registerPage("site/cluster", {
       `<div ${fp(3)}>${note("部署清单是固定的：NICo、Flow、RMS、Temporal 及基础服务作为一个带版本锁的离线包安装。这里不提供逐项组件参数。")}</div>`;
   },
   spec: {
+    calls: [["core.version", "Core 版本"], ["rms.status", "RMS 版本"], ["rest.site", "站点代理与 Flow 的版本和在线状态"]],
     purpose: "部署和查看控制面。整机柜方向要求 Flow 和 RMS 与 NICo 一起部署。",
     entry: "配置 → 站点设置 → 控制面", design: "4.3 依赖组件；6.1 站点", existing: "NICo 集群页，指标与服务表不变",
     points: [

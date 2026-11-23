@@ -18,13 +18,33 @@ The description of each page (purpose, entry, feature points, fields, rules, dia
 | Numbered markers on the page | “功能点标注” in the top bar | The numbers match the feature points of the description; hovering a feature point highlights the page element |
 | All page descriptions | “全部页面说明” in the top bar, or [page-spec.zh-CN.md](page-spec.zh-CN.md) | Review and printing |
 
-`page-spec.zh-CN.md` is generated; do not edit it. After changing a page or its `spec`, regenerate it:
+`page-spec.zh-CN.md`, `interface-contract.zh-CN.md` and `contract.json` are generated; do not edit them. After changing a page, its `spec` or `contract.js`, regenerate them:
 
 ```bash
 node docs/design/frontend/tools/build-spec.mjs
 ```
 
 Feature point types: **沿用** (kept) is the same as the existing product page, **调整** (changed) modifies an existing one, **新增** (new) does not exist in the product. The interface is in Simplified Chinese, and so are the page descriptions that come with it.
+
+## Interface contract
+
+`contract.js` records what the pages and NICo agree on. It answers three questions:
+
+- **Which interfaces a page calls.** Each interface records its kind (Core gRPC, REST, metric), the matching command line, the request parameters, the fields used, what executes it, and where it is defined in the NICo source.
+- **What must exist before a page has data.** The NICo resources form a dependency graph. Each resource states how it comes into being, what it depends on, and how to prepare it without a real whole rack.
+- **What the design needs and NICo does not provide directly.** The gap table records what the source actually does and the options for handling it.
+
+Each page declares the interfaces it uses and what for in its own `spec.calls`, as `[interface id, purpose]`. It is shown in three ways:
+
+| View | Where | Use |
+| --- | --- | --- |
+| “NICo 接口” and “前置资源” in the page description panel | The panel on the right of any page | The interfaces the current page uses and the resources to prepare first |
+| The interface contract page | “接口契约” in the top bar, or [interface-contract.zh-CN.md](interface-contract.zh-CN.md) | The full resource dependencies, interface list and gaps |
+| `contract.json` | Generated together with the contract | Read by capture and replay tools |
+
+Each interface carries an evidence level: **定义** means only its definition in the source has been read, **模拟** means it has been called in a simulated environment, **现场** means it has been checked against a real whole-rack environment. After checking one, change its `evidence` in `contract.js` and regenerate. The NICo source version the contract is based on is `CONTRACT_SOURCE` in `contract.js`; recheck every item when the version changes.
+
+The generator checks the contract: a page that references an undefined interface, an interface that references an undefined resource, and an interface no page uses are all listed at the end of the contract.
 
 ## Left menu
 
@@ -55,9 +75,10 @@ Only two kinds of text stay in their original form: product and component names 
 | `design.css` | Component styles added by the design and the annotation layer; move the component part into the product styles when implementing |
 | `app.js` | Runtime: `registerPage` / `registerAction`, `heading` / `table` / `button` / `badge` / `modal`, with the same signatures and class names as the product's `shared/live.js` |
 | `data.js` | Sample data and task simulation; replaced by the NICo Core and Flow interfaces when implementing |
-| `pages/*.js` | Page scripts, each page with its `spec` |
+| `contract.js` | Interface contract: NICo resource dependencies, interface list and gaps |
+| `pages/*.js` | Page scripts, each page with its `spec`; its `calls` declare the interfaces the page uses |
 | `pages/operations.js` | Write operations and gates for racks, NVLink domains and devices |
-| `tools/build-spec.mjs` | Generates `page-spec.zh-CN.md` from the page scripts |
+| `tools/build-spec.mjs` | Generates `page-spec.zh-CN.md`, `interface-contract.zh-CN.md` and `contract.json` from the page scripts and `contract.js` |
 
 ## Walkthrough
 

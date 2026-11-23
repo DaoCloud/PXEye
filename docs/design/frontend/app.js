@@ -119,7 +119,8 @@ function render() {
     `<label>角色 <select data-design="role">${["只读", "操作", "管理"].map((r) => `<option ${S.role === r ? "selected" : ""}>${r}</option>`).join("")}</select></label>` +
     `<button class="button compact ${S.view.annotate ? "primary" : ""}" data-design="annotate">功能点标注</button>` +
     `<button class="button compact ${S.view.guide !== false ? "primary" : ""}" data-design="guide">页面说明</button>` +
-    `<button class="button compact" data-go="spec">全部页面说明</button>`;
+    `<button class="button compact" data-go="spec">全部页面说明</button>` +
+    `<button class="button compact" data-go="contract">接口契约</button>`;
   $("#main").innerHTML = (page.tab && page.module ? moduleTabs(page.module, id) : "") + page.render(arg);
   renderGuide(page, arg);
 }
@@ -165,7 +166,18 @@ function specHtml(spec) {
     <h3>功能点</h3>${points(spec.points)}
     ${spec.fields ? `<h3>字段</h3><table class="guide-table"><thead><tr><th>字段</th><th>来源</th><th>说明</th></tr></thead><tbody>${spec.fields.map((f) => `<tr><td><b>${esc(f[0])}</b></td><td>${esc(f[1])}</td><td>${esc(f[2] || "")}</td></tr>`).join("")}</tbody></table>` : ""}
     ${spec.rules ? `<h3>规则与门控</h3><ul>${spec.rules.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>` : ""}
+    ${spec.calls && spec.calls.length ? contractHtml(spec) : ""}
     ${(spec.dialogs || []).map((d) => `<h3>弹窗：${esc(d.name)}</h3><p>${esc(d.desc)}</p>${d.fields ? `<table class="guide-table" style="margin-top:6px"><thead><tr><th>输入</th><th>必填</th><th>说明</th></tr></thead><tbody>${d.fields.map((f) => `<tr><td><b>${esc(f[0])}</b></td><td>${esc(f[1])}</td><td>${esc(f[2] || "")}</td></tr>`).join("")}</tbody></table>` : ""}`).join("")}`;
+}
+/* 页面用到的 NICo 接口，以及要让它有数据必须先具备的资源。数据来自 contract.js。 */
+const surfaceBadge = (c) => `<span class="kind ${c.write ? "change" : "keep"}">${esc(c.surface)} · ${c.write ? "写" : "读"}</span>`;
+function contractHtml(spec) {
+  const list = spec.calls.map(([id, use]) => ({ id, use, call: callById(id) })), chain = resourceChain(list.flatMap((x) => (x.call ? x.call.requires || [] : [])));
+  return `<h3>NICo 接口</h3>${list.map((x) => x.call
+      ? `<div class="guide-call"><b>${esc(x.use)}</b><div class="live-code">${esc(x.call.name)}</div>${surfaceBadge(x.call)}${x.call.cli ? `<div class="guide-cli live-code">${esc(x.call.cli)}</div>` : ""}</div>`
+      : `<div class="guide-call"><b>${esc(x.use)}</b><div class="live-code">${esc(x.id)}</div><span class="kind new">契约中未定义</span></div>`).join("")}
+    ${chain.length ? `<h3>前置资源（按准备顺序）</h3><ol class="guide-chain">${chain.map((r) => `<li><b>${esc(r.name)}</b><span class="kind keep">${esc(PREP_LABEL[r.prep] || r.prep)}</span><p>${esc(r.createdBy)}</p></li>`).join("")}</ol>` : ""}
+    <p style="margin-top:10px"><a class="link-button" data-go="contract">查看完整的接口契约</a></p>`;
 }
 const GUIDE_STEPS = [
   ["站点设置", "检查依赖组件是否就绪", "site"], ["网络规划", "规划各类设备的网段与 DHCP 地址池", "network"], ["设备清单", "导入到货清单，确认差异", "inventory"],

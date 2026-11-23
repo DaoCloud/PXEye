@@ -47,6 +47,7 @@ registerPage("rack", {
       { recon: rackRecon, trays: rackTrays, tasks: rackTasks, history: rackHistory }[tab](r);
   },
   spec: {
+    calls: [["rack.list", "状态、原因与健康"], ["rack-profile.list", "机柜规格"], ["rack.history", "状态历史"], ["rack.rest", "任务计数与所属域"], ["rack.validation", "对账统计与差异"], ["tray.rest", "机柜立面的槽位"], ["machine.list", "设备表：计算托盘"], ["switch.list", "设备表：交换机"], ["shelf.list", "设备表：供电框"], ["expected-machine.list", "对账：声明的序列号"], ["explorer.endpoints", "对账：实测序列号和探测失败原因"], ["explorer.retry", "重新发现、重新探测"], ["ingestion.allow", "放行等待中的主机"], ["expected-machine.write", "更换设备：更新声明"], ["rack.bringup", "开始上线"], ["rack.power", "机柜电源"], ["rack.firmware", "固件更新"], ["firmware.status", "固件阶段的逐台进度"], ["task.list", "任务卡与阶段"], ["task.cancel", "取消任务"], ["rack.maintenance", "NVOS 更新与 NMX-C 配置（见缺口：机柜上线由谁推进）"], ["health.reports", "机柜健康与泄漏告警"]],
     purpose: "一个机柜的工作台：看它在流程的哪一步，处理对账问题，发起机柜级操作并跟踪任务。",
     entry: "运维 → 机柜管理，点击整行；设备管理、设备清单、健康告警、NVLink 域管理、运维任务页里的机柜链接", design: "5 整体操作运维流程；6.3 机柜与设备；9 操作设计", existing: "设备管理 → 机柜的详情弹窗（状态、健康、成员、状态历史）扩展为页面；发现诊断、布线并入“对账”；机柜拓扑并入“设备”页签",
     points: [

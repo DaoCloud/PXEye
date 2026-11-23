@@ -9,6 +9,7 @@ registerPage("baselines", {
       `<div ${fp(3)}>${note("基线随 NICo 与 RMS 的版本组合发布，在这里只读。固件的实际更新在“机柜管理”或“NVLink 域管理”里发起。")}</div>`;
   },
   spec: {
+    calls: [["rack-profile.list", "机柜规格"], ["firmware.desired", "NICo 里配置的期望版本和可用固件包"], ["device.inventory", "偏差统计：探测到的版本"]],
     purpose: "把固件版本从操作参数里拿出来，变成可审计的档案。操作人只选基线。", entry: "配置 → 固件基线", design: "6.6 档案与审计；10 非功能设计（固件基线的来源）", existing: "新增页面。现有服务器运行状态里的“固件”表是实际版本的来源",
     points: [
       { n: 1, name: "基线列表", kind: "新增", desc: "基线、适用的机柜规格、发布日期、使用中的机柜。" },
@@ -29,6 +30,7 @@ registerPage("os-templates", {
       `<div ${fp(3)}>${note("整机柜的计算托盘同质，默认不需要逐机配置。主机名和地址由 NICo 按清单分配，不在方案里填写。")}</div>`;
   },
   spec: {
+    calls: [["os.list", "方案列表与状态"], ["os.write", "新建、修改和停用方案"]],
     purpose: "可复用的系统安装配置。合并现有的操作系统材料和安装方案，交付时只需选一个方案。", entry: "配置 → 安装方案", design: "6.6 档案与审计", existing: "安装方案页（表头、状态、行操作沿用）与操作系统页（ISO 与 OS 版本）合并",
     points: [
       { n: 1, name: "方案列表", kind: "沿用", desc: "名称 / 版本、默认系统 / 安装器、分区 / 默认登录配置、状态 / 引用、操作，与安装方案页一致。" },

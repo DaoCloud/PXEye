@@ -11,6 +11,7 @@ This directory holds the current target design: operations for GB200 / GB300 who
 | Design specification | [Read](whole-rack-operations.md) | [阅读](whole-rack-operations.zh-CN.md) | Platform architecture, the end-to-end flow, modules and resources, module dependencies, design of operations, non-functional design |
 | Frontend design | [Read](frontend/README.md) | [阅读](frontend/README.zh-CN.md) | What each page looks like and can do; clickable; menu and wording rules |
 | Page descriptions | — | [阅读](frontend/page-spec.zh-CN.md) | Purpose, feature points, fields, rules and dialogs of every page; generated from the frontend design |
+| Interface contract | — | [阅读](frontend/interface-contract.zh-CN.md) | Which NICo interfaces and command lines each page calls, which fields it uses, which resources must be prepared first, and the gaps between the design and NICo; generated from the frontend design |
 
 ## Layout
 
@@ -20,6 +21,8 @@ This directory holds the current target design: operations for GB200 / GB300 who
 | `figures/` | The four figures of the design specification and their sources | Regenerate the images after changing a source; see below |
 | `frontend/` | The frontend design: clickable pages, each page script with its own description | Change a page together with its description, then regenerate the page descriptions |
 | `frontend/page-spec.zh-CN.md` | Page descriptions | Generated; do not edit |
+| `frontend/contract.js` | Source of the interface contract: NICo resource dependencies, interface list and gaps | Edit when the interfaces a page uses change; each page declares its interfaces in `spec.calls` |
+| `frontend/interface-contract.zh-CN.md`, `frontend/contract.json` | The interface contract as a document and as data | Generated; do not edit |
 
 Each piece of content has one source:
 

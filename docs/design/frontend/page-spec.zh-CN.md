@@ -99,6 +99,18 @@
 - “需要处理”只用 NICo 的信号：对账阻塞、状态为 Error、有阻止分配的告警。
 - 没有期望清单的机柜不出现。
 
+### NICo 接口
+
+| 用途 | 接口 | 类型 | 命令行 |
+| --- | --- | --- | --- |
+| 机柜状态与健康 | `FindRackIds → FindRacksByIds` | Core gRPC · 读 | `nico-admin-cli rack list；nico-admin-cli rack show <RACK_ID>` |
+| 机柜规格，以及还没有出现的机柜 | `GetAllExpectedRacks` | Core gRPC · 读 | `nico-admin-cli expected-rack show` |
+| 托盘计数与任务计数 | `GET /rack、GET /rack/{id}` | REST · 读 | `nicocli rack list --site-id <SITE>` |
+| 对账差异数 | `GET /rack/{id}/validation、GET /rack/validation` | REST · 读 | `nicocli rack validate --site-id <SITE>` |
+| 当前任务 | `GET /task、GET /rack/{id}/task、GET /tray/{id}/task、GET /task/{id}` | REST · 读 | `nicocli rack task get --site-id <SITE> <RACK_ID>` |
+
+前置资源（按准备顺序）：NICo Core → 正向 DNS 域 → VLAN 与 VNI 资源池 → 机柜规格配置 → 站点默认凭据 → DHCP 与引导服务 → RMS → 组件管理器 → REST 身份认证 → REST 站点 → Flow → 子网 → 机柜组声明 → 机柜声明 → 设备声明 → 现场 DHCP 中继 → 设备接口与地址 → 探测结果 → 交换机对象 → 机柜对象 → Flow 的机柜与托盘清单 → 任务
+
 ## 运维 › 机柜管理 › 机柜详情
 
 一个机柜的工作台：看它在流程的哪一步，处理对账问题，发起机柜级操作并跟踪任务。
@@ -139,6 +151,35 @@
 - 有泄漏告警的机柜拒绝上电。
 - 机柜上还有实例时不能退役。
 - 下电、重启和有实例时的固件更新是高风险操作，要输入机柜 ID。
+
+### NICo 接口
+
+| 用途 | 接口 | 类型 | 命令行 |
+| --- | --- | --- | --- |
+| 状态、原因与健康 | `FindRackIds → FindRacksByIds` | Core gRPC · 读 | `nico-admin-cli rack list；nico-admin-cli rack show <RACK_ID>` |
+| 机柜规格 | `ListRackProfiles / GetRackProfile` | Core gRPC · 读 | `nico-admin-cli rack profile list；nico-admin-cli rack profile show <RACK_ID>` |
+| 状态历史 | `FindRackStateHistories` | Core gRPC · 读 | `nico-admin-cli rack state-history <RACK_ID>` |
+| 任务计数与所属域 | `GET /rack、GET /rack/{id}` | REST · 读 | `nicocli rack list --site-id <SITE>` |
+| 对账统计与差异 | `GET /rack/{id}/validation、GET /rack/validation` | REST · 读 | `nicocli rack validate --site-id <SITE>` |
+| 机柜立面的槽位 | `GET /tray、GET /tray/{id}` | REST · 读 | `nicocli tray list --site-id <SITE> --rack-id <RACK>` |
+| 设备表：计算托盘 | `FindMachineIds → FindMachinesByIds` | Core gRPC · 读 | `nico-admin-cli machine show [--hosts]` |
+| 设备表：交换机 | `FindSwitchIds → FindSwitchesByIds` | Core gRPC · 读 | `nico-admin-cli switch list；nico-admin-cli switch show <SWITCH_ID>` |
+| 设备表：供电框 | `FindPowerShelfIds → FindPowerShelvesByIds` | Core gRPC · 读 | `nico-admin-cli power-shelf list；nico-admin-cli power-shelf show <ID>` |
+| 对账：声明的序列号 | `GetAllExpectedMachines / GetAllExpectedMachinesLinked` | Core gRPC · 读 | `nico-admin-cli expected-machine show` |
+| 对账：实测序列号和探测失败原因 | `FindExploredEndpointIds → FindExploredEndpointsByIds` | Core gRPC · 读 | `nico-admin-cli site-explorer get-report endpoint` |
+| 重新发现、重新探测 | `ReExploreEndpoint / RefreshEndpointReport / ClearSiteExplorationError` | Core gRPC · 写 | `nico-admin-cli site-explorer re-explore；nico-admin-cli site-explorer refresh；nico-admin-cli site-explorer clear-error` |
+| 放行等待中的主机 | `AllowIngestionAndPowerOn` | Core gRPC · 写 | `nico-admin-cli managed-host power-options allow-ingestion-and-power-on --mac-address <MAC>` |
+| 更换设备：更新声明 | `CreateExpectedMachines / UpdateExpectedMachines / PatchExpectedMachine / DeleteExpectedMachine` | Core gRPC · 写 | `nico-admin-cli expected-machine add -a <BMC_MAC> -u <BMC_USER> -p <BMC_PASS> -s <SERIAL> [--rack_id] [--bmc-ip-address] [--interfaces] [--label]` |
+| 开始上线 | `POST /rack/{id}/bringup` | REST · 写 | `nicocli rack bringup --site-id <SITE> <RACK_ID>` |
+| 机柜电源 | `PATCH /rack/{id}/power` | REST · 写 | `nicocli rack power --site-id <SITE> --data '{"state":"On"}' <RACK_ID>` |
+| 固件更新 | `PATCH /rack/{id}/firmware` | REST · 写 | `nicocli rack firmware --site-id <SITE> <RACK_ID>` |
+| 固件阶段的逐台进度 | `GetComponentFirmwareStatus` | Core gRPC · 读 | `nico-admin-cli component-manager get-firmware-update-status {compute-tray\|switch\|power-shelf\|rack}` |
+| 任务卡与阶段 | `GET /task、GET /rack/{id}/task、GET /tray/{id}/task、GET /task/{id}` | REST · 读 | `nicocli rack task get --site-id <SITE> <RACK_ID>` |
+| 取消任务 | `POST /task/{id}/cancel` | REST · 写 | `nicocli task cancel --site-id <SITE> <TASK_ID>` |
+| NVOS 更新与 NMX-C 配置（见缺口：机柜上线由谁推进） | `OnDemandRackMaintenance / TerminateRackMaintenance` | Core gRPC · 写 | `nico-admin-cli rack maintenance start --rack <ID> --activities <firmware-upgrade,nvos-update,power-sequence,configure-nmx-cluster>；nico-admin-cli rack maintenance terminate --rack <ID>` |
+| 机柜健康与泄漏告警 | `ListMachineHealthReports / ListSwitchHealthReports / ListPowerShelfHealthReports / ListRackHealthReports / ListNVLinkDomainHealthReports` | Core gRPC · 读 | `nico-admin-cli machine health-report show <ID>；nico-admin-cli nvl-domain health-report show` |
+
+前置资源（按准备顺序）：NICo Core → 正向 DNS 域 → VLAN 与 VNI 资源池 → 机柜规格配置 → 机柜固件清单 → 站点默认凭据 → DHCP 与引导服务 → RMS → 组件管理器 → REST 身份认证 → REST 站点 → Flow → 操作规则 → 子网 → 机柜组声明 → 机柜声明 → 设备声明 → 现场 DHCP 中继 → 设备接口与地址 → 探测结果 → 计算托盘对象 → 交换机对象 → 供电框对象 → 机柜对象 → Flow 的机柜与托盘清单 → 任务 → 健康报告
 
 ### 弹窗：操作确认（上线、电源、固件更新、退役共用）
 
@@ -191,6 +232,21 @@ NVLink 域是固件一致性和交付门控的单位。本页用来发现域内�
 - 域级固件更新是高风险操作，要输入域 ID 确认，并显示域内全部实例数。
 - 任一批失败后停止后续批次，已完成的机柜不回滚。
 
+### NICo 接口
+
+| 用途 | 接口 | 类型 | 命令行 |
+| --- | --- | --- | --- |
+| 域、成员机柜和 NMX-C 集群 | `GET /domain/nvlink、GET /domain/nvlink/{id}` | REST · 读 | `nicocli domain list --site-id <SITE>` |
+| 交换机回报的域编号 | `FindSwitchIds → FindSwitchesByIds` | Core gRPC · 读 | `nico-admin-cli switch list；nico-admin-cli switch show <SWITCH_ID>` |
+| 域内各设备的固件版本 | `GetComponentInventory` | Core gRPC · 读 | — |
+| 域的健康报告 | `ListMachineHealthReports / ListSwitchHealthReports / ListPowerShelfHealthReports / ListRackHealthReports / ListNVLinkDomainHealthReports` | Core gRPC · 读 | `nico-admin-cli machine health-report show <ID>；nico-admin-cli nvl-domain health-report show` |
+| 域级电源 | `PATCH /domain/nvlink/{id}/power` | REST · 写 | — |
+| 域级固件更新 | `PATCH /domain/nvlink/{id}/firmware` | REST · 写 | — |
+| 分阶段发布 | `POST /task/run、GET /task/run、GET /task/run/{id}/target、POST /task/run/{id}/pause\|resume\|advance\|cancel` | REST · 写 | — |
+| 域级任务的进度 | `GET /task、GET /rack/{id}/task、GET /tray/{id}/task、GET /task/{id}` | REST · 读 | `nicocli rack task get --site-id <SITE> <RACK_ID>` |
+
+前置资源（按准备顺序）：NICo Core → 正向 DNS 域 → VLAN 与 VNI 资源池 → 机柜规格配置 → 机柜固件清单 → 站点默认凭据 → DHCP 与引导服务 → RMS → 组件管理器 → REST 身份认证 → REST 站点 → Flow → 操作规则 → NMX-C 接入 → 子网 → 机柜组声明 → 机柜声明 → 设备声明 → 现场 DHCP 中继 → 设备接口与地址 → 探测结果 → 计算托盘对象 → 交换机对象 → 机柜对象 → Flow 的机柜与托盘清单 → 任务 → NVLink 域 → 健康报告
+
 ### 弹窗：域级固件更新
 
 确认页显示对象、动作、受影响实例数和批次。
@@ -241,6 +297,18 @@ NVLink 域是固件一致性和交付门控的单位。本页用来发现域内�
 - DPU 出现在搜索结果里，操作经所属主机执行。
 - 列表最多显示 30 台，更多用子菜单里的类型页面筛选。
 
+### NICo 接口
+
+| 用途 | 接口 | 类型 | 命令行 |
+| --- | --- | --- | --- |
+| 计算托盘的数量和需要处理的设备 | `FindMachineIds → FindMachinesByIds` | Core gRPC · 读 | `nico-admin-cli machine show [--hosts]` |
+| 交换机的数量和需要处理的设备 | `FindSwitchIds → FindSwitchesByIds` | Core gRPC · 读 | `nico-admin-cli switch list；nico-admin-cli switch show <SWITCH_ID>` |
+| 供电框的数量和需要处理的设备 | `FindPowerShelfIds → FindPowerShelvesByIds` | Core gRPC · 读 | `nico-admin-cli power-shelf list；nico-admin-cli power-shelf show <ID>` |
+| DPU 的数量和需要处理的设备 | `FindMachineIds（include_dpus、exclude_hosts）→ FindMachinesByIds` | Core gRPC · 读 | `nico-admin-cli dpu status；nico-admin-cli dpu versions` |
+| 按序列号、MAC、地址搜索 | `IdentifySerial / IdentifyMac / FindIpAddress` | Core gRPC · 读 | `nico-admin-cli ip find <IP>` |
+
+前置资源（按准备顺序）：NICo Core → 正向 DNS 域 → VLAN 与 VNI 资源池 → 机柜规格配置 → 站点默认凭据 → DHCP 与引导服务 → RMS → 组件管理器 → 子网 → 设备声明 → 现场 DHCP 中继 → 设备接口与地址 → 探测结果 → 计算托盘对象 → DPU 对象 → 交换机对象 → 供电框对象
+
 ## 运维 › 设备管理 › 计算托盘
 
 直接面向计算托盘运维：不需要先找到它在哪个机柜。地址、状态和固件在表里一眼可见，电源等操作在行上一步发起。
@@ -278,6 +346,28 @@ NVLink 域是固件一致性和交付门控的单位。本页用来发现域内�
 - 没有 NICo 对象的设备不能勾选和操作。
 - 有实例的计算托盘，关机等操作要输入序列号确认。
 - 只读角色的操作按钮禁用。
+
+### NICo 接口
+
+| 用途 | 接口 | 类型 | 命令行 |
+| --- | --- | --- | --- |
+| 列表、状态、健康和地址 | `FindMachineIds → FindMachinesByIds` | Core gRPC · 读 | `nico-admin-cli machine show [--hosts]` |
+| 电源状态 | `GetComponentPowerDetails / GetPowerOptions` | Core gRPC · 读 | `nico-admin-cli managed-host power-options show <MACHINE>` |
+| 固件版本 | `GetComponentInventory` | Core gRPC · 读 | — |
+| 所属实例 | `FindInstanceIds → FindInstancesByIds / FindInstanceByMachineID` | Core gRPC · 读 | `nico-admin-cli instance show` |
+| 运行状态里的状态历史 | `FindMachineStateHistories / FindSwitchStateHistories / FindPowerShelfStateHistories` | Core gRPC · 读 | `nico-admin-cli machine show <ID> -c <条数>` |
+| 硬件校验结果 | `GetMachineValidationRuns / GetMachineValidationResults` | Core gRPC · 读 | `nico-admin-cli machine-validation runs show -m <MACHINE>` |
+| 上电、关机、重启 | `PATCH /tray/{id}/power、PATCH /tray/power` | REST · 写 | `nicocli tray power --site-id <SITE> --data '{"state":"Off"}' <TRAY_ID>` |
+| 固件更新 | `PATCH /tray/{id}/firmware、PATCH /tray/firmware` | REST · 写 | `nicocli tray firmware --site-id <SITE> <TRAY_ID>` |
+| 任务进度 | `GET /task、GET /rack/{id}/task、GET /tray/{id}/task、GET /task/{id}` | REST · 读 | `nicocli rack task get --site-id <SITE> <RACK_ID>` |
+| 设置和清除维护标记 | `SetMaintenance` | Core gRPC · 写 | `nico-admin-cli managed-host maintenance on --host <ID> --reference <原因>；… off --host <ID>` |
+| 隔离和解除隔离 | `SetManagedHostQuarantineState / ClearManagedHostQuarantineState` | Core gRPC · 写 | `nico-admin-cli managed-host quarantine on --host <ID> --reason <原因>；… off --host <ID>` |
+| 按需硬件校验 | `OnDemandMachineValidation` | Core gRPC · 写 | `nico-admin-cli machine-validation on-demand start -m <MACHINE>` |
+| 核对 SKU | `VerifySkuForMachine` | Core gRPC · 写 | `nico-admin-cli sku verify <MACHINE_ID>` |
+| 重启 BMC | `AdminBmcReset` | Core gRPC · 写 | `nico-admin-cli bmc-machine bmc-reset [--machine <ID>\|--switch <ID>\|--power-shelf <ID>]` |
+| 电源的直接执行路径（见缺口） | `ComponentPowerControl` | Core gRPC · 写 | `nico-admin-cli component-manager component-power-control --action <on\|graceful-shutdown\|force-off\|graceful-restart\|force-restart\|a-c-powercycle> {compute-tray\|switch\|power-shelf} --machine-id <ID>` |
+
+前置资源（按准备顺序）：NICo Core → 正向 DNS 域 → VLAN 与 VNI 资源池 → 机柜规格配置 → 机柜固件清单 → 站点默认凭据 → DHCP 与引导服务 → RMS → 组件管理器 → REST 身份认证 → REST 站点 → Flow → 子网 → 机柜组声明 → 机柜声明 → 设备声明 → 现场 DHCP 中继 → 设备接口与地址 → 探测结果 → 计算托盘对象 → 交换机对象 → 机柜对象 → Flow 的机柜与托盘清单 → 任务 → 系统定义 → 租户与 VPC → 实例
 
 ### 弹窗：操作对话框（单台与批量共用）
 
@@ -327,6 +417,23 @@ NVLink 域是固件一致性和交付门控的单位。本页用来发现域内�
 - 交换机的高风险操作按整柜实例计算影响。
 - 只读角色的操作按钮禁用。
 
+### NICo 接口
+
+| 用途 | 接口 | 类型 | 命令行 |
+| --- | --- | --- | --- |
+| 列表、状态、健康、地址和 Fabric Manager | `FindSwitchIds → FindSwitchesByIds` | Core gRPC · 读 | `nico-admin-cli switch list；nico-admin-cli switch show <SWITCH_ID>` |
+| 电源状态 | `GetComponentPowerDetails / GetPowerOptions` | Core gRPC · 读 | `nico-admin-cli managed-host power-options show <MACHINE>` |
+| 固件与 NVOS 版本 | `GetComponentInventory` | Core gRPC · 读 | — |
+| 运行状态里的状态历史 | `FindMachineStateHistories / FindSwitchStateHistories / FindPowerShelfStateHistories` | Core gRPC · 读 | `nico-admin-cli machine show <ID> -c <条数>` |
+| 上电、关机、重启 | `PATCH /tray/{id}/power、PATCH /tray/power` | REST · 写 | `nicocli tray power --site-id <SITE> --data '{"state":"Off"}' <TRAY_ID>` |
+| 固件更新 | `PATCH /tray/{id}/firmware、PATCH /tray/firmware` | REST · 写 | `nicocli tray firmware --site-id <SITE> <TRAY_ID>` |
+| 任务进度 | `GET /task、GET /rack/{id}/task、GET /tray/{id}/task、GET /task/{id}` | REST · 读 | `nicocli rack task get --site-id <SITE> <RACK_ID>` |
+| 重启 BMC | `AdminBmcReset` | Core gRPC · 写 | `nico-admin-cli bmc-machine bmc-reset [--machine <ID>\|--switch <ID>\|--power-shelf <ID>]` |
+| 退役 | `DecommissionSwitch / DecommissionPowerShelf / DecommissionManagedHost` | Core gRPC · 写 | `nico-admin-cli managed-switch decommission <SWITCH_ID>；nico-admin-cli power-shelf decommission <ID>；nico-admin-cli managed-host decommission <ID>` |
+| 电源的直接执行路径（见缺口） | `ComponentPowerControl` | Core gRPC · 写 | `nico-admin-cli component-manager component-power-control --action <on\|graceful-shutdown\|force-off\|graceful-restart\|force-restart\|a-c-powercycle> {compute-tray\|switch\|power-shelf} --machine-id <ID>` |
+
+前置资源（按准备顺序）：NICo Core → 正向 DNS 域 → VLAN 与 VNI 资源池 → 机柜规格配置 → 机柜固件清单 → 站点默认凭据 → DHCP 与引导服务 → RMS → 组件管理器 → REST 身份认证 → REST 站点 → Flow → 子网 → 机柜组声明 → 机柜声明 → 设备声明 → 现场 DHCP 中继 → 设备接口与地址 → 探测结果 → 计算托盘对象 → 交换机对象 → 机柜对象 → Flow 的机柜与托盘清单 → 任务
+
 ### 弹窗：操作对话框（单台与批量共用）
 
 选对象、选动作、写原因，一个弹窗完成。逐台显示检查结果，只对通过的目标执行。现有的“设备操作 → 确认操作 → 操作结果”三步合成一步，结果进入任务或审计。
@@ -375,6 +482,23 @@ NVLink 域是固件一致性和交付门控的单位。本页用来发现域内�
 - 供电框的高风险操作按整柜实例计算影响。
 - 只读角色的操作按钮禁用。
 
+### NICo 接口
+
+| 用途 | 接口 | 类型 | 命令行 |
+| --- | --- | --- | --- |
+| 列表、状态、健康、地址和供电规格 | `FindPowerShelfIds → FindPowerShelvesByIds` | Core gRPC · 读 | `nico-admin-cli power-shelf list；nico-admin-cli power-shelf show <ID>` |
+| 槽位 | `GET /tray、GET /tray/{id}` | REST · 读 | `nicocli tray list --site-id <SITE> --rack-id <RACK>` |
+| 序列号 | `GetAllExpectedPowerShelves / GetAllExpectedPowerShelvesLinked` | Core gRPC · 读 | `nico-admin-cli expected-power-shelf show` |
+| 电源状态 | `GetComponentPowerDetails / GetPowerOptions` | Core gRPC · 读 | `nico-admin-cli managed-host power-options show <MACHINE>` |
+| 固件版本 | `GetComponentInventory` | Core gRPC · 读 | — |
+| 运行状态里的状态历史 | `FindMachineStateHistories / FindSwitchStateHistories / FindPowerShelfStateHistories` | Core gRPC · 读 | `nico-admin-cli machine show <ID> -c <条数>` |
+| 上电、关机 | `PATCH /tray/{id}/power、PATCH /tray/power` | REST · 写 | `nicocli tray power --site-id <SITE> --data '{"state":"Off"}' <TRAY_ID>` |
+| 任务进度 | `GET /task、GET /rack/{id}/task、GET /tray/{id}/task、GET /task/{id}` | REST · 读 | `nicocli rack task get --site-id <SITE> <RACK_ID>` |
+| 退役 | `DecommissionSwitch / DecommissionPowerShelf / DecommissionManagedHost` | Core gRPC · 写 | `nico-admin-cli managed-switch decommission <SWITCH_ID>；nico-admin-cli power-shelf decommission <ID>；nico-admin-cli managed-host decommission <ID>` |
+| 电源的直接执行路径（见缺口） | `SetPowerShelfMaintenance` | Core gRPC · 写 | `nico-admin-cli power-shelf maintenance power-off --power-shelf-id <ID> [--reference] [--graceful]；… power-on` |
+
+前置资源（按准备顺序）：NICo Core → 正向 DNS 域 → VLAN 与 VNI 资源池 → 机柜规格配置 → 站点默认凭据 → DHCP 与引导服务 → RMS → 组件管理器 → REST 身份认证 → REST 站点 → Flow → 子网 → 机柜组声明 → 机柜声明 → 设备声明 → 现场 DHCP 中继 → 设备接口与地址 → 探测结果 → 计算托盘对象 → 交换机对象 → 供电框对象 → 机柜对象 → Flow 的机柜与托盘清单 → 任务
+
 ### 弹窗：操作对话框（单台与批量共用）
 
 选对象、选动作、写原因，一个弹窗完成。逐台显示检查结果，只对通过的目标执行。现有的“设备操作 → 确认操作 → 操作结果”三步合成一步，结果进入任务或审计。
@@ -416,6 +540,15 @@ NVLink 域是固件一致性和交付门控的单位。本页用来发现域内�
 - 页面只读。
 - NICo 的设备操作只支持主机，不支持 DPU 等其他机器类型。
 
+### NICo 接口
+
+| 用途 | 接口 | 类型 | 命令行 |
+| --- | --- | --- | --- |
+| DPU 列表、状态和固件 | `FindMachineIds（include_dpus、exclude_hosts）→ FindMachinesByIds` | Core gRPC · 读 | `nico-admin-cli dpu status；nico-admin-cli dpu versions` |
+| 所属主机 | `FindMachineIds → FindMachinesByIds` | Core gRPC · 读 | `nico-admin-cli machine show [--hosts]` |
+
+前置资源（按准备顺序）：NICo Core → 正向 DNS 域 → VLAN 与 VNI 资源池 → 站点默认凭据 → DHCP 与引导服务 → 子网 → 设备声明 → 现场 DHCP 中继 → 设备接口与地址 → 探测结果 → 计算托盘对象 → DPU 对象
+
 ## 运维 › 健康告警
 
 汇总当前的健康告警，标出会阻止交付的条目，并把人带到处理的地方。页面本身不做监控曲线。
@@ -449,6 +582,19 @@ NVLink 域是固件一致性和交付门控的单位。本页用来发现域内�
 - 没有收到报告显示为未报告，不显示为正常。
 - 页面只读；确认、抑制和通知不在本阶段。
 
+### NICo 接口
+
+| 用途 | 接口 | 类型 | 命令行 |
+| --- | --- | --- | --- |
+| 各对象当前的告警与分类 | `ListMachineHealthReports / ListSwitchHealthReports / ListPowerShelfHealthReports / ListRackHealthReports / ListNVLinkDomainHealthReports` | Core gRPC · 读 | `nico-admin-cli machine health-report show <ID>；nico-admin-cli nvl-domain health-report show` |
+| 告警历史 | `FindMachineHealthHistories / FindSwitchHealthHistories / FindPowerShelfHealthHistories / FindRackHealthHistories` | Core gRPC · 读 | `nico-admin-cli machine health-history <ID>；nico-admin-cli rack health-history <RACK_ID>` |
+| 机柜级告警 | `FindRackIds → FindRacksByIds` | Core gRPC · 读 | `nico-admin-cli rack list；nico-admin-cli rack show <RACK_ID>` |
+| 有告警的计算托盘 | `FindMachineIds → FindMachinesByIds` | Core gRPC · 读 | `nico-admin-cli machine show [--hosts]` |
+| 有告警的交换机 | `FindSwitchIds → FindSwitchesByIds` | Core gRPC · 读 | `nico-admin-cli switch list；nico-admin-cli switch show <SWITCH_ID>` |
+| 有告警的供电框 | `FindPowerShelfIds → FindPowerShelvesByIds` | Core gRPC · 读 | `nico-admin-cli power-shelf list；nico-admin-cli power-shelf show <ID>` |
+
+前置资源（按准备顺序）：NICo Core → 正向 DNS 域 → VLAN 与 VNI 资源池 → 机柜规格配置 → 站点默认凭据 → DHCP 与引导服务 → RMS → 组件管理器 → 子网 → 机柜组声明 → 机柜声明 → 设备声明 → 现场 DHCP 中继 → 设备接口与地址 → 探测结果 → 计算托盘对象 → 交换机对象 → 供电框对象 → 机柜对象 → 健康报告
+
 ## 运维 › 运维任务
 
 跨机柜查看所有 Flow 任务。任务是机柜级操作的唯一执行记录。
@@ -471,6 +617,15 @@ NVLink 域是固件一致性和交付门控的单位。本页用来发现域内�
 
 - 状态用词沿用安装任务：执行中、已完成、已终止。
 - 只读角色不能取消任务。
+
+### NICo 接口
+
+| 用途 | 接口 | 类型 | 命令行 |
+| --- | --- | --- | --- |
+| 任务、阶段和状态 | `GET /task、GET /rack/{id}/task、GET /tray/{id}/task、GET /task/{id}` | REST · 读 | `nicocli rack task get --site-id <SITE> <RACK_ID>` |
+| 取消任务 | `POST /task/{id}/cancel` | REST · 写 | `nicocli task cancel --site-id <SITE> <TASK_ID>` |
+
+前置资源（按准备顺序）：NICo Core → 正向 DNS 域 → VLAN 与 VNI 资源池 → 机柜规格配置 → 站点默认凭据 → DHCP 与引导服务 → RMS → 组件管理器 → REST 身份认证 → REST 站点 → Flow → 子网 → 机柜组声明 → 机柜声明 → 设备声明 → 现场 DHCP 中继 → 设备接口与地址 → 探测结果 → 交换机对象 → 机柜对象 → Flow 的机柜与托盘清单 → 任务
 
 ## 运维 › 操作审计
 
@@ -533,6 +688,21 @@ NVLink 域是固件一致性和交付门控的单位。本页用来发现域内�
 - 机柜未就绪、未上电、有阻止分配的告警、有进行中的任务时不能交付。
 - 带维护标记或已隔离的托盘不参与交付。
 
+### NICo 接口
+
+| 用途 | 接口 | 类型 | 命令行 |
+| --- | --- | --- | --- |
+| 机柜是否就绪 | `FindRackIds → FindRacksByIds` | Core gRPC · 读 | `nico-admin-cli rack list；nico-admin-cli rack show <RACK_ID>` |
+| 按机柜筛出计算托盘 | `FindMachineIds → FindMachinesByIds` | Core gRPC · 读 | `nico-admin-cli machine show [--hosts]` |
+| 可交付的托盘数和不可交付的原因 | `FindHostStatesByIds` | Core gRPC · 读 | — |
+| 机柜和域的告警 | `ListMachineHealthReports / ListSwitchHealthReports / ListPowerShelfHealthReports / ListRackHealthReports / ListNVLinkDomainHealthReports` | Core gRPC · 读 | `nico-admin-cli machine health-report show <ID>；nico-admin-cli nvl-domain health-report show` |
+| 已交付的实例数 | `FindInstanceIds → FindInstancesByIds / FindInstanceByMachineID` | Core gRPC · 读 | `nico-admin-cli instance show` |
+| 可选的安装方案 | `FindOperatingSystemIds → FindOperatingSystemsByIds` | Core gRPC · 读 | `nico-admin-cli operating-system show` |
+| 装机并验收 | `AllocateInstances / AllocateInstance` | Core gRPC · 写 | `nico-admin-cli instance allocate --machine-id <ID>... --transactional --os <OS_ID> [--flat-vpc-id\|--vpc-prefix-id]` |
+| 交给上层平台 | `CreateInstanceType / AssociateMachinesWithInstanceType / CreateComputeAllocation` | Core gRPC · 写 | `nico-admin-cli instance-type create；nico-admin-cli instance-type associate；nico-admin-cli compute-allocation create` |
+
+前置资源（按准备顺序）：NICo Core → 正向 DNS 域 → VLAN 与 VNI 资源池 → 机柜规格配置 → 站点默认凭据 → DHCP 与引导服务 → RMS → 组件管理器 → 子网 → 机柜组声明 → 机柜声明 → 设备声明 → 现场 DHCP 中继 → 设备接口与地址 → 探测结果 → 计算托盘对象 → 交换机对象 → 机柜对象 → 系统定义 → 租户与 VPC → 实例 → 健康报告
+
 ### 弹窗：交付向导
 
 步骤 1 选择方式，步骤 2 核对并确认。沿用安装向导的“步骤 N / 2”写法，去掉逐机筛选。
@@ -567,6 +737,15 @@ NVLink 域是固件一致性和交付门控的单位。本页用来发现域内�
 - 状态用词：待执行、执行中、已完成、需处理、已终止。
 - 失败的设备暂停等待处理，不影响同批其他设备。
 
+### NICo 接口
+
+| 用途 | 接口 | 类型 | 命令行 |
+| --- | --- | --- | --- |
+| 实例状态 | `FindInstanceIds → FindInstancesByIds / FindInstanceByMachineID` | Core gRPC · 读 | `nico-admin-cli instance show` |
+| 主机状态 | `FindMachineIds → FindMachinesByIds` | Core gRPC · 读 | `nico-admin-cli machine show [--hosts]` |
+
+前置资源（按准备顺序）：NICo Core → 正向 DNS 域 → VLAN 与 VNI 资源池 → 站点默认凭据 → DHCP 与引导服务 → 子网 → 设备声明 → 现场 DHCP 中继 → 设备接口与地址 → 探测结果 → 计算托盘对象 → 系统定义 → 租户与 VPC → 实例
+
 ## 交付 › 实例管理
 
 查看已交付的实例，并在租户退租时回收设备。
@@ -588,6 +767,16 @@ NVLink 域是固件一致性和交付门控的单位。本页用来发现域内�
 
 - 回收完成并重新校验通过前，设备不计入“可交付”。
 - 回收用词：回收请求已接受、实例已移除设备准备中、回收完成、设备回收失败需处理。
+
+### NICo 接口
+
+| 用途 | 接口 | 类型 | 命令行 |
+| --- | --- | --- | --- |
+| 实例、租户和系统 | `FindInstanceIds → FindInstancesByIds / FindInstanceByMachineID` | Core gRPC · 读 | `nico-admin-cli instance show` |
+| 机器状态与回收进度 | `FindMachineIds → FindMachinesByIds` | Core gRPC · 读 | `nico-admin-cli machine show [--hosts]` |
+| 删除（退租回收） | `ReleaseInstance / ReleaseInstances` | Core gRPC · 写 | `nico-admin-cli instance release --instance <ID>` |
+
+前置资源（按准备顺序）：NICo Core → 正向 DNS 域 → VLAN 与 VNI 资源池 → 站点默认凭据 → DHCP 与引导服务 → 子网 → 设备声明 → 现场 DHCP 中继 → 设备接口与地址 → 探测结果 → 计算托盘对象 → 系统定义 → 租户与 VPC → 实例
 
 ### 弹窗：删除（退租回收）
 
@@ -631,6 +820,21 @@ NVLink 域是固件一致性和交付门控的单位。本页用来发现域内�
 - 规划检查未通过时不能导入设备清单。
 - 新增子网、配置地址池、删除需要管理角色。
 - 已创建的子网只允许调整 DHCP 地址池。
+
+### NICo 接口
+
+| 用途 | 接口 | 类型 | 命令行 |
+| --- | --- | --- | --- |
+| 子网、状态和空闲地址 | `FindNetworkSegmentIds → FindNetworkSegmentsByIds` | Core gRPC · 读 | `nico-admin-cli network-segment show` |
+| 新增子网 | `CreateNetworkSegment / CreateNetworkSegmentWithDhcpRange` | Core gRPC · 写 | `nico-admin-cli network-segment create --name --segment-type --prefix --gateway --reserve-first --mtu --subdomain-id` |
+| 读取 DHCP 地址池 | `FindNetworkSegmentDhcpRanges` | Core gRPC · 读 | — |
+| 修改 DHCP 地址池 | `SetNetworkSegmentDhcpRange` | Core gRPC · 写 | — |
+| 删除子网 | `DeleteNetworkSegment` | Core gRPC · 写 | `nico-admin-cli network-segment delete` |
+| 规划检查：计算托盘接口的数量 | `GetAllExpectedMachines / GetAllExpectedMachinesLinked` | Core gRPC · 读 | `nico-admin-cli expected-machine show` |
+| 规划检查：交换机接口的数量 | `GetAllExpectedSwitches / GetAllExpectedSwitchesLinked` | Core gRPC · 读 | `nico-admin-cli expected-switch show` |
+| 规划检查：供电框接口的数量 | `GetAllExpectedPowerShelves / GetAllExpectedPowerShelvesLinked` | Core gRPC · 读 | `nico-admin-cli expected-power-shelf show` |
+
+前置资源（按准备顺序）：NICo Core → 正向 DNS 域 → VLAN 与 VNI 资源池 → 子网 → 设备声明
 
 ### 弹窗：新增子网
 
@@ -684,6 +888,18 @@ NVLink 域是固件一致性和交付门控的单位。本页用来发现域内�
 - 管理引导网络需要管理角色。
 - 平台不配置交换机的 DHCP 中继。
 
+### NICo 接口
+
+| 用途 | 接口 | 类型 | 命令行 |
+| --- | --- | --- | --- |
+| DHCP 服务器地址 | `Version` | Core gRPC · 读 | `nico-admin-cli version --show-runtime-config` |
+| 各子网的地址余量 | `FindNetworkSegmentIds → FindNetworkSegmentsByIds` | Core gRPC · 读 | `nico-admin-cli network-segment show` |
+| 各子网的地址池范围 | `FindNetworkSegmentDhcpRanges` | Core gRPC · 读 | — |
+| 各子网最近一次请求 | `FindInterfaces` | Core gRPC · 读 | `nico-admin-cli machine-interfaces show` |
+| 请求、应答和丢弃计数 | `carbide_dhcp_requests_total、carbide_dhcp_dropped_requests_total、carbide_dhcp_replies_sent_total、carbide_available_ips_count` | 指标 · 读 | — |
+
+前置资源（按准备顺序）：NICo Core → 正向 DNS 域 → VLAN 与 VNI 资源池 → DHCP 与引导服务 → 子网 → 现场 DHCP 中继 → 设备接口与地址
+
 ### 弹窗：管理引导网络
 
 沿用现有弹窗。
@@ -722,6 +938,15 @@ NVLink 域是固件一致性和交付门控的单位。本页用来发现域内�
 
 - 页面只读。地址由 NICo 按设备清单和地址池分配，不在这里手工指定。
 
+### NICo 接口
+
+| 用途 | 接口 | 类型 | 命令行 |
+| --- | --- | --- | --- |
+| 地址、MAC、归属和最近请求 | `FindInterfaces` | Core gRPC · 读 | `nico-admin-cli machine-interfaces show` |
+| 分配方式，按地址反查归属 | `FindInterfaceAddresses / FindIpAddress` | Core gRPC · 读 | `nico-admin-cli machine-interfaces show-addresses；nico-admin-cli ip find <IP>` |
+
+前置资源（按准备顺序）：NICo Core → 正向 DNS 域 → VLAN 与 VNI 资源池 → DHCP 与引导服务 → 子网 → 现场 DHCP 中继 → 设备接口与地址
+
 ## 接入 › 设备清单 › 期望清单
 
 把 DCIM 或出货清单变成 NICo 的期望清单。这是全流程唯一需要人工维护的数据。
@@ -755,6 +980,26 @@ NVLink 域是固件一致性和交付门控的单位。本页用来发现域内�
 - 导入预览按新增设备重新计算各用途的地址是否够用。
 - 凭据不进清单；出厂凭据是站点级档案。
 - 移除有实例或进行中任务的设备会被拒绝。
+
+### NICo 接口
+
+| 用途 | 接口 | 类型 | 命令行 |
+| --- | --- | --- | --- |
+| 核对机柜规格是否受支持 | `ListRackProfiles / GetRackProfile` | Core gRPC · 读 | `nico-admin-cli rack profile list；nico-admin-cli rack profile show <RACK_ID>` |
+| 核对固定地址落在已有子网内 | `FindNetworkSegmentIds → FindNetworkSegmentsByIds` | Core gRPC · 读 | `nico-admin-cli network-segment show` |
+| 读取机柜组 | `GetAllExpectedRackGroups` | Core gRPC · 读 | `nico-admin-cli expected-rack-group show` |
+| 写入机柜组 | `AddExpectedRackGroup / UpdateExpectedRackGroup / DeleteExpectedRackGroup` | Core gRPC · 写 | `nico-admin-cli expected-rack-group add [--rack <JSON>]... <RACK_GROUP_ID> <PROTOCOL> <TOPOLOGY>` |
+| 读取机柜声明和推导出的规格 | `GetAllExpectedRacks` | Core gRPC · 读 | `nico-admin-cli expected-rack show` |
+| 写入机柜声明 | `AddExpectedRack / UpdateExpectedRack / DeleteExpectedRack` | Core gRPC · 写 | `nico-admin-cli expected-rack add [--label K:V] <RACK_ID>` |
+| 读取计算托盘声明 | `GetAllExpectedMachines / GetAllExpectedMachinesLinked` | Core gRPC · 读 | `nico-admin-cli expected-machine show` |
+| 写入计算托盘声明 | `CreateExpectedMachines / UpdateExpectedMachines / PatchExpectedMachine / DeleteExpectedMachine` | Core gRPC · 写 | `nico-admin-cli expected-machine add -a <BMC_MAC> -u <BMC_USER> -p <BMC_PASS> -s <SERIAL> [--rack_id] [--bmc-ip-address] [--interfaces] [--label]` |
+| 读取交换机声明 | `GetAllExpectedSwitches / GetAllExpectedSwitchesLinked` | Core gRPC · 读 | `nico-admin-cli expected-switch show` |
+| 写入交换机声明 | `AddExpectedSwitch / PatchExpectedSwitch / DeleteExpectedSwitch` | Core gRPC · 写 | `nico-admin-cli expected-switch add -a <BMC_MAC> -u <USER> -p <PASS> -s <SERIAL> --nvos-interface <MAC[,primary]> [--rack_id]` |
+| 读取供电框声明 | `GetAllExpectedPowerShelves / GetAllExpectedPowerShelvesLinked` | Core gRPC · 读 | `nico-admin-cli expected-power-shelf show` |
+| 写入供电框声明 | `AddExpectedPowerShelf / PatchExpectedPowerShelf / DeleteExpectedPowerShelf` | Core gRPC · 写 | `nico-admin-cli expected-power-shelf add -a <BMC_MAC> -u <USER> -p <PASS> -s <SERIAL> [--rack_id]` |
+| 写入 NVLink 域声明 | `CreateExpectedNvLinkDomain / DeleteExpectedNvLinkDomain / FindExpectedNvLinkDomainIds` | Core gRPC · 写 | `nico-admin-cli expected-nvlink-domain create --member <MAC>... [--name] <RACK_GROUP_ID>` |
+
+前置资源（按准备顺序）：NICo Core → 正向 DNS 域 → VLAN 与 VNI 资源池 → 机柜规格配置 → 子网 → 机柜组声明 → 机柜声明 → 设备声明
 
 ### 弹窗：导入清单
 
@@ -817,6 +1062,25 @@ NVLink 域是固件一致性和交付门控的单位。本页用来发现域内�
 - 清单外设备不会被接管；要接管就先把它加入设备清单。
 - 处理入口只有两个：DHCP 服务（请求没到）和机柜对账（探测失败、身份不符）。
 
+### NICo 接口
+
+| 用途 | 接口 | 类型 | 命令行 |
+| --- | --- | --- | --- |
+| 计算托盘声明走到了哪一步 | `GetAllExpectedMachines / GetAllExpectedMachinesLinked` | Core gRPC · 读 | `nico-admin-cli expected-machine show` |
+| 交换机声明走到了哪一步 | `GetAllExpectedSwitches / GetAllExpectedSwitchesLinked` | Core gRPC · 读 | `nico-admin-cli expected-switch show` |
+| 供电框声明走到了哪一步 | `GetAllExpectedPowerShelves / GetAllExpectedPowerShelvesLinked` | Core gRPC · 读 | `nico-admin-cli expected-power-shelf show` |
+| 有没有收到 DHCP 请求 | `FindInterfaces` | Core gRPC · 读 | `nico-admin-cli machine-interfaces show` |
+| 探测结果和失败原因 | `FindExploredEndpointIds → FindExploredEndpointsByIds` | Core gRPC · 读 | `nico-admin-cli site-explorer get-report endpoint` |
+| 主机与 DPU 的配对 | `FindExploredManagedHostIds → FindExploredManagedHostsByIds` | Core gRPC · 读 | `nico-admin-cli site-explorer get-report managed-host` |
+| 未声明的主机 | `GetAllUnexpectedMachines` | Core gRPC · 读 | — |
+| 是否在等待放行 | `DetermineMachineIngestionState` | Core gRPC · 读 | `nico-admin-cli managed-host power-options get-machine-ingestion-state --mac-address <MAC>` |
+| 计算托盘的状态机阶段 | `FindMachineIds → FindMachinesByIds` | Core gRPC · 读 | `nico-admin-cli machine show [--hosts]` |
+| 交换机的状态机阶段 | `FindSwitchIds → FindSwitchesByIds` | Core gRPC · 读 | `nico-admin-cli switch list；nico-admin-cli switch show <SWITCH_ID>` |
+| 供电框的状态机阶段 | `FindPowerShelfIds → FindPowerShelvesByIds` | Core gRPC · 读 | `nico-admin-cli power-shelf list；nico-admin-cli power-shelf show <ID>` |
+| 最近一次扫描 | `GetSiteExplorerLastRun` | Core gRPC · 读 | — |
+
+前置资源（按准备顺序）：NICo Core → 正向 DNS 域 → VLAN 与 VNI 资源池 → 机柜规格配置 → 站点默认凭据 → DHCP 与引导服务 → RMS → 组件管理器 → 子网 → 设备声明 → 现场 DHCP 中继 → 设备接口与地址 → 探测结果 → 计算托盘对象 → 交换机对象 → 供电框对象
+
 ## 配置 › 站点设置 › 站点概况
 
 回答“平台现在能不能用”。把控制面、硬件后端和设施接入的就绪状态放在一页，并说明缺失时哪些操作受影响。
@@ -850,6 +1114,23 @@ NVLink 域是固件一致性和交付门控的单位。本页用来发现域内�
 - 编辑站点需要管理角色。
 - 子网、DHCP 和引导服务地址在“网络规划”里维护。
 
+### NICo 接口
+
+| 用途 | 接口 | 类型 | 命令行 |
+| --- | --- | --- | --- |
+| Core 版本与运行配置 | `Version` | Core gRPC · 读 | `nico-admin-cli version --show-runtime-config` |
+| RMS 是否就绪 | `GetRmsVersion` | Core gRPC · 读 | `nico-admin-cli backend rms status` |
+| Flow 与站点代理是否在线 | `GET /site、GET /site/{id}` | REST · 读 | `nicocli site list` |
+| NMX-C 接入 | `ListNvlinkNmxcEndpoints` | Core gRPC · 读 | `nico-admin-cli nvlink-nmxc-endpoints` |
+| 站点发现最近一次扫描 | `GetSiteExplorerLastRun` | Core gRPC · 读 | — |
+| 开关站点发现和自动建机 | `SetDynamicConfig` | Core gRPC · 写 | — |
+| 接管凭据是否齐备 | `GetSiteCredentialReadiness` | Core gRPC · 读 | — |
+| 补齐接管凭据 | `InitializeSiteCredentials / CreateCredential` | Core gRPC · 写 | `nico-admin-cli credential add-bmc；nico-admin-cli credential add-uefi` |
+| 支持的机柜规格 | `ListRackProfiles / GetRackProfile` | Core gRPC · 读 | `nico-admin-cli rack profile list；nico-admin-cli rack profile show <RACK_ID>` |
+| 生效的电源和固件规则 | `GET /task/rule` | REST · 读 | `nicocli rule list --site-id <SITE>` |
+
+前置资源（按准备顺序）：NICo Core → 机柜规格配置 → RMS → 组件管理器 → REST 身份认证 → REST 站点 → Flow → 操作规则 → NMX-C 接入
+
 ### 弹窗：编辑站点
 
 沿用现有弹窗。
@@ -881,6 +1162,16 @@ NVLink 域是固件一致性和交付门控的单位。本页用来发现域内�
 
 - 部署配置页签沿用现有的在线 / 离线部署表单。
 
+### NICo 接口
+
+| 用途 | 接口 | 类型 | 命令行 |
+| --- | --- | --- | --- |
+| Core 版本 | `Version` | Core gRPC · 读 | `nico-admin-cli version --show-runtime-config` |
+| RMS 版本 | `GetRmsVersion` | Core gRPC · 读 | `nico-admin-cli backend rms status` |
+| 站点代理与 Flow 的版本和在线状态 | `GET /site、GET /site/{id}` | REST · 读 | `nicocli site list` |
+
+前置资源（按准备顺序）：NICo Core → 机柜规格配置 → RMS → REST 身份认证 → REST 站点
+
 ## 配置 › 固件基线
 
 把固件版本从操作参数里拿出来，变成可审计的档案。操作人只选基线。
@@ -904,6 +1195,16 @@ NVLink 域是固件一致性和交付门控的单位。本页用来发现域内�
 | --- | --- | --- |
 | 固件基线 | NICo 机柜规格的固件清单 | 一组部件版本 |
 | 偏差的托盘 | 托盘实际版本对比推荐基线 |  |
+
+### NICo 接口
+
+| 用途 | 接口 | 类型 | 命令行 |
+| --- | --- | --- | --- |
+| 机柜规格 | `ListRackProfiles / GetRackProfile` | Core gRPC · 读 | `nico-admin-cli rack profile list；nico-admin-cli rack profile show <RACK_ID>` |
+| NICo 里配置的期望版本和可用固件包 | `GetDesiredFirmwareVersions / ListComponentFirmwareVersions` | Core gRPC · 读 | `nico-admin-cli component-manager get-firmware-versions {compute-tray\|switch\|power-shelf\|rack}` |
+| 偏差统计：探测到的版本 | `GetComponentInventory` | Core gRPC · 读 | — |
+
+前置资源（按准备顺序）：NICo Core → 正向 DNS 域 → VLAN 与 VNI 资源池 → 机柜规格配置 → 站点默认凭据 → DHCP 与引导服务 → RMS → 组件管理器 → 子网 → 设备声明 → 现场 DHCP 中继 → 设备接口与地址 → 探测结果
 
 ### 弹窗：基线详情
 
@@ -931,3 +1232,12 @@ NVLink 域是固件一致性和交付门控的单位。本页用来发现域内�
 - 新建和发布方案需要管理角色。
 - 交付只能选择已发布的方案。
 - 编辑弹窗沿用安装方案的基本信息、系统盘选择、分区布局、默认登录配置、安装验收。
+
+### NICo 接口
+
+| 用途 | 接口 | 类型 | 命令行 |
+| --- | --- | --- | --- |
+| 方案列表与状态 | `FindOperatingSystemIds → FindOperatingSystemsByIds` | Core gRPC · 读 | `nico-admin-cli operating-system show` |
+| 新建、修改和停用方案 | `CreateOperatingSystem / UpdateOperatingSystem / DeleteOperatingSystem` | Core gRPC · 写 | `nico-admin-cli operating-system create；nico-admin-cli operating-system set-cached-url` |
+
+前置资源（按准备顺序）：NICo Core → 系统定义

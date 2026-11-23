@@ -26,6 +26,7 @@ registerPage("delivery", {
       note("交付门控沿用 NICo 的原生门控：机柜就绪、NVLink 域健康、没有阻止分配的告警。平台只显示原因，不提供绕过。");
   },
   spec: {
+    calls: [["rack.list", "机柜是否就绪"], ["machine.list", "按机柜筛出计算托盘"], ["host.states", "可交付的托盘数和不可交付的原因"], ["health.reports", "机柜和域的告警"], ["instance.list", "已交付的实例数"], ["os.list", "可选的安装方案"], ["instance.allocate", "装机并验收"], ["instance-type.write", "交给上层平台"]],
     purpose: "交付是平台价值兑现的一步。入口是机柜而不是单台设备：选一个就绪的机柜，选一种交付方式。",
     entry: "交付 → 机柜交付", design: "5 整体操作运维流程（交付）；6.4 交付", existing: "安装任务的“新建安装任务”向导改为按机柜交付；“安装批次”表沿用",
     points: [
@@ -79,6 +80,7 @@ registerPage("delivery/installs", {
       `<div ${fp(2)}>${note("每个任务保留安装进度、BMC 串口日志和安装验收（安装器成功、主机配置、系统盘与 EFI 分区验证、网络配置、SSH 连通、GPU 环境检查、重启验收）。详情沿用现有的“物理机安装记录”。")}</div>`;
   },
   spec: {
+    calls: [["instance.list", "实例状态"], ["machine.list", "主机状态"]],
     purpose: "逐台查看装机的阶段、日志和验收证据。这一页是现有产品的主线页面，结构不变，只是入口改为由交付创建。",
     entry: "交付 → 安装任务；交付批次的“逐台查看”", design: "6.4 交付", existing: "安装任务页。表头、阶段和状态用词、任务详情全部沿用；去掉“新建安装任务”按钮",
     points: [
@@ -101,6 +103,7 @@ registerPage("delivery/instances", {
       note("删除实例会发起 NICo 回收：清理磁盘并重新校验。清理完成前，这台设备不显示为可交付。");
   },
   spec: {
+    calls: [["instance.list", "实例、租户和系统"], ["machine.list", "机器状态与回收进度"], ["instance.release", "删除（退租回收）"]],
     purpose: "查看已交付的实例，并在租户退租时回收设备。", entry: "交付 → 实例管理", design: "6.4 交付（释放与复用）", existing: "实例管理页。表头、回收用词和确认弹窗沿用，增加机柜和租户",
     points: [
       { n: 1, name: "筛选", kind: "调整", desc: "沿用搜索；增加按机柜筛选。" },

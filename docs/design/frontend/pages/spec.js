@@ -25,6 +25,7 @@ function specSection(p) {
     <h3>功能点</h3><table><thead><tr><th>编号</th><th>功能点</th><th>类型</th><th>说明</th></tr></thead><tbody>${s.points.map((x) => `<tr><td><span class="pin">${x.n}</span></td><td><b>${esc(x.name)}</b></td><td><span class="kind ${KIND[x.kind]}">${x.kind}</span></td><td>${esc(x.desc)}</td></tr>`).join("")}</tbody></table>
     ${s.fields ? `<h3>字段</h3><table><thead><tr><th>字段</th><th>来源</th><th>说明</th></tr></thead><tbody>${s.fields.map((f) => `<tr><td><b>${esc(f[0])}</b></td><td>${esc(f[1])}</td><td>${esc(f[2] || "")}</td></tr>`).join("")}</tbody></table>` : ""}
     ${s.rules ? `<h3>规则与门控</h3><ul>${s.rules.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>` : ""}
+    ${s.calls && s.calls.length ? `<h3>NICo 接口</h3><table><thead><tr><th>用途</th><th>接口</th><th>类型</th><th>命令行</th></tr></thead><tbody>${pageCalls(p).map((x) => `<tr><td>${esc(x.use)}</td><td class="live-code">${esc(x.call ? x.call.name : x.id)}</td><td>${x.call ? esc(x.call.surface) + (x.call.write ? " · 写" : " · 读") : "未定义"}</td><td class="live-code">${esc(x.call && x.call.cli ? x.call.cli : "—")}</td></tr>`).join("")}</tbody></table><h3>前置资源（按准备顺序）</h3><p class="live-small">${pageResources(p).map((r) => esc(r.name)).join(" → ") || "—"}</p>` : ""}
     ${(s.dialogs || []).map((d) => `<h3>弹窗：${esc(d.name)}</h3><p class="live-small">${esc(d.desc)}</p>${d.fields ? `<table><thead><tr><th>输入</th><th>必填</th><th>说明</th></tr></thead><tbody>${d.fields.map((f) => `<tr><td><b>${esc(f[0])}</b></td><td>${esc(f[1])}</td><td>${esc(f[2] || "")}</td></tr>`).join("")}</tbody></table>` : ""}`).join("")}</section>`;
 }
 registerPage("spec", {
@@ -39,3 +40,26 @@ registerPage("spec", {
   },
 });
 registerAction("spec-print", () => window.print());
+
+/* 接口契约：资源依赖、接口清单和缺口。数据在 contract.js，各页面在 spec.calls 里声明自己用到的接口。 */
+const CALL_AREAS = ["站点与依赖", "网络与地址", "设备清单", "设备发现", "机柜与 NVLink 域", "设备读取", "设备操作", "机柜级任务", "交付与实例", "健康"];
+registerPage("contract", {
+  title: "接口契约",
+  render() {
+    const order = resourceChain(NICO_RESOURCES.map((r) => r.id)), problems = contractProblems();
+    const names = (ids) => (ids || []).map((id) => (resourceById(id) || { name: id }).name).join("、") || "—";
+    const users = (id) => callUsers(id).map((p) => `<a class="link-button" data-go="${p.id === "rack" ? "rack/RACK-A01" : p.id}">${esc(p.tab || p.title)}</a>`).join("　") || "—";
+    const callTable = (list) => table(["接口 / 命令行", "请求参数", "用到的字段", "前置资源", "执行方", "使用的页面", "证据"], list.map((c) =>
+      `<tr><td><strong class="live-code">${esc(c.name)}</strong><span class="cell-sub">${surfaceBadge(c)}</span>${c.cli ? `<span class="cell-sub guide-cli live-code">${esc(c.cli)}</span>` : ""}${c.note ? `<span class="cell-sub">${esc(c.note)}</span>` : ""}</td><td>${esc(c.request || "—")}</td><td>${esc((c.fields || []).join("、") || "—")}</td><td>${names(c.requires)}</td><td>${esc(c.executedBy || "Core")}</td><td>${users(c.id)}</td><td>${badge(c.evidence || "定义", c.evidence === "现场" ? "green" : c.evidence === "模拟" ? "blue" : "gray")}${c.used ? `<span class="cell-sub">${badge("现有产品已调用", "blue")}</span>` : ""}<span class="cell-sub live-code">${esc(c.source || "")}</span></td></tr>`));
+    return `<div class="spec-doc contract-doc">` + heading("接口契约", "每个页面调用 NICo 的哪些接口、对应什么命令行、用到哪些字段，以及要让页面有数据必须先准备好哪些资源。", button("打印 / 另存为 PDF", "spec-print")) +
+      note(`接口、参数和字段取自 NICo 源码 <b>${CONTRACT_SOURCE.repo}</b> 的提交 <span class="live-code">${CONTRACT_SOURCE.commit}</span>（${CONTRACT_SOURCE.version}）。“证据”一列说明核对到了哪一步：定义 = 只读过源码；模拟 = 在模拟环境调用过；现场 = 在真实整机柜环境核对过。目前全部是“定义”。标有“现有产品已调用”的接口在主线产品里已经有调用代码，其余是整机柜方向新增的。`) +
+      summary([["资源", NICO_RESOURCES.length], ["接口", NICO_CALLS.length], ["其中写操作", NICO_CALLS.filter((c) => c.write).length], ["现有产品已调用", NICO_CALLS.filter((c) => c.used).length], ["缺口", CONTRACT_GAPS.length], ["自检问题", problems.length]]) +
+      `<section><h2>资源依赖与准备顺序</h2><p class="live-small">按“先准备的在前”排列。一个页面要有数据，它用到的接口的全部前置资源都要先就位。</p>${table(["顺序", "资源", "NICo 对象", "怎么得到", "依赖", "没有真实整机柜时", "出处"], order.map((r, i) => `<tr><td>${i + 1}</td><td><strong>${esc(r.name)}</strong>${r.note ? `<span class="cell-sub">${esc(r.note)}</span>` : ""}</td><td>${code(r.object || "—")}</td><td>${esc(r.createdBy)}</td><td>${names(r.requires)}</td><td>${badge(PREP_LABEL[r.prep] || r.prep, { direct: "green", config: "green", derived: "blue", simulator: "amber", hardware: "red" }[r.prep] || "gray")}${r.prepNote ? `<span class="cell-sub">${esc(r.prepNote)}</span>` : ""}</td><td>${code(r.source || "")}</td></tr>`))}</section>` +
+      CALL_AREAS.map((area) => { const list = NICO_CALLS.filter((c) => c.area === area); return list.length ? `<section class="call-table"><h2>接口：${area}</h2>${callTable(list)}</section>` : ""; }).join("") +
+      (NICO_CALLS.some((c) => !CALL_AREAS.includes(c.area)) ? `<section><h2>接口：其他</h2>${callTable(NICO_CALLS.filter((c) => !CALL_AREAS.includes(c.area)))}</section>` : "") +
+      `<section><h2>缺口：设计需要、NICo 没有直接提供</h2>${table(["设计需要", "涉及页面", "源码里的情况", "可选的处理", "出处"], CONTRACT_GAPS.map((g) => `<tr><td><strong>${esc(g.need)}</strong></td><td>${esc((g.pages || []).join("、"))}</td><td>${esc(g.finding)}</td><td>${esc(g.options)}</td><td>${code(g.source || "")}</td></tr>`), "没有记录缺口。")}</section>` +
+      `<section><h2>不调用 NICo 的页面</h2><p>${pagesByNav().filter((p) => !pageCalls(p).length).map((p) => esc(pageName(p))).join("、") || "没有"}。这些页面的数据由平台自己保存。</p></section>` +
+      (problems.length ? `<section><h2>自检问题</h2><ul>${problems.map((p) => `<li>${esc(p)}</li>`).join("")}</ul></section>` : "") + `</div>`;
+  },
+});
+
