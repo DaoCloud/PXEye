@@ -1,20 +1,21 @@
 "use strict";
 /* 操作：机柜和设备的写操作，以及它们共用的门控。
    规则（设计说明书第 8、9 章）：
-   - 新机柜要人“确认接入”：确认之前平台只读设备，确认之后才写入 NICo。
-   - 机柜上线不是操作：确认接入后它由 NICo 的机柜状态机自动进行。页面只在它停在 Error 时提供“重新执行机柜维护”。
+   - 新机柜有两处要人确认：“确认纳管”把设备登记到 NICo，不上电；“开始上线”提交上线任务，上电并放行接管。装系统是第三件事，在交付里。
+   - 交换机就绪后的机柜维护不是操作：它由 NICo 的机柜状态机自动进行。页面只在它停在 Error 时提供“重新执行机柜维护”。
    - 会跨多台设备排序的电源和固件操作提交为 Flow 任务；单设备的状态类操作直接调用 Core 并读回。
    - 同一机柜同一时间只有一个进行中的任务。
    - 依赖组件缺失时操作不可用并说明原因；有整柜泄漏的机柜拒绝上电。 */
 
 /* 机柜级门控：返回不可用的原因，空字符串表示可用。 */
 function rackGate(r, kind) {
-  if (!r.state) return "NICo 里还没有这个机柜的对象";
+  if (kind === "bringup") return !r.admit ? "先确认纳管" : r.up ? "已经上线过" : DB.busy(r) ? "该机柜有进行中的任务" : !S.flow ? "Flow 未就绪，上线任务不可用" : !S.rms ? "RMS 未就绪，无法上电" : "";
+  if (!r.state) return r.admit ? "机柜还没有上线" : "NICo 里还没有这个机柜的对象";
   if (DB.busy(r)) return "该机柜有进行中的任务，同一机柜同时只能有一个任务";
   if (kind === "remaint") return !S.rms ? "RMS 未就绪，机柜维护无法执行" : r.state !== "Error" ? "只在机柜停在 Error 时使用" : "";
   if (!S.flow && ["power", "firmware", "decommission"].includes(kind)) return "Flow 未就绪，机柜级任务不可用";
   if (!S.rms && ["power", "firmware"].includes(kind)) return "RMS 未就绪，电源与固件操作不可用";
-  if (["power", "firmware"].includes(kind) && !["Ready", "Error"].includes(r.state)) return "NICo 正在上线，完成后可用";
+  if (["power", "firmware"].includes(kind) && !["Ready", "Error"].includes(r.state)) return "机柜正在上线，完成后可用";
   if (kind === "decommission" && DB.rackInstances(r.id).length) return "机柜上还有实例，先释放";
   return "";
 }
@@ -31,10 +32,17 @@ const RULE_NOTE = "顺序、等待时间和重试由站点的操作规则决定�
 /* ---------- 机柜操作 ---------- */
 registerAction("rack-admit", ({ id }) => {
   const r = DB.rack(id), got = r.trays.filter((t) => t.matched), sw = got.filter((t) => t.type === "switch").length, diff = DB.absent(r).length + DB.misplaced(r).length;
-  confirmOperation({ title: "确认接入", target: id, action: `把已匹配的 ${got.length} 台设备写入 NICo`, stages: ["写入声明", "NICo 探测并接管", "交换机就绪后自动上线"], why: "到货核对完成", submit: "确认接入", sub: "这是新机柜唯一需要人点头的一步。确认之前平台只读设备，不写 NICo。",
-    extra: defs([["已匹配", `${got.length} / ${r.trays.length} 台，其中交换机 ${sw} / ${PROFILE_NEED.switch}`], ["清单核对的差异", diff ? `${diff} 项，确认后仍可处理` : "没有"], ["待处理的端点", S.endpoints.length ? `${S.endpoints.length} 个，确认后匹配上的会自动写入` : "没有"]]) +
-      note(`<b>确认后不能撤回。</b>NICo 接管设备时会轮换设备口令；交换机就绪后自动开始上线，依次是固件升级、NVOS 更新、上电顺序、配置 NMX-C 集群、机柜校验，开始后不能取消。${sw < PROFILE_NEED.switch ? `<br><b>现在交换机只匹配上 ${sw} 台，不到 ${PROFILE_NEED.switch} 台：确认后设备会被接管，但上线要等交换机到齐才开始。</b>` : ""}`, "warning"),
-    run: (why) => { admitRack(id); addAudit(id, "确认接入", why, "—", `${got.length} 台已写入 NICo`); S.guide = Math.max(S.guide, 5); toast(`${id}：已写入 NICo，等待 NICo 接管和上线`); } });
+  confirmOperation({ title: "确认纳管", target: id, action: `把已匹配的 ${got.length} 台设备登记到 NICo`, stages: ["写入声明", "NICo 登录 BMC 并更换口令"], why: "到货核对完成", submit: "确认纳管", sub: "纳管只是登记：不上电、不动磁盘、不装系统。上线和装系统之后各自再确认。",
+    extra: defs([["已匹配", `${got.length} / ${r.trays.length} 台，其中交换机 ${sw} / ${PROFILE_NEED.switch}`], ["清单核对的差异", diff ? `${diff} 项，纳管后仍可处理` : "没有"], ["待处理的端点", S.endpoints.length ? `${S.endpoints.length} 个，之后匹配上的会自动纳管` : "没有"], ["地址", "不变。BMC 的地址在机柜接电时已经分配"]]) +
+      doList(ADMIT_DO, ADMIT_NOT) + note("<b>纳管后设备的 BMC 口令由 NICo 接手</b>，清单里的出厂口令不再有效，平台也不再保存。要把设备交还，走退役。", "warning"),
+    run: (why) => { admitRack(id); addAudit(id, "确认纳管", why, "—", `${got.length} 台已纳管，设备未上电`); S.guide = Math.max(S.guide, 5); toast(`${id}：${got.length} 台已纳管。下一步：开始上线`); } });
+});
+registerAction("rack-bringup", ({ id }) => {
+  const r = DB.rack(id), n = r.trays.filter((t) => t.declared).length;
+  confirmOperation({ title: "开始上线", target: id, action: `给已纳管的 ${n} 台设备上电，并让 NICo 接管`, stages: STAGES.bringup_task, why: "新机柜上线", submit: "开始上线", high: true, confirmText: id, sub: "提交为一个上线任务。上线不装操作系统，装系统在“机柜交付”里另外确认。",
+    extra: doList(UP_DO, UP_NOT) + note("<b>对设备的影响：</b>设备会上电并重启；计算托盘的 BIOS 设置会被修改并锁定；<b>按站点策略可能清理全部磁盘，包括非系统盘</b>；固件与期望版本不同时会被更新。主机管理地址在计算托盘第一次从网络启动时分配。", "warning") +
+      note("任务完成后，交换机就绪数达到机柜规格要求时，NICo 自动开始机柜维护（固件升级、NVOS 更新、上电顺序、配置 NMX-C 集群、机柜校验），这一段不能取消。全部完成后机柜状态为 Ready，才能交付。"),
+    run: (why) => { bringUpRack(id, why); S.guide = Math.max(S.guide, 5); S.view["rackTab:" + id] = "tasks"; } });
 });
 registerAction("slot-fix", ({ id }) => {
   const t = DB.tray(id), r = DB.rack(t.rack), other = r.trays.find((x) => x.slot === t.seenSlot), from = t.slot;
@@ -45,7 +53,7 @@ registerAction("slot-fix", ({ id }) => {
 });
 registerAction("rack-remaint", ({ id }) => {
   const r = DB.rack(id);
-  confirmOperation({ title: "重新执行机柜维护", target: id, action: "让 NICo 从头再走一遍上线的各个阶段", stages: STAGES.bringup, why: "故障原因已消除", submit: "重新执行",
+  confirmOperation({ title: "重新执行机柜维护", target: id, action: "让 NICo 从头再走一遍机柜维护的各个阶段", stages: STAGES.bringup, why: "故障原因已消除", submit: "重新执行",
     extra: note("机柜停在 Error 后不会自己恢复。重新执行前先确认上次失败的原因已经消除：" + esc(r.reason || "见状态历史") + "。"),
     run: (why) => { addAudit(id, "重新执行机柜维护", why, "—", "已提交，机柜离开 Error"); setRackState(r, "Maintenance(FirmwareUpgrade)"); r.bring = null; coreBringup(r); } });
 });
@@ -73,7 +81,7 @@ const baselinePicker = (current) => `<div class="live-form">${field("固件基�
 registerAction("rack-firmware", ({ id }) => {
   const r = DB.rack(id), n = DB.rackInstances(id).length;
   confirmOperation({ title: "固件更新", target: id, action: "按固件基线更新计算托盘和交换机", stages: STAGES.firmware, instances: n, high: n > 0, confirmText: id,
-    extra: baselinePicker(r.baseline) + readiness(r, "刷写固件") + note("刷写完成后不会自动断电重启；需要重启才生效的部件，另外提交一次机柜重启。供电框的固件不在这个操作里。"),
+    extra: baselinePicker(r.baseline) + readiness(r, "刷写固件") + note("版本已经与所选基线相同的设备会跳过。刷写完成后不会自动断电重启；需要重启才生效的部件，另外提交一次机柜重启。供电框的固件不在这个操作里。") + note("固件只在两种时候更新：新机柜上线时，和像现在这样由人提交。平时不会在后台自动更新，设备版本与基线不同只是标出来。"),
     run: (why, pick) => { startTask(id, "firmware", "固件更新 → " + pick, STAGES.firmware, { why, onDone: () => { r.baseline = pick; r.trays.forEach((t) => t.state && (t.baseline = pick)); }, readback: () => "版本与 " + pick + " 相同" }); S.view["rackTab:" + id] = "tasks"; } });
 });
 registerAction("rack-validate", ({ id }) => {
@@ -157,7 +165,7 @@ registerAction("tray-op-submit", ({ ids, action }) => {
 });
 
 /* ---------- 模拟控制（只在设计稿中存在） ---------- */
-registerAction("sim-discover", () => { if (simulateDiscovery("RACK-A03")) { S.guide = 4; S.view["rackTab:RACK-A03"] = "check"; toast("RACK-A03 已通电：32 台匹配上清单，新增 2 个待处理的端点。确认接入后才写入 NICo"); go("discovery"); } });
+registerAction("sim-discover", () => { if (simulateDiscovery("RACK-A03")) { S.guide = 4; S.view["rackTab:RACK-A03"] = "check"; toast("RACK-A03 已接电：32 台匹配上清单，新增 2 个待处理的端点。下一步到机柜详情确认纳管"); go("discovery"); } });
 /* 整柜泄漏：NICo 自动对整柜强制下电，页面只是如实显示。告警清除后设备保持关机。 */
 registerAction("sim-leak", () => {
   const r = DB.rack("RACK-A01");

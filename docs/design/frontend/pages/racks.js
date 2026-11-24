@@ -3,12 +3,12 @@
 
 /* 清单核对只是提示：NICo 的机柜状态机不看它，只看就绪的交换机数量是否达到机柜规格。 */
 const checkBadge = (r) => { const n = DB.absent(r).length + DB.misplaced(r).length;
-  return !r.trays.some((t) => t.matched) ? badge("等待设备出现", "gray") : !r.admit ? badge("待确认接入", "blue") + (n ? `<span class="cell-sub">${n} 项差异</span>` : "") : n ? badge(n + " 项差异", "amber") : badge("与清单一致", "green"); };
+  return !r.trays.some((t) => t.matched) ? badge("等待设备出现", "gray") : !r.admit ? badge("待确认纳管", "blue") + (n ? `<span class="cell-sub">${n} 项差异</span>` : "") : !r.up ? badge("已纳管 · 待上线", "blue") + (n ? `<span class="cell-sub">${n} 项差异</span>` : "") : n ? badge(n + " 项差异", "amber") : badge("与清单一致", "green"); };
 const members = (r) => `计算托盘 ${r.trays.filter((t) => t.type === "compute").length} · 交换机 ${r.trays.filter((t) => t.type === "switch").length} · 供电框 ${r.trays.filter((t) => t.type === "power_shelf").length}`;
 const taskStatus = (t) => badge(t.status, t.status === "已完成" ? "green" : /已终止|失败/.test(t.status) ? "red" : "amber");
 const taskStage = (t) => { const cur = t.stages.find((s) => s.s === "run" || s.s === "fail"); return cur ? cur.n : t.status === "已完成" ? "完成" : "等待执行"; };
 const bringStage = (r) => (r.bring && r.bring.stages.find((s) => s.s === "run" || s.s === "fail")) || null;
-const rackStateCell = (r) => (r.state ? stateBadge(r.state) + `<span class="cell-sub">自 ${r.stateSince}</span>` : badge("尚未建立", "gray") + `<span class="cell-sub">只在清单里</span>`);
+const rackStateCell = (r) => (r.state ? stateBadge(r.state) + `<span class="cell-sub">自 ${r.stateSince}</span>` : badge("尚未建立", "gray") + `<span class="cell-sub">${r.admit ? "已纳管，还没有上线" : "只在清单里"}</span>`);
 
 registerPage("racks", {
   module: "racks", title: "机柜管理",
@@ -17,8 +17,8 @@ registerPage("racks", {
     return heading("机柜管理", "查看每个机柜的 NICo 状态、健康和成员设备，并发起电源和固件操作。", button("刷新数据", "refresh")) +
       `<div ${fp(1)}>${summary([["机柜", S.racks.length], ["就绪", S.racks.filter((r) => r.state === "Ready").length], ["需要处理", S.racks.filter(rackNeedsAttention).length], ["设备就绪", `${trays.filter((t) => /Ready$/.test(t.state)).length}<small>/ ${trays.length}</small>`], ["进行中的任务", S.racks.filter(DB.busy).length]])}</div>` +
       `<div ${fp(2)}>${table(["机柜", "NICo 状态", "健康", "机柜规格", "成员设备", "清单核对", "实例", "进行中", "操作"], S.racks.map((r) =>
-        `<tr class="row-link" data-go="rack/${r.id}"><td><strong>${r.id}</strong><span class="cell-sub">${esc(r.location)}</span></td><td ${fp(3)}>${rackStateCell(r)}</td><td>${healthBadge(rackHealth(r))}</td><td>${code(r.profile)}</td><td>${members(r)}<span class="cell-sub">就绪 ${DB.ready(r)} / ${r.trays.length}</span></td><td ${fp(4)}>${checkBadge(r)}</td><td>${DB.rackInstances(r.id).length}</td><td ${fp(5)}>${DB.busy(r) ? badge(r.task.label + " · " + taskStage(r.task), "blue") : bringStage(r) && r.state !== "Error" ? badge("NICo 上线 · " + bringStage(r).n, "blue") : "—"}</td><td>${button("详情", "noop", false, `data-go="rack/${r.id}"`)}</td></tr>`))}</div>` +
-      note("新机柜不在这里创建。在“设备清单”导入到货清单后，机柜先以“尚未建立”出现在这里；设备匹配上清单、你在机柜详情里确认接入之后，NICo 才接管设备并建立机柜对象。");
+        `<tr class="row-link" data-go="rack/${r.id}"><td><strong>${r.id}</strong><span class="cell-sub">${esc(r.location)}</span></td><td ${fp(3)}>${rackStateCell(r)}</td><td>${healthBadge(rackHealth(r))}</td><td>${code(r.profile)}</td><td>${members(r)}<span class="cell-sub">就绪 ${DB.ready(r)} / ${r.trays.length}</span></td><td ${fp(4)}>${checkBadge(r)}</td><td>${DB.rackInstances(r.id).length}</td><td ${fp(5)}>${DB.busy(r) ? badge(r.task.label + " · " + taskStage(r.task), "blue") : bringStage(r) && r.state !== "Error" ? badge("机柜维护 · " + bringStage(r).n, "blue") : "—"}</td><td>${button("详情", "noop", false, `data-go="rack/${r.id}"`)}</td></tr>`))}</div>` +
+      note("新机柜不在这里创建。在“设备清单”导入到货清单后，机柜先以“尚未建立”出现在这里。之后在机柜详情里依次确认纳管、开始上线；上线开始后 NICo 才建立机柜对象。");
   },
   spec: {
     purpose: "机柜是默认的操作单位。本页回答每个机柜处在流程的哪一步、有没有需要处理的问题。",
@@ -27,8 +27,8 @@ registerPage("racks", {
       { n: 1, name: "统计条", kind: "调整", desc: "机柜数、就绪数、需要处理、设备就绪、进行中的任务。取代机柜拓扑页的设备数量统计。" },
       { n: 2, name: "机柜表", kind: "调整", desc: "机柜、NICo 状态、健康、机柜规格、成员设备沿用现有机柜页；列表同时包含清单里还没有 NICo 对象的机柜。点击整行进入机柜详情。" },
       { n: 3, name: "NICo 状态", kind: "沿用", desc: "显示状态机的状态原文和进入时间，不翻译、不另起状态名。还没有 NICo 对象的机柜显示“尚未建立”。" },
-      { n: 4, name: "清单核对", kind: "新增", desc: "等待设备出现、待确认接入、N 项差异、与清单一致。差异包括清单里没出现的设备和槽位不一致的设备。" },
-      { n: 5, name: "进行中", kind: "新增", desc: "NICo 正在自动上线时显示所在阶段；有电源或固件任务时显示任务及其步骤。同一机柜同时只有一个任务。" },
+      { n: 4, name: "清单核对", kind: "新增", desc: "等待设备出现、待确认纳管、已纳管待上线、N 项差异、与清单一致。差异包括清单里没出现的设备和槽位不一致的计算托盘。" },
+      { n: 5, name: "进行中", kind: "新增", desc: "有任务时显示任务及其步骤（上线、电源、固件）；NICo 正在自动做机柜维护时显示所在阶段。同一机柜同时只有一个任务。" },
     ],
     fields: [["NICo 状态", "NICo Core", "Discovering、Maintenance（带阶段）、Validating、Ready、Error、Deleting；没有对象时为“尚未建立”"], ["机柜规格", "NICo Core", "由清单里的机柜拓扑和厂商推导"], ["成员设备", "清单 + NICo", "三类设备的数量与就绪数"], ["清单核对", "清单 + NICo", "清单里有、但还没有设备读出这个序列号的行数，加上实测槽位与清单不同的台数"], ["实例", "NICo Core", "机柜上已交付的实例数"]],
     rules: ["“需要处理”只用 NICo 的信号：状态为 Error、有整柜泄漏、成员设备有严重告警。", "清单里的机柜都出现在这里，不论 NICo 里有没有对象。"],

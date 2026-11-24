@@ -8,8 +8,10 @@ const TOPOLOGY = "gb200_nvl72r1_c2g4", RACK_VENDOR = "Wiwynn";
 const PROFILE = "GB200_NVL72R1_C2G4_WIWYNN";
 const PROFILE_NEED = { compute: 18, switch: 9, power_shelf: 8 };
 const TYPE_LABEL = { compute: "计算托盘", switch: "交换机", power_shelf: "供电框" };
-/* bringup 是 Core 机柜状态机自己走的阶段，不是任务；其余是 Flow 任务的步骤：会中断业务的任务先等受影响的主机就绪，再按站点规则展开。 */
+/* 新机柜上线有两条线：bringup_task 是人提交的上线任务（上电并放行计算托盘的接管）；bringup 是交换机就绪后 NICo 的机柜状态机自己走的维护阶段。
+   其余是 Flow 任务的步骤：会中断业务的任务先等受影响的主机就绪，再按站点规则展开。 */
 const STAGES = {
+  bringup_task: ["供电框上电", "计算托盘上电并放行接管", "计算托盘固件", "交换机上电", "核对交换机固件", "计算托盘重启"],
   bringup: ["固件升级", "NVOS 更新", "上电顺序", "配置 NMX-C 集群", "机柜校验"],
   power_off: ["等待主机就绪", "计算托盘下电", "交换机下电", "供电框下电"],
   power_on: ["供电框上电", "交换机上电", "计算托盘上电"],
@@ -38,7 +40,8 @@ const hex2 = (n) => n.toString(16).padStart(2, "0");
 const slotType = (s) => (s <= 4 || s >= 32 ? "power_shelf" : s >= 15 && s <= 23 ? "switch" : "compute");
 const nowText = () => "2026-11-24 " + new Date().toTimeString().slice(0, 5);
 
-/* 清单里的一行。declared 为真表示声明已经写进 NICo；之前 MAC 和地址都是空的，要等设备通电后从 DHCP 得到。 */
+/* 清单里的一行，依次经过三个标记：matched 读到身份并对上清单；declared 已纳管（声明写进 NICo，计算托盘带暂停标记，不上电）；
+   state 有值表示上线后 NICo 已接管并建立设备对象。MAC 和地址在机柜接电后从 DHCP 得到。 */
 function makeTray(rackId, n, slot, discovered, baseline) {
   const type = slotType(slot), key = { compute: "C", switch: "S", power_shelf: "P" }[type];
   const serial = `DEMO-${key}-${rackId.slice(-3)}-${pad2(slot)}`;
@@ -70,7 +73,7 @@ function assignAddresses(t) {
 function makeRack(id, n, discovered, baseline, location) {
   const trays = []; for (let s = 1; s <= 35; s++) trays.push(makeTray(id, n, s, discovered, baseline));
   /* state 为空表示 NICo 里还没有这个机柜的对象：机柜只在清单里。 */
-  return { id, n, domain: "NVL-" + id.slice(-3), topology: TOPOLOGY, vendor: RACK_VENDOR, profile: PROFILE, location, admit: discovered, admitAt: discovered ? "2026-11-02 09:30" : "", state: discovered ? "Ready" : "", stateSince: discovered ? "2026-11-02 15:02" : "", reason: "",
+  return { id, n, domain: "NVL-" + id.slice(-3), topology: TOPOLOGY, vendor: RACK_VENDOR, profile: PROFILE, location, admit: discovered, admitAt: discovered ? "2026-11-02 09:30" : "", up: discovered, state: discovered ? "Ready" : "", stateSince: discovered ? "2026-11-02 15:02" : "", reason: "",
     baseline: discovered ? baseline : "", trays, tasks: [], task: null, bring: null,
     history: discovered ? [["2026-11-02 09:40", "Discovering"], ["2026-11-02 11:05", "Maintenance(FirmwareUpgrade)"], ["2026-11-02 11:06", "Maintenance(NVOSUpdate)"], ["2026-11-02 11:07", "Maintenance(PowerSequence)"], ["2026-11-02 11:20", "Maintenance(ConfigureNmxCluster)"], ["2026-11-02 14:31", "Validating"], ["2026-11-02 15:02", "Ready"]] : [] };
 }
@@ -167,6 +170,8 @@ const DB = {
   /* 整柜泄漏：只认 RackLeak 分类。一台设备的维护标记或告警不代表整柜有问题。 */
   leak: (rackId) => S.leak === rackId,
   blocked: (t) => t.alerts.some((a) => (a.cls || []).includes("PreventAllocations")),
+  /* 纳管后、上线前：声明已写入，NICo 还没有建立设备对象。 */
+  held: (t) => t.declared && !t.state,
   /* “需要处理”只用 NICo 的信号：状态机处理失败、存在健康告警。 */
   needsAttention: (t) => !!t.state && (t.health === "bad" || t.health === "warn" || /Failed|Error|失败/.test(t.state)),
   /* 固件偏差：设备实际所在的基线不是当前推荐基线。NICo 只能判断版本是否相同，不能判断高低。 */
@@ -214,13 +219,16 @@ function coreBringup(r) {
   return true;
 }
 
-/* 模拟：新机柜通电。设备拿到地址，平台读取身份并按序列号匹配清单。这一步只读，不写 NICo。
-   留下三种需要人处理的情况：一台交换机认证失败、一台计算托盘换了序列号、一个供电框没有申请地址；另有两台计算托盘插反了槽位。
-   人确认接入之后，平台才把声明写进 NICo，随后 NICo 探测和接管，交换机到齐后自动上线。 */
-function matchTray(t) { assignAddresses(t); Object.assign(t, { matched: true, seenSlot: t.slot, lastSeen: nowText(), model: { compute: "GB200 Compute Tray", switch: "NVLink Switch Tray", power_shelf: "Power Shelf" }[t.type] }); }
+/* 模拟新机柜的三段：
+   1. 机柜接电（simulateDiscovery）：BMC 拿到地址，平台读取身份并按序列号匹配清单。只读，不写 NICo。
+      留下三种需要人处理的情况：一台交换机认证失败、一台计算托盘换了序列号、一个供电框没有申请地址；另有两台计算托盘插反了槽位。
+   2. 确认纳管（admitRack）：平台把声明写进 NICo。NICo 登录 BMC、轮换口令；计算托盘带暂停标记，不上电、不接管。
+   3. 开始上线（bringUpRack）：人提交上线任务，按顺序上电并放行计算托盘；交换机就绪后 NICo 自动做机柜维护。 */
+function matchTray(t) { assignAddresses(t); Object.assign(t, { matched: true, seenSlot: t.type === "compute" ? t.slot : 0, lastSeen: nowText(), model: { compute: "GB200 Compute Tray", switch: "NVLink Switch Tray", power_shelf: "Power Shelf" }[t.type] }); }
+function declareTray(t) { if (!t.matched) matchTray(t); t.declared = true; }
 function takeOver(t) {
-  if (!t.matched) matchTray(t);
-  Object.assign(t, { declared: true, state: "Ready", health: "ok", power: "On", baseline: BASELINES[1].id, lastSeen: nowText(), history: [[nowText(), t.type === "compute" ? "HostInit/Discovered" : "Initializing"], [nowText(), "Ready"]] });
+  declareTray(t);
+  Object.assign(t, { state: "Ready", health: "ok", power: "On", baseline: BASELINES[1].id, lastSeen: nowText(), history: [[nowText(), t.type === "compute" ? "HostInit/Discovered" : "Initializing"], [nowText(), "Ready"]] });
   if (t.type === "switch") t.fabricManager = "UNKNOWN";
 }
 function simulateDiscovery(rackId) {
@@ -232,19 +240,30 @@ function simulateDiscovery(rackId) {
   S.endpoints.push({ id: "ep-" + rackId.slice(-3) + "-09", mac: mac(9), ip: ip(9), subnet: "net-oob", seen: nowText(), problem: "unlisted", type: "compute", serial: "DEMO-C-" + rackId.slice(-3) + "-99", model: "GB200 Compute Tray", sim: rackId + "/09" });
   return true;
 }
-/* 确认接入：把已经匹配上的设备写进 NICo。之后再匹配上的设备自动写入。 */
 function admitRack(rackId) {
   const r = DB.rack(rackId); r.admit = true; r.admitAt = nowText();
-  r.trays.filter((t) => t.matched && !t.declared).forEach(takeOver);
-  if (r.trays.some((t) => t.declared)) { setRackState(r, "Discovering"); coreBringup(r); }
+  r.trays.filter((t) => t.matched && !t.declared).forEach(declareTray);
 }
-/* 一个端点匹配上清单里的一行之后：机柜已确认接入就直接写入并接管，否则只记为已匹配。 */
+/* 上线任务：按步骤上电。交换机上电并就绪后，NICo 的机柜状态机自己开始维护。 */
+function bringUpRack(rackId, why) {
+  const r = DB.rack(rackId), of = (type) => r.trays.filter((t) => t.declared && t.type === type); r.up = true;
+  setRackState(r, "Discovering");
+  return startTask(rackId, "bringup", "机柜上线", STAGES.bringup_task, { why,
+    onStage: (n) => {
+      if (n === "供电框上电") of("power_shelf").forEach(takeOver);
+      if (n === "计算托盘上电并放行接管") of("compute").forEach((t) => Object.assign(t, { state: "HostInit/WaitingForDiscovery", power: "On", health: "none", history: [[nowText(), "HostInit/WaitingForDiscovery"]] }));
+      if (n === "交换机上电") of("switch").forEach((t) => Object.assign(t, { state: "Initializing", power: "On", health: "none", history: [[nowText(), "Initializing"]] }));
+    },
+    onDone: () => { r.trays.filter((t) => t.declared).forEach(takeOver); coreBringup(r); },
+    readback: () => `成员电源：${DB.power(r).text}；交换机就绪 ${DB.ready(r, "switch")} / ${PROFILE_NEED.switch}` });
+}
+/* 一个端点匹配上清单里的一行之后：机柜还没纳管就只记为已匹配；已纳管就写入声明；机柜已经上线过的，纳管后直接上电接管。 */
 function matchEndpoint(epId, trayId, patch) {
   const e = S.endpoints.find((x) => x.id === epId), t = DB.tray(trayId), r = DB.rack(t.rack);
   if (e) S.endpoints = S.endpoints.filter((x) => x.id !== epId);
   Object.assign(t, patch || {});
   if (!r.admit) return matchTray(t);
+  if (!r.up || DB.busy(r)) return declareTray(t);
   takeOver(t);
-  if (!r.state) setRackState(r, "Discovering");
   if (r.state === "Discovering" && !(r.bring && r.bring.timer)) coreBringup(r);
 }

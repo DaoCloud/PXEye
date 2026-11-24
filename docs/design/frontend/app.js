@@ -175,19 +175,19 @@ function specHtml(spec) {
 }
 const GUIDE_STEPS = [
   ["站点设置", "检查依赖组件是否就绪", "site"], ["网络规划", "规划各类设备的网段与 DHCP 地址池", "network"], ["设备清单", "导入到货清单，确认差异", "inventory"],
-  ["设备发现", "模拟通电，处理匹配不上清单的端点", "discovery"], ["机柜上线", "核对后确认接入，NICo 自动上线，跟踪各阶段", "rack/RACK-A03"], ["机柜交付", "按机柜装机或交给上层平台", "delivery"],
+  ["设备发现", "模拟机柜接电，处理匹配不上清单的端点", "discovery"], ["机柜上线", "确认纳管，开始上线，跟踪任务和机柜维护", "rack/RACK-A03"], ["机柜交付", "按机柜装机或交给上层平台", "delivery"],
   ["健康告警", "告警、阻止分配与整柜泄漏", "health"], ["设备管理", "从菜单直接进入交换机：看地址、固件，上下电", "devices/switch"], ["NVLink 域管理", "NMX-C、域健康与 NVLink 分区", "domains"], ["操作审计", "每次操作的记录", "audit"],
 ];
 function renderGuide(page, arg) {
   const tab = view("guideTab", "spec"), a03 = DB.rack("RACK-A03");
   const sim = `<h3>讲解主线</h3><ol class="guide-steps">${GUIDE_STEPS.map(([t, d, h], i) => `<li class="${S.guide === i + 1 ? "now" : ""}" data-guide="${i + 1}" data-go="${h}">${i + 1}. ${t}<small>${d}</small></li>`).join("")}</ol>
     <h3>模拟现场与 NICo 的变化</h3><div class="guide-sim">
-      <button class="button compact" data-live="sim-discover" ${a03 && !a03.trays.some((t) => t.matched) ? "" : `disabled title="${a03 ? "已通电" : "先导入清单"}"`}>RACK-A03 通电</button>
+      <button class="button compact" data-live="sim-discover" ${a03 && !a03.trays.some((t) => t.matched) ? "" : `disabled title="${a03 ? "已接电" : "先导入清单"}"`}>RACK-A03 接电</button>
       <button class="button compact" data-live="sim-leak">${S.leak ? "清除泄漏告警" : "触发整柜泄漏（RACK-A01）"}</button>
       <button class="button compact" data-live="sim-rms">${S.rms ? "RMS 不可用" : "恢复 RMS"}</button>
       <button class="button compact" data-live="sim-flow">${S.flow ? "Flow 不可用" : "恢复 Flow"}</button>
       <button class="button compact" data-live="sim-reset">重置示例数据</button></div>
-    <p class="muted" style="margin-top:12px">任务和 NICo 上线的进度用定时器模拟，每个阶段约一秒，不代表真实耗时。通电后到机柜详情“确认接入”，上线才会开始；先让 RMS 不可用再确认接入，可以看到上线停在 Error 以及“重新执行机柜维护”。</p>`;
+    <p class="muted" style="margin-top:12px">任务和 NICo 上线的进度用定时器模拟，每个阶段约一秒，不代表真实耗时。接电后到机柜详情依次“确认纳管”“开始上线”。上线任务跑完后让 RMS 不可用，可以看到机柜维护停在 Error 以及“重新执行机柜维护”。</p>`;
   const name = page.crumb ? page.crumb(arg) : page.tab || page.title;
   if (S.view.guide === false) { $("#guide").innerHTML = `<button class="guide-handle" data-design="guide" aria-label="展开页面说明" title="展开页面说明">${CHEVRON}<span>页面说明</span></button>`; return; }
   $("#guide").innerHTML = `<div class="guide-head"><div class="guide-title"><div><h2>${esc(name)}</h2><p>${navPath(page).join(" › ") || "汇总"} · 页面说明随页面一起维护</p></div>

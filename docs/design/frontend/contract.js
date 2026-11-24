@@ -283,7 +283,7 @@ G("依赖组件的证书到期", ["站点设置"], "RMS、Flow、站点代理和
 G("任务里的操作者和原因", ["运维任务", "操作审计"], "Flow 的任务只有描述、规则和阶段报告，没有操作者和原因字段。REST 有自己的审计接口，记录的是调用它的账号", "操作者和原因由平台审计保存，用任务编号关联；提交时把原因写进任务的 description", "rest-api/openapi/spec.yaml:28731");
 G("单台设备电源走任务还是直接执行", ["设备管理"], "两条路径都能用：REST 的托盘电源提交为 Flow 任务，可取消、有阶段；Core 的设备电源接口立即执行。供电框在 Core 里另有一个走状态机的专用接口。现有产品用的是 Core 的直接接口", "设计稿目前写的是走任务。建议保持：有 Flow 时走任务，电源动作因此受“同一机柜只有一个任务”的约束；Flow 不可用时这些操作不可用，不悄悄改走直接接口", "crates/api-core/src/handlers/component_manager.rs:3244");
 G("设备声明和机柜读取走 Core 还是走 REST", ["设备清单", "机柜管理", "机柜详情"], "REST 和 Core 是两套存储，靠工作流和定时任务同步；REST 的资源编号是它自己的 UUID。机柜的状态机状态只在 Core，任务计数、槽位和对账只在 REST", "写入只走 Core。读取分工：状态、健康、历史读 Core；槽位、对账、任务读 REST。两边用机柜 ID 和 BMC MAC 关联，页面上不显示 REST 的编号", "rest-api/api/pkg/api/handler/expectedrack.go:161");
-G("机柜上线由谁推进，人在哪里确认", ["机柜详情"], "有两套机制。Core 的机柜状态机：源码里从 Discovering 进入上线的唯一条件是就绪的交换机数不少于机柜规格里写的数量，没有“等人确认”的开关；数量是最低门槛，写在站点配置的机柜规格里。阶段顺序是固件升级、NVOS 更新、上电顺序（需要时）、配置 NMX-C 集群、校验，不能调整；按需发起机柜维护时可以选做哪几项。旧版本的模拟环境里实测过自动进入和 Error 不自恢复，但那个版本的顺序是先配置 NMX-C 再上电顺序，现场版本以源码为准。Flow 的上线任务按规则做上电、固件和核对，还没有实测", "人的确认放在平台这一侧：设备匹配上清单后先不写 NICo，机柜“确认接入”之后才写入。这样 NICo 在确认之前接管不到任何设备，也就不会开始上线。机柜详情显示状态机的阶段，Error 时提供“重新执行机柜维护”。Flow 的上线任务要不要用、和状态机的先后关系，等在现场版本的模拟环境里实测后再定", "crates/rack-controller/src/discovering.rs:65；crates/rack-controller/src/maintenance.rs:1496");
+G("新机柜的纳管、上线和机柜维护怎么衔接", ["机柜详情"], "三件事已经分清。纳管：现有产品写设备声明时带暂停标记（discovery.py:269），NICo 不上电也不接管，首次安装时才放行（onboarding.py:640）。上线：Flow 有内置的上线规则，六步，其中计算托盘上电这一步会打开 NICo 的上电闸门（AllowIngestionAndPowerOn）。机柜维护：Core 的机柜状态机在就绪的交换机数不少于机柜规格里的数量时自动开始，没有等人确认的开关，顺序是固件升级、NVOS 更新、上电顺序（需要时）、配置 NMX-C 集群、校验。没有核实的是这两条线同时进行时的衔接：Flow 上线里的计算托盘固件走状态机路径时要求机柜已经在 Ready 或 Error；交换机没有上电时能否被 NICo 建立对象；计算托盘带暂停标记时机柜能否走到 Ready", "设计按“人确认纳管 → 人开始上线（Flow 上线任务）→ NICo 自动机柜维护”来画，三步的界限写在说明书 5.1。衔接问题要在现场版本的模拟环境里把 Flow 上线任务和机柜状态机一起跑一遍才能定；旧版本模拟环境只测过机柜状态机这一半", "rest-api/flow/internal/task/operationrules/resolver_defaults.go:775；crates/rack-controller/src/discovering.rs:65；crates/rack-controller/src/maintenance.rs:1496");
 G("更换设备后机柜重新发现", ["机柜详情"], "文档说更换托盘会让机柜因 topology_changed 回到 Discovering，但源码里没有找到设置这个标志的非测试代码。更换的实际步骤是：打上待更换标记并等 NVLink 隔离完成、强制删除旧设备、改设备声明、等新设备被发现", "更换设备做成平台编排的分步流程，每步读回；机柜状态是否变化以实测为准，页面不预先承诺", "crates/rack-controller/src/ready.rs:50");
 G("机柜退役", ["机柜详情"], "DeleteRack 只把机柜标记为删除，状态机进入 Deleting 后一直等待；真正删除只有强制删除，而且不处理成员设备。Flow 有退役任务，但只在 Flow 自己的接口上，REST 没有端点", "退役拆成明确的几步由平台编排：确认无实例、成员设备逐个退役并强制删除、删除设备声明和机柜声明、最后强制删除机柜；或者本阶段不提供机柜退役", "crates/api-core/src/handlers/rack.rs:201");
 G("跨机柜的固件分阶段发布", ["固件基线"], "一个 NVL72 机柜就是一个 NVLink 域，所以没有“域内按机柜分批”。Flow 的分阶段发布目标是站点内所有符合条件的机柜，按百分比抽取，不能传入机柜列表；只调用过它的列表接口，返回空", "这一版不设计：域级电源、域级固件和分阶段发布都已从设计稿里去掉。以后作为站点级功能单独设计", "docs/operations/flow/operation-runs.md:123");
@@ -345,9 +345,9 @@ const PAGE_CALLS = {
   ],
   "discovery": [
     ["interface.list", "拿到了地址、但还没有归属的接口，以及最近一次申请地址的时间"],
-    ["expected-machine.write", "机柜已确认接入时，新匹配上的计算托盘直接写入：MAC、凭据、序列号、机柜、槽位和 DPU 策略"],
-    ["expected-switch.write", "机柜已确认接入时，新匹配上的交换机直接写入：BMC 与 NVOS 管理口的 MAC、两组凭据"],
-    ["expected-shelf.write", "机柜已确认接入时，新匹配上的供电框直接写入"],
+    ["expected-machine.write", "机柜已确认纳管时，新匹配上的计算托盘直接写入：MAC、凭据、序列号、机柜、槽位和 DPU 策略"],
+    ["expected-switch.write", "机柜已确认纳管时，新匹配上的交换机直接写入：BMC 与 NVOS 管理口的 MAC、两组凭据"],
+    ["expected-shelf.write", "机柜已确认纳管时，新匹配上的供电框直接写入"],
     ["expected-domain.write", "机柜的声明齐了之后写入 NVLink 域声明"],
     ["expected-machine.list", "计算托盘声明走到了哪一步"],
     ["expected-switch.list", "交换机声明走到了哪一步"],
@@ -373,13 +373,13 @@ const PAGE_CALLS = {
     ["rack.list", "状态、所在阶段、原因与健康"],
     ["rack-profile.list", "机柜规格和它要求的各类设备数量"],
     ["rack.history", "状态历史"],
-    ["rack-group.write", "确认接入：写入机柜组"],
-    ["expected-rack.write", "确认接入：写入机柜声明"],
-    ["expected-machine.write", "确认接入：写入已匹配的计算托盘"],
-    ["expected-switch.write", "确认接入：写入已匹配的交换机"],
-    ["expected-shelf.write", "确认接入：写入已匹配的供电框"],
+    ["rack-group.write", "确认纳管：写入机柜组"],
+    ["expected-rack.write", "确认纳管：写入机柜声明"],
+    ["expected-machine.write", "确认纳管：写入已匹配的计算托盘，带暂停标记（default_pause_ingestion_and_poweron），不上电、不接管"],
+    ["expected-switch.write", "确认纳管：写入已匹配的交换机"],
+    ["expected-shelf.write", "确认纳管：写入已匹配的供电框"],
     ["rack.maintenance", "重新执行机柜维护"],
-    ["rack.bringup", "Flow 的上线任务：是否使用、与机柜状态机的先后关系待实测"],
+    ["rack.bringup", "开始上线：提交上线任务。内置规则六步：供电框上电、计算托盘上电并放行接管、计算托盘固件、交换机上电、核对交换机固件、计算托盘重启"],
     ["rack.rest", "任务计数与所属域"],
     ["rack.validation", "期望与实际校验"],
     ["tray.rest", "实测槽位（与清单比对）；电源和固件确认页上各主机现在能否被操作"],

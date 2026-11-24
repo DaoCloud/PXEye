@@ -4,8 +4,8 @@ digraph G {
   edge  [fontname="PingFang SC", fontsize=10, color="#1F4E79", fontcolor="#44546A", arrowsize=0.8, penwidth=1.3];
   s0 [fillcolor="#F4F6F9", color="#7F7F7F", label=<<b>站点与网络就绪</b><br/><font point-size="10" color="#44546A">依赖组件就绪<br/>网段规划检查通过</font>>];
   s1 [label=<<b>1 导入清单</b><br/><font point-size="10" color="#44546A">到货清单已保存，凭据齐全</font>>];
-  s2 [label=<<b>2 接入</b><br/><font point-size="10" color="#44546A">设备匹配上清单并被接管</font>>];
-  s3 [label=<<b>3 机柜上线</b><br/><font point-size="10" color="#44546A">NICo 自动进行<br/>机柜就绪，域已形成</font>>];
+  s2 [label=<<b>2 接入与纳管</b><br/><font point-size="10" color="#44546A">设备匹配上清单<br/>人确认后登记到 NICo</font>>];
+  s3 [label=<<b>3 机柜上线</b><br/><font point-size="10" color="#44546A">人开始上线<br/>机柜就绪，域已形成</font>>];
   s4 [label=<<b>4 交付</b><br/><font point-size="10" color="#44546A">验收通过或上层已接收</font>>];
   s5 [fillcolor="#1F4E79", fontcolor="white", label=<<b>5 运行</b><br/><font point-size="10">无未处理的严重告警</font>>];
   s6 [label=<<b>6 维护与变更</b><br/><font point-size="10" color="#44546A">任务成功，回到就绪</font>>];

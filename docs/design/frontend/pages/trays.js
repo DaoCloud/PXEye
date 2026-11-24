@@ -12,8 +12,8 @@ const fwVersion = (t) => (t.baseline && FW_PART[t.type] ? DB.baseline(t.baseline
 const fwCell = (t) => (fwVersion(t) ? code(fwVersion(t)) + `<span class="cell-sub">${DB.drift(t) ? badge("与基线不同", "amber") : badge("与基线相同", "green")}</span>` : "—");
 const fmBadge = (v) => ({ OK: badge("正常", "green"), NOT_OK: badge("异常", "red") })[v] || badge("未知", "gray");
 const placeCell = (t) => `<a class="link-button" data-go="rack/${t.rack}">${t.rack}</a><span class="cell-sub">槽位 ${pad2(t.slot)}</span>`;
-const stateCell = (t) => stateBadge(t.state) + (t.reason ? `<span class="cell-sub">${esc(t.reason)}</span>` : !t.state ? `<span class="cell-sub">NICo 尚未建立设备对象</span>` : "");
-const absent = (t) => (t.state ? "" : "NICo 尚未建立设备对象，不能操作。");
+const stateCell = (t) => (t.state ? stateBadge(t.state) : t.declared ? badge("已纳管 · 等待上线", "blue") : badge("未纳管", "gray")) + (t.reason ? `<span class="cell-sub">${esc(t.reason)}</span>` : "");
+const absent = (t) => (t.state ? "" : t.declared ? "已纳管，还没有上线，不能操作。" : "还没有纳管，不能操作。");
 /* 行操作：运行状态、电源快捷入口、全部操作。电源快捷入口只是预选了动作的同一个操作对话框。 */
 const rowActions = (t, mark = "") => `<div class="inline-actions" ${mark}>${button("运行状态", "tray-detail", false, `data-id="${t.id}"`)}${act(t.power === "On" ? "关机" : "上电", "tray-op", { gate: absent(t), extra: `data-id="${t.id}" data-action="${t.power === "On" ? "power-off" : "power-on"}"` })}${act("操作", "tray-op", { gate: absent(t), extra: `data-id="${t.id}"` })}</div>`;
 
@@ -133,7 +133,7 @@ registerPage("devices/dpu", {
 /* ---------- 托盘运行状态（抽屉） ---------- */
 registerAction("tray-detail", ({ id }) => {
   const t = DB.tray(id), r = DB.rack(t.rack), d = DB.domain(r.domain), base = DB.baseline(t.baseline), rec = BASELINES[0];
-  if (!t.state) return modal(t.serial, `${TYPE_LABEL[t.type]} · 运行状态`, note(`NICo 尚未为此设备建立对象。它在到货清单中（${t.rack} 槽位 ${pad2(t.slot)}），通电并按序列号匹配上之后才会写进 NICo。`) + defs([["清单里的序列号", code(t.serial)], ["BMC MAC 与地址", "通电后获得"], ["设备凭据", "已提供，不显示"]]), button("关闭", "close") + button("去设备发现", "discovery-rack", true, `data-rack="${t.rack}"`), { drawer: true });
+  if (!t.state) return modal(t.serial, `${TYPE_LABEL[t.type]} · 运行状态`, note(t.declared ? `这台设备已经纳管（${t.rack} 槽位 ${pad2(t.slot)}），还没有上线：NICo 已接手它的 BMC 口令，但没有给它上电，也没有建立设备对象。在机柜详情开始上线。` : t.matched ? `这台设备已经匹配上清单（${t.rack} 槽位 ${pad2(t.slot)}），还没有纳管。在机柜详情确认纳管。` : `这台设备在到货清单中（${t.rack} 槽位 ${pad2(t.slot)}），还没有读到它的身份。机柜接电并匹配上之后才能纳管。`) + defs([["清单里的序列号", code(t.serial)], ["BMC MAC 与地址", t.bmcIp ? code(t.bmcMac) + " · " + code(t.bmcIp) : "接电后获得"], ["设备凭据", t.declared ? "已交给 NICo" : "已提供，不显示"]]), button("关闭", "close") + (t.matched ? button("去机柜详情", "close-go", true, `data-to="rack/${t.rack}"`) : button("去设备发现", "discovery-rack", true, `data-rack="${t.rack}"`)), { drawer: true });
   const partKeys = { compute: ["计算托盘 BMC", "计算托盘 UEFI"], switch: ["交换机 BMC"], power_shelf: [] }[t.type];
   let body = defs([["NICo 对象 ID", code("obj-" + t.serial.toLowerCase())], ["机柜 / 位置", `${t.rack} · 槽位 ${pad2(t.slot)}`], ["运行状态", stateBadge(t.state) + (t.reason ? ` <span class="live-small">${esc(t.reason)}</span>` : "")], ["电源", powerText(t.power)], ["BMC 地址", code(t.bmcIp) + " · " + code(t.bmcMac) + " · " + t.addrMode], ["健康", healthBadge(t.health)], ["最近报告", code(t.lastSeen)]]);
   body += `<h3 class="section-title">健康告警</h3>` + table(["告警", "说明", "开始时间", "分类"], t.alerts.map((a) => `<tr><td>${code(a.id)}${a.target ? `<span class="cell-sub live-code">${esc(a.target)}</span>` : ""}</td><td>${esc(a.msg)}</td><td>${code(a.since)}</td><td>${alertClass(a) || "—"}</td></tr>`), "当前没有健康告警。");
