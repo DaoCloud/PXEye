@@ -218,7 +218,7 @@ class Discovery:
             try:
                 cred = {"username": body["username"], "password": body["password"]}
                 identity = read_device_identity(
-                    self.adapter, candidate["bmc_ip"], candidate["bmc_mac"], cred
+                    self.adapter, candidate["bmc_ip"], candidate["bmc_mac"], cred, processors=True
                 )
                 proof.update(
                     **identity,
@@ -318,6 +318,7 @@ class Discovery:
         for c, proof, row in plans:
             proof.update(
                 status="registered",
+                bmc_mac=c["bmc_mac"],
                 serial=row["chassis_serial_number"],
                 expected_id=row["id"],
                 actor=actor,

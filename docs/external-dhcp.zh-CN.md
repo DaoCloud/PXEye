@@ -7,7 +7,7 @@
 ## 前置条件
 
 - x86_64 UEFI 主机、无托管 DPU、Flat 网络。BMC 支持光盘 VirtualMedia 槽位及单次 `Cd`/`Hdd` 启动。提供标准 Redfish 和 Lenovo XCC1 `EXT` PATCH 适配；具体机型的许可与固件能力仍需验收。
-- 外部 DHCP 为**设备规划**中的启动 MAC 配置固定租约，保证 iPXE、Scout、安装器使用同一 IP。Core 中已存在对应 HostInband 网段；不另填一份网络规划。
+- 外部 DHCP 为**设备规划**中的启动 MAC 配置固定租约，保证 iPXE、Scout、安装器使用同一 IP，并将Option 6设置为页面显示的Unbound地址。Core 中已存在对应 HostInband 网段；不另填一份网络规划。
 - BMC 能访问材料 HTTP 服务中的小型 ISO；主机能访问引导 HTTP、证书信任有效的 Core 和 OS 材料。Core 按实际源地址识别主机，不能由 SNAT 隐藏身份。
 - 配套 Core 和 Scout 实现 `SetHostBootIntent`、`GetHostBootIntent`、`AcknowledgeHostBoot`、`CancelHostBoot`、`ReleaseHostBootPolicy`。旧 Core 继续使用 Nico DHCP 模式；只更新 PXEye 不会增加 Core 能力。
 - 按正常 `make images` 入口构建 PXEye，包含固定版本的通用 EFI/ESP。镜像提供 `mcopy`、`xorriso`，现场无需编译 iPXE。见[镜像构建](deployment.zh-CN.md)。
@@ -35,7 +35,7 @@ git checkout --detach ebaadc097c4c72af58bf30a934c3b086ed878778
 
 1. 按原现场流程安装控制面；Helm 安装顺序不变。
 2. 打开**站点设置 → 管理引导网络**，选择**外部 DHCP**，填写带协议和端口的**引导 HTTP 端点**。同一入口维护**安装材料 HTTP**地址与端口，两者用途不同。
-3. 预览并应用。PXEye 将本站点 Kea Deployment 缩放至零并读回确认，不修改 Kea 分配参数、客户 DHCP、Relay 或 Service。存在活动安装任务时不能切换模式。
+3. 预览并应用。PXEye写入`.forge`记录，将本站点Kea缩放至零并读回确认；它不修改外部DHCP或Relay。存在活动安装任务时不能切换模式。
 4. 核对规划启动 MAC/IP 的固定租约。通过更新后的 OS 库创建新 OS 版本并在安装方案中选择；既有不可变 OS 保持原样，外部模式需要新版本中的引导回执参数。
 5. 沿用首次安装或重装入口。任务创建时冻结站点模式；PXEye 发布不可变引导介质并提交逐机意图，执行仍由 Core 原生接入、分配和重启流程触发。
 6. 在**安装记录 → 外部 DHCP / BMC 引导**查看 Core 阶段、请求代次和介质清理状态。装机是否成功仍由安装器及目标盘验收决定。

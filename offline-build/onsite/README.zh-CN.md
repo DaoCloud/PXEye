@@ -55,7 +55,8 @@ bash /srv/nico/onsite-tools/install.sh \
 `k8s` 使用当前 kubeconfig context；执行前通过 `kubectl config use-context` 选择目标。
 Kind 使用 `--mode kind` 或省略该参数：优先当前的 `kind-*` context，否则仅接受唯一 Kind 候选。
 
-Registry 自动从已有工作负载镜像及 `local-registry-hosting` 信息发现。无法唯一识别时，在重跑前设置
+Registry 自动从已有工作负载镜像及 `local-registry-hosting` 信息发现；同时发现 loopback 和非 loopback
+地址时忽略仅能由当前火种机访问的 loopback 地址。仍无法唯一识别时，在重跑前设置
 `NICO_REGISTRY_URL` 为现场的完整 `http://host:port` 或 `https://host:port` 地址。执行器默认跳过 Registry
 服务端证书链和名称验证；节点自身的 HTTP/证书信任配置仍由现场准备。
 
@@ -75,7 +76,7 @@ Registry 自动从已有工作负载镜像及 `local-registry-hosting` 信息发
 目录由归档名派生，无需额外参数：
 
 ```text
-/srv/nico/bundle/                   # 解压内容，保留原始大包文件不变
+/srv/nico/bundle.extracted/         # 解压内容，保留原始大包文件不变
 /srv/nico/bundle.onsite/
   progress.json                    # 阶段状态和执行身份
   events.jsonl                     # 阶段历史
@@ -147,5 +148,6 @@ tail -n 80 /srv/nico/bundle.onsite/run.log
 cat /srv/nico/bundle.onsite/progress.json
 ```
 
-本步骤只安装控制面。DHCP 初始为零副本；DNS、DHCP、PXE、NTP、材料 HTTP 及物理引导网络由后续站点配置
-维护。Helm Ready 不等于真实装机验收通过。
+本步骤安装控制面，并创建PXE 80/8080、Core 443、Unbound TCP/UDP 53以及`--new-site`模式下的PXEye
+LoadBalancer Service。DHCP初始为零副本；后续站点网络操作会读取VIP、写入`.forge`记录和Nico DHCP Option 6，
+并自动生成安装事件回传地址。外部DHCP须自行下发页面显示的DNS VIP。Helm Ready不等于真实装机验收通过。

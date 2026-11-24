@@ -16,6 +16,7 @@ import gzip
 import hashlib
 import ipaddress
 import json
+import os
 from pathlib import Path, PurePosixPath
 import re
 import shutil
@@ -107,8 +108,8 @@ def extract_chart(archive, target):
 
 def pack_tree(source, destination, prefix):
     """Fixed ownership/time; do not preserve host identity or follow links."""
-    with destination.open('wb') as raw, gzip.GzipFile(fileobj=raw, mode='wb', mtime=0, compresslevel=1) as gz:
-        with tarfile.open(fileobj=gz, mode='w|', format=tarfile.PAX_FORMAT) as archive:
+    def write_archive(stream):
+        with tarfile.open(fileobj=stream, mode='w|', format=tarfile.PAX_FORMAT) as archive:
             for path in sorted(source.rglob('*')):
                 require(path.is_file() and not path.is_symlink() or path.is_dir() and not path.is_symlink(), 'Unsafe output file')
                 info = archive.gettarinfo(str(path), arcname=prefix + '/' + path.relative_to(source).as_posix())
@@ -116,10 +117,46 @@ def pack_tree(source, destination, prefix):
                 info.uname = info.gname = ''
                 info.mode = 0o755 if path.is_dir() or path.stat().st_mode & 0o111 else 0o644
                 if path.is_file():
-                    with path.open('rb') as stream:
-                        archive.addfile(info, stream)
+                    with path.open('rb') as incoming:
+                        archive.addfile(info, incoming)
                 else:
                     archive.addfile(info)
+
+    pigz = shutil.which('pigz')
+    if pigz:
+        available = len(os.sched_getaffinity(0)) if hasattr(os, 'sched_getaffinity') else (os.cpu_count() or 1)
+        configured = os.environ.get('PXEYE_ARCHIVE_THREADS', '').strip()
+        if configured:
+            require(configured.isdigit() and 1 <= int(configured) <= 256,
+                    'PXEYE_ARCHIVE_THREADS must be an integer from 1 to 256')
+            threads = int(configured)
+        else:
+            # Leave one CPU to the cluster on small builders and cap the
+            # default where gzip generally becomes storage-bound.  Operators
+            # can override this after measuring their own storage path.
+            threads = min(8, max(1, available - 1))
+        print('ARCHIVE_COMPRESSOR', 'pigz', 'level=1', 'threads=' + str(threads), flush=True)
+        with destination.open('wb') as raw:
+            process = subprocess.Popen(
+                [pigz, '-1', '-n', '-p', str(threads)],
+                stdin=subprocess.PIPE,
+                stdout=raw,
+                stderr=subprocess.PIPE,
+            )
+            require(process.stdin is not None and process.stderr is not None, 'Cannot open pigz streams')
+            try:
+                write_archive(process.stdin)
+            except Exception:
+                process.stdin.close()
+                process.wait()
+                raise
+            process.stdin.close()
+            error = process.stderr.read().decode(errors='replace')
+            require(process.wait() == 0, 'pigz compression failed: ' + error[-2000:])
+        return
+
+    with destination.open('wb') as raw, gzip.GzipFile(fileobj=raw, mode='wb', mtime=0, compresslevel=1) as gz:
+        write_archive(gz)
 
 
 def oci_check(path, expected=None, reference=None):

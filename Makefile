@@ -7,6 +7,9 @@ VCS_REF := $(shell git -C "$(REPO_ROOT)" rev-parse HEAD)
 IMAGE_TAG := $(VERSION)-$(BUILD_TIME)-$(shell git -C "$(REPO_ROOT)" rev-parse --short=7 HEAD)
 IMAGE ?= pxeye:$(IMAGE_TAG)
 PUBLISH_IMAGE := $(REGISTRY)/pxeye:$(IMAGE_TAG)
+BUILD_CACHE_IMAGE ?= $(if $(REGISTRY),$(REGISTRY)/pxeye:build-cache,)
+CACHE_FROM ?=
+PXEYE_RUNTIME_BASE_IMAGE ?=
 BASE_IMAGE ?= ubuntu:24.04
 BUILD_CONFIG ?= $(REPO_ROOT)/outputs_/build-config.json
 BUILD_WORK_DIRECTORY ?= $(REPO_ROOT)/outputs_
@@ -36,7 +39,7 @@ RESUME_SOURCE_BUILD_LOCK ?=
 DEBIAN_MIRROR ?=
 SOURCE_BUILD_ARGS = $(if $(RESUME_SOURCE_BUILD_LOCK),--resume "$(RESUME_SOURCE_BUILD_LOCK)",) $(if $(DEBIAN_MIRROR),--debian-mirror "$(DEBIAN_MIRROR)",) $(if $(CARGO_MIRROR),--cargo-mirror "$(CARGO_MIRROR)",) $(if $(RUST_MIRROR),--rust-mirror "$(RUST_MIRROR)",) --jobs "$(BUILD_JOBS)" --repo "$(REPO_ROOT)" --output "$(SOURCE_BUILD_DIRECTORY)" $(if $(REGISTRY),--registry "$(REGISTRY)",) $(if $(SCOUT_CA_FILE),--scout-ca "$(SCOUT_CA_FILE)",) $(if $(BUILD_IMAGE_MIRROR),--image-mirror "$(BUILD_IMAGE_MIRROR)",)
 
-.PHONY: syntax lint format-check test wheel image images pxeye-images nico-sources nico-core libredfish nico-scout nico-boot nico-boot-arm64 source-build-help arm64-materials ensure-build-config cache-images bundles dhcp-check dhcp-check-help
+.PHONY: syntax lint format-check test wheel image images pxeye-images pxeye-overlay-image nico-sources nico-core libredfish nico-scout nico-boot nico-boot-arm64 source-build-help arm64-materials ensure-build-config cache-images bundles dhcp-check dhcp-check-help
 syntax:
 	$(PYTHON) -m compileall -q src tests/unit
 	@find src/pxeye/web -name '*.js' -exec $(NODE) --check {} \;
@@ -61,17 +64,33 @@ image:
 	test -x bin/nico-admin-cli
 	test -x bin/grpcurl
 	test -x bin/helm
-	docker build --build-arg BASE_IMAGE="$(BASE_IMAGE)" --build-arg VCS_REF="$(VCS_REF)" --build-arg VERSION="$(VERSION)" -t "$(IMAGE)" .
+	DOCKER_BUILDKIT=1 docker build $(if $(CACHE_FROM),--cache-from "$(CACHE_FROM)",) --build-arg BUILDKIT_INLINE_CACHE=1 --build-arg BASE_IMAGE="$(BASE_IMAGE)" --build-arg VCS_REF="$(VCS_REF)" --build-arg VERSION="$(VERSION)" -t "$(IMAGE)" .
 	@echo "BUILT_IMAGE=$(IMAGE)"
 
 # PXEye-only fast path, using prepared local Linux CLI/Helm/grpcurl binaries.
 pxeye-images:
 	@test -n "$(REGISTRY)" || { echo "Set REGISTRY=host:port" >&2; exit 1; }
-	$(MAKE) --no-print-directory -f "$(REPO_ROOT)/Makefile" image IMAGE="$(PUBLISH_IMAGE)" VCS_REF="$(VCS_REF)" VERSION="$(VERSION)"
+	@docker pull "$(BUILD_CACHE_IMAGE)" >/dev/null 2>&1 || echo "BUILD_CACHE_MISS=$(BUILD_CACHE_IMAGE)"
+	$(MAKE) --no-print-directory -f "$(REPO_ROOT)/Makefile" image IMAGE="$(PUBLISH_IMAGE)" VCS_REF="$(VCS_REF)" VERSION="$(VERSION)" CACHE_FROM="$(BUILD_CACHE_IMAGE)"
+	@case "$(REGISTRY_INSECURE)" in 1|true|yes) echo "HTTP Registry: Docker daemon must trust $(REGISTRY) as an insecure registry" ;; esac
+	docker push "$(PUBLISH_IMAGE)"
+	docker tag "$(PUBLISH_IMAGE)" "$(BUILD_CACHE_IMAGE)"
+	docker push "$(BUILD_CACHE_IMAGE)"
+	@echo "PUBLISHED_PXEYE_IMAGE=$(PUBLISH_IMAGE)"
+	@echo "PUBLISHED_BUILD_CACHE=$(BUILD_CACHE_IMAGE)"
+	@echo "Set image in charts/pxeye/values.yaml to $(PUBLISH_IMAGE) before make cache-images / make bundles"
+
+# Development-only application overlay. The caller supplies an immutable,
+# already verified PXEye runtime, so no Ubuntu, CLI or boot-media layer is rebuilt.
+pxeye-overlay-image:
+	@test -n "$(REGISTRY)" || { echo "Set REGISTRY=host:port" >&2; exit 1; }
+	@test -n "$(PXEYE_RUNTIME_BASE_IMAGE)" || { echo "Set PXEYE_RUNTIME_BASE_IMAGE to an immutable PXEye image" >&2; exit 1; }
+	@if test -n "$$(git status --porcelain --untracked-files=normal)"; then echo "Commit changes and use a clean working tree before building" >&2; exit 1; fi
+	@if docker image inspect "$(PUBLISH_IMAGE)" >/dev/null 2>&1; then echo "Image already exists: $(PUBLISH_IMAGE); use a new build minute/tag" >&2; exit 1; fi
+	DOCKER_BUILDKIT=1 docker build --target iterative --build-arg ITERATIVE_BASE_IMAGE="$(PXEYE_RUNTIME_BASE_IMAGE)" --build-arg VCS_REF="$(VCS_REF)" --build-arg VERSION="$(VERSION)" -t "$(PUBLISH_IMAGE)" .
 	@case "$(REGISTRY_INSECURE)" in 1|true|yes) echo "HTTP Registry: Docker daemon must trust $(REGISTRY) as an insecure registry" ;; esac
 	docker push "$(PUBLISH_IMAGE)"
 	@echo "PUBLISHED_PXEYE_IMAGE=$(PUBLISH_IMAGE)"
-	@echo "Set image in charts/pxeye/values.yaml to $(PUBLISH_IMAGE) before make cache-images / make bundles"
 
 # Resolve each maintained main once, validate Cargo's libredfish revision,
 # and build Core + Scout/Boot + PXEye from that frozen source set.

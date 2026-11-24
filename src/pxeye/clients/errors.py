@@ -27,6 +27,10 @@ class RPCMethodUnavailableError(RuntimeError):
     request_not_sent = True
 
 
+class ConfigurationError(RuntimeError):
+    """A required local product configuration is absent or internally inconsistent."""
+
+
 class ReadOnlyModeError(RuntimeError):
     """A read-only observer instance refused a write before sending anything."""
 

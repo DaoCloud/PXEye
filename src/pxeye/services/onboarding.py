@@ -90,8 +90,16 @@ def scout_boot_guard(override):
 
 def preparation_message(progress):
     state = str(progress.get("state") or "")
+    if state == "Failed/NVMECleanFailed" and progress.get("scout_cleanup_reboot") == "accepted":
+        return "已为新任务触发一次 Scout 清理恢复重启，等待新清理回报替换上轮失败。"
+    if state == "Failed/NVMECleanFailed" and progress.get("scout_cleanup_reboot") == "unknown":
+        return "Scout 清理恢复重启结果未知；请核对 BMC 电源、DHCP/PXE 和 Core 日志。"
     if state == "HostInitializing/WaitingForDiscovery" and not progress.get("scout_received"):
-        return "NICo 已创建 Machine，正在等待 Scout 硬件回报；启动重试由 NICo 管理。"
+        if progress.get("scout_discovery_reboot") == "accepted":
+            return "NICo 已接受发现重启，等待 UEFI DHCP、iPXE 和 Scout 硬件回报。"
+        if progress.get("scout_discovery_reboot") == "unknown":
+            return "Scout 发现重启结果未知；请核对 BMC 电源、DHCP/PXE 和 Core 日志。"
+        return "NICo 已创建 Machine，正在等待 Scout 硬件回报。"
     if state.startswith("WaitingForCleanup/HostCleanup"):
         return (
             "等待 Scout 执行 NICo 接入清理并回报完成；尚未下发 ISO 安装。"

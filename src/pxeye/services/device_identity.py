@@ -131,7 +131,54 @@ def _verify_manager_mac(read, hardware):
         raise ValueError("BMC / PMC 报告的管理 MAC 与观察端点不符。")
 
 
-def read_device_identity(adapter, address, hardware, credential):
+def processor_inventory(read, system):
+    models, architectures, seen = [], set(), set()
+
+    def collect(link, depth=0):
+        if not isinstance(link, dict) or depth > 1:
+            return
+        path = link.get("@odata.id")
+        if not isinstance(path, str) or path in seen or len(seen) >= 33:
+            return
+        seen.add(path)
+        try:
+            report = read(path)
+        except (RuntimeError, ValueError, OSError):
+            return
+        if not isinstance(report, dict):
+            return
+        if isinstance(report.get("Members"), list):
+            for member in report["Members"][:32]:
+                collect(member, depth + 1)
+            return
+        if (
+            report.get("ProcessorType") not in (None, "CPU")
+            or (report.get("Status") or {}).get("State") == "Absent"
+        ):
+            return
+        model = text(report, "Model")
+        if model and model not in models:
+            models.append(model)
+        architecture = text(report, "InstructionSet") or text(report, "ProcessorArchitecture")
+        if architecture:
+            architectures.add(architecture.casefold())
+
+    collect(system.get("Processors"))
+    links = (system.get("Links") or {}).get("Processors")
+    if isinstance(links, list):
+        for link in links[:32]:
+            collect(link)
+    summary = system.get("ProcessorSummary")
+    if not models and isinstance(summary, dict) and text(summary, "Model"):
+        models.append(text(summary, "Model"))
+    names = {"x86-64": "x86_64", "x86_64": "x86_64", "aarch64": "aarch64", "arm-a64": "aarch64"}
+    return {
+        "cpu_models": models,
+        "architecture": names.get(architectures.pop()) if len(architectures) == 1 else None,
+    }
+
+
+def read_device_identity(adapter, address, hardware, credential, *, processors=False):
     """Read once per resource, classify, then verify the observed management MAC."""
     cache = {}
 
@@ -162,6 +209,13 @@ def read_device_identity(adapter, address, hardware, credential):
             result["nics"] = host_nics(read, system, chassis, ethernet, hardware.lower())
         finally:
             REDFISH_DEADLINE.reset(token)
+        if processors:
+            deadline = time.monotonic() + 5
+            token = REDFISH_DEADLINE.set(min(existing, deadline) if existing else deadline)
+            try:
+                result["processor_inventory"] = processor_inventory(read, system)
+            finally:
+                REDFISH_DEADLINE.reset(token)
     return result
 
 

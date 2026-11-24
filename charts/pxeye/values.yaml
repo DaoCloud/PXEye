@@ -1,4 +1,4 @@
-image: 127.0.0.1:1027/pxeye:0.22.16-202611191336-4259e37
+image: 10.20.1.50:1027/pxeye:0.22.16-202611202155-d06ee64
 storageClass: ''
 # Shared by PXEye (read/write) and NICo PXE (HTTP subtree, read-only).
 # RWO requires same-node multi-Pod support; PXE follows PXEye using Pod affinity.
@@ -39,6 +39,9 @@ siteBootstrap:
   clientPrivateKey: tls.key
   caSecret: ''
   caKey: tls.crt
+  # Optional SiteAgent identity used only after an operator confirms creation
+  # of the site's default Tenant and Flat VPC.
+  siteInitializerSecret: ''
   pxeInternalUrl: ''
 siteCredentials:
   newSite: false

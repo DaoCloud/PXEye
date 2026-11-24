@@ -1,0 +1,149 @@
+name: Publish public PXEye image
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Optional immutable tag; defaults to main-<12 character commit SHA>
+        required: false
+        type: string
+      core_image:
+        description: Public NICo Core image used to obtain the matching nico-admin-cli
+        required: true
+        default: ghcr.io/ssmallmonster/core:main
+        type: string
+      publish_main:
+        description: Also update the moving main tag (only allowed from the default branch)
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: publish-pxeye-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  GRPCURL_VERSION: 1.9.4
+  HELM_VERSION: v3.22.1
+  IMAGE: ghcr.io/daocloud/pxeye
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Check out the selected revision
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve publication tags
+        id: publication
+        env:
+          REQUESTED_TAG: ${{ inputs.image_tag }}
+          PUBLISH_MAIN: ${{ inputs.publish_main }}
+        run: |
+          set -euo pipefail
+          tag=${REQUESTED_TAG:-main-${GITHUB_SHA:0:12}}
+          if [[ ! "$tag" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]; then
+            echo "Invalid OCI tag: $tag" >&2
+            exit 1
+          fi
+          if [[ "$PUBLISH_MAIN" == true && "$GITHUB_REF_NAME" != "${{ github.event.repository.default_branch }}" ]]; then
+            echo "The moving main tag can only be updated from the default branch." >&2
+            exit 1
+          fi
+          {
+            echo "tag=$tag"
+            echo "tags<<EOF"
+            echo "$IMAGE:$tag"
+            if [[ "$PUBLISH_MAIN" == true ]]; then
+              echo "$IMAGE:main"
+            fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Prepare the matching NICo CLI
+        env:
+          CORE_IMAGE: ${{ inputs.core_image }}
+        run: |
+          set -euo pipefail
+          mkdir -p bin
+          docker pull --platform linux/amd64 "$CORE_IMAGE"
+          container=$(docker create --platform linux/amd64 "$CORE_IMAGE")
+          trap 'docker rm -f "$container" >/dev/null 2>&1 || true' EXIT
+          docker cp "$container:/opt/carbide/nico-admin-cli" bin/nico-admin-cli
+          chmod 0755 bin/nico-admin-cli
+
+      - name: Download and verify grpcurl and Helm
+        run: |
+          set -euo pipefail
+          grpcurl_archive="grpcurl_${GRPCURL_VERSION}_linux_x86_64.tar.gz"
+          grpcurl_base="https://github.com/fullstorydev/grpcurl/releases/download/v${GRPCURL_VERSION}"
+          curl --fail --location --retry 3 --output "$grpcurl_archive" "$grpcurl_base/$grpcurl_archive"
+          curl --fail --location --retry 3 --output grpcurl-checksums.txt \
+            "$grpcurl_base/grpcurl_${GRPCURL_VERSION}_checksums.txt"
+          grep "  $grpcurl_archive\$" grpcurl-checksums.txt | sha256sum --check --strict -
+          tar --extract --gzip --file "$grpcurl_archive" grpcurl
+          install -m 0755 grpcurl bin/grpcurl
+
+          helm_archive="helm-${HELM_VERSION}-linux-amd64.tar.gz"
+          helm_base="https://get.helm.sh"
+          curl --fail --location --retry 3 --output "$helm_archive" "$helm_base/$helm_archive"
+          curl --fail --location --retry 3 --output helm-checksum.txt "$helm_base/$helm_archive.sha256sum"
+          sha256sum --check --strict helm-checksum.txt
+          tar --extract --gzip --file "$helm_archive" linux-amd64/helm
+          install -m 0755 linux-amd64/helm bin/helm
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and publish PXEye
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.publication.outputs.tags }}
+          build-args: |
+            VCS_REF=${{ github.sha }}
+            VERSION=${{ steps.publication.outputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Verify authenticated publication
+        env:
+          IMAGE_TAG: ${{ steps.publication.outputs.tag }}
+        run: |
+          set -euo pipefail
+          docker buildx imagetools inspect "$IMAGE:$IMAGE_TAG"
+          echo "### Published PXEye" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`$IMAGE:$IMAGE_TAG\` (linux/amd64)" >> "$GITHUB_STEP_SUMMARY"
+          echo "Digest: \`${{ steps.build.outputs.digest }}\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify anonymous access
+        env:
+          IMAGE_TAG: ${{ steps.publication.outputs.tag }}
+        run: |
+          set -euo pipefail
+          docker logout ghcr.io
+          rm -f "$HOME/.docker/config.json"
+          if ! docker buildx imagetools inspect "$IMAGE:$IMAGE_TAG"; then
+            echo "::error::Set the GHCR package daocloud/pxeye visibility to Public, then rerun this workflow." >&2
+            exit 1
+          fi
+          echo "Anonymous GHCR reads succeeded." >> "$GITHUB_STEP_SUMMARY"

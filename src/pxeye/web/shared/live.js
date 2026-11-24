@@ -282,7 +282,10 @@ const bmcLink = (ip) =>
     ? `<a class="link-button" href="https://${esc(ip)}" target="_blank" rel="noopener noreferrer">${esc(ip)} ↗</a>`
     : "—";
 const taskStatus = (t) =>
-  t.status === "needs_attention" && t.acceptance_summary?.state === "pending"
+  ["queued", "running", "needs_attention"].includes(t.status) &&
+  t.close_request?.state === "requested"
+    ? { label: "正在结束", tone: "amber" }
+    : t.status === "needs_attention" && t.acceptance_summary?.state === "pending"
     ? { label: "待继续验收", tone: "amber" }
     : t.automatic_recovery &&
         !["completed", "blocked", "unknown"].includes(
@@ -303,13 +306,13 @@ const taskStatus = (t) =>
                     : "amber",
           };
 function endTaskButton(task) {
-  if (task.status !== "needs_attention") return "";
-  const reason = task.close_block_reason;
+  if (!["queued", "running", "needs_attention"].includes(task.status)) return "";
+  const ending = task.close_request?.state === "requested";
   return button(
-    "结束任务",
+    ending ? "正在结束…" : "结束任务",
     "task-close-dialog",
     false,
-    `data-id="${esc(task.id)}"${reason ? ` disabled title="${esc(reason)}"` : ""}`,
+    `data-id="${esc(task.id)}"${ending ? ' disabled title="正在停止当前步骤并清理本轮引导"' : ""}`,
   );
 }
 function taskRows() {
@@ -334,6 +337,24 @@ function credentialSummary(creds = {}, scan = {}) {
   const issue = { failed: scan.category === "missing_credentials" ? "缺少凭据" : scan.category || "失败", none: "尚未扫描", unknown: "无法读取" }[scan.state];
   return credentials + (issue ? siteStatusItem("最近扫描", issue, scan.state === "failed" ? "red" : "gray", "", scanTime) : "");
 }
+function networkContextSummary(context = {}) {
+  const labels = {
+    ready: context.persisted ? "已配置" : "待关联",
+    missing: context.initializer_available ? "待初始化" : "缺少初始化身份",
+    conflict: "配置冲突",
+    unknown: "无法读取",
+  };
+  const tone = context.state === "ready" ? "green" : context.state === "conflict" ? "red" : "amber";
+  const action = context.state === "ready" && !context.persisted
+    ? '<button class="link-button" data-live="site-network-context-open">关联实例网络</button>'
+    : context.state === "missing" && context.initializer_available
+      ? '<button class="link-button" data-live="site-network-context-open">初始化实例网络</button>'
+      : "";
+  const hint = context.state === "ready"
+    ? `Tenant ${context.tenant_organization_id}；Flat VPC ${context.vpc_name} / ${context.vpc_id}`
+    : context.detail || (context.problems || []).join("；") || "站点默认 Tenant 与 Flat VPC";
+  return siteStatusItem("实例网络", labels[context.state] || "无法读取", tone, action, hint);
+}
 function siteDiscoveryLine(discovery = {}) {
   const { state: phase, create_machines: auto } = discovery;
   const labels = { enabled: "已启用", paused: "已暂停", applying: "启用中…", failed: "更新失败" };
@@ -341,7 +362,7 @@ function siteDiscoveryLine(discovery = {}) {
   const autoLabel = creationUpdate ? labels[phase] : typeof auto === "boolean" ? (auto ? "已启用" : "已关闭") : "待核对";
   const discoverAction = phase === "paused" && auto === false ? '<button class="link-button" data-live="site-discovery-open">启用站点发现</button>' : "";
   const createAction = phase === "enabled" && auto === false ? '<button class="link-button" data-live="site-creation-open">开启自动建机</button>' : "";
-  return `<div class="site-discovery-line" role="status">${siteStatusItem("站点发现", creationUpdate ? "待核对" : labels[phase] || "无法读取", phase === "enabled" ? "green" : phase === "failed" && !creationUpdate ? "red" : "amber", discoverAction)}${siteStatusItem("自动建机", autoLabel, creationUpdate ? (phase === "failed" ? "red" : "amber") : auto ? "green" : "gray", createAction)}${credentialSummary(state.siteInfo?.site_credentials, state.siteInfo?.last_site_scan)}${discovery.detail && phase !== "applying" ? `<span>${esc(discovery.detail)}</span>` : ""}</div>`;
+  return `<div class="site-discovery-line" role="status">${siteStatusItem("站点发现", creationUpdate ? "待核对" : labels[phase] || "无法读取", phase === "enabled" ? "green" : phase === "failed" && !creationUpdate ? "red" : "amber", discoverAction)}${siteStatusItem("自动建机", autoLabel, creationUpdate ? (phase === "failed" ? "red" : "amber") : auto ? "green" : "gray", createAction)}${credentialSummary(state.siteInfo?.site_credentials, state.siteInfo?.last_site_scan)}${networkContextSummary(state.siteInfo?.site_network_context)}${discovery.detail && phase !== "applying" ? `<span>${esc(discovery.detail)}</span>` : ""}</div>`;
 }
 function sitePage() {
   const s = state.siteInfo;
@@ -424,7 +445,7 @@ function sitePage() {
     `<section class="site-overview"><div class="site-overview-main"><span class="site-eyebrow">当前站点</span><h2>${esc(s.site.name)}</h2><div class="site-overview-meta"><span>${esc(s.site.namespace)} / ${esc(s.site.deployment)}</span><span class="live-code">${esc(s.core_url)}</span><span>新建安装批次默认并发 ${esc(s.default_install_concurrency || 5)} 台</span></div>${siteDiscoveryLine(s.site_explorer)}</div><div class="site-health"><span class="site-status-dot ${healthy ? "ok" : "bad"}"></span><div><strong>${healthy ? "Core 连接正常" : "Core 连接异常"}</strong><span>${esc(core.detail || "尚未获得连接状态")}</span><small>检查于 ${when(s.checked_at)}</small></div></div></section>` +
     `<div class="site-layout"><section class="site-panel"><header class="site-panel-header"><div><span class="site-eyebrow">安全连接</span><h2>连接身份</h2></div></header><dl class="site-identity"><div><dt>客户端身份</dt><dd>${esc(identity.subject || identity.error || "未提供")}</dd></div><div><dt>签发者</dt><dd>${esc(identity.issuer || "—")}</dd></div><div><dt>有效期</dt><dd>${esc(identity.valid_from || "—")}<span>至 ${esc(identity.valid_until || "—")}</span></dd></div></dl></section><section class="site-panel"><header class="site-panel-header"><div><span class="site-eyebrow">本地存储</span><h2>数据目录</h2></div></header><div class="site-storage-list">${storage}</div></section></div>` +
     `<section class="site-panel site-services-panel"><header class="site-panel-header"><div><span class="site-eyebrow">运行依赖</span><h2>网络与基础服务</h2></div></header><div class="site-services">${services}</div><p class="site-panel-note">${esc(s.dns_maintenance.detail)}</p></section>` +
-    `<section class="site-panel site-services-panel"><header class="site-panel-header"><div><span class="site-eyebrow">物理引导网络</span><h2>DHCP / PXE / DNS / NTP</h2></div>${button("管理引导网络", "site-boot-network", true)}</header><div class="site-services"><div class="site-service-row"><span class="site-service-dot ${bootTone === "green" ? "ok" : bootTone === "red" ? "bad" : "set"}"></span><div class="site-service-name"><strong>${externalDhcp ? "外部 DHCP / BMC 引导" : "DHCP / PXE 引导地址"}</strong><span>${externalDhcp ? "本站点 Kea 保持关闭，外部 DHCP 提供固定租约" : "保存后将写入 Kea 并滚动 DHCP"}</span></div><span class="site-service-endpoint live-code">${esc(externalDhcp ? bootValues.pxe_http_endpoint || "未配置" : (bootValues.dhcp_address || "未配置") + " / " + (bootValues.pxe_address || "未配置"))}</span><div class="site-service-state ${bootTone === "green" ? "ok" : bootTone === "red" ? "bad" : "set"}"><strong>${bootLabel}</strong><span>${esc(boot.detail || "尚未配置物理引导服务地址。")}</span></div></div><div class="site-service-row"><span class="site-service-dot ${materialTone}"></span><div class="site-service-name"><strong>安装材料 HTTP 端点</strong><span>新建 OS 版本的 ISO、kernel、initrd 发布基址</span></div><span class="site-service-endpoint live-code">${esc(materialHttpEndpoint || "未配置")}</span><div class="site-service-state ${materialTone}"><strong>${esc(materialLabel)}</strong><span>${esc(materialDetail)}</span>${materialProbe.checked_at ? `<span>检查于 ${when(materialProbe.checked_at)}${materialProbe.latency_ms != null ? " · " + esc(materialProbe.latency_ms) + " ms" : ""}</span>` : ""}</div></div></div><p class="site-panel-note">PXE 引导地址只更新 Kea。材料 HTTP 端点独立管理，必须是装机网络可访问的完整地址和端口；PXEye 不会修改外部 Service、DHCP 地址池或既有 OS。</p></section>`
+    `<section class="site-panel site-services-panel"><header class="site-panel-header"><div><span class="site-eyebrow">物理引导网络</span><h2>DHCP / PXE / DNS / NTP</h2></div>${button("管理引导网络", "site-boot-network", true)}</header><div class="site-services"><div class="site-service-row"><span class="site-service-dot ${bootTone === "green" ? "ok" : bootTone === "red" ? "bad" : "set"}"></span><div class="site-service-name"><strong>${externalDhcp ? "外部 DHCP / BMC 引导" : "DHCP / PXE 引导地址"}</strong><span>${externalDhcp ? "本站点 Kea 保持关闭，外部 DHCP 提供固定租约" : "保存后将写入 Kea 并滚动 DHCP"}</span></div><span class="site-service-endpoint live-code">${esc(externalDhcp ? bootValues.pxe_http_endpoint || "未配置" : (bootValues.dhcp_address || "未配置") + " / " + (bootValues.pxe_address || "未配置"))}</span><div class="site-service-state ${bootTone === "green" ? "ok" : bootTone === "red" ? "bad" : "set"}"><strong>${bootLabel}</strong><span>${esc(boot.detail || "尚未配置物理引导服务地址。")}</span></div></div><div class="site-service-row"><span class="site-service-dot ${materialTone}"></span><div class="site-service-name"><strong>安装材料 HTTP 端点</strong><span>新建 OS 版本的 ISO、kernel、initrd 发布基址</span></div><span class="site-service-endpoint live-code">${esc(materialHttpEndpoint || "未配置")}</span><div class="site-service-state ${materialTone}"><strong>${esc(materialLabel)}</strong><span>${esc(materialDetail)}</span>${materialProbe.checked_at ? `<span>检查于 ${when(materialProbe.checked_at)}${materialProbe.latency_ms != null ? " · " + esc(materialProbe.latency_ms) + " ms" : ""}</span>` : ""}</div></div></div><p class="site-panel-note">PXE、Core 与 DNS 地址由外部 Service 读回；应用时同步 <code>.forge</code> 记录和 Nico DHCP 参数。材料 HTTP 端点独立管理，既有 OS 不会被改写。</p></section>`
   );
 }
 function editSite() {
@@ -483,7 +504,8 @@ function bootNetworkBody() {
         : saved.pxe_address || "",
     material_http_address: $("#boot-material-http-address").value.trim(),
     material_http_port: Number($("#boot-material-http-port").value),
-    dns_address: $("#boot-dns-address").value.trim(),
+    installer_events_url: saved.installer_events_url || "",
+    dns_address: saved.dns_address || "",
     ntp_address: $("#boot-ntp-address").value.trim(),
   };
 }
@@ -494,37 +516,38 @@ async function bootNetworkDialog() {
   modal(
     "管理引导网络",
     "选择引导方式，维护引导与材料 HTTP 端点",
-    `<div class="live-form"><fieldset id="boot-dhcp-mode" class="site-dhcp-modes"><legend>DHCP 模式</legend><div class="site-dhcp-options"><label class="site-dhcp-option"><input type="radio" name="boot-dhcp-mode" value="nico"${values.dhcp_mode !== "external" ? " checked" : ""}><span>Nico DHCP</span></label><label class="site-dhcp-option"><input type="radio" name="boot-dhcp-mode" value="external"${values.dhcp_mode === "external" ? " checked" : ""}><span>外部 DHCP</span></label></div></fieldset><div id="boot-nico-fields" class="live-form site-boot-fields"${values.dhcp_mode === "external" ? " hidden" : ""}>${inputField("boot-dhcp-address", "Nico DHCP 地址", values.dhcp_address || "", 'placeholder="例如 192.0.2.10"')}${inputField("boot-pxe-address", "PXE 引导服务器 IP", values.pxe_address || "", 'placeholder="例如 192.0.2.11"')}<p class="live-small">DHCP 地址用于识别 Nico DHCP 服务；PXE 引导服务器 IP 通过 DHCP 下发，不含协议或端口。应用后启动或更新本站点 Nico DHCP。</p></div><div id="boot-external-fields" class="live-form site-boot-fields"${values.dhcp_mode === "external" ? "" : " hidden"}>${inputField("boot-pxe-http-endpoint", "引导 HTTP 端点", values.pxe_http_endpoint || "", 'placeholder="http://boot.example.com:8080"')}<p class="live-small">填写包含协议和端口的地址。BMC 引导介质中的 iPXE 从这里获取 Nico 启动脚本。</p><p class="live-note">应用后停止本站点 Nico DHCP。请为设备规划中的启动 MAC 配置固定租约，保证 iPXE、Scout、安装器使用同一 IP。仅支持 x86_64、无 DPU、Flat 网络，以及具备 VirtualMedia 能力的 BMC。</p></div>${inputField("boot-material-http-address", "安装材料 HTTP 地址", values.material_http_address || "", 'placeholder="例如 192.0.2.11"')}${inputField("boot-material-http-port", "安装材料 HTTP 端口", values.material_http_port || 80, 'type="number" min="1" max="65535" step="1"')}${inputField("boot-dns-address", "DNS 地址（可选）", values.dns_address || "", 'placeholder="例如 192.0.2.12"')}${inputField("boot-ntp-address", "NTP 地址（可选）", values.ntp_address || "", 'placeholder="例如 192.0.2.13"')}<p class="live-small">DNS、NTP 可留空，不配置对应的 DHCP 服务地址；使用域名的材料或软件源仍需可用的 DNS。</p><p class="live-small">当前材料发布基址：<code>${esc(status.material_http_endpoint || "未配置")}</code>。保存后仅供后续新建 OS 版本使用，既有 OS 不修改。</p><p class="live-small">Nico DHCP 模式更新 Kea 下发参数并滚动 DHCP；外部 DHCP 模式保持 Kea 为 0 副本，使用引导 HTTP 端点下载启动脚本。不会检查或修改外部 Service、代理、HostInband、地址池、设备规划或现有安装任务。</p>${status.cluster_ready ? `<p class="live-small">目标命名空间：${esc(status.namespace)}；DHCP：${esc(status.dhcp_deployment || "等待发现")}。</p>` : `<div class="live-error">${esc(status.cluster_error || "当前集群目标不可用。")}</div>`}<div id="resource-error" class="live-error"></div></div>`,
+    `<div class="live-form"><fieldset id="boot-dhcp-mode" class="site-dhcp-modes"><legend>DHCP 模式</legend><div class="site-dhcp-options"><label class="site-dhcp-option"><input type="radio" name="boot-dhcp-mode" value="nico"${values.dhcp_mode !== "external" ? " checked" : ""}><span>Nico DHCP</span></label><label class="site-dhcp-option"><input type="radio" name="boot-dhcp-mode" value="external"${values.dhcp_mode === "external" ? " checked" : ""}><span>外部 DHCP</span></label></div></fieldset><div id="boot-nico-fields" class="live-form site-boot-fields"${values.dhcp_mode === "external" ? " hidden" : ""}>${inputField("boot-dhcp-address", "Nico DHCP 地址", values.dhcp_address || "", 'placeholder="例如 192.0.2.10"')}${inputField("boot-pxe-address", "PXE 引导服务器 IP", values.pxe_address || "", 'readonly')}<p class="live-small">PXE 地址由系统读取 LoadBalancer；DHCP 地址用于标识 Nico DHCP 服务。应用后启动或更新本站点 Nico DHCP。</p></div><div id="boot-external-fields" class="live-form site-boot-fields"${values.dhcp_mode === "external" ? "" : " hidden"}>${inputField("boot-pxe-http-endpoint", "引导 HTTP 端点", values.pxe_http_endpoint || "", 'placeholder="http://boot.example.com:8080"')}<p class="live-small">填写包含协议和端口的地址。BMC 引导介质中的 iPXE 从这里获取 Nico 启动脚本。</p><p class="live-note">应用后停止本站点 Nico DHCP。外部 DHCP 必须为启动 MAC 配置固定租约，并将 Option 6 设置为下方系统 DNS 地址。</p></div>${inputField("boot-material-http-address", "安装材料 HTTP 地址", values.material_http_address || "", 'placeholder="例如 192.0.2.11"')}${inputField("boot-material-http-port", "安装材料 HTTP 端口", values.material_http_port || 80, 'type="number" min="1" max="65535" step="1"')}${inputField("boot-ntp-address", "NTP 地址（可选）", values.ntp_address || "", 'placeholder="例如 192.0.2.13"')}<p class="live-small">系统 DNS：<code>${esc(values.dns_address || "等待 LoadBalancer")}</code>；安装事件回传：<code>${esc(values.installer_events_url || "等待 PXEye LoadBalancer")}</code>。两项由部署资源自动生成。</p><p class="live-small">当前材料发布基址：<code>${esc(status.material_http_endpoint || "未配置")}</code>。保存后仅供后续新建 OS 版本使用，既有 OS 不修改。</p><p class="live-small">Nico DHCP 模式自动写入 PXE、DNS 和 NTP 参数；外部 DHCP 模式保持 Kea 为 0 副本。系统同步维护 <code>.forge</code> 记录，不修改外部 DHCP、HostInband、地址池、设备规划或现有安装任务。</p>${status.cluster_ready ? `<p class="live-small">目标命名空间：${esc(status.namespace)}；DHCP：${esc(status.dhcp_deployment || "等待发现")}。</p>` : `<div class="live-error">${esc(status.cluster_error || "当前集群目标不可用。")}</div>`}<div id="resource-error" class="live-error"></div></div>`,
     button("取消", "close") + button("预览变更", "site-boot-preview", true),
   );
 }
 async function previewBootNetwork() {
   const values = bootNetworkBody(),
     preview = await api("/api/site/boot-network/preview", values);
-  state.wizard = { resource: "site-boot-network-apply", values, preview };
+  state.wizard = { resource: "site-boot-network-apply", values: preview.values, preview };
   modal(
     "确认应用引导网络",
     "仅修改预览中列出的 Kubernetes 资源",
     defs([
       [
         "DHCP 模式",
-        values.dhcp_mode === "external"
+        preview.values.dhcp_mode === "external"
           ? "外部 DHCP · 停止本站点 Kea"
           : "Nico DHCP",
       ],
-      ...(values.dhcp_mode === "external"
-        ? [["引导 HTTP 端点", esc(values.pxe_http_endpoint)]]
+      ...(preview.values.dhcp_mode === "external"
+        ? [["引导 HTTP 端点", esc(preview.values.pxe_http_endpoint)]]
         : [
-            ["Nico DHCP 地址", esc(values.dhcp_address)],
-            ["PXE 引导服务器 IP", esc(values.pxe_address)],
+            ["Nico DHCP 地址", esc(preview.values.dhcp_address)],
+            ["PXE 引导服务器 IP", esc(preview.values.pxe_address)],
           ]),
       ["材料 HTTP", esc(preview.material_http_endpoint)],
+      ["安装事件回传", esc(preview.values.installer_events_url)],
       [
         "DNS / NTP",
         esc(
-          (values.dns_address || "未配置") +
+          (preview.values.dns_address || "未配置") +
             " / " +
-            (values.ntp_address || "未配置"),
+            (preview.values.ntp_address || "未配置"),
         ),
       ],
       ["受控资源", Object.values(preview.resources).map(esc).join("、")],
@@ -975,7 +998,7 @@ function detail(id) {
     "物理机安装记录",
     t.id,
     body,
-    `<div class="actions">${t.status === "needs_attention" ? button(t.automatic_recovery ? "查看自动修复" : t.recovery_observing ? "查看恢复进度" : "处理问题", "task-problem", true, `data-id="${esc(t.id)}"`) : ""}${t.receipt ? `<a class="button" href="/api/tasks/${esc(t.id)}/receipt" download>下载验收报告</a>` : ""}${button("关闭", "close")}</div>`,
+    `<div class="actions">${t.status === "needs_attention" ? button(t.automatic_recovery ? "查看自动修复" : t.recovery_observing ? "查看恢复进度" : "处理问题", "task-problem", true, `data-id="${esc(t.id)}"`) : ""}${endTaskButton(t)}${t.receipt ? `<a class="button" href="/api/tasks/${esc(t.id)}/receipt" download>下载验收报告</a>` : ""}${button("关闭", "close")}</div>`,
   );
   state.detail = id;
   refreshLogs(id);
@@ -1038,14 +1061,14 @@ function problemFooter(task, { refresh = false, end = false } = {}) {
 
 function closeTaskDialog(id) {
   const task = state.tasks.find((item) => item.id === id);
-  if (!task || task.status !== "needs_attention" || task.close_block_reason)
+  if (!task || !["queued", "running", "needs_attention"].includes(task.status) || task.close_request?.state === "requested")
     return;
   state.detail = null;
   state.wizard = { resource: "close-task", id, serial: task.device };
   modal(
     "结束任务",
     `${task.device} · ${task.id}`,
-    `<p>结束后释放设备占用，任务历史和日志仍会保留。</p><div class="live-note">${task.boot_network?.dhcp_mode === "external" ? "此操作请求 Core 停止本轮引导并清理本轮拥有的虚拟介质，确认清理后释放设备占用。不会强行停止正在运行的安装器或擦除磁盘。" : "此操作不会停止物理机上可能仍在运行的安装程序，也不会修改 NICo Instance、Machine、BMC、启动顺序或磁盘。"}</div><label class="live-check"><input id="close-task-confirm" type="checkbox">确认现场已经停止处理，并结束此任务。</label><div id="resource-error" class="live-error"></div>`,
+    `<p>系统将停止当前步骤，清理本轮引导后释放设备占用；任务历史和日志仍会保留。</p><div class="live-note">${task.boot_network?.dhcp_mode === "external" ? "此操作请求 Core 停止本轮引导并清理本轮拥有的虚拟介质。不会强行中断已经开始的磁盘写入。" : "当前步骤会在下一次状态检查时停止；不会删除 NICo Instance、Machine 或修改磁盘内容。"}</div><label class="live-check"><input id="close-task-confirm" type="checkbox">确认结束此任务，并允许随后创建新任务。</label><div id="resource-error" class="live-error"></div>`,
     button("取消", "close") + button("确认结束", "task-close-confirm", true),
   );
 }
@@ -1054,12 +1077,12 @@ async function closeTask() {
   return busy(async () => {
     if (!$("#close-task-confirm").checked) throw Error("请确认结束任务。");
     const wizard = state.wizard;
-    await api("/api/tasks/" + encodeURIComponent(wizard.id) + "/close", {
+    const result = await api("/api/tasks/" + encodeURIComponent(wizard.id) + "/close", {
       confirm_serial: wizard.serial,
     });
     close();
     await load();
-    toast("任务已结束，设备占用已释放。");
+    toast(result.status === "cancelled" ? "任务已结束，设备占用已释放。" : "已请求结束，正在停止当前步骤。" );
   });
 }
 function automaticRecoveryDialog(t) {
@@ -1153,6 +1176,7 @@ registerPoller("site-discovery-status", ["site"], async () => {
       state.siteInfo.site_explorer = { state: "unknown", detail: "状态查询失败，请刷新重试。" };
       state.siteInfo.site_credentials = { state: "unknown" };
       state.siteInfo.last_site_scan = { state: "unknown" };
+      state.siteInfo.site_network_context = { state: "unknown" };
       if (!state.wizard) render();
     }
   } finally {
@@ -1168,6 +1192,8 @@ registerActions(
     "site-creation-open",
     "site-credentials-open",
     "site-credentials-apply",
+    "site-network-context-open",
+    "site-network-context-apply",
     "site-discovery-settings",
     "site-discovery-enable",
     "site-boot-network",
@@ -1270,6 +1296,27 @@ registerActions(
             state.siteInfo.site_credentials = result;
             close(); render(); toast("站点接管凭据已就绪。");
             await refreshPage("site");
+          });
+        case "site-network-context-open": {
+          const context = state.siteInfo?.site_network_context;
+          if (!context || context.state === "missing" && !context.initializer_available || !["missing", "ready"].includes(context.state)) return;
+          const missing = (context.missing || []).map((item) => item === "tenant" ? "Tenant" : "Flat VPC");
+          state.wizard = { resource: "site-network-context", revision: context.revision };
+          const adopting = context.state === "ready";
+          return modal(adopting ? "关联实例网络" : "初始化实例网络", state.siteInfo.site.name,
+            `${missing.length ? `<p>将补齐：${esc(missing.join("、"))}。</p>` : ""}<p>Tenant 使用 <span class="live-code">${esc(context.tenant_organization_id)}</span>，Flat VPC 使用 <span class="live-code">${esc(context.vpc_name)}</span>。已有正确资源只会关联，不会覆盖；冲突时停止。</p><p>完成后，新建 Flat 安装方案会自动引用该 Tenant 和 VPC。</p><div id="resource-error" class="live-error"></div>`,
+            button("取消", "close") + button(adopting ? "确认关联" : "确认初始化", "site-network-context-apply", true));
+        }
+        case "site-network-context-apply":
+          return await busy(async () => {
+            if (state.wizard?.resource !== "site-network-context") return;
+            const result = await api("/api/site/network-context/initialize", {
+              confirm: true,
+              revision: state.wizard.revision,
+            });
+            state.siteInfo.site_network_context = result;
+            close(); render(); toast("站点实例网络已配置。");
+            await Promise.all([refreshPage("site"), readSection("profiles", sectionReads.profiles)]);
           });
         case "site-save":
           return await saveSite();

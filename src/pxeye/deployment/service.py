@@ -676,6 +676,8 @@ class NicoDeployment:
                 "namespace": settings["namespace"],
                 "client_secret": settings.get("client_secret")
                 or settings["release_prefix"] + "-nico-admin-client",
+                "site_initializer_secret": settings["release_prefix"]
+                + "-nico-site-initializer-client",
                 "ca_secret": settings.get("ca_secret")
                 or settings["release_prefix"] + "-nico-site-ca",
             }

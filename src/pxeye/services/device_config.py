@@ -126,6 +126,10 @@ class DeviceConfig:
         }:
             raise ValueError("未知安装规划字段。")
         intent = copy.deepcopy(incoming)
+        # Partial/older editors must not erase an explicit disk selection when
+        # changing another field such as the installation profile.
+        if "disk_serial" not in incoming and old.get("disk_serial"):
+            intent["disk_serial"] = old["disk_serial"]
         if intent.get("hostname") and not re.fullmatch(
             r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", intent["hostname"]
         ):

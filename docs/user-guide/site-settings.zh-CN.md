@@ -4,7 +4,7 @@ language: zh-CN
 title: 站点设置
 description: 查看控制面连接、客户端身份和存储，设置站点、引导服务地址及安装并发。
 navigation_group: configuration
-updated_at: "2026-11-16"
+updated_at: "2026-11-19"
 product_version: "0.22.16"
 ---
 
@@ -18,7 +18,9 @@ product_version: "0.22.16"
 
 ## 2. 字段填写
 
-“当前站点”用相同的状态标签展示**站点发现、自动建机、接管凭据**。正常扫描不单独占一项；失败时显示原因。三项凭据就绪时显示绿色“已配置”。旧 Core 不支持逐项核验时，最近一次扫描成功也显示“已配置”，悬停可查看判断依据与扫描时间。凭据状态与两个站点开关一同刷新。接管凭据是站点级的 BMC 目标密码、主机 UEFI 和 DPU UEFI 默认密码，与 PXEye 登录和逐设备 BMC 当前密码无关。三项就绪时无须操作；只有 Core 确认缺项时才出现**生成缺失凭据**。确认这些值从未用于已有硬件后即可生成；已存在的值不会重写。若出现“需恢复”，请先恢复原值或配置站点输入 Secret。查询失败不按已配置处理，也不提供生成按钮。
+“当前站点”统一展示**站点发现、自动建机、接管凭据、实例网络**。实例网络是首次 Flat 装机使用的站点 Tenant 与 Flat VPC；缺失且部署已提供专用初始化身份时，点击**初始化实例网络**，确认后只补齐缺失资源。已有正确资源会被复用，名称、类型或租户冲突时停止。创建成功后，新建 Flat 安装方案自动引用该 Tenant/VPC；已发布方案不会被静默修改。
+
+三项接管凭据就绪时显示绿色“已配置”。旧 Core 不支持逐项核验时，最近一次扫描成功也显示“已配置”，悬停可查看判断依据与扫描时间。凭据状态与站点开关一同刷新。接管凭据是站点级的 BMC 目标密码、主机 UEFI 和 DPU UEFI 默认密码，与 PXEye 登录和逐设备 BMC 当前密码无关。三项就绪时无须操作；只有 Core 确认缺项时才出现**生成缺失凭据**。确认这些值从未用于已有硬件后即可生成；已存在的值不会重写。若出现“需恢复”，请先恢复原值或配置站点输入 Secret。查询失败不按已配置处理，也不提供生成按钮。
 
 全新现场可在 `install.sh` 增加 `--new-site`，在 PXEye 首次连接 Core 后自动初始化并检查结果；不要将重装同一机房当作新站点。需使用指定值或恢复旧值时，预先在 PXEye 命名空间准备 Secret，使用 `--site-credentials-secret <名称>`；键为 `bmc_password`、`host_uefi_password`、`dpu_uefi_password`（分别保存原始密码字节，不带换行）。直接使用 Helm 时对应 `siteCredentials.newSite`、`siteCredentials.existingSecret`，并设置匹配的 `siteBootstrap.coreUrl`。已连接站点通过摘要中的**补录缺失凭据**读取挂载的 Secret。密码不返回给浏览器；新生成值由 Core 的凭据存储托管，应纳入该存储的站点备份。仅更新 PXEye 不足以提供新接口，须配套升级 Core。
 
@@ -46,7 +48,7 @@ product_version: "0.22.16"
 
 ## 3. 引导网络服务地址
 
-站点页将 **DHCP / PXE 引导地址** 与 **安装材料 HTTP 端点** 分开显示。**管理引导网络**是这些地址与 DHCP 模式的统一入口。默认 **Nico DHCP** 模式从 Kea 读取当前值；应用时更新 DHCP Option 54、PXE、DNS、NTP 下发参数并滚动 DHCP。**外部 DHCP** 模式使用完整的引导 HTTP 端点，要求为规划中的启动 MAC/IP 配置固定租约；PXEye 保持 Kea 停止，不改写其分配参数。PXEye 不检查、创建、修改或接管外部 Service、代理或 Relay。配套 Core/Scout 与硬件前提见[外部 DHCP 装机](../external-dhcp.zh-CN.md)。
+站点页将 **DHCP / PXE 引导地址** 与 **安装材料 HTTP 端点** 分开显示。**管理引导网络**是这些地址与 DHCP 模式的统一入口。新站点安装默认创建PXE 80/8080、Core 443、Unbound TCP/UDP 53和PXEye外部Service；页面读回其LoadBalancer地址。默认 **Nico DHCP** 模式应用时写入`.forge`记录，更新DHCP Option 54、PXE、DNS和NTP参数并滚动相关服务。**外部 DHCP** 模式保持Kea停止，外部服务必须为启动MAC/IP配置固定租约，并将Option 6设置为页面显示的Unbound地址。配套Core/Scout与硬件前提见[外部 DHCP 装机](../external-dhcp.zh-CN.md)。
 
 DHCP 模式采用 **Nico DHCP / 外部 DHCP** 二选一。选择 Nico DHCP 时显示 **Nico DHCP 地址**和 **PXE 引导服务器 IP**；选择外部 DHCP 时显示 **引导 HTTP 端点**及固定租约要求。切换选项本身不会应用配置，未选模式的已保存地址会保留；预览仅列出当前模式使用的引导字段。
 
@@ -55,13 +57,14 @@ DHCP 模式采用 **Nico DHCP / 外部 DHCP** 二选一。选择 Nico DHCP 时�
 | 引导字段 | 格式与作用 |
 | --- | --- |
 | Nico DHCP 地址 | IPv4；作为 DHCP Server Identifier（Option 54）下发。 |
-| PXE 引导服务器 IP | IPv4，不带协议或端口；Nico DHCP 下发的 next-server/引导服务器地址。 |
+| PXE 引导服务器 IP | 系统从PXE 80/8080共享LoadBalancer读取的IPv4；Nico DHCP将其作为引导服务器地址。 |
 | 引导 HTTP 端点 | 完整 `http://主机:端口` 或 `https://主机:端口`；写入外部模式的小型引导介质，用于请求 `/api/v0/pxe/boot`。 |
 | 安装材料 HTTP 地址与端口 | 发布小型引导 ISO 和新 OS 版本的 ISO、kernel、initrd；两种模式共用。 |
+| 安装事件回传地址 | 系统从PXEye LoadBalancer自动生成并固定为`/api/installer-events`，用于安装进度和完成回执。 |
 
 引导 HTTP 端点仅控制小型介质进入 Nico 的首段请求，不会修改 Core/PXE 服务自身的端口或后续脚本中的服务地址。那些地址仍须由现有服务配置提供并对主机可达；它不是全局 PXE 端口开关。
 
-DNS、NTP 地址均可留空；填写时须为有效 IPv4 地址。留空会清空对应的 NICo DHCP hook 服务地址配置，不使用其内置默认地址。此处不修改安装方案的 NTP 设置；引用域名的材料或软件源仍需可用的 DNS，离线环境可使用内网服务和 IP URL。
+DNS地址由系统读取Unbound TCP/UDP 53共享VIP，并用于`.forge`记录及Nico DHCP Option 6，不能在页面另填。NTP可留空；填写时须为有效IPv4。此处不修改安装方案的NTP设置。
 
 安装材料 HTTP 端点来自 `os_library.public_base_url`，包含目标主机访问所需的地址和端口，例如 `http://192.0.2.10:31880/public/blobs/internal/nico/os-library`。它是新建 OS 版本发布 ISO、kernel、initrd 的基址，不属于 Kea 配置；既有 NICo OS 保留各自不可变的材料 URL。
 

@@ -41,6 +41,22 @@ docker image inspect "$PXEYE_IMAGE" \
 
 An existing local tag blocks the build. To rebuild, regenerate the variables in a later minute. Do not overwrite delivered tags. After publishing, record the registry digest and use it as the immutable deployment reference.
 
+`make pxeye-images` also maintains the mutable `REGISTRY/pxeye:build-cache` reference. It is
+build metadata rather than a deployable release reference: the command pulls it before the build,
+embeds inline BuildKit cache metadata in the uniquely tagged image, and updates the cache reference
+only after the unique image is pushed successfully. Runtime system packages, external binaries,
+boot media and Python dependencies are stable layers; a normal application-only commit rebuilds
+only the source/wheel and OCI-label layers. Never deploy or package `build-cache`; continue to use
+the unique tag and registry digest printed by the build. A missing cache is safe but causes one
+slower seed build. Changing the base image, system packages, external binaries, boot-media recipe
+or `pyproject.toml` dependencies intentionally rebuilds the affected stable layer.
+
+For an application-only development iteration, `make pxeye-overlay-image` accepts an immutable,
+already verified PXEye runtime through `PXEYE_RUNTIME_BASE_IMAGE`. It replaces only `/app` and the
+installed Python package, so it does not fetch Ubuntu packages, rebuild external tools or regenerate
+boot media. Do not use this target after changing any inherited input; use the standard build
+instead. The output still has a unique tag and records the new source commit in OCI labels.
+
 ### Save and import into containerd
 
 Continue in the same terminal on the build host. These commands apply only when the target Kubernetes uses this host's `/run/containerd/containerd.sock` and namespace `k8s.io`; appropriate permissions are required:

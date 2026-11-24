@@ -589,8 +589,13 @@ class Onsite:
         dhcp = values.setdefault('nico-dhcp', {})
         require(dhcp.get('replicas') == 0,
                 'Initial delivery must keep nico-dhcp scaled to zero until physical boot settings are configured')
-        for component in ('nico-dhcp', 'nico-dns', 'nico-pxe', 'nico-ntp'):
+        for component in ('nico-dhcp', 'nico-dns', 'nico-ntp'):
             values.setdefault(component, {}).setdefault('externalService', {})['enabled'] = False
+        values.setdefault('nico-api', {}).setdefault('externalService', {})['enabled'] = True
+        values.setdefault('nico-pxe', {}).setdefault('externalService', {})['enabled'] = True
+        unbound = values.setdefault('unbound', {})
+        unbound['enabled'] = True
+        unbound.setdefault('externalService', {})['enabled'] = True
         require(parsed.get('site_explorer', {}).get('create_machines') is False and not parsed.get('firmware_global', {}).get('autoupdate', False),
                 'Initial delivery must disable automatic machine creation and firmware updates')
 
@@ -1016,6 +1021,7 @@ class Onsite:
                       'clientPrivateKey': 'tls.key',
                       'caSecret': core_release + '-nico-site-ca',
                       'caKey': 'tls.crt',
+                      'siteInitializerSecret': core_release + '-nico-site-initializer-client',
                       'pxeInternalUrl': 'http://' + core_release + '-nico-pxe.' + namespace + '.svc:8080',
                   },
                   # Bootstrap owns the PXEye UI only.  The offline parent
@@ -1039,6 +1045,7 @@ class Onsite:
             'clientPrivateKey': 'tls.key',
             'caSecret': core_release + '-nico-site-ca',
             'caKey': 'tls.crt',
+            'siteInitializerSecret': core_release + '-nico-site-initializer-client',
             'pxeInternalUrl': 'http://' + core_release + '-nico-pxe.' + namespace + '.svc:8080',
         }
         path = directory / 'values.yaml'; path.write_text(yaml.safe_dump(values)); path.chmod(0o600)

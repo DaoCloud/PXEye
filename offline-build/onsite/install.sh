@@ -65,8 +65,17 @@ for _suffix in .tar.gz .tar.xz .tar.bz2 .tgz .tar; do
     if [[ $_stem == *"$_suffix" ]]; then _stem=${_stem%"$_suffix"}; break; fi
 done
 [[ -n $_stem && $_stem != . && $_stem != .. ]] || die 'Unsafe archive filename'
-TARGET="$(dirname -- "$ARCHIVE")/$_stem"
-WORK="${TARGET}.onsite"
+ARCHIVE_DIRECTORY=$(dirname -- "$ARCHIVE")
+WORK="$ARCHIVE_DIRECTORY/${_stem}.onsite"
+# Build outputs deliberately retain an unpacked ``bundle/`` tree next to
+# ``bundle.tar.gz``.  A fresh onsite run must therefore use a distinct target.
+# Keep recognizing the legacy target when it has our completion marker so an
+# installation started by an older kit can still resume safely.
+LEGACY_TARGET="$ARCHIVE_DIRECTORY/$_stem"
+TARGET="$ARCHIVE_DIRECTORY/${_stem}.extracted"
+if [[ -f $LEGACY_TARGET/unpack-result.json && ! -L $LEGACY_TARGET ]]; then
+    TARGET=$LEGACY_TARGET
+fi
 DEPLOY="$WORK/deployment"
 CONFIG="$WORK/install-config.json"
 PROGRESS="$WORK/progress.json"

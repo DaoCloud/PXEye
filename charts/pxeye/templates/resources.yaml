@@ -190,6 +190,8 @@ spec:
       app.kubernetes.io/instance: {{ .Release.Name }}
   template:
     metadata:
+      annotations:
+        checksum/site-config: {{ include (print $.Template.BasePath "/config.yaml") . | sha256sum }}
       labels:
         app.kubernetes.io/instance: {{ .Release.Name }}
         pxeye.io/storage-owner: {{ .Release.Name | quote }}

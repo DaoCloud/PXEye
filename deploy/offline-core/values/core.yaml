@@ -123,6 +123,8 @@ nico-api:
     adminRootCafilePath: /var/run/secrets/nico-admin-root/ca.crt
   certificate:
     spiffeServiceName: nico-api
+  externalService:
+    enabled: true
   extraVolumes:
   - name: admin-root
     secret:
@@ -172,6 +174,8 @@ nico-pxe:
     enabled: false
   certificate:
     spiffeServiceName: nico-pxe
+  externalService:
+    enabled: true
 nico-ntp:
   replicas: 1
   image:
@@ -185,7 +189,24 @@ nico-machine-a-tron:
 nico-postgres-exporter:
   enabled: false
 unbound:
-  enabled: false
+  enabled: true
+  nameOverride: '@{release_prefix}-unbound'
+  image:
+    repository: m.daocloud.io/docker.io/mvance/unbound
+    tag: 1.22.0
+  exporter:
+    enabled: false
+  command:
+  - /bin/sh
+  - -c
+  args:
+  - |
+    printf 'server:\n  interface: 0.0.0.0\n  interface: ::0\ninclude: "/etc/unbound/local.conf.d/*.conf"\n' > /tmp/unbound.conf
+    exec unbound -d -c /tmp/unbound.conf
+  externalService:
+    enabled: true
+  localConfig:
+    forwarders.conf: ''
 nico-dns:
   replicas: 1
   nameOverride: '@{release_prefix}-nico-dns'

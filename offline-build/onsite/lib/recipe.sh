@@ -188,26 +188,32 @@ recipe_values() {
         mv "$scratch/reuse.json" "$scratch/substituted.json"
     fi
     if [[ $phase_id == core ]]; then
-        "$JQ" --arg site "$site" '
-            .nicoCore["nico-api"].siteConfig.nicoApiSiteConfig |= sub("(?m)^sitename\\s*=.*$"; "sitename = " + ($site | tojson))
+        "$JQ" --arg site "$site" --argjson fresh "${NEW_SITE:-false}" '
+            .nicoCore["nico-api"].siteConfig.nicoApiSiteConfig |=
+              (sub("(?m)^sitename\\s*=.*$"; "sitename = " + ($site | tojson)) |
+               if $fresh then sub("(?m)^create_machines\\s*=\\s*false\\s*$"; "create_machines = true") else . end)
         ' "$scratch/substituted.json" > "$scratch/core.json" || die "Cannot set Core site name"
         "$JQ" -er '.nicoCore["nico-api"].siteConfig.nicoApiSiteConfig | select(type == "string")' "$scratch/core.json" > "$scratch/site.toml" || die "Missing Core site configuration"
         "$YQ" -p toml -o json '.' "$scratch/site.toml" > "$scratch/site.json" || die "Cannot parse Core TOML configuration"
-        "$JQ" -e '
+        "$JQ" -e --argjson fresh "${NEW_SITE:-false}" '
             ((.networks // {}) | type) == "object" and
             all((.networks // {})[]; .type != "hostinband") and
-            (.site_explorer.create_machines == false) and
+            (.site_explorer.enabled == true) and
+            (.site_explorer.create_machines == $fresh) and
             ((.firmware_global.autoupdate // false) | not)
-        ' "$scratch/site.json" > /dev/null || die "Initial delivery must not define HostInband or enable automatic machine creation/firmware updates"
+        ' "$scratch/site.json" > /dev/null || die "Initial delivery has invalid discovery, automatic machine creation or firmware settings"
         "$JQ" -e '.nicoCore["nico-dhcp"].replicas == 0' "$scratch/core.json" > /dev/null || die "Initial delivery must keep nico-dhcp scaled to zero"
         "$JQ" --arg owner "$NAMESPACE-pxeye" '
             .nicoCore["nico-dhcp"].externalService.enabled = false |
             .nicoCore["nico-dns"].externalService.enabled = false |
-            .nicoCore["nico-pxe"].externalService.enabled = false |
             .nicoCore["nico-ntp"].externalService.enabled = false |
+            .nicoCore["nico-api"].externalService.enabled = true |
+            .nicoCore["nico-pxe"].externalService.enabled = true |
+            .nicoCore.unbound.enabled = true |
+            .nicoCore.unbound.externalService.enabled = true |
             .nicoCore["nico-pxe"].pxeyeStorage = {
               enabled:true, claimName:($owner+"-storage"), ownerRelease:$owner}
-        ' "$scratch/core.json" > "$scratch/substituted.json" || die "Cannot disable initial external boot Services"
+        ' "$scratch/core.json" > "$scratch/substituted.json" || die "Cannot configure initial boot-network Services"
     fi
     if [[ -n $NODE_NAME ]]; then
         placement_values "$scratch/substituted.json" "$scratch/placed.json"

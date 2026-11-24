@@ -1,9 +1,4 @@
-"""PXEye-owned application of physical boot-service endpoints.
-
-NICo retains DHCP allocation and PXE behavior in managed DHCP mode. This service persists the
-operator-selected physical endpoint addresses and applies only the Kea values
-that advertise them. External Service and relay ownership remains outside PXEye.
-"""
+"""PXEye-owned application of physical boot-service endpoints."""
 
 import ipaddress
 import json
@@ -27,7 +22,7 @@ class SiteBootNetwork:
         self.path = app.adapter.data / "config" / "site-boot-network.json"
         self.lock = threading.RLock()
         self.state = self._load()
-        self._restore_material_http_endpoint()
+        self._restore_public_endpoints()
         if self._saved_values().get("dhcp_mode") == "external":
             threading.Thread(
                 target=self._keep_external_dhcp_disabled,
@@ -48,11 +43,13 @@ class SiteBootNetwork:
     def _save(self):
         atomic_json(self.path, self.state)
 
-    def _restore_material_http_endpoint(self):
+    def _restore_public_endpoints(self):
         current = self.state.get("current") or {}
         values = current.get("values") or {}
         if current.get("status") == "applied" and values.get("material_http_address"):
             self._set_material_http_endpoint(values)
+        if current.get("status") == "applied" and values.get("installer_events_url"):
+            self.app.config["installer_events_url"] = values["installer_events_url"]
 
     def namespace(self):
         source = self.app.config.get("core_identity_source") or {}
@@ -86,7 +83,7 @@ class SiteBootNetwork:
             "material_http_address",
             "material_http_port",
         }
-        optional = {"dns_address", "ntp_address"}
+        optional = {"dns_address", "ntp_address", "installer_events_url"}
         # Accept obsolete fields from an already-open older client without using them.
         fields = set(body) - {"topology", "relay_address", "dhcp_mode", "pxe_http_endpoint"}
         if not required <= fields or fields - required - optional:
@@ -121,6 +118,7 @@ class SiteBootNetwork:
         port = body["material_http_port"]
         if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
             raise ValueError("材料 HTTP 端口应为 1–65535。")
+        events = cls._event_url(body.get("installer_events_url"))
         return {
             "dhcp_mode": mode,
             "pxe_http_endpoint": endpoint,
@@ -128,9 +126,194 @@ class SiteBootNetwork:
             "pxe_address": cls._ipv4(body["pxe_address"], "PXE 引导地址", required=mode == "nico"),
             "material_http_address": cls._ipv4(body["material_http_address"], "材料 HTTP 地址"),
             "material_http_port": port,
+            "installer_events_url": events,
             "dns_address": cls._ipv4(body.get("dns_address"), "DNS 地址", required=False),
             "ntp_address": cls._ipv4(body.get("ntp_address"), "NTP 地址", required=False),
         }
+
+    @staticmethod
+    def _event_url(value):
+        events = str(value or "").strip().rstrip("/")
+        if not events:
+            return ""
+        event_url = urlsplit(events)
+        try:
+            valid_port = event_url.port is None or 1 <= event_url.port <= 65535
+        except ValueError:
+            valid_port = False
+        if (
+            event_url.scheme not in ("http", "https")
+            or not event_url.hostname
+            or event_url.username
+            or event_url.password
+            or event_url.query
+            or event_url.fragment
+            or not valid_port
+            or event_url.path not in ("", "/api/installer-events")
+        ):
+            raise ValueError(
+                "安装事件回传地址应为安装环境可达的 HTTP/HTTPS 地址，不含凭据或查询参数。"
+            )
+        return urlunsplit(
+            (event_url.scheme, event_url.netloc, "/api/installer-events", "", "")
+        )
+
+    @staticmethod
+    def _load_balancer_ipv4(service, label):
+        if not service or service.get("spec", {}).get("type") != "LoadBalancer":
+            raise ValueError(label + "外部 Service 尚未创建。")
+        addresses = set()
+        for row in service.get("status", {}).get("loadBalancer", {}).get("ingress", []):
+            value = row.get("ip")
+            try:
+                parsed = ipaddress.ip_address(value or "")
+            except ValueError:
+                continue
+            if parsed.version == 4:
+                addresses.add(str(parsed))
+        if len(addresses) != 1:
+            raise ValueError(label + " LoadBalancer 尚未取得唯一 IPv4 地址。")
+        return addresses.pop()
+
+    def _external_endpoints(self):
+        namespace = self.namespace()
+        services = {row["metadata"]["name"]: row for row in self.cluster.list("services", namespace)}
+        core_name = urlsplit(self.app.config.get("core_url") or "").hostname or ""
+        pxe_source = self.app.config.get("core_identity_source") or {}
+        pxe_name = urlsplit(pxe_source.get("pxe_internal_url") or "").hostname or ""
+        if not core_name or not pxe_name:
+            raise ValueError("尚未取得 Core/PXE 集群内服务身份。")
+        core_name = core_name.split(".", 1)[0]
+        pxe_name = pxe_name.split(".", 1)[0]
+        if not core_name.endswith("-nico-api"):
+            raise ValueError("无法从 Core 地址识别外部服务名称。")
+        prefix = core_name[: -len("-nico-api")]
+        pxe_vips = {
+            self._load_balancer_ipv4(services.get(pxe_name + suffix), "PXE")
+            for suffix in ("-external", "-external-80")
+        }
+        if len(pxe_vips) != 1:
+            raise ValueError("PXE 80/8080 Service 没有共享同一 IPv4 地址。")
+        unbound_name = prefix + "-unbound"
+        dns_vips = {
+            self._load_balancer_ipv4(
+                services.get(unbound_name + suffix), "Unbound DNS"
+            )
+            for suffix in ("-external-udp", "-external-tcp")
+        }
+        if len(dns_vips) != 1:
+            raise ValueError("Unbound TCP/UDP Service 没有共享同一 IPv4 地址。")
+        console_name = str((self.app.config.get("site") or {}).get("deployment") or "")
+        console = services.get(console_name)
+        events_url = ""
+        if console and console.get("spec", {}).get("type") == "LoadBalancer":
+            events_url = "http://%s/api/installer-events" % self._load_balancer_ipv4(
+                console, "PXEye"
+            )
+        return {
+            "namespace": namespace,
+            "pxe_address": pxe_vips.pop(),
+            "dns_address": dns_vips.pop(),
+            "core_address": self._load_balancer_ipv4(
+                services.get(core_name + "-external"), "Core API"
+            ),
+            "installer_events_url": events_url,
+            "services": {
+                "pxe": pxe_name + "-external",
+                "pxe_80": pxe_name + "-external-80",
+                "dns_udp": unbound_name + "-external-udp",
+                "dns_tcp": unbound_name + "-external-tcp",
+                "core": core_name + "-external",
+                "pxeye": console_name,
+            },
+        }
+
+    def _managed_values(self, values):
+        values = dict(values)
+        endpoints = self._external_endpoints()
+        # LoadBalancer status is the source of truth.  In particular, a fresh
+        # NICo delivery still has the upstream REPLACE_WITH_* Kea placeholder;
+        # it must not prevent the first site-network application.
+        values["pxe_address"] = endpoints["pxe_address"]
+        values["dns_address"] = endpoints["dns_address"]
+        if not values.get("installer_events_url"):
+            if not endpoints["installer_events_url"]:
+                raise ValueError("PXEye LoadBalancer 尚未取得地址，无法自动生成安装事件回传地址。")
+            values["installer_events_url"] = endpoints["installer_events_url"]
+        return values, endpoints
+
+    @staticmethod
+    def _unbound_local_data(values, endpoints):
+        records = [
+            ("carbide-static-pxe.forge", endpoints["pxe_address"]),
+            ("carbide-pxe.forge", endpoints["pxe_address"]),
+            ("carbide-api.forge", endpoints["core_address"]),
+        ]
+        if values.get("ntp_address"):
+            records.append(("carbide-ntp.forge", values["ntp_address"]))
+        return "server:\n" + "".join(
+            '    local-data: "%s 300 IN A %s"\n' % row for row in records
+        )
+
+    def _configure_unbound(self, values, endpoints, revision):
+        namespace = endpoints["namespace"]
+        config = self.cluster.get("configmaps", "unbound-local-config", namespace)
+        if not config:
+            raise ValueError("未找到 Unbound 本地记录 ConfigMap。")
+        deployments = [
+            row
+            for row in self.cluster.list("deployments", namespace)
+            if any(
+                volume.get("configMap", {}).get("name") == "unbound-local-config"
+                for volume in row.get("spec", {}).get("template", {}).get("spec", {}).get(
+                    "volumes", []
+                )
+            )
+        ]
+        if len(deployments) != 1:
+            raise ValueError("无法唯一识别 Unbound Deployment。")
+        self.cluster.patch(
+            "configmaps",
+            "unbound-local-config",
+            {
+                "metadata": {"resourceVersion": config["metadata"]["resourceVersion"]},
+                "data": {"local_data.conf": self._unbound_local_data(values, endpoints)},
+            },
+            namespace,
+        )
+        deployment = deployments[0]
+        self.cluster.patch(
+            "deployments",
+            deployment["metadata"]["name"],
+            {
+                "spec": {
+                    "template": {
+                        "metadata": {
+                            "annotations": {
+                                "pxeye.daocloud.io/site-dns-revision": revision
+                            }
+                        }
+                    }
+                }
+            },
+            namespace,
+        )
+        self._wait_for_deployment(deployment["metadata"]["name"], namespace)
+
+    def _wait_for_deployment(self, name, namespace, replicas=1):
+        deadline = time.monotonic() + 75
+        while time.monotonic() < deadline:
+            row = self.cluster.get("deployments", name, namespace) or {}
+            status = row.get("status", {})
+            generation = row.get("metadata", {}).get("generation", 1)
+            if (
+                status.get("observedGeneration", 0) >= generation
+                and status.get("availableReplicas", 0) >= replicas
+                and status.get("updatedReplicas", 0) >= replicas
+            ):
+                return row
+            time.sleep(3)
+        raise ValueError(name + " 未在限定时间内完成滚动更新；请查看 Pod 事件。")
 
     def _discover(self):
         namespace = self.namespace()
@@ -336,12 +519,24 @@ class SiteBootNetwork:
         try:
             discovered = self._discover()
             saved = self._saved_values()
-            result["values"] = (
+            values = (
                 dict(saved)
+                | {
+                    "installer_events_url": saved.get("installer_events_url")
+                    or self.app.config.get("installer_events_url", "")
+                }
                 if saved.get("dhcp_mode") == "external"
                 else self._values_from_kea(discovered["configmap"])
-                | {"dhcp_mode": "nico", "pxe_http_endpoint": saved.get("pxe_http_endpoint", "")}
+                | {
+                    "dhcp_mode": "nico",
+                    "pxe_http_endpoint": saved.get("pxe_http_endpoint", ""),
+                    "installer_events_url": saved.get("installer_events_url")
+                    or self.app.config.get("installer_events_url", ""),
+                }
             )
+            values, endpoints = self._managed_values(values)
+            result["values"] = values
+            result["managed_endpoints"] = endpoints
             result["dhcp_replicas"] = discovered["deployment"].get("spec", {}).get("replicas", 1)
             result["dhcp_configmap"] = discovered["configmap"]["metadata"]["name"]
             result["dhcp_deployment"] = discovered["deployment"]["metadata"]["name"]
@@ -352,11 +547,13 @@ class SiteBootNetwork:
         return result
 
     def preview(self, body):
-        values = self.normalize(body)
+        values, endpoints = self._managed_values(self.normalize(body))
         discovered = self._discover()
         resources = {
             "configmap": discovered["configmap"]["metadata"]["name"],
             "deployment": discovered["deployment"]["metadata"]["name"],
+            "unbound_configmap": "unbound-local-config",
+            **endpoints["services"],
         }
         external = values["dhcp_mode"] == "external"
         return {
@@ -364,22 +561,26 @@ class SiteBootNetwork:
             "material_http_endpoint": self._material_http_endpoint_for(values),
             "namespace": discovered["namespace"],
             "resources": resources,
+            "managed_endpoints": endpoints,
             "dhcp_configmap": discovered["configmap"]["metadata"]["name"],
             "dhcp_deployment": discovered["deployment"]["metadata"]["name"],
             "effects": (
                 [
                     "停止本站点 Nico DHCP（Kea 缩放至 0），读回确认；不修改 Kea 分配参数。",
                     "外部 DHCP 必须为设备规划中的启动 MAC 配置固定租约，保证 iPXE、Scout、安装器使用同一 IP。",
+                    "外部 DHCP 必须将 Option 6 配置为系统显示的 Unbound DNS 地址。",
                     "使用 BMC 虚拟介质进入明确的引导 HTTP 端点；需要配套 Core 的 HostBootIntent 接口。",
                     "保存端点供后续任务使用；不修改外部 DHCP、Service、设备规划或既有 OS。",
+                    "保存安装环境可达的 PXEye 事件回传地址，供安装进度和完成回执使用。",
                 ]
                 if external
                 else [
-                    "按用户填写的地址更新 Kea DHCP 下发参数；不检查或修改外部 Service。",
-                    "更新 Kea DHCP Option 54、PXE 引导地址、DNS 与 NTP 下发参数。",
+                    "读取 PXE/Core/Unbound LoadBalancer 地址并写入固定 .forge 记录。",
+                    "更新 Kea DHCP Option 54、PXE 引导地址、Unbound DNS 与 NTP 下发参数。",
                     "将 DHCP Deployment 缩放至 1 并执行一次受控滚动更新。",
                     "不会修改 HostInband 网段、DHCP 地址池、设备规划或已有安装任务。",
                     "保存材料 HTTP 地址与端口，供后续新建 OS 版本使用；不会改写既有 OS 定义。",
+                    "保存安装环境可达的 PXEye 事件回传地址，供安装进度和完成回执使用。",
                     "切回 Nico DHCP 后，新任务仅在旧外部引导介质清理完成时释放该设备的 Core 启动策略。",
                 ]
             ),
@@ -388,7 +589,7 @@ class SiteBootNetwork:
     def apply(self, body, actor):
         if self._saved_values().get("dhcp_mode") == "external" and "dhcp_mode" not in body:
             raise ValueError("页面版本已变化；请刷新后明确选择 DHCP 模式。")
-        values = self.normalize(body)
+        values, endpoints = self._managed_values(self.normalize(body))
         if self.app.store.incomplete():
             raise ValueError("存在活动安装任务；请在维护窗口完成或结束任务后再修改引导服务地址。")
         with self.lock:
@@ -411,6 +612,7 @@ class SiteBootNetwork:
             self._save()
             try:
                 external = values["dhcp_mode"] == "external"
+                self._configure_unbound(values, endpoints, revision)
                 if not external:
                     configmap = discovered["configmap"]
                     rendered = self._patch_kea(configmap, values)
@@ -440,6 +642,7 @@ class SiteBootNetwork:
                 )
                 ready = self._wait_for_dhcp(deployment, 0 if external else 1)
                 material_endpoint = self._set_material_http_endpoint(values)
+                self.app.config["installer_events_url"] = values["installer_events_url"]
                 event.update(
                     status="applied",
                     applied_at=time.time(),

@@ -1520,7 +1520,9 @@ class Equipment:
         address = ipv4(body.get("ip", ""))
         if not address or address not in endpoint["addresses"]:
             raise ValueError("待验证 IPv4 不属于此端点。")
-        identity = read_device_identity(self.adapter, address, endpoint["mac_address"], credential)
+        identity = read_device_identity(
+            self.adapter, address, endpoint["mac_address"], credential, processors=True
+        )
         if endpoint["kind"] not in ("unknown", identity["kind"]):
             raise ValueError("硬件类型与现有声明或原生关联冲突。")
         if endpoint.get("serial") and identity["serial"] != endpoint["serial"]:

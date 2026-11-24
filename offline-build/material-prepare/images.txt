@@ -4,6 +4,7 @@ registry.example.com/nico/boot-artifacts-x86_64:e703126e4
 registry.example.com/nico/nico-api:e703126e4
 registry.example.com/nico/nico-bmc-proxy:e703126e4
 registry.example.com/nico/nico-pxe:e703126e4
+m.daocloud.io/docker.io/mvance/unbound:1.22.0
 m.daocloud.io/docker.io/dockurr/chrony:latest
 m.daocloud.io/docker.io/hashicorp/vault:1.20.2
 m.daocloud.io/registry.example.com/nico/postgres:16.6

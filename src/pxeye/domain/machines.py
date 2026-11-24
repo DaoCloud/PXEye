@@ -212,7 +212,12 @@ def machine_rpc(machine):
     if result.get("id"):
         result["id"] = {"value": value_id(result["id"])}
     if result.get("rack_id"):
-        result["rack_id"] = {"value": value_id(result["rack_id"])}
+        rack_id = result["rack_id"]
+        result["rack_id"] = {
+            "id": rack_id.get("id", value_id(rack_id))
+            if isinstance(rack_id, dict)
+            else rack_id
+        }
     interfaces = result.pop("interfaces", None)
     if interfaces is not None:
         for nic in interfaces:
@@ -246,7 +251,10 @@ def machine_from_rpc(row):
     machine["interfaces"] = machine.pop("host_nics", machine.get("interfaces", []))
     machine["id"] = value_id(machine.get("id"))
     if machine.get("rack_id"):
-        machine["rack_id"] = value_id(machine["rack_id"])
+        rack_id = machine["rack_id"]
+        machine["rack_id"] = (
+            rack_id.get("id", value_id(rack_id)) if isinstance(rack_id, dict) else rack_id
+        )
     enabled = machine.pop("is_dpf_enabled", None)
     machine["dpf_enabled"] = enabled if enabled is not None else machine.get("dpf_enabled", True)
     for key in ["replace_host_nics"]:

@@ -15,7 +15,7 @@ import urllib.request
 import uuid
 from pathlib import Path
 
-from pxeye.common import sha
+from pxeye.common import digest, sha
 from pxeye.services.boot_transport import BootTransport, external_boot
 from pxeye.installation.accept_config import validate_config
 from pxeye.installation.acceptance_skips import apply_skips, refresh_skips
@@ -243,6 +243,10 @@ class Console:
         )
 
 
+class TaskCloseRequested(Exception):
+    """Cooperatively stop a task after an operator close request."""
+
+
 class Executor:
     def __init__(self, adapter, store):
         self.adapter, self.store = adapter, store
@@ -262,6 +266,167 @@ class Executor:
             ),
             flush=True,
         )
+
+    def check_close_requested(self, task):
+        current = self.store.get(task["id"])
+        if current and current.get("close_request", {}).get("state") == "requested":
+            task["close_request"] = current["close_request"]
+            raise TaskCloseRequested
+
+    def finish_close_requested(self, task):
+        """Acknowledge a close request from the task's own execution thread."""
+        current = self.store.get(task["id"]) or task
+        request = current.get("close_request") or task.get("close_request")
+        if not request or request.get("state") != "requested":
+            return current
+        try:
+            self.boot_transport.cancel(current)
+        except Exception as error:
+            request.update(state="failed", error=str(error))
+            current.update(
+                status="needs_attention", error="结束任务时清理本轮引导失败：" + str(error)
+            )
+            current.setdefault("events", []).append(
+                {
+                    "at": time.time(),
+                    "stage": current.get("stage", "prepare"),
+                    "message": current["error"],
+                }
+            )
+            self.store.save(current)
+            return current
+        now = time.time()
+        request.update(state="completed", completed_at=now)
+        current.update(
+            status="cancelled",
+            stage="cancelled",
+            error=None,
+            observation_deadline=0,
+            resume_available=False,
+            prepare_available=False,
+            retry_available=False,
+            restart_available=False,
+            recovery_observing=False,
+            closed_at=now,
+            closed_by=request["actor"],
+        )
+        current.setdefault("events", []).append(
+            {
+                "at": now,
+                "stage": "cancelled",
+                "message": (
+                    "Core 已取消本轮引导并确认介质清理；释放设备占用，保留任务与 NICo 资源。"
+                    if external_boot(current)
+                    else "操作员结束任务并释放设备占用；保留任务历史和 NICo 资源。"
+                ),
+            }
+        )
+        self.store.save(current)
+        return current
+
+    def request_scout_discovery_retry(self, task, observed):
+        """Request one bounded Scout reboot for discovery or a prior cleanup failure."""
+        machine = observed.get("machine") or {}
+        state = str(machine.get("state") or "")
+        failure = observed.get("failure_details")
+        cleanup_failed = state == "Failed/NVMECleanFailed" or "NVMECleanFailed" in str(failure)
+        if state != "HostInitializing/WaitingForDiscovery" and not cleanup_failed:
+            return False
+        if observed.get("instances"):
+            raise RuntimeError("设备已有 Instance，不能触发首次 Scout 准备重启。")
+        if failure and not cleanup_failed:
+            raise RuntimeError("NICo 设备准备已有失败详情；停止触发 Scout 发现重启。")
+        machine_id = machine.get("id")
+        if not isinstance(machine_id, str) or not machine_id:
+            raise RuntimeError("NICo Machine 缺少有效 ID，不能触发 Scout 发现重启。")
+
+        if cleanup_failed:
+            if (task.get("impact_authorization") or {}).get("cleanup_scope") != "all_disks":
+                raise RuntimeError("Scout 清理恢复缺少本任务的全部磁盘清理确认。")
+            attempts = task.setdefault("scout_cleanup_reboots", [])
+            # A new task is a new explicitly authorized attempt. Never turn a
+            # single task into an unbounded cleanup/reboot loop.
+            if attempts:
+                return False
+            window = self.adapter.config.get("scout_cleanup_retry_seconds", 900)
+            if (
+                isinstance(window, bool)
+                or not isinstance(window, int)
+                or not 60 <= window <= 3600
+            ):
+                window = 900
+            attempt = {
+                "number": 1,
+                "machine_id": machine_id,
+                "state": "requesting",
+                "requested_at": time.time(),
+                "deadline_at": time.time() + window,
+                "failure_fingerprint": digest(failure),
+            }
+            attempts.append(attempt)
+            self.event(
+                task,
+                "prepare",
+                "新任务检测到上轮 Scout 磁盘清理失败；请求 NICo 重启主机并重新执行发现清理。",
+                machine_id=machine_id,
+                scout_cleanup_reboot=1,
+            )
+            try:
+                self.adapter.core(["machine", "reboot", "--machine", machine_id])
+            except Exception as error:
+                attempt.update(state="unknown", completed_at=time.time())
+                self.store.save(task)
+                raise RuntimeError(
+                    "NICo Scout 清理恢复重启结果未知；不会自动重复发送，请核对 BMC 电源和 Core 日志。"
+                ) from error
+            attempt.update(state="accepted", completed_at=time.time())
+            self.event(
+                task,
+                "prepare",
+                "NICo 已接受一次 Scout 清理恢复重启；等待新 user-data、清理回报和 Machine Ready。",
+                machine_id=machine_id,
+                scout_cleanup_reboot=1,
+            )
+            return True
+
+        attempts = task.setdefault("scout_discovery_reboots", [])
+        # The initial task confirmation permits one request. Every explicit
+        # continue-preparation confirmation permits at most one additional request.
+        authorized_attempts = 1 + len(task.get("preparation_continuations", []))
+        if len(attempts) >= authorized_attempts:
+            return False
+
+        attempt = {
+            "number": len(attempts) + 1,
+            "machine_id": machine_id,
+            "state": "requesting",
+            "requested_at": time.time(),
+        }
+        attempts.append(attempt)
+        self.event(
+            task,
+            "prepare",
+            "Machine 尚未完成首次 Scout 发现；请求 NICo 立即重启主机进入发现引导。",
+            machine_id=machine_id,
+            scout_discovery_reboot=attempt["number"],
+        )
+        try:
+            self.adapter.core(["machine", "reboot", "--machine", machine_id])
+        except Exception as error:
+            attempt.update(state="unknown", completed_at=time.time())
+            self.store.save(task)
+            raise RuntimeError(
+                "NICo Scout 发现重启请求结果未知；不会自动重复发送，请核对 BMC 电源和 Core 日志。"
+            ) from error
+        attempt.update(state="accepted", completed_at=time.time())
+        self.event(
+            task,
+            "prepare",
+            "NICo 已接受 Scout 发现重启；等待 UEFI DHCP、iPXE 和 Scout 硬件回报。",
+            machine_id=machine_id,
+            scout_discovery_reboot=attempt["number"],
+        )
+        return True
 
     def identity_candidate(self, task, text, trusted_key):
         events = observations(self.adapter, self.store, task)
@@ -335,6 +500,7 @@ class Executor:
         folder.mkdir(parents=True, mode=0o700, exist_ok=True)
         console = None
         try:
+            self.check_close_requested(task)
             self.boot_transport.release_for_native(task)
             if task.get("deferred_bootstrap"):
                 self.bootstrap_first(task, folder)
@@ -439,6 +605,7 @@ class Executor:
             known = folder / "known_hosts"
             initial = None
             while time.monotonic() < deadline:
+                self.check_close_requested(task)
                 console.poll()
                 text = console.text
                 signed_key = self.observe_installation(task, device, known)
@@ -578,6 +745,8 @@ class Executor:
                 initial,
                 int(bool(task.get("automatic_recovery"))) + int(exit_recovered),
             )
+        except TaskCloseRequested:
+            self.finish_close_requested(task)
         except Exception as error:
             task["status"] = "needs_attention"
             task["error"] = str(error)
@@ -1661,6 +1830,7 @@ class Executor:
             # A new task may start after a prior admission was cancelled while
             # its Machine still exists. Declare policy without replaying ingestion.
             self.boot_transport.prepare(task, "DISCOVERY", row=row)
+        self.request_scout_discovery_retry(task, observed)
         preparation_timeout = self.adapter.config.get("discovery_timeout_seconds", 900)
         deadline = time.monotonic() + preparation_timeout
         task["preparation_deadline"] = time.time() + preparation_timeout
@@ -1668,6 +1838,7 @@ class Executor:
         last_progress = None
         next_guard_check = time.monotonic() + 30
         while time.monotonic() < deadline:
+            self.check_close_requested(task)
             if external_boot(task):
                 self.boot_transport.observe(task)
             observed = onboarding.observed([row])[task["device"]]
@@ -1689,6 +1860,12 @@ class Executor:
                 "state": machine.get("state"),
                 "scout_received": task["device"] in serials,
                 "failure_details": observed.get("failure_details"),
+                "scout_discovery_reboot": (
+                    task.get("scout_discovery_reboots") or [{}]
+                )[-1].get("state"),
+                "scout_cleanup_reboot": (
+                    task.get("scout_cleanup_reboots") or [{}]
+                )[-1].get("state"),
             }
             if (
                 not discovery_window_started
@@ -1708,9 +1885,22 @@ class Executor:
                 task["preparation_observation"] = progress
                 self.event(task, "prepare", preparation_message(progress), observation=progress)
                 last_progress = progress
-            if str(machine.get("state", "")).startswith("Failed") or observed.get(
+            failed = str(machine.get("state", "")).startswith("Failed") or observed.get(
                 "failure_details"
-            ):
+            )
+            cleanup_attempt = (task.get("scout_cleanup_reboots") or [None])[-1]
+            waiting_for_cleanup_retry = bool(
+                failed
+                and cleanup_attempt
+                and cleanup_attempt.get("state") == "accepted"
+                and time.time() < cleanup_attempt.get("deadline_at", 0)
+                and (
+                    not observed.get("failure_details")
+                    or digest(observed["failure_details"])
+                    == cleanup_attempt.get("failure_fingerprint")
+                )
+            )
+            if failed and not waiting_for_cleanup_retry:
                 raise RuntimeError(
                     "NICo 设备准备失败："
                     + str(machine.get("state"))
@@ -1880,6 +2070,7 @@ class Executor:
         """Explicit UI continuation only: no update-os, PXE, Release or reinstall."""
         console = None
         try:
+            self.check_close_requested(task)
             if not self.can_resume(task):
                 raise RuntimeError("缺少本轮安装退出和可信 SSH 证据，不能继续验收。")
             device = self.task_device(task)
@@ -1904,6 +2095,7 @@ class Executor:
             initial = task.get("initial") if task.get("normal_reboot_requested") else None
             recovered = bool(task.get("disk_exit_recovery_requested"))
             while initial is None and time.monotonic() < deadline:
+                self.check_close_requested(task)
                 self.observe_installation(task, device, known)
                 for _ in range(6):
                     console.poll()
@@ -1950,6 +2142,8 @@ class Executor:
                 initial,
                 sum(bool(e.get("recovery")) for e in task.get("events", [])),
             )
+        except TaskCloseRequested:
+            self.finish_close_requested(task)
         except Exception as error:
             task["status"] = "needs_attention"
             task["error"] = str(error)
@@ -1989,6 +2183,7 @@ print('NORMAL_REBOOT_REQUESTED')
             after = None
             reboot_deadline = time.monotonic() + 480
             while time.monotonic() < reboot_deadline:
+                self.check_close_requested(task)
                 refresh_skips(self, task)
                 if "normal_reboot" in task["acceptance_skips"]:
                     after = json.loads(json.dumps(initial))

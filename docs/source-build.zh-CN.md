@@ -4,6 +4,8 @@
 
 `make images` 从三个维护仓库的 `main` 构建并发布 Core、x86_64 Scout/Boot 和 PXEye。libredfish 编译进 Core/Scout，不单独部署。
 
+日常开发可以多次部署、按需打包。开发包以目标环境最近一次成功部署为基线，主包和工具包共用一个 `dev` 批次。见[开发部署与离线包规范](../AGENTS.md#development-deployments-and-offline-bundles)。
+
 ## 构建前准备
 
 使用 Linux x86_64 构建机、本机 Docker/BuildKit、Git、Make、OpenSSL 和 Python 3.11+。构建需要访问 GitHub、容器仓库、Rust 和 Ubuntu/Debian 软件源，并留足编译和启动材料的磁盘空间。HTTP Registry 需要预先加入 Docker daemon 的 `insecure-registries`。

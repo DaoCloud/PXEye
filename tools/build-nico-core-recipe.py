@@ -313,6 +313,8 @@ allocation_strategy = "reserved"
             nicoWebHostname: {{configMapName: "{prefix}-nico-web-hostname"}}
           dpf:
             rbacCreate: false
+          externalService:
+            enabled: true
         nico-bmc-proxy:
           image: {{repository: "{bmc_repository}", tag: "{bmc_tag}"}}
           envFrom:
@@ -328,6 +330,8 @@ allocation_strategy = "reserved"
             - name: boot-artifacts-x86-64
               image: "{boot_repository}:{boot_tag}"
               command: ["sh", "-c", "set -e; cp -r /x86_64 /forge-boot-artifacts/blobs/internal"]
+          externalService:
+            enabled: true
         nico-ntp:
           image:
             repository: "{chrony_repository}"
@@ -339,7 +343,22 @@ allocation_strategy = "reserved"
         nico-postgres-exporter:
           enabled: false
         unbound:
-          enabled: false
+          enabled: true
+          nameOverride: "{prefix}-unbound"
+          image:
+            repository: "m.daocloud.io/docker.io/mvance/unbound"
+            tag: "1.22.0"
+          exporter:
+            enabled: false
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              printf 'server:\\n  interface: 0.0.0.0\\n  interface: ::0\\ninclude: "/etc/unbound/local.conf.d/*.conf"\\n' > /tmp/unbound.conf
+              exec unbound -d -c /tmp/unbound.conf
+          externalService:
+            enabled: true
+          localConfig:
+            forwarders.conf: ""
         """,
     )
 

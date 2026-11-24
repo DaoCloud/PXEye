@@ -54,7 +54,7 @@ probe_registry() {
 }
 
 detect_registry() {
-    local private candidates raw objects hint authority scheme code status valid error parts count found
+    local private candidates raw objects hint authority scheme code status valid error parts count found routable url host
     local schemes=(https http)
     private=$(mktemp -d "$WORK/.registry-discovery-XXXXXX")
     candidates=$private/candidates.jsonl
@@ -153,6 +153,28 @@ detect_registry() {
     mv "$WORK/registry-discovery.json.tmp" "$WORK/registry-discovery.json"
     while IFS= read -r raw; do printf 'REGISTRY_PROBE %s\n' "$raw"; done < "$private/probes.jsonl"
     found=$(sort -u "$private/found")
+    # A loopback candidate is only meaningful when it is the sole reachable
+    # endpoint.  In a multi-node cluster it cannot be pulled by another node,
+    # and local Registry deployments commonly expose the same service through
+    # both 127.0.0.1 and the fireseed host address.  Prefer the non-loopback
+    # endpoint and let the later node-pull preflight prove it is usable.
+    : > "$private/routable"
+    while IFS= read -r url; do
+        [[ -n $url ]] || continue
+        parts=$(registry_url_parts "$url") || continue
+        host=$("$JQ" -r '.hostname | ascii_downcase' <<< "$parts")
+        case $host in
+            localhost|*.localhost|127.*|::1) ;;
+            *) printf '%s\n' "$url" >> "$private/routable" ;;
+        esac
+    done <<< "$found"
+    routable=$(sort -u "$private/routable")
+    if [[ -n $routable ]]; then
+        if [[ $found != "$routable" ]]; then
+            printf 'REGISTRY_LOOPBACK_CANDIDATE_IGNORED; using a node-reachable endpoint\n'
+        fi
+        found=$routable
+    fi
     [[ -n $found && $(printf '%s\n' "$found" | wc -l | tr -d ' ') == 1 ]] ||
         die 'Expected one reachable Registry V2 endpoint; check probe results or set NICO_REGISTRY_URL'
     REGISTRY_URL=$found

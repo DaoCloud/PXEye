@@ -250,12 +250,31 @@ class Store:
             db.execute("BEGIN IMMEDIATE")
             row = db.execute("SELECT data FROM tasks WHERE id=?", (data["id"],)).fetchone()
             if row:
+                current = json.loads(row["data"])
                 # Operator skips are monotonic and may arrive while a worker holds an older task.
-                skips = json.loads(row["data"]).get("acceptance_skips", {})
+                skips = current.get("acceptance_skips", {})
                 if skips:
                     data["acceptance_skips"] = skips
                     if data.get("receipt"):
                         data["receipt"]["acceptance_skips"] = skips
+                # Closing is also monotonic.  A running worker may hold an older
+                # in-memory copy when the operator asks it to stop.
+                saved_close = current.get("close_request")
+                incoming_close = data.get("close_request")
+                if saved_close and (
+                    not incoming_close
+                    or saved_close.get("at", 0) > incoming_close.get("at", 0)
+                    or (
+                        saved_close.get("at") == incoming_close.get("at")
+                        and {"requested": 0, "failed": 1, "completed": 1}.get(
+                            saved_close.get("state"), 0
+                        )
+                        > {"requested": 0, "failed": 1, "completed": 1}.get(
+                            incoming_close.get("state"), 0
+                        )
+                    )
+                ):
+                    data["close_request"] = saved_close
             db.execute(
                 "UPDATE tasks SET status=?,data=? WHERE id=?",
                 (data["status"], json.dumps(data), data["id"]),

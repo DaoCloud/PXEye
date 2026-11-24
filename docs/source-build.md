@@ -4,6 +4,8 @@
 
 `make images` builds and publishes Core, x86_64 Scout/Boot and PXEye from the three maintained `main` branches. libredfish is a compiled Core/Scout dependency, not a separately deployed image.
 
+Deploy as often as needed and package on request. A development bundle corresponds to the target environment's last successful deployment; the main and tools archives share one `dev` batch ID. See [development deployments and offline bundles](../AGENTS.md#development-deployments-and-offline-bundles).
+
 ## Prerequisites
 
 Use a Linux x86_64 builder with local Docker/BuildKit, Git, Make, OpenSSL and Python 3.11+. Allow access to GitHub, container registries, Rust and Ubuntu/Debian package sources, and provide enough compilation/material storage. Configure an HTTP Registry in the Docker daemon's `insecure-registries` first.

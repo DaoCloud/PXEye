@@ -4,6 +4,7 @@ import json
 import os
 import time
 from pathlib import Path
+from threading import RLock
 from types import SimpleNamespace
 
 from pxeye.common import atomic_json, digest
@@ -143,7 +144,7 @@ class SiteCredentials:
             atomic_json(marker, {"at": time.time(), "state": outcome})
 
 
-def verify_installed():
+def _installed_service():
     from pxeye.clients.core import CoreClient
 
     root = Path(os.environ.get("CONSOLE_DATA", "/data"))
@@ -156,6 +157,32 @@ def verify_installed():
     core.core_secrets = Path(
         config.get("core_identity_directory", os.environ.get("CONSOLE_SECRETS", "/secrets"))
     )
-    status = SiteCredentials(SimpleNamespace(adapter=core, config=config)).view()
+    return SiteCredentials(
+        SimpleNamespace(adapter=core, config=config, connection_lock=RLock())
+    )
+
+
+def verify_installed():
+    status = _installed_service().view()
     print("SITE_CREDENTIALS", status["state"])
     return status["state"] == "ready"
+
+
+def initialize_new_site():
+    """Generate only missing defaults after an explicit new-site install request."""
+    service = _installed_service()
+    before = service.view()
+    print("SITE_CREDENTIALS", before["state"])
+    if before["state"] == "ready":
+        return True
+    if before["state"] != "missing":
+        return False
+    missing = sorted(kind for kind, state in before["items"].items() if state == "missing")
+    print("SITE_CREDENTIALS_INITIALIZING", ",".join(missing))
+    try:
+        after = service.initialize({"confirm": True, "revision": before["revision"]})
+    except (OSError, ValueError, RuntimeError) as error:
+        print("SITE_CREDENTIALS_INITIALIZATION_FAILED", str(error))
+        return False
+    print("SITE_CREDENTIALS", after["state"])
+    return after["state"] == "ready"

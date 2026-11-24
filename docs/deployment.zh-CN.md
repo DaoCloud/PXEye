@@ -41,6 +41,20 @@ docker image inspect "$PXEYE_IMAGE" \
 
 本地已有同名 TAG 时拒绝构建；需要再次构建时，在下一分钟重新生成变量。不要覆盖已交付 TAG。Registry 发布后还应记录仓库返回的 digest，部署以该 digest 为不可变依据。
 
+`make pxeye-images` 还会维护可变引用 `REGISTRY/pxeye:build-cache`。它只是构建缓存元数据，
+不是可部署的发布版本：命令在构建前拉取它，在唯一 TAG 镜像中写入 BuildKit inline cache，
+并且只在唯一镜像成功推送后更新缓存引用。系统软件包、外部二进制、启动材料和 Python
+依赖属于稳定层；普通应用代码提交只重新构建源码/ wheel 和 OCI 标签层。部署和离线打包
+仍必须使用构建输出的唯一 TAG 与仓库摘要，不能使用 `build-cache`。缓存不存在不会影响
+正确性，但首次播种构建会较慢；基础镜像、系统包、外部二进制、启动材料配方或
+`pyproject.toml` 依赖发生变化时，相关稳定层会按预期重新构建。
+
+仅修改应用代码的开发迭代可使用 `make pxeye-overlay-image`，并通过
+`PXEYE_RUNTIME_BASE_IMAGE` 指定已经验证的不可变 PXEye 运行镜像。该目标只替换
+`/app` 和已安装的 Python 包，不下载 Ubuntu 软件包、不重新构建外部工具，也不重新生成
+引导材料。如果任一继承输入发生变化，必须改用标准构建。输出仍使用唯一 TAG，并在
+OCI 标签中记录新的源码提交。
+
 ### 保存与导入 containerd
 
 以下命令紧接构建步骤，在同一构建主机终端执行。仅适用于目标 Kubernetes 使用此主机的 `/run/containerd/containerd.sock`、namespace `k8s.io` 的情况，需要相应权限：
