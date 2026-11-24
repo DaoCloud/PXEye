@@ -969,7 +969,7 @@
       "note": "运行配置里没有时间服务器、组件管理器后端和配额执行方式",
       "source": "forge.proto:36",
       "used": true,
-      "observed": "返回 build_version（形如 0.0.0-main-<提交号>）、build_date、git_sha、rust_version。带运行配置的输出没有核对",
+      "observed": "返回 build_version（形如 0.0.0-main-<提交号>）、build_date、git_sha、rust_version、capabilities 和 runtime_config。运行配置里有 dhcp_servers、networks、initial_domain_name、site_fabric_prefixes、attestation_enabled",
       "requiresNames": [
         "NICo Core"
       ],
@@ -987,6 +987,8 @@
       "evidence": "调用",
       "cli": "nico-admin-cli backend rms status",
       "fields": [
+        "status",
+        "message",
         "version"
       ],
       "requires": [
@@ -996,7 +998,7 @@
       "note": "没有配置 RMS 时返回 UNAVAILABLE；30 秒超时。命令行只有在连通时退出码才是 0",
       "source": "crates/api-core/src/handlers/rms.rs:75",
       "used": true,
-      "observed": "RMS 部署之前 Core 的配置就指向它；部署后返回 status: connected 和 RMS 的版本号，Core 没有重启",
+      "observed": "RMS 部署之前 Core 的配置就指向它；部署后返回 status: connected 和 RMS 的版本号，Core 没有重启。命令行的输出是 status、message、version 三项",
       "requiresNames": [
         "RMS"
       ],
@@ -1027,7 +1029,7 @@
       "executedBy": "REST",
       "note": "Flow 是否可用只能从这里的 capabilities.flow 看，Core 没有对应接口",
       "source": "spec.yaml:946",
-      "observed": "返回 200。看到的字段：id、name、org、infrastructureProviderId、siteControllerVersion、siteAgentVersion、registrationToken。站点登记后先是 Pending，站点代理上报清单后约 5 分钟变为 Registered。capabilities 和 isOnline 没有核对",
+      "observed": "返回 200。字段与这里一致：id、name、org、status、isOnline、siteAgentVersion、siteControllerVersion、machineStats，以及 capabilities 下的 flow 等七项。站点登记后先是 Pending，站点代理上报清单后约 5 分钟变为 Registered",
       "requiresNames": [
         "REST 站点"
       ],
@@ -1136,7 +1138,7 @@
       "area": "站点与依赖",
       "surface": "Core gRPC",
       "name": "ListRackProfiles / GetRackProfile",
-      "evidence": "定义",
+      "evidence": "调用",
       "cli": "nico-admin-cli rack profile list；nico-admin-cli rack profile show <RACK_ID>",
       "fields": [
         "rack_profile_id",
@@ -1149,6 +1151,7 @@
       ],
       "note": "从运行配置读出；只允许管理端证书调用",
       "source": "crates/api-core/src/handlers/rack.rs:511",
+      "observed": "返回 14 个机柜规格。每个有 rack_profile_id 和 profile 下的 rack_hardware_type、rack_hardware_topology、rack_hardware_class、capabilities、product_family",
       "requiresNames": [
         "机柜规格配置"
       ],
@@ -1216,7 +1219,7 @@
       "area": "网络与地址",
       "surface": "Core gRPC",
       "name": "FindNetworkSegmentIds → FindNetworkSegmentsByIds",
-      "evidence": "定义",
+      "evidence": "调用",
       "cli": "nico-admin-cli network-segment show",
       "request": "include_num_free_ips 为真才返回空闲地址数",
       "fields": [
@@ -1234,6 +1237,7 @@
       "note": "类型：TENANT、ADMIN、UNDERLAY、HOST_INBAND",
       "source": "forge.proto:129",
       "used": true,
+      "observed": "返回 2 个子网。每个有 id、config、status、metadata 和创建、更新、删除时间。config 和 status 里面的字段没有逐项核对",
       "requiresNames": [
         "子网"
       ],
@@ -1346,7 +1350,7 @@
       "area": "网络与地址",
       "surface": "Core gRPC",
       "name": "FindInterfaces",
-      "evidence": "定义",
+      "evidence": "调用",
       "cli": "nico-admin-cli machine-interfaces show",
       "request": "id 或 ip；都不填返回全部",
       "fields": [
@@ -1370,6 +1374,7 @@
       "note": "没有租约到期时间。association_type 为 NONE 的就是拿到地址但没有归属的设备",
       "source": "forge.proto:318",
       "used": true,
+      "observed": "返回 8 个接口。字段与这里一致，另外还有 is_bmc、attached_dpu_machine_id、domain_id、created",
       "requiresNames": [
         "设备接口与地址"
       ],
@@ -1434,7 +1439,7 @@
       "area": "设备清单",
       "surface": "Core gRPC",
       "name": "GetAllExpectedRackGroups",
-      "evidence": "定义",
+      "evidence": "调用",
       "cli": "nico-admin-cli expected-rack-group show",
       "fields": [
         "rack_group_id",
@@ -1447,6 +1452,7 @@
         "rack-group"
       ],
       "source": "forge.proto:746",
+      "observed": "调用成功，没有机柜组，字段没法核对",
       "requiresNames": [
         "机柜组声明"
       ],
@@ -1480,7 +1486,7 @@
       "area": "设备清单",
       "surface": "Core gRPC",
       "name": "GetAllExpectedRacks",
-      "evidence": "定义",
+      "evidence": "调用",
       "cli": "nico-admin-cli expected-rack show",
       "fields": [
         "rack_id",
@@ -1493,6 +1499,7 @@
       ],
       "source": "forge.proto:719",
       "used": true,
+      "observed": "调用成功，没有机柜声明，字段没法核对",
       "requiresNames": [
         "机柜声明"
       ],
@@ -1529,7 +1536,7 @@
       "area": "设备清单",
       "surface": "Core gRPC",
       "name": "GetAllExpectedMachines / GetAllExpectedMachinesLinked",
-      "evidence": "定义",
+      "evidence": "调用",
       "cli": "nico-admin-cli expected-machine show",
       "fields": [
         "chassis_serial_number",
@@ -1543,9 +1550,10 @@
       "requires": [
         "expected-devices"
       ],
-      "note": "带关联的读取一次给出每条声明走到了哪一步：有没有接口、有没有探测结果、有没有设备对象",
+      "note": "带关联的读取一次给出每条声明走到了哪一步：有没有接口、有没有探测结果、有没有设备对象。读取结果里带着 BMC 的用户名和口令，后端不能把它们传给前端，也不能写进日志",
       "source": "forge.proto:646",
       "used": true,
+      "observed": "返回 1 条声明。这个版本里网口列表的字段名是 interfaces，不是 host_nics；另有 sku_id、dpu_mode、bmc_ip_allocation、server_name、default_pause_ingestion_and_poweron 等。读取结果里带着 bmc_username 和 bmc_password。带关联关系的读取没有核对",
       "requiresNames": [
         "设备声明"
       ],
@@ -1584,7 +1592,7 @@
       "area": "设备清单",
       "surface": "Core gRPC",
       "name": "GetAllExpectedSwitches / GetAllExpectedSwitchesLinked",
-      "evidence": "定义",
+      "evidence": "调用",
       "cli": "nico-admin-cli expected-switch show",
       "fields": [
         "switch_serial_number",
@@ -1598,6 +1606,7 @@
       ],
       "source": "forge.proto:701",
       "used": true,
+      "observed": "调用成功，没有交换机声明，字段没法核对",
       "requiresNames": [
         "设备声明"
       ],
@@ -1632,7 +1641,7 @@
       "area": "设备清单",
       "surface": "Core gRPC",
       "name": "GetAllExpectedPowerShelves / GetAllExpectedPowerShelvesLinked",
-      "evidence": "定义",
+      "evidence": "调用",
       "cli": "nico-admin-cli expected-power-shelf show",
       "fields": [
         "shelf_serial_number",
@@ -1645,6 +1654,7 @@
       ],
       "source": "forge.proto:681",
       "used": true,
+      "observed": "调用成功，没有供电框声明，字段没法核对",
       "requiresNames": [
         "设备声明"
       ],
@@ -1703,7 +1713,7 @@
       "area": "设备发现",
       "surface": "Core gRPC",
       "name": "FindExploredEndpointIds → FindExploredEndpointsByIds",
-      "evidence": "定义",
+      "evidence": "调用",
       "cli": "nico-admin-cli site-explorer get-report endpoint",
       "fields": [
         "address",
@@ -1722,6 +1732,7 @@
       "note": "探测结果的编号就是 BMC 的 IP 地址",
       "source": "site_explorer.proto:53",
       "used": true,
+      "observed": "返回 6 个探测结果。字段与这里一致：address、report（endpoint_type、vendor、systems、chassis、firmware_versions、last_exploration_error_schema 等）、preingestion_state、pause_remediation",
       "requiresNames": [
         "探测结果"
       ],
@@ -1735,7 +1746,7 @@
       "area": "设备发现",
       "surface": "Core gRPC",
       "name": "FindExploredManagedHostIds → FindExploredManagedHostsByIds",
-      "evidence": "定义",
+      "evidence": "调用",
       "cli": "nico-admin-cli site-explorer get-report managed-host",
       "fields": [
         "host_bmc_ip",
@@ -1746,6 +1757,7 @@
       ],
       "note": "主机与 DPU 的配对结果",
       "source": "site_explorer.proto:84",
+      "observed": "返回 1 组配对。字段是 host_bmc_ip、dpu_bmc_ip、host_pf_mac_address、dpus",
       "requiresNames": [
         "探测结果"
       ],
@@ -1847,7 +1859,7 @@
       "area": "机柜与 NVLink 域",
       "surface": "Core gRPC",
       "name": "FindRackIds → FindRacksByIds",
-      "evidence": "定义",
+      "evidence": "调用",
       "cli": "nico-admin-cli rack list；nico-admin-cli rack show <RACK_ID>",
       "fields": [
         "id",
@@ -1865,6 +1877,7 @@
       "note": "机柜对象不带规格和成员列表：规格另读，成员按机柜 ID 去各类设备里筛",
       "source": "forge.proto:9860",
       "used": true,
+      "observed": "调用成功，没有机柜。没有数据时命令行即使指定 JSON 格式也只输出一行文字，后端解析时要单独处理",
       "requiresNames": [
         "机柜对象"
       ],
@@ -1991,7 +2004,7 @@
       "executedBy": "Flow",
       "note": "机柜立面要的槽位在这里；Core 的供电框对象没有位置字段。不属于任何机柜的普通服务器也在这个列表里",
       "source": "spec.yaml:14412",
-      "observed": "返回 200。看到的字段：id、type、name、manufacturer、model、serialNumber、description、firmwareVersion、powerState、operationStatus、leakStatus。列表里有一台不属于任何机柜的普通服务器，类型是 Compute。position、rackId、nvLinkDomainId 没有核对",
+      "observed": "返回 200，列表和单个都调用过。字段与这里完全一致，包括 position 下的 slotId、trayIdx、hostId，以及 bmcs、nvosPorts、rackId、nvLinkDomainId、taskStats、health、leakHandlingStatus。列表里有一台不属于任何机柜的普通服务器，类型是 Compute",
       "requiresNames": [
         "Flow 的机柜与托盘清单"
       ],
@@ -2035,7 +2048,7 @@
       "area": "设备读取",
       "surface": "Core gRPC",
       "name": "FindMachineIds → FindMachinesByIds",
-      "evidence": "定义",
+      "evidence": "调用",
       "cli": "nico-admin-cli machine show [--hosts]",
       "request": "筛选：rack_id、include_dpus、exclude_hosts、only_maintenance、only_quarantine、only_with_health_alert；include_history 带回状态事件",
       "fields": [
@@ -2062,6 +2075,7 @@
       "note": "没有电源状态和实例字段，这两项另读。一次按编号读取的数量有上限",
       "source": "forge.proto:5137",
       "used": true,
+      "observed": "返回 1 台主机。顶层字段与这里一致：id、state、state_reason、state_sla、rack_id、placement_in_rack、bmc、config、status、inventory、metadata、version。config 和 status 里面的字段没有逐项核对",
       "requiresNames": [
         "计算托盘对象"
       ],
@@ -2113,7 +2127,7 @@
       "area": "设备读取",
       "surface": "Core gRPC",
       "name": "FindMachineIds（include_dpus、exclude_hosts）→ FindMachinesByIds",
-      "evidence": "定义",
+      "evidence": "调用",
       "cli": "nico-admin-cli dpu status；nico-admin-cli dpu versions",
       "fields": [
         "id",
@@ -2129,6 +2143,7 @@
       ],
       "note": "DPU 的工作模式不在这里：策略在设备声明的 dpu_mode，实测值在探测到的网卡设备上",
       "source": "forge.proto:5021",
+      "observed": "调用成功，环境里没有 DPU，字段没法核对",
       "requiresNames": [
         "DPU 对象"
       ],
@@ -2142,7 +2157,7 @@
       "area": "设备读取",
       "surface": "Core gRPC",
       "name": "FindSwitchIds → FindSwitchesByIds",
-      "evidence": "定义",
+      "evidence": "调用",
       "cli": "nico-admin-cli switch list；nico-admin-cli switch show <SWITCH_ID>",
       "request": "筛选：rack_id、controller_state、bmc_mac、nvos_mac、only_with_health_alert",
       "fields": [
@@ -2164,6 +2179,7 @@
       ],
       "source": "forge.proto:3332",
       "used": true,
+      "observed": "调用成功，没有交换机。没有数据时命令行只输出一行文字，不是 JSON",
       "requiresNames": [
         "交换机对象"
       ],
@@ -2181,7 +2197,7 @@
       "area": "设备读取",
       "surface": "Core gRPC",
       "name": "FindPowerShelfIds → FindPowerShelvesByIds",
-      "evidence": "定义",
+      "evidence": "调用",
       "cli": "nico-admin-cli power-shelf list；nico-admin-cli power-shelf show <ID>",
       "request": "筛选：rack_id、controller_state、bmc_mac",
       "fields": [
@@ -2200,6 +2216,7 @@
       "note": "没有槽位字段，也没有序列号字段",
       "source": "forge.proto:3087",
       "used": true,
+      "observed": "调用成功，没有供电框。没有数据时命令行只输出一行文字，不是 JSON",
       "requiresNames": [
         "供电框对象"
       ],
@@ -2270,7 +2287,7 @@
       "area": "设备读取",
       "surface": "Core gRPC",
       "name": "GetComponentPowerDetails / GetPowerOptions",
-      "evidence": "定义",
+      "evidence": "调用",
       "cli": "nico-admin-cli managed-host power-options show <MACHINE>",
       "request": "machine_ids、switch_ids、power_shelf_ids 三选一，1–64 个",
       "fields": [
@@ -2285,6 +2302,7 @@
       "note": "整机柜里的主机、交换机和供电框经硬件后端读取；交换机和供电框对象上另有一个文本形式的 status.power_state",
       "source": "forge.proto:11423",
       "used": true,
+      "observed": "只调用了 GetPowerOptions 这一半：返回 desired_state、actual_state 和各自的更新时间、host_id、off_counter 等。GetComponentPowerDetails 没有命令行，没有调用",
       "requiresNames": [
         "组件管理器"
       ],
@@ -2407,6 +2425,7 @@
       "executedBy": "Flow → Core → 硬件后端",
       "note": "读回用 GET /tray/{id}/power，它分别给出实际状态、期望状态和进行中的动作",
       "source": "spec.yaml:16691",
+      "observed": "只调用过读回用的 GET /tray/{id}/power：返回 actual（state、source、observed、error）、desired（status、state、error）和 operations（actions、tasks 及各自的错误）。写操作没有调用",
       "requiresNames": [
         "Flow 的机柜与托盘清单"
       ],
@@ -2800,6 +2819,7 @@
       "executedBy": "Flow",
       "note": "分阶段发布只支持固件。目标是“所有符合条件的机柜”，上限 100 个，不能传入机柜列表",
       "source": "spec.yaml:15201",
+      "observed": "只调用过列表：返回 200 和空列表。创建、暂停、推进、取消都没有调用",
       "requiresNames": [
         "Flow 的机柜与托盘清单",
         "机柜固件清单"
@@ -2832,7 +2852,7 @@
       "executedBy": "Flow",
       "note": "任务里没有操作者和原因，这两项由平台的审计记录",
       "source": "spec.yaml:14768",
-      "observed": "返回 200 和空列表（没有提交过任务），字段没法核对",
+      "observed": "返回 200 和空列表（没有提交过任务），按站点和按托盘两种都调用过，字段没法核对",
       "requiresNames": [
         "任务"
       ],
@@ -2902,7 +2922,7 @@
       "area": "交付与实例",
       "surface": "Core gRPC",
       "name": "FindOperatingSystemIds → FindOperatingSystemsByIds",
-      "evidence": "定义",
+      "evidence": "调用",
       "cli": "nico-admin-cli operating-system show",
       "fields": [
         "id",
@@ -2919,6 +2939,7 @@
       ],
       "source": "forge.proto:1380",
       "used": true,
+      "observed": "返回 1 个系统定义。字段与这里一致，制品另有 sha、auth_type、cache_strategy",
       "requiresNames": [
         "系统定义"
       ],
@@ -2983,7 +3004,7 @@
       "area": "交付与实例",
       "surface": "Core gRPC",
       "name": "FindInstanceIds → FindInstancesByIds / FindInstanceByMachineID",
-      "evidence": "定义",
+      "evidence": "调用",
       "cli": "nico-admin-cli instance show",
       "fields": [
         "id",
@@ -3000,6 +3021,7 @@
       "note": "状态：PROVISIONING、READY、CONFIGURING、UPDATING、TERMINATING、TERMINATED、FAILED、REPAIRING",
       "source": "forge.proto:230",
       "used": true,
+      "observed": "返回 1 个实例。顶层字段是 id、machine_id、instance_type_id、config、status、metadata 和各配置的版本号。config 和 status 里面的字段没有逐项核对",
       "requiresNames": [
         "实例"
       ],

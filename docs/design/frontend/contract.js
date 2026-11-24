@@ -118,7 +118,7 @@ R("facility-events", "设施事件接入", "nico-dsx-exchange-consumer", "部署
 
 /* ================= 接口：站点与依赖 ================= */
 C("core.version", "站点与依赖", "Core gRPC", "Version", { cli: "nico-admin-cli version --show-runtime-config", request: "display_config 为真时带回运行配置", fields: ["build_version", "git_sha", "capabilities[]", "runtime_config.dhcp_servers", "runtime_config.networks", "runtime_config.initial_domain_name", "runtime_config.attestation_enabled"], requires: ["core"], note: "运行配置里没有时间服务器、组件管理器后端和配额执行方式", source: "forge.proto:36" });
-C("rms.status", "站点与依赖", "Core gRPC", "GetRmsVersion", { cli: "nico-admin-cli backend rms status", fields: ["version"], requires: ["rms"], executedBy: "Core → RMS", note: "没有配置 RMS 时返回 UNAVAILABLE；30 秒超时。命令行只有在连通时退出码才是 0", source: "crates/api-core/src/handlers/rms.rs:75" });
+C("rms.status", "站点与依赖", "Core gRPC", "GetRmsVersion", { cli: "nico-admin-cli backend rms status", fields: ["status", "message", "version"], requires: ["rms"], executedBy: "Core → RMS", note: "没有配置 RMS 时返回 UNAVAILABLE；30 秒超时。命令行只有在连通时退出码才是 0", source: "crates/api-core/src/handlers/rms.rs:75" });
 C("rest.site", "站点与依赖", "REST", "GET /site、GET /site/{id}", { cli: "nicocli site list", fields: ["id", "status（Pending、Registered、Error）", "isOnline", "siteAgentVersion", "siteControllerVersion", "capabilities.flow", "machineStats"], requires: ["rest-site"], executedBy: "REST", note: "Flow 是否可用只能从这里的 capabilities.flow 看，Core 没有对应接口", source: "spec.yaml:946" });
 C("credential.readiness", "站点与依赖", "Core gRPC", "GetSiteCredentialReadiness", { fields: ["configured[]", "missing[]", "requires_recovery[]"], requires: ["core"], source: "forge.proto:589" });
 C("credential.write", "站点与依赖", "Core gRPC", "InitializeSiteCredentials / CreateCredential", { write: true, cli: "nico-admin-cli credential add-bmc；nico-admin-cli credential add-uefi", request: "generate_missing，或逐项给 BMC、主机 UEFI、DPU UEFI 口令", requires: ["core"], note: "口令经标准输入或安全文件传入，不出现在命令行和日志里", source: "forge.proto:586" });
@@ -143,7 +143,7 @@ C("rack-group.list", "设备清单", "Core gRPC", "GetAllExpectedRackGroups", { 
 C("rack-group.write", "设备清单", "Core gRPC", "AddExpectedRackGroup / UpdateExpectedRackGroup / DeleteExpectedRackGroup", { write: true, cli: "nico-admin-cli expected-rack-group add [--rack <JSON>]... <RACK_GROUP_ID> <PROTOCOL> <TOPOLOGY>", request: "rack_group_id、topology 必填；protocol、racks、metadata 可选。更新是整条替换", requires: ["core"], note: "有 NVLink 域声明引用时，不能改 racks，也不能删除", source: "forge.proto:737" });
 C("expected-rack.list", "设备清单", "Core gRPC", "GetAllExpectedRacks", { cli: "nico-admin-cli expected-rack show", fields: ["rack_id", "rack_profile_id", "rack_group_id", "metadata"], requires: ["expected-rack"], source: "forge.proto:719" });
 C("expected-rack.write", "设备清单", "Core gRPC", "AddExpectedRack / UpdateExpectedRack / DeleteExpectedRack", { write: true, cli: "nico-admin-cli expected-rack add [--label K:V] <RACK_ID>", request: "rack_id 必填；metadata 可选。规格和机柜组是输出字段，写入时忽略", requires: ["rack-group", "rack-profiles"], note: "推导失败返回 INVALID_ARGUMENT 并说明原因：没有机柜组包含它、多个机柜组包含它、缺计算或交换机成员、规格未配置", source: "expected_rack.rs:29" });
-C("expected-machine.list", "设备清单", "Core gRPC", "GetAllExpectedMachines / GetAllExpectedMachinesLinked", { cli: "nico-admin-cli expected-machine show", fields: ["chassis_serial_number", "bmc_mac_address", "rack_id", "bmc_ip_address", "host_nics[]", "metadata.labels", "linked: interface_id、explored_endpoint_address、machine_id"], requires: ["expected-devices"], note: "带关联的读取一次给出每条声明走到了哪一步：有没有接口、有没有探测结果、有没有设备对象", source: "forge.proto:646" });
+C("expected-machine.list", "设备清单", "Core gRPC", "GetAllExpectedMachines / GetAllExpectedMachinesLinked", { cli: "nico-admin-cli expected-machine show", fields: ["chassis_serial_number", "bmc_mac_address", "rack_id", "bmc_ip_address", "host_nics[]", "metadata.labels", "linked: interface_id、explored_endpoint_address、machine_id"], requires: ["expected-devices"], note: "带关联的读取一次给出每条声明走到了哪一步：有没有接口、有没有探测结果、有没有设备对象。读取结果里带着 BMC 的用户名和口令，后端不能把它们传给前端，也不能写进日志", source: "forge.proto:646" });
 C("expected-machine.write", "设备清单", "Core gRPC", "CreateExpectedMachines / UpdateExpectedMachines / PatchExpectedMachine / DeleteExpectedMachine", { write: true, cli: "nico-admin-cli expected-machine add -a <BMC_MAC> -u <BMC_USER> -p <BMC_PASS> -s <SERIAL> [--rack_id] [--bmc-ip-address] [--interfaces] [--label]", request: "bmc_mac_address、chassis_serial_number 必填（序列号 4–32 位字母数字下划线连字符）；rack_id、bmc_ip_address、host_nics、metadata 可选。批量接口带 accept_partial_results", requires: ["core"], note: "不要用 ReplaceAllExpectedMachines 做增量导入：它替换整张表", source: "forge.proto:8268" });
 C("expected-switch.list", "设备清单", "Core gRPC", "GetAllExpectedSwitches / GetAllExpectedSwitchesLinked", { cli: "nico-admin-cli expected-switch show", fields: ["switch_serial_number", "bmc_mac_address", "nvos_interfaces[]", "rack_id", "linked: switch_id、explored_endpoint_address"], requires: ["expected-devices"], source: "forge.proto:701" });
 C("expected-switch.write", "设备清单", "Core gRPC", "AddExpectedSwitch / PatchExpectedSwitch / DeleteExpectedSwitch", { write: true, cli: "nico-admin-cli expected-switch add -a <BMC_MAC> -u <USER> -p <PASS> -s <SERIAL> --nvos-interface <MAC[,primary]> [--rack_id]", request: "bmc_mac_address 必填；nvos_interfaces 至少一个，多于一个时恰好一个为主口；NVOS 用户名和口令要么都填要么都不填", requires: ["core"], source: "forge.proto:691" });
@@ -224,19 +224,52 @@ C("health.history", "健康", "Core gRPC", "FindMachineHealthHistories / FindSwi
   "os.list", "os.write", "instance.allocate", "instance.list", "instance.release"].forEach((id) => { const c = NICO_CALLS.find((x) => x.id === id); if (c) c.used = true; });
 
 /* 实测结果。在一套没有整机柜硬件的 NICo 环境里实际调用过的接口：证据升为“调用”，observed 写明看到了什么、没看到什么。
-   “调用”只说明接口存在、认证和权限通过、返回与这里写的不矛盾。返回空列表的接口没法核对字段。 */
+   “调用”只说明接口存在、认证和权限通过、返回与这里写的不矛盾。返回空列表的接口没法核对字段。
+   核对方式：只记录退出码、状态码和返回里的字段名，不保存数据内容。 */
 const OBSERVED = {
-  "core.version": "返回 build_version（形如 0.0.0-main-<提交号>）、build_date、git_sha、rust_version。带运行配置的输出没有核对",
-  "rms.status": "RMS 部署之前 Core 的配置就指向它；部署后返回 status: connected 和 RMS 的版本号，Core 没有重启",
-  "rest.site": "返回 200。看到的字段：id、name、org、infrastructureProviderId、siteControllerVersion、siteAgentVersion、registrationToken。站点登记后先是 Pending，站点代理上报清单后约 5 分钟变为 Registered。capabilities 和 isOnline 没有核对",
+  // 站点与依赖
+  "core.version": "返回 build_version（形如 0.0.0-main-<提交号>）、build_date、git_sha、rust_version、capabilities 和 runtime_config。运行配置里有 dhcp_servers、networks、initial_domain_name、site_fabric_prefixes、attestation_enabled",
+  "rms.status": "RMS 部署之前 Core 的配置就指向它；部署后返回 status: connected 和 RMS 的版本号，Core 没有重启。命令行的输出是 status、message、version 三项",
+  "rest.site": "返回 200。字段与这里一致：id、name、org、status、isOnline、siteAgentVersion、siteControllerVersion、machineStats，以及 capabilities 下的 flow 等七项。站点登记后先是 Pending，站点代理上报清单后约 5 分钟变为 Registered",
   "rule.list": "新装的环境返回 200 和空列表，内置的默认规则确实不在里面",
+  "rack-profile.list": "返回 14 个机柜规格。每个有 rack_profile_id 和 profile 下的 rack_hardware_type、rack_hardware_topology、rack_hardware_class、capabilities、product_family",
+  // 网络与地址
+  "segment.list": "返回 2 个子网。每个有 id、config、status、metadata 和创建、更新、删除时间。config 和 status 里面的字段没有逐项核对",
+  "interface.list": "返回 8 个接口。字段与这里一致，另外还有 is_bmc、attached_dpu_machine_id、domain_id、created",
+  // 设备清单
+  "rack-group.list": "调用成功，没有机柜组，字段没法核对",
+  "expected-rack.list": "调用成功，没有机柜声明，字段没法核对",
+  "expected-machine.list": "返回 1 条声明。这个版本里网口列表的字段名是 interfaces，不是 host_nics；另有 sku_id、dpu_mode、bmc_ip_allocation、server_name、default_pause_ingestion_and_poweron 等。读取结果里带着 bmc_username 和 bmc_password。带关联关系的读取没有核对",
+  "expected-switch.list": "调用成功，没有交换机声明，字段没法核对",
+  "expected-shelf.list": "调用成功，没有供电框声明，字段没法核对",
+  // 设备发现
+  "explorer.endpoints": "返回 6 个探测结果。字段与这里一致：address、report（endpoint_type、vendor、systems、chassis、firmware_versions、last_exploration_error_schema 等）、preingestion_state、pause_remediation",
+  "explorer.managed-hosts": "返回 1 组配对。字段是 host_bmc_ip、dpu_bmc_ip、host_pf_mac_address、dpus",
+  // 机柜与 NVLink 域
+  "rack.list": "调用成功，没有机柜。没有数据时命令行即使指定 JSON 格式也只输出一行文字，后端解析时要单独处理",
   "rack.rest": "返回 200 和空列表（环境里没有机柜），字段没法核对",
   "rack.validation": "返回 200，结构是 diffs、totalDiffs、missingCount、unexpectedCount、mismatchCount、matchCount，与这里一致。没有机柜时各计数都是 0",
-  "tray.rest": "返回 200。看到的字段：id、type、name、manufacturer、model、serialNumber、description、firmwareVersion、powerState、operationStatus、leakStatus。列表里有一台不属于任何机柜的普通服务器，类型是 Compute。position、rackId、nvLinkDomainId 没有核对",
+  "tray.rest": "返回 200，列表和单个都调用过。字段与这里完全一致，包括 position 下的 slotId、trayIdx、hostId，以及 bmcs、nvosPorts、rackId、nvLinkDomainId、taskStats、health、leakHandlingStatus。列表里有一台不属于任何机柜的普通服务器，类型是 Compute",
   "domain.list": "返回 200 和空列表，字段没法核对",
-  "task.list": "返回 200 和空列表（没有提交过任务），字段没法核对",
+  // 设备读取
+  "machine.list": "返回 1 台主机。顶层字段与这里一致：id、state、state_reason、state_sla、rack_id、placement_in_rack、bmc、config、status、inventory、metadata、version。config 和 status 里面的字段没有逐项核对",
+  "dpu.list": "调用成功，环境里没有 DPU，字段没法核对",
+  "switch.list": "调用成功，没有交换机。没有数据时命令行只输出一行文字，不是 JSON",
+  "shelf.list": "调用成功，没有供电框。没有数据时命令行只输出一行文字，不是 JSON",
+  "device.power-state": "只调用了 GetPowerOptions 这一半：返回 desired_state、actual_state 和各自的更新时间、host_id、off_counter 等。GetComponentPowerDetails 没有命令行，没有调用",
+  // 机柜级任务
+  "task.list": "返回 200 和空列表（没有提交过任务），按站点和按托盘两种都调用过，字段没法核对",
+  // 交付与实例
+  "os.list": "返回 1 个系统定义。字段与这里一致，制品另有 sha、auth_type、cache_strategy",
+  "instance.list": "返回 1 个实例。顶层字段是 id、machine_id、instance_type_id、config、status、metadata 和各配置的版本号。config 和 status 里面的字段没有逐项核对",
+};
+/* 只调用过其中读取那一半的写接口：证据仍是“定义”，但把看到的记下来。 */
+const OBSERVED_PARTIAL = {
+  "tray.power": "只调用过读回用的 GET /tray/{id}/power：返回 actual（state、source、observed、error）、desired（status、state、error）和 operations（actions、tasks 及各自的错误）。写操作没有调用",
+  "task-run": "只调用过列表：返回 200 和空列表。创建、暂停、推进、取消都没有调用",
 };
 Object.entries(OBSERVED).forEach(([id, text]) => { const c = NICO_CALLS.find((x) => x.id === id); if (c) { c.evidence = "调用"; c.observed = text; } });
+Object.entries(OBSERVED_PARTIAL).forEach(([id, text]) => { const c = NICO_CALLS.find((x) => x.id === id); if (c) c.observed = text; });
 
 /* ================= 缺口 =================
    分三类：NICo 没有的（要由平台补或者改设计）、两条路径要选一条的、源码里对不上要实测的。 */
@@ -527,6 +560,7 @@ function contractProblems() {
   NICO_CALLS.forEach((c) => (c.requires || []).forEach((r) => { if (!resourceById(r)) out.push(`接口 ${c.id} 引用了未定义的资源 ${r}`); }));
   NICO_RESOURCES.forEach((r) => (r.requires || []).forEach((x) => { if (!resourceById(x)) out.push(`资源 ${r.id} 引用了未定义的资源 ${x}`); }));
   NICO_COMPONENTS.forEach((k) => [...(k.resources || []).filter((r) => !resourceById(r)).map((r) => `资源 ${r}`), ...(k.calls || []).filter((c) => !callById(c)).map((c) => `接口 ${c}`), ...(k.pages || []).filter((p) => !PAGES[p]).map((p) => `页面 ${p}`)].forEach((x) => out.push(`组件 ${k.id} 引用了未定义的${x}`)));
+  Object.keys({ ...OBSERVED, ...OBSERVED_PARTIAL }).forEach((id) => { if (!callById(id)) out.push(`实测结果里的接口 ${id} 不存在`); });
   NICO_CALLS.forEach((c) => { if (!callComponents(c).length) out.push(`接口 ${c.id} 没有对应的组件`); });
   NICO_CALLS.forEach((c) => { if (!callUsers(c.id).length) out.push(`接口 ${c.id} 没有页面使用`); });
   return out;
