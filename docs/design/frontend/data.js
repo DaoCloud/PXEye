@@ -112,6 +112,8 @@ function freshState() {
   mt.alerts = [{ id: "BmcSensor", target: "fan3", msg: "风扇 3 转速低于阈值", since: "2026-11-22 21:40", cls: [] }, { id: "Maintenance", target: "", msg: "维护标记：CHG-1042 更换风扇", since: "2026-11-22 21:55", cls: ["PreventAllocations"] }];
   /* 一台计算托盘换过盘：两块 NVMe 一样大，按方案的规则解析不出唯一的系统盘。用来演示安装条件检查不通过、逐台指定系统盘后通过。 */
   const odd = a02.trays.find((t) => t.slot === 29); odd.disks = ["nvme0n1 · 1.92 TB", "nvme1n1 · 1.92 TB"]; odd.hardware = { ...odd.hardware, 系统盘: "2 × 1.92 TB NVMe（换过盘）" }; delete odd.hardware.数据盘;
+  /* 另一台的 BMC 第一次检查时超时：用来演示安装条件检查发现阻断项、“更新状态”后通过。 */
+  a02.trays.find((t) => t.slot === 30).checkFlaky = 1;
   const d01 = makeDomain(a01, true), d02 = makeDomain(a02, true);
   d01.partitions = [{ id: "lp-train-a", name: "train-a", state: "Ready", physical: "nmx-part-0001", created: "2026-11-04 16:18" }];
   return {
