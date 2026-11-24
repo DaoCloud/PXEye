@@ -6,7 +6,7 @@
 
 每个页面调用 NICo 的哪些接口、对应什么命令行、用到哪些字段，以及要让页面有数据必须先准备好哪些资源。接口、参数和字段取自 NICo 源码 `dsx-ai-factory/infra-controller` 的提交 `856eb1665`（v2.5.0 之后）。接口、参数和字段取自这个提交的源码。换版本时逐项重新核对。
 
-证据等级：**定义** = 只读过源码里的定义；**调用** = 在没有整机柜硬件的 NICo 环境里实际调用过，“实测”一列写着看到了什么；**模拟** = 在模拟整机柜的环境里调用过；**现场** = 在真实整机柜环境核对过。实际调用所用的环境运行的是提交 28e4e9824，比上面的提交早 2 个，在同一条线上。 目前 26 个接口实际调用过。共 38 个资源、79 个接口（其中写操作 32 个，现有产品已调用 43 个）、25 个缺口。
+证据等级：**定义** = 只读过源码里的定义；**调用** = 在没有整机柜硬件的 NICo 环境里实际调用过，“实测”一列写着看到了什么；**模拟** = 在模拟整机柜的环境里调用过；**现场** = 在真实整机柜环境核对过。实际调用所用的环境运行的是提交 28e4e9824，比上面的提交早 2 个，在同一条线上。 目前 26 个接口实际调用过。共 38 个资源、79 个接口（其中写操作 32 个，现有产品已调用 43 个）、26 个缺口。
 
 ## 组件：功能需要部署什么
 
@@ -15,7 +15,7 @@
 | 组件 | 工作负载 | 级别 | 提供什么 | 部署方式 | 缺失时 | 接口数 | 依赖它的页面 | 出处 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | NICo Core | nico-api（含站点发现和各状态机）、数据库、密钥库 | 必需 | 全部 Core gRPC：子网、设备声明、发现、设备读取与单设备操作、实例、健康报告 | 随产品的 Chart 安装 | 平台不可用 | 78 | 全部调用 NICo 的页面 | `helm/charts/nico-api` |
-| DHCP 服务 | nico-dhcp | 必需 | 给各管理网段的设备分配地址，并在 Core 里留下设备接口；设备发现从这里开始 | 随 Core 的 Chart 安装 | 新设备拿不到地址，不会被发现；已发现的设备不受影响 | 3 | 接入 › 网络规划 › DHCP 服务；接入 › 网络规划 › 地址分配；接入 › 设备发现；运维 › 设备管理 › 服务器；交付 › 安装任务 | `helm/charts/nico-dhcp` |
+| DHCP 服务 | nico-dhcp | 必需 | 给各管理网段的设备分配地址，并在 Core 里留下设备接口；设备发现从这里开始 | 随 Core 的 Chart 安装 | 新设备拿不到地址，不会被发现；已发现的设备不受影响 | 3 | 接入 › 网络规划 › DHCP 服务；接入 › 网络规划 › 地址分配；接入 › 设备发现；运维 › 设备管理 › 服务器；运维 › 设备管理 › 交换机；运维 › 设备管理 › 供电框；交付 › 安装任务 | `helm/charts/nico-dhcp` |
 | 引导服务 | nico-pxe、nico-dns、nico-ntp | 必需 | iPXE 引导、装机材料、名称解析和时间 | 随 Core 的 Chart 安装 | 不能装机；新主机走不完接管流程 | 2 | 交付 › 安装任务；配置 › 安装方案 | `helm/charts/nico-pxe` |
 | 硬件健康服务 | nico-hardware-health | 必需 | 采集 BMC 传感器和托盘泄漏检测，写成设备的健康报告 | 随 Core 的 Chart 安装 | 健康告警页只剩站点发现和手工写入的报告；托盘泄漏不会阻止分配 | 2 | 运维 › NVLink 域管理；运维 › 机柜管理 › 机柜详情；运维 › 健康告警；交付 › 安装任务 | `helm/charts/nico-hardware-health` |
 | RMS | Rack Management Service | 整机柜 | 整机柜里计算托盘、交换机、供电框的电源和固件；交换机的证书与口令配置、复位、退役；设备的槽位信息 | 官方 Chart rack-manager；镜像从公开源码自己构建。已在没有整机柜硬件的环境里部署，Core 探测结果为已连通 | 设备和机柜的电源、固件操作不可用；交换机过不了配置阶段，机柜走不到就绪 | 13 | 配置 › 站点设置 › 站点概况；配置 › 站点设置 › 控制面；运维 › 机柜管理 › 机柜详情；运维 › 设备管理 › 服务器；运维 › 设备管理 › 交换机；运维 › 设备管理 › 供电框；配置 › 固件基线 | `docs/configuration/rms.md` |
@@ -33,9 +33,9 @@
 | 运维 › 机柜管理 › 机柜详情 | NICo Core、硬件健康服务、RMS、REST 接口、Flow、设施事件接入 | 13 | 11 | NICo Core → 正向 DNS 域 → VLAN 与 VNI 资源池 → 机柜规格配置 → 机柜固件清单 → 站点默认凭据 → DHCP 与引导服务 → 集群级证书签发者 → 编排用数据库 → Temporal → RMS → 组件管理器 → REST 身份认证 → REST 站点 → Flow → 操作规则 → 子网 → 机柜组声明 → 机柜声明 → 设备声明 → 现场 DHCP 中继 → 设备接口与地址 → 探测结果 → 计算托盘对象 → 交换机对象 → 供电框对象 → 机柜对象 → Flow 的机柜与托盘清单 → 任务 → 健康报告 |
 | 运维 › NVLink 域管理 | NICo Core、硬件健康服务、REST 接口、Flow、NMX-C | 6 | 0 | NICo Core → 正向 DNS 域 → VLAN 与 VNI 资源池 → 机柜规格配置 → 站点默认凭据 → DHCP 与引导服务 → 集群级证书签发者 → 编排用数据库 → Temporal → RMS → 组件管理器 → REST 身份认证 → REST 站点 → Flow → NMX-C 接入 → 子网 → 机柜组声明 → 机柜声明 → 设备声明 → 现场 DHCP 中继 → 设备接口与地址 → 探测结果 → 计算托盘对象 → 交换机对象 → 机柜对象 → Flow 的机柜与托盘清单 → NVLink 域 → 健康报告 |
 | 运维 › 设备管理 | NICo Core | 5 | 0 | NICo Core → 正向 DNS 域 → VLAN 与 VNI 资源池 → 机柜规格配置 → 站点默认凭据 → DHCP 与引导服务 → 集群级证书签发者 → 编排用数据库 → RMS → 组件管理器 → 子网 → 设备声明 → 现场 DHCP 中继 → 设备接口与地址 → 探测结果 → 计算托盘对象 → 交换机对象 → 供电框对象 |
-| 运维 › 设备管理 › 服务器 | NICo Core、DHCP 服务、RMS、REST 接口、Flow | 11 | 9 | NICo Core → 正向 DNS 域 → VLAN 与 VNI 资源池 → 机柜规格配置 → 机柜固件清单 → 站点默认凭据 → DHCP 与引导服务 → 集群级证书签发者 → 编排用数据库 → Temporal → RMS → 组件管理器 → REST 身份认证 → REST 站点 → Flow → 子网 → 机柜组声明 → 机柜声明 → 设备声明 → 现场 DHCP 中继 → 设备接口与地址 → 探测结果 → 计算托盘对象 → 交换机对象 → 机柜对象 → Flow 的机柜与托盘清单 → 任务 → 系统定义 → 默认租户与 VPC → 实例 |
-| 运维 › 设备管理 › 交换机 | NICo Core、RMS、REST 接口、Flow | 5 | 5 | NICo Core → 正向 DNS 域 → VLAN 与 VNI 资源池 → 机柜规格配置 → 机柜固件清单 → 站点默认凭据 → DHCP 与引导服务 → 集群级证书签发者 → 编排用数据库 → Temporal → RMS → 组件管理器 → REST 身份认证 → REST 站点 → Flow → 子网 → 机柜组声明 → 机柜声明 → 设备声明 → 现场 DHCP 中继 → 设备接口与地址 → 探测结果 → 计算托盘对象 → 交换机对象 → 机柜对象 → Flow 的机柜与托盘清单 → 任务 |
-| 运维 › 设备管理 › 供电框 | NICo Core、RMS、REST 接口、Flow | 7 | 3 | NICo Core → 正向 DNS 域 → VLAN 与 VNI 资源池 → 机柜规格配置 → 站点默认凭据 → DHCP 与引导服务 → 集群级证书签发者 → 编排用数据库 → Temporal → RMS → 组件管理器 → REST 身份认证 → REST 站点 → Flow → 子网 → 机柜组声明 → 机柜声明 → 设备声明 → 现场 DHCP 中继 → 设备接口与地址 → 探测结果 → 计算托盘对象 → 交换机对象 → 供电框对象 → 机柜对象 → Flow 的机柜与托盘清单 → 任务 |
+| 运维 › 设备管理 › 服务器 | NICo Core、DHCP 服务、RMS、REST 接口、Flow | 12 | 9 | NICo Core → 正向 DNS 域 → VLAN 与 VNI 资源池 → 机柜规格配置 → 机柜固件清单 → 站点默认凭据 → DHCP 与引导服务 → 集群级证书签发者 → 编排用数据库 → Temporal → RMS → 组件管理器 → REST 身份认证 → REST 站点 → Flow → 子网 → 机柜组声明 → 机柜声明 → 设备声明 → 现场 DHCP 中继 → 设备接口与地址 → 探测结果 → 计算托盘对象 → 交换机对象 → 机柜对象 → Flow 的机柜与托盘清单 → 任务 → 系统定义 → 默认租户与 VPC → 实例 |
+| 运维 › 设备管理 › 交换机 | NICo Core、DHCP 服务、RMS、REST 接口、Flow | 6 | 5 | NICo Core → 正向 DNS 域 → VLAN 与 VNI 资源池 → 机柜规格配置 → 机柜固件清单 → 站点默认凭据 → DHCP 与引导服务 → 集群级证书签发者 → 编排用数据库 → Temporal → RMS → 组件管理器 → REST 身份认证 → REST 站点 → Flow → 子网 → 机柜组声明 → 机柜声明 → 设备声明 → 现场 DHCP 中继 → 设备接口与地址 → 探测结果 → 计算托盘对象 → 交换机对象 → 机柜对象 → Flow 的机柜与托盘清单 → 任务 |
+| 运维 › 设备管理 › 供电框 | NICo Core、DHCP 服务、RMS、REST 接口、Flow | 8 | 3 | NICo Core → 正向 DNS 域 → VLAN 与 VNI 资源池 → 机柜规格配置 → 站点默认凭据 → DHCP 与引导服务 → 集群级证书签发者 → 编排用数据库 → Temporal → RMS → 组件管理器 → REST 身份认证 → REST 站点 → Flow → 子网 → 机柜组声明 → 机柜声明 → 设备声明 → 现场 DHCP 中继 → 设备接口与地址 → 探测结果 → 计算托盘对象 → 交换机对象 → 供电框对象 → 机柜对象 → Flow 的机柜与托盘清单 → 任务 |
 | 运维 › 设备管理 › DPU | NICo Core | 3 | 0 | NICo Core → 正向 DNS 域 → VLAN 与 VNI 资源池 → 站点默认凭据 → DHCP 与引导服务 → 子网 → 设备声明 → 现场 DHCP 中继 → 设备接口与地址 → 探测结果 → 计算托盘对象 |
 | 运维 › 健康告警 | NICo Core、硬件健康服务、设施事件接入 | 6 | 0 | NICo Core → 正向 DNS 域 → VLAN 与 VNI 资源池 → 机柜规格配置 → 站点默认凭据 → DHCP 与引导服务 → 集群级证书签发者 → 编排用数据库 → RMS → 组件管理器 → 子网 → 机柜组声明 → 机柜声明 → 设备声明 → 现场 DHCP 中继 → 设备接口与地址 → 探测结果 → 计算托盘对象 → 交换机对象 → 供电框对象 → 机柜对象 → 健康报告 |
 | 运维 › 运维任务 | NICo Core、REST 接口、Flow | 1 | 1 | NICo Core → 正向 DNS 域 → VLAN 与 VNI 资源池 → 机柜规格配置 → 站点默认凭据 → DHCP 与引导服务 → 集群级证书签发者 → 编排用数据库 → Temporal → RMS → 组件管理器 → REST 身份认证 → REST 站点 → Flow → 子网 → 机柜组声明 → 机柜声明 → 设备声明 → 现场 DHCP 中继 → 设备接口与地址 → 探测结果 → 交换机对象 → 机柜对象 → Flow 的机柜与托盘清单 → 任务 |
@@ -125,7 +125,7 @@
 | `FindNetworkSegmentDhcpRanges` | Core gRPC · 读 | — | 子网 ID 列表 | segment_id、prefix、range.{start,end}、revision | 子网 | Core | 接入 › 网络规划 › 子网；接入 › 网络规划 › DHCP 服务 | 定义；现有产品已调用 | — | 命令行没有对应命令 | `forge.proto:148` |
 | `SetNetworkSegmentDhcpRange` | Core gRPC · 写 | — | segment_id 必填；range 省略表示清除；if_revision 填上次读到的修订号，0 表示还没有地址池 | range.{start,end}、revision | 子网 | Core | 接入 › 网络规划 › 子网 | 定义；现有产品已调用 | — | 只对有且只有一个 IPv4 前缀的 ADMIN、UNDERLAY、HOST_INBAND 子网有效；已有动态地址落在新范围之外时拒绝。命令行没有对应命令 | `forge.proto:149` |
 | `FindInterfaces` | Core gRPC · 读 | `nico-admin-cli machine-interfaces show` | id 或 ip；都不填返回全部 | id、mac_address、address[]、segment_id、hostname、vendor、last_dhcp、machine_id、switch_id、power_shelf_id、association_type、interface_type、primary_interface | 设备接口与地址 | Core | 接入 › 网络规划 › DHCP 服务；接入 › 网络规划 › 地址分配；接入 › 设备发现；运维 › 设备管理 › 服务器；交付 › 安装任务 | 调用；现有产品已调用 | 返回 8 个接口。字段与这里一致，另外还有 is_bmc、attached_dpu_machine_id、domain_id、created | 没有租约到期时间。association_type 为 NONE 的就是拿到地址但没有归属的设备 | `forge.proto:318` |
-| `FindInterfaceAddresses / FindIpAddress` | Core gRPC · 读 | `nico-admin-cli machine-interfaces show-addresses；nico-admin-cli ip find <IP>` | — | addresses[].{address,allocation_type}、matches[].{ip_type,owner_id,message} | 设备接口与地址 | Core | 接入 › 网络规划 › 地址分配；运维 › 设备管理 › 服务器；交付 › 安装任务 | 定义；现有产品已调用 | — | 按地址反查归属：地址可能属于设备接口、BMC、实例、资源池或子网本身 | `forge.proto:315` |
+| `FindInterfaceAddresses / FindIpAddress` | Core gRPC · 读 | `nico-admin-cli machine-interfaces show-addresses；nico-admin-cli ip find <IP>` | — | addresses[].{address,allocation_type}、matches[].{ip_type,owner_id,message} | 设备接口与地址 | Core | 接入 › 网络规划 › 地址分配；运维 › 设备管理 › 服务器；运维 › 设备管理 › 交换机；运维 › 设备管理 › 供电框；交付 › 安装任务 | 定义；现有产品已调用 | — | 按地址反查归属：地址可能属于设备接口、BMC、实例、资源池或子网本身 | `forge.proto:315` |
 | `carbide_dhcp_requests_total、carbide_dhcp_dropped_requests_total、carbide_dhcp_replies_sent_total、carbide_available_ips_count` | 指标 · 读 | — | — | message_type、reason、name、type、prefix | DHCP 与引导服务 | 监控系统 | 接入 › 网络规划 › DHCP 服务 | 定义 | — | DHCP 的请求计数只按报文类型和丢弃原因分，不按子网或中继分；空闲地址数按子网前缀分 | `crates/dhcp-server/src/metrics.rs:495` |
 
 ## 接口：设备清单
@@ -256,6 +256,7 @@
 | 安装条件检查由谁做 | 安装任务 | NICo 建实例时只检查主机状态。现有产品在提交前自己做一组检查（execution.py:387、onboarding.py:960、onboarding.py:1120）：设备规划与地址占用、引导方式、既有实例与目标盘基线、BMC 认证与序列号、管理地址与安装网络配置、安装材料的 HTTP 可达与长度。还没有接入的设备把“就绪”和“目标盘”推迟到执行前。页面把这些归成三组显示：设备身份、安装配置、操作系统材料 | 整机柜方向照搬这组检查和页面。其中 BMC 认证是平台直接读设备的 BMC，不经 NICo；材料检查是平台对自己的材料服务的请求；主机状态、实例和地址占用读 NICo。选盘规则解析不出唯一的系统盘时，检查不通过，在向导里逐台指定 | `crates/api-model/src/machine/mod.rs:543` |
 | 主机名在哪里确定 | 安装任务、实例管理 | 实例配置的租户部分有一个主机名字段；实例名称合法时，NICo 把它作为 cloud-init 的 local-hostname 传给系统。机器在 NICo 里自己的 DNS 名由站点的命名策略决定（默认按地址生成），那不是系统里的主机名。现有产品在建实例时逐台传主机名（executor.py:2022） | 主机名在新建安装任务时逐台确定，同时用作实例名称。它是设备系统配置里的一项：没有填时平台按管理地址生成（node-加上把点换成连字符的地址），可以逐台改；平台在提交前检查写法和重名。站点的命名策略不动 | `crates/api-core/src/handlers/client_resolution.rs:512` |
 | 主机的网络配置在哪里确定 | 安装任务 | NICo 给主机管理口分配地址，分配方式有动态、固定、保留三种，接口已有分配后再改声明不会改地址。现有产品在设备的系统配置里逐台保存：启动网卡 MAC、管理 IP、管理子网，以及其他网口各自的 IP、子网和网关；装机时把这些写进系统的网络配置，不含 Bond、VLAN 和 IPv6（现有产品的设备管理使用指南第 6 节） | 只取管理口：管理地址在设备规划时和启动网口的 MAC 对应（到货清单可带 management_ip 一列），在系统配置和安装向导里只读显示。其他网口平台不管理，也不显示，装好后由使用者自己配置。规划的管理地址如何落到 NICo 的地址分配上（改声明还是固定租约），沿用现有产品的做法，没有在整机柜环境里核对 | `docs/provisioning/expected-machine-interfaces.md` |
+| BMC 按规划改址 | 设备管理 | 设备接电时 BMC 从地址池动态拿地址；接口已有分配后，再改设备声明不会改变它的地址。现有产品的做法：在设备上保存规划地址，纳管之后由人发起“更新 BMC 地址”，平台直接经 Redfish 关闭 BMC 的 DHCP、写入固定地址，用新地址核对身份，再把新地址同步为 NICo 里这个接口的静态分配；不创建也不修改交换机和供电框的原生声明（现有产品的设备管理使用指南“保存配置与更新地址”一节） | 整机柜方向照搬页面和四步流程，三类设备都适用；规划地址可以随到货清单的 bmc_ip 列带入。同步到 NICo 用的具体接口沿用现有产品，没有在整机柜环境里核对；RMS 管理的设备改址后 RMS 一侧是否需要跟着更新，也没有核对 | `docs/provisioning/expected-machine-interfaces.md` |
 | 不属于机柜的服务器 | 设备管理、设备清单、设备发现、安装任务 | 设备声明里的机柜编号是可选的，机器、交换机、供电框通过各自的机柜编号指向机柜，机柜对象里不存成员。Flow 的上线任务按机柜提交，没有机柜的服务器走不了这条路。现有产品写声明时带暂停标记（discovery.py:269），首次安装时才放行（onboarding.py:640） | 设备是基础对象，机柜是叠在上面的一层。不属于机柜的服务器进同一份清单，机柜和槽位留空；在设备发现里逐台确认纳管；没有上线这一步，安装任务的第一步放行，由 NICo 上电接管。机柜里的设备由上线任务放行。这是从两边的定义推出来的设计，没有在同一个环境里把两种设备一起跑过 | `crates/rpc/proto/forge.proto:8191` |
 | 供电框的槽位和序列号 | 设备管理、机柜详情 | Core 的供电框对象没有位置字段，也没有序列号字段；交换机的序列号取自探测报告 | 供电框的槽位读 REST 的托盘，序列号读设备声明或探测报告 | `crates/rpc/proto/forge.proto:3087` |
 
@@ -324,6 +325,7 @@
 
 | 用途 | 接口 | 类型 | 命令行 | 用到的字段 |
 | --- | --- | --- | --- | --- |
+| BMC 地址：当前的分配方式；规划地址有没有被占用；更新后同步为静态分配（见缺口） | `FindInterfaceAddresses / FindIpAddress` | Core gRPC · 读 | `nico-admin-cli machine-interfaces show-addresses；nico-admin-cli ip find <IP>` | addresses[].{address,allocation_type}、matches[].{ip_type,owner_id,message} |
 | 列表、状态、健康和地址；机柜编号为空的是不属于机柜的服务器 | `FindMachineIds → FindMachinesByIds` | Core gRPC · 读 | `nico-admin-cli machine show [--hosts]` | id、rack_id、placement_in_rack.{slot_number,tray_index}、state、state_reason.{outcome,outcome_msg}、state_sla.time_in_state_above_sla、status.health.alerts[]、bmc.{ip,mac}、status.bmc_status.firmware_version、status.discovery_info.dmi_data.chassis_serial、status.associated_dpu_machine_ids、config.maintenance_reference、status.quarantine、status.nvlink_info.domain_uuid、status.lldp_neighbors[]、inventory.components[] |
 | 电源状态 | `GetComponentPowerDetails / GetPowerOptions` | Core gRPC · 读 | `nico-admin-cli managed-host power-options show <MACHINE>` | entries[].actual.{state,source,observed_at}、entries[].desired.state、entries[].actions[].{status,operation,requested_at,initiator} |
 | 固件版本 | `GetComponentInventory` | Core gRPC · 读 | — | entries[].result.{component_id,status,error}、entries[].report.firmware_versions、entries[].report.systems[]、entries[].report.chassis[] |
@@ -349,6 +351,7 @@
 
 | 用途 | 接口 | 类型 | 命令行 | 用到的字段 |
 | --- | --- | --- | --- | --- |
+| BMC 地址：当前的分配方式；规划地址有没有被占用；更新后同步为静态分配（见缺口） | `FindInterfaceAddresses / FindIpAddress` | Core gRPC · 读 | `nico-admin-cli machine-interfaces show-addresses；nico-admin-cli ip find <IP>` | addresses[].{address,allocation_type}、matches[].{ip_type,owner_id,message} |
 | 列表、状态、健康、地址和 Fabric Manager | `FindSwitchIds → FindSwitchesByIds` | Core gRPC · 读 | `nico-admin-cli switch list；nico-admin-cli switch show <SWITCH_ID>` | id、rack_id、placement_in_rack、nvlink_domain_uuid、bmc_info.{ip,mac,firmware_version}、status.serial_number、status.power_state、status.controller_state、status.state_reason、status.health、status.fabric_manager_status_details、status.nvos_ports[].{mac,addresses,is_primary} |
 | 电源状态 | `GetComponentPowerDetails / GetPowerOptions` | Core gRPC · 读 | `nico-admin-cli managed-host power-options show <MACHINE>` | entries[].actual.{state,source,observed_at}、entries[].desired.state、entries[].actions[].{status,operation,requested_at,initiator} |
 | 固件与 NVOS 版本 | `GetComponentInventory` | Core gRPC · 读 | — | entries[].result.{component_id,status,error}、entries[].report.firmware_versions、entries[].report.systems[]、entries[].report.chassis[] |
@@ -364,6 +367,7 @@
 
 | 用途 | 接口 | 类型 | 命令行 | 用到的字段 |
 | --- | --- | --- | --- | --- |
+| BMC 地址：当前的分配方式；规划地址有没有被占用；更新后同步为静态分配（见缺口） | `FindInterfaceAddresses / FindIpAddress` | Core gRPC · 读 | `nico-admin-cli machine-interfaces show-addresses；nico-admin-cli ip find <IP>` | addresses[].{address,allocation_type}、matches[].{ip_type,owner_id,message} |
 | 列表、状态、健康、地址和供电规格 | `FindPowerShelfIds → FindPowerShelvesByIds` | Core gRPC · 读 | `nico-admin-cli power-shelf list；nico-admin-cli power-shelf show <ID>` | id、rack_id、bmc_info.{ip,mac,firmware_version}、config.{capacity,voltage}、status.power_state、status.controller_state、status.state_reason、status.health |
 | 槽位 | `GET /tray、GET /tray/{id}` | REST · 读 | `nicocli tray list --site-id <SITE> --rack-id <RACK>` | id、type（Compute、NVSwitch、PowerShelf）、position.{slotId,trayIdx,hostId}、firmwareVersion、powerState、operationStatus、leakStatus、bmcs、rackId、nvLinkDomainId、taskStats、health |
 | 序列号 | `GetAllExpectedPowerShelves / GetAllExpectedPowerShelvesLinked` | Core gRPC · 读 | `nico-admin-cli expected-power-shelf show` | shelf_serial_number、bmc_mac_address、rack_id、linked: power_shelf_id、explored_endpoint_address |

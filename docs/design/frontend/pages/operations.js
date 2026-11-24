@@ -34,7 +34,7 @@ const RULE_NOTE = "顺序、等待时间和重试由站点的操作规则决定�
 registerAction("rack-admit", ({ id }) => {
   const r = DB.rack(id), got = r.trays.filter((t) => t.matched), sw = got.filter((t) => t.type === "switch").length, diff = DB.absent(r).length + DB.misplaced(r).length;
   confirmOperation({ title: "确认纳管", target: `${id} 的 ${got.length} 台已匹配设备`, action: "逐台登记到 NICo，并写入这个机柜的机柜声明", stages: ["写入机柜声明", "逐台写入设备声明", "NICo 登录 BMC 并更换口令"], why: "到货核对完成", submit: "确认纳管", sub: "这是对本机柜设备的批量纳管，不是机柜自身的操作。纳管只是登记：不上电、不动磁盘、不装系统。",
-    extra: defs([["已匹配", `${got.length} / ${r.trays.length} 台，其中交换机 ${sw} / ${PROFILE_NEED.switch}`], ["清单核对的差异", diff ? `${diff} 项，纳管后仍可处理` : "没有"], ["待处理的端点", S.endpoints.length ? `${S.endpoints.length} 个，之后匹配上的会自动纳管` : "没有"], ["地址", "不变。BMC 的地址在机柜接电时已经分配"]]) +
+    extra: defs([["已匹配", `${got.length} / ${r.trays.length} 台，其中交换机 ${sw} / ${PROFILE_NEED.switch}`], ["清单核对的差异", diff ? `${diff} 项，纳管后仍可处理` : "没有"], ["待处理的端点", S.endpoints.length ? `${S.endpoints.length} 个，之后匹配上的会自动纳管` : "没有"], ["地址", "不变。纳管之后，可以在设备管理里按规划更新 BMC 地址"]]) +
       doList(ADMIT_DO, ADMIT_NOT) + note("<b>纳管后设备的 BMC 口令由 NICo 接手</b>，清单里的出厂口令不再有效，平台也不再保存。要把设备交还，逐台退役。", "warning"),
     run: (why) => { admitRack(id); addAudit(id, "确认纳管", why, "—", `${got.length} 台已纳管，设备未上电`); S.guide = Math.max(S.guide, 5); toast(`${id}：${got.length} 台已纳管。下一步：开始上线`); } });
 });
@@ -202,4 +202,4 @@ registerAction("sim-leak", () => {
 });
 registerAction("sim-rms", () => { S.rms = !S.rms; toast(S.rms ? "RMS 已恢复" : "RMS 不可用：电源与固件操作被禁用"); render(); });
 registerAction("sim-flow", () => { S.flow = !S.flow; toast(S.flow ? "Flow 已恢复" : "Flow 不可用：机柜级任务被禁用"); render(); });
-registerAction("sim-reset", () => { DB.groups().forEach((r) => { if (r.task) clearInterval(r.task.timer); if (r.bring && r.bring.timer) clearInterval(r.bring.timer); }); S.installs.forEach((b) => b.timer && clearInterval(b.timer)); const keep = Object.fromEntries(Object.entries(S.view).filter(([k]) => k.startsWith("nav:") || ["guide", "guideWide", "annotate", "guideTab", "lastPage"].includes(k))); S = freshState(); Object.assign(S.view, keep); go("racks"); toast("示例数据已重置"); });
+registerAction("sim-reset", () => { DB.groups().forEach((r) => { if (r.task) clearInterval(r.task.timer); if (r.bring && r.bring.timer) clearInterval(r.bring.timer); }); S.installs.forEach((b) => b.timer && clearInterval(b.timer)); S.bmcJobs.forEach((j) => j.timer && clearInterval(j.timer)); const keep = Object.fromEntries(Object.entries(S.view).filter(([k]) => k.startsWith("nav:") || ["guide", "guideWide", "annotate", "guideTab", "lastPage"].includes(k))); S = freshState(); Object.assign(S.view, keep); go("racks"); toast("示例数据已重置"); });

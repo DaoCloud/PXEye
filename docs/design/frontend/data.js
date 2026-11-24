@@ -48,7 +48,7 @@ function makeTray(rackId, n, slot, discovered, baseline) {
   const type = slotType(slot), key = { compute: "C", switch: "S", power_shelf: "P" }[type];
   const serial = `DEMO-${key}-${rackId.slice(-3)}-${pad2(slot)}`;
   const tray = {
-    id: `${rackId}/${pad2(slot)}`, rack: rackId, n, slot, type, serial, matched: discovered, declared: discovered, seenSlot: discovered && type !== "power_shelf" ? slot : 0,
+    id: `${rackId}/${pad2(slot)}`, rack: rackId, n, slot, type, serial, bmcPlan: "", matched: discovered, declared: discovered, seenSlot: discovered && type !== "power_shelf" ? slot : 0,
     model: discovered ? { compute: "GB200 Compute Tray", switch: "NVLink Switch Tray", power_shelf: "Power Shelf" }[type] : "",
     bmcMac: "", bmcIp: "", addrMode: type === "compute" ? "保留" : "动态分配",
     state: discovered ? "Ready" : "", reason: "", health: discovered ? "ok" : "none", alerts: [], power: discovered ? "On" : "",
@@ -79,7 +79,7 @@ function assignAddresses(t) {
 function makeServer(i, stage) {
   const ready = stage === "ready";
   return { id: "SRV/" + pad2(i), rack: "", n: 0, slot: 0, type: "compute", arch: "x86_64", serial: "DEMO-H-00" + pad2(i), matched: true, declared: stage !== "matched", seenSlot: 0, model: "GPU Server 8G",
-    bmcMac: `02:00:0f:00:00:${hex2(i)}`, bmcIp: `192.0.2.${241 + i}`, addrMode: "保留", state: ready ? "Ready" : "", reason: "", health: ready ? "ok" : "none", alerts: [], power: ready ? "On" : "",
+    bmcMac: `02:00:0f:00:00:${hex2(i)}`, bmcIp: `192.0.2.${241 + i}`, bmcPlan: "", addrMode: "保留", state: ready ? "Ready" : "", reason: "", health: ready ? "ok" : "none", alerts: [], power: ready ? "On" : "",
     baseline: "", maintenance: "", quarantine: "", instance: "", lastSeen: "2026-11-24 08:00", history: ready ? [["2026-11-18 10:02", "HostInit/Discovered"], ["2026-11-18 10:40", "Ready"]] : [],
     hostMac: `02:10:0f:00:00:${hex2(i)}`, hostIp: ready ? `198.51.100.${200 + i}` : "", cfg: { host: "", os: "", disk: "", mip: `198.51.100.${200 + i}` }, nics: [], sku: "gpu-server-8g", disks: ["nvme0n1 · 480 GB", "nvme1n1 · 3.84 TB", "nvme2n1 · 3.84 TB"],
     hardware: { CPU: "2 × 64C x86_64", GPU: "8 × GPU", 内存: "1 TiB", 系统盘: "1 × 480 GB NVMe", 数据盘: "2 × 3.84 TB NVMe", 网卡: "2 × 25GbE" }, lldp: [{ port: "eno1", sw: "mgmt-leaf-09", remote: "swp" + i }] };
@@ -116,10 +116,13 @@ function freshState() {
   const odd = a02.trays.find((t) => t.slot === 29); odd.disks = ["nvme0n1 · 1.92 TB", "nvme1n1 · 1.92 TB"]; odd.hardware = { ...odd.hardware, 系统盘: "2 × 1.92 TB NVMe（换过盘）" }; delete odd.hardware.数据盘;
   /* 另一台的 BMC 第一次检查时超时：用来演示安装条件检查发现阻断项、重新检查后通过。 */
   a02.trays.find((t) => t.slot === 30).checkFlaky = 1;
+  /* BMC 地址：RACK-A01 已经按规划改成固定地址；RACK-A02 有三台填了规划、还没有更新；其余还是 DHCP 分配的地址。 */
+  a01.trays.forEach((t) => { t.bmcPlan = t.bmcIp; t.addrMode = "固定地址"; });
+  [24, 25, 26].forEach((slot, i) => (a02.trays.find((t) => t.slot === slot).bmcPlan = `192.0.2.${162 + i}`));
   const d01 = makeDomain(a01, true), d02 = makeDomain(a02, true);
   d01.partitions = [{ id: "lp-train-a", name: "train-a", state: "Ready", physical: "nmx-part-0001", created: "2026-11-04 16:18" }];
   return {
-    role: "操作", rms: true, flow: true, leak: false, taskSeq: 41, view: {}, guide: 1, currentSystems: {},
+    role: "操作", rms: true, flow: true, leak: false, taskSeq: 41, view: {}, guide: 1, currentSystems: {}, bmcJobs: [],
     racks: [a01, a02], pool, instances, installs: [batchSrv, batchA01], domains: [d01, d02],
     inventory: [{ v: 3, at: "2026-11-03 09:30", by: "ops-01", file: "arrival-2026-11-A.csv", note: "新增 RACK-A02（35 台）", why: "到货批次 2026-11-A" }, { v: 2, at: "2026-11-02 09:10", by: "ops-01", file: "arrival-2026-11-A.csv", note: "新增 RACK-A01（35 台）", why: "到货批次 2026-11-A" }],
     audit: [

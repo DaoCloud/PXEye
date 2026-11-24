@@ -20,7 +20,7 @@ function rackCheck(r) {
    开始上线：提交上线任务，上电并让 NICo 接管。设备会重启，可能清理磁盘。仍然不装系统，装系统在“安装任务”里。 */
 const doList = (yes, no) => `<div class="live-grid" style="margin-top:4px"><div><p class="live-small" style="margin:0 0 4px"><b>会做</b></p><ul class="live-small" style="margin:0;padding-left:18px">${yes.map((x) => `<li>${x}</li>`).join("")}</ul></div><div><p class="live-small" style="margin:0 0 4px"><b>不会做</b></p><ul class="live-small" style="margin:0;padding-left:18px">${no.map((x) => `<li>${x}</li>`).join("")}</ul></div></div>`;
 const ADMIT_DO = ["写入这个机柜的机柜声明：机柜编号和机柜规格", "逐台把已匹配设备的声明写进 NICo：MAC、凭据、机柜和槽位", "NICo 登录每台设备的 BMC，把口令换成站点凭据", "计算托盘的声明带暂停标记：NICo 不给它上电，也不接管"];
-const ADMIT_NOT = ["不给任何设备上电或重启", "不改 BIOS，不动磁盘，不刷固件", "不改地址：BMC 的地址在接电时已经分配", "不装操作系统"];
+const ADMIT_NOT = ["不给任何设备上电或重启", "不改 BIOS，不动磁盘，不刷固件", "不改地址：BMC 仍用接电时拿到的地址；按规划改址在设备管理里另外做", "不装操作系统"];
 const UP_DO = ["按顺序上电：供电框 → 计算托盘 → 交换机", "放行计算托盘：NICo 设置 BIOS 和启动顺序，从网络启动发现程序读硬件，核对硬件，锁定 BIOS", "计算托盘的固件与期望版本不同时更新，然后重启", "交换机就绪后 NICo 自动做机柜维护：固件、NVOS、上电顺序、NMX-C 集群、校验"];
 const UP_NOT = ["不装操作系统：装系统在“安装任务”里逐台确认", "不建实例"];
 function rackAdmit(r) {

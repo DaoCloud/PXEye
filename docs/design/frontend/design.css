@@ -147,7 +147,7 @@ body.annotate .live-table-wrap { padding: 12px 0 0 12px; }
 .wiz-config tr.row-link:hover td { background: #f6faf9; }
 .wiz-config tr.wiz-attn td { background: var(--red-soft); }
 .wiz-config tr.wiz-attn td:first-child { box-shadow: inset 3px 0 0 var(--red); }
-.wiz-config .live-table td { vertical-align: middle; padding-top: 10px; padding-bottom: 10px; }
 .wiz-config .live-table .cell-sub { white-space: nowrap; }
 .wiz-config .wiz-err { color: var(--red); }
 .wiz-config .wiz-err:empty { display: none; }
+.wiz-config .bmc-plan { width: 190px; height: 32px; }
