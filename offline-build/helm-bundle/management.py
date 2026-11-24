@@ -5,12 +5,15 @@ from pathlib import Path
 import tarfile
 import yaml
 
+# Chart name -> (key in chart-sources.json, path below that source archive's top directory).
 UPSTREAM = {
-    "nico-rest": "helm/rest/nico-rest",
-    "nico-rest-site-agent": "helm/rest/nico-rest-site-agent",
-    "temporal": "rest-api/temporal-helm/temporal",
+    "nico-rest": ("core", "helm/rest/nico-rest"),
+    "nico-rest-site-agent": ("core", "helm/rest/nico-rest-site-agent"),
+    "temporal": ("core", "rest-api/temporal-helm/temporal"),
+    "nico-flow": ("core", "helm/nico-flow"),
+    "rack-manager": ("rms", "helm"),
 }
-COMPONENTS = ("rest", "siteagent", "temporal", "keycloak")
+COMPONENTS = ("rest", "siteagent", "temporal", "keycloak", "flow", "rms")
 REST_IMAGES = (
     "nico-rest-api",
     "nico-rest-cert-manager",
@@ -81,14 +84,20 @@ def check_archived_materials(package, repo):
     return sorted(required)
 
 
-def prepare_archives(archive, core_subdir, deployment, repo, extract, pack):
-    root = Path(core_subdir).parent
+def prepare_archives(sources, deployment, repo, extract, pack):
+    """Pack the optional component Charts; sources maps a source key to (archive, subdirectory)."""
     for name, version in dependencies(repo).items():
+        key, relative = UPSTREAM[name]
+        if key not in sources:
+            raise ValueError("Missing Chart source for " + name + ": " + key)
+        source_archive, subdirectory = sources[key]
         target = deployment.parent / "upstream-extensions" / name
-        metadata = extract(archive, root / UPSTREAM[name], target)
+        metadata = extract(source_archive, Path(subdirectory).parent / relative, target)
         if (metadata["name"], str(metadata["version"])) != (name, version):
             raise ValueError("Unexpected management Chart identity: " + name)
         pack(target, deployment / "charts" / f"{name}-{version}.tgz", name)
+    archive, core_subdir = sources["core"]
+    root = Path(core_subdir).parent
     references = deployment / "management-files"
     references.mkdir()
     with tarfile.open(archive, "r:*") as pinned:
@@ -168,6 +177,8 @@ def profiles(defaults, release, namespace):
             "realm": {"existingSecret": "render-only-realm"},
             "startup": {"args": ["start", "--import-realm"]},
         },
+        "flow": {},
+        "rms": {},
     }
     for component in COMPONENTS:
         target = defaults["managementReleases"][component]
@@ -223,6 +234,10 @@ def check_profile(mode, values, documents, namespace):
         },
         "keycloak": {("Deployment", "keycloak", tagged(values["keycloak"]["image"]))},
         "temporal": {("Deployment", "admin-tools", admin)},
+        "flow": {("Deployment", "flow", tagged(values["flow"]["images"]["flow"]))},
+        # databaseMode stays external, so the Chart's wait-for-database init container and its
+        # in-cluster Postgres are not rendered and add no image.
+        "rms": {("Deployment", "rms-api-server", tagged(values["rms"]["apiServer"]["image"]))},
     }
     for role in ("frontend", "history", "matching", "worker"):
         required["temporal"].add(

@@ -2,14 +2,14 @@
 set -euo pipefail
 
 usage() {
-    printf 'Usage: %s template|upgrade rest|siteagent|temporal|keycloak RELOCATED-PARENT.tgz [--catalog CATALOG.json] [-f PARENT-VALUES.yaml ...] [--native-values CHILD-VALUES.yaml ...]\n' "${0##*/}" >&2
+    printf 'Usage: %s template|upgrade rest|siteagent|temporal|keycloak|flow|rms RELOCATED-PARENT.tgz [--catalog CATALOG.json] [-f PARENT-VALUES.yaml ...] [--native-values CHILD-VALUES.yaml ...]\n' "${0##*/}" >&2
     exit 2
 }
 (( $# >= 3 )) || usage
 action=$1 component=$2 parent=$3
 shift 3
 case "$action" in template|upgrade) ;; *) usage ;; esac
-case "$component" in rest|siteagent|temporal|keycloak) ;; *) usage ;; esac
+case "$component" in rest|siteagent|temporal|keycloak|flow|rms) ;; *) usage ;; esac
 [[ -f $parent && ! -L $parent ]] || { printf 'Missing or unsafe parent Chart archive\n' >&2; exit 1; }
 HELM=${HELM:-helm} YQ=${YQ:-yq} JQ=${JQ:-jq}
 here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)

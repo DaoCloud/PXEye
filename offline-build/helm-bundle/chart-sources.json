@@ -12,5 +12,12 @@
     "subdirectory": "cert-manager",
     "name": "cert-manager",
     "version": "v1.17.1"
+  },
+  "rms": {
+    "url": "https://codeload.github.com/dsx-ai-factory/nv-rms/tar.gz/5db9c6b3c3805a8549920111c097358d67b4c2c4",
+    "sha256": "9159c75dbcc3127524be13cf3d2aa2368073a1e822ef0d243855b050e64fe0ab",
+    "subdirectory": "nv-rms-5db9c6b3c3805a8549920111c097358d67b4c2c4/helm",
+    "name": "rack-manager",
+    "version": "1.0.1"
   }
 }

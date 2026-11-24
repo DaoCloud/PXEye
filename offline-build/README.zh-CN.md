@@ -126,6 +126,6 @@ containerd 内容存储、Helm 3、足够空间。ARM 材料构建会在 Docker 
 /srv/nico/              # 火种机交付文件、执行器、自动派生的解压目录和运行记录
 ```
 
-当前标准包不自动追踪集群镜像。Core/PXEye 是默认安装；REST、Site Agent、Temporal、Keycloak 属于[必带的可选安装材料](../charts/pxeye/files/management/README.zh-CN.md)，与 DPF、Ubuntu ISO 等未覆盖内容不同。旧 Core-only 归档不会自动获得新材料；新包必须通过完整镜像清单校验。
+当前标准包不自动追踪集群镜像。Core/PXEye 是默认安装；REST、Site Agent、Temporal、Keycloak、Flow、RMS 属于[必带的可选安装材料](../charts/pxeye/files/management/README.zh-CN.md)，与 DPF、Ubuntu ISO 等未覆盖内容不同。旧 Core-only 归档不会自动获得新材料；新包必须通过完整镜像清单校验。
 
 兼容格式的维护说明见[旧版材料构建](legacy-materials.zh-CN.md)和[旧版部署配置](CONFIGURE.zh-CN.md)；其输入格式和执行入口独立于本流程。

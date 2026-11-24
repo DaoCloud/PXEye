@@ -21,7 +21,7 @@ def settings(overrides=None):
     if isinstance(overrides, Path):
         supplied = json.loads(overrides.read_text())
         if not isinstance(supplied, dict) or set(supplied) != set(defaults):
-            raise ValueError('Chart source file must define core and cert-manager')
+            raise ValueError('Chart source file must define exactly: ' + ', '.join(sorted(defaults)))
         for key, row in supplied.items():
             if not isinstance(row, dict) or set(row) != set(defaults[key]):
                 raise ValueError('Use the complete Chart source example fields: ' + key)
@@ -31,7 +31,7 @@ def settings(overrides=None):
         overrides = None
     overrides = overrides or {}
     if set(overrides) - set(defaults):
-        raise ValueError('Only core and cert-manager download sources are supported')
+        raise ValueError('Supported Chart download sources: ' + ', '.join(sorted(defaults)))
     for key, supplied in overrides.items():
         if set(supplied) - {'url', 'sha256', 'subdirectory'}:
             raise ValueError('Override url, sha256 and subdirectory; Chart versions are pinned by the profile')
@@ -160,10 +160,12 @@ def prepare(work, overrides, b, helm='helm'):
         deployment = stage / 'deployment'
         (deployment / 'charts').mkdir(parents=True); (deployment / 'patches').mkdir()
         scratch = stage / '.patch'; scratch.mkdir()
-        b.patch_core(raw, deployment, scratch, expected_charts=expected)
-        core = configured['core']
-        management.prepare_archives(cache / (core['sha256'] + '.tar.gz'), core['subdirectory'],
-                                    deployment, b.REPO, extract, b.pack_tree)
+        # Only the Core and cert-manager Charts go through the compatibility patches; Charts of
+        # optional components from other source archives are packed by management.prepare_archives.
+        b.patch_core(raw, deployment, scratch,
+                     expected_charts={name: digest for name, digest in expected.items() if name in b.RAW})
+        sources = {key: (cache / (row['sha256'] + '.tar.gz'), row['subdirectory']) for key, row in configured.items()}
+        management.prepare_archives(sources, deployment, b.REPO, extract, b.pack_tree)
         b.dump(deployment / 'upstream-sources.json', configured)
         shutil.rmtree(scratch)
         for filename, key in [('nico-0.1.1.tgz', 'core'), ('cert-manager-v1.17.1.tgz', 'cert-manager'), ('pxeye-nico-platform-0.1.0.tgz', 'platform')]:

@@ -48,3 +48,13 @@ dependencies:
     version: 0.1.0
     repository: file://dependencies/pxeye-keycloak
     condition: components.keycloak.enabled
+  - name: nico-flow
+    alias: flow
+    version: 0.3.0
+    repository: file://dependencies/nico-flow
+    condition: components.flow.enabled
+  - name: rack-manager
+    alias: rms
+    version: 1.0.1
+    repository: file://dependencies/rack-manager
+    condition: components.rms.enabled

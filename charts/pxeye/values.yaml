@@ -75,30 +75,38 @@ components:
     enabled: false
   keycloak:
     enabled: false
+  flow:
+    enabled: false
+  rms:
+    enabled: false
 managementReleases:
   rest: {name: nico-rest, namespace: nico-rest}
   siteagent: {name: nico-rest-site-agent, namespace: nico-rest}
   temporal: {name: temporal, namespace: temporal}
   keycloak: {name: nico-keycloak, namespace: nico-rest}
+  # The Site Agent reaches Flow at flow.flow.svc.cluster.local:50051 and Core reaches RMS at
+  # rms-api-server.rack-manager.svc.cluster.local:8801, so these two names and namespaces are fixed.
+  flow: {name: flow, namespace: flow}
+  rms: {name: rack, namespace: rack-manager}
 rest:
   nico-rest-common:
     secrets:
       create: false
   nico-rest-api:
-    image: {offlineReference: 'docker.io/nico-local/nico-rest-api:e703126e4'}
+    image: {offlineReference: 'docker.io/nico-local/nico-rest-api:28e4e9824'}
   nico-rest-cert-manager:
-    image: {offlineReference: 'docker.io/nico-local/nico-rest-cert-manager:e703126e4'}
+    image: {offlineReference: 'docker.io/nico-local/nico-rest-cert-manager:28e4e9824'}
   nico-rest-db:
-    image: {offlineReference: 'docker.io/nico-local/nico-rest-db:e703126e4'}
+    image: {offlineReference: 'docker.io/nico-local/nico-rest-db:28e4e9824'}
     waitForPostgres: {image: 'docker.io/library/postgres:14.4-alpine'}
   nico-rest-site-manager:
-    image: {offlineReference: 'docker.io/nico-local/nico-rest-site-manager:e703126e4'}
+    image: {offlineReference: 'docker.io/nico-local/nico-rest-site-manager:28e4e9824'}
     rbac: {create: false}
   nico-rest-workflow:
-    image: {offlineReference: 'docker.io/nico-local/nico-rest-workflow:e703126e4'}
+    image: {offlineReference: 'docker.io/nico-local/nico-rest-workflow:28e4e9824'}
 siteagent:
   nameOverride: nico-rest-site-agent
-  image: {offlineReference: 'docker.io/nico-local/nico-rest-site-agent:e703126e4'}
+  image: {offlineReference: 'docker.io/nico-local/nico-rest-site-agent:28e4e9824'}
   bootstrap:
     enabled: false
     image: 'docker.io/alpine/k8s:1.29.4'
@@ -120,3 +128,29 @@ keycloak:
   fullnameOverride: nico-keycloak
   service: {nameOverride: keycloak}
   image: {repository: m.daocloud.io/quay.io/keycloak/keycloak, tag: '24.0'}
+# NICo Flow and the REST images must be built from the same NICo source commit as the Core image.
+flow:
+  images:
+    flow: {repository: docker.io/nico-local/nico-flow, tag: '28e4e9824'}
+# Upstream helm-prereqs/values/rms.yaml, with the images bound to this delivery. The certificate
+# issuer and the database are site prerequisites; see files/management/README.md.
+rms:
+  namespace: rack-manager
+  createNamespace: false
+  certificates:
+    enabled: true
+    issuerRef: {name: vault-nico-issuer, kind: ClusterIssuer}
+    duration: 8760h0m0s
+    renewBefore: 720h0m0s
+  apiServer:
+    image: {repository: docker.io/nico-local/rms-api, tag: '5db9c6b'}
+    tls: {enabled: true, caEnabled: true}
+    serviceMonitor: {enabled: false}
+  databaseMode: external
+  database:
+    host: nico-pg-cluster.postgres.svc.cluster.local
+    port: '5432'
+    name: rms
+    credentialsSecret: rms.nico.nico-pg-cluster.credentials
+  dropDatabaseOnUninstall: false
+  grafana: {dashboard: {enabled: false}}

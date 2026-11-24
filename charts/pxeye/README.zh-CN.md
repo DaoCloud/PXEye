@@ -4,7 +4,7 @@
 
 这是交付父 Chart。默认仅部署 PXEye Web 控制台及其 ServiceAccount、RBAC、ConfigMap、认证 Secret、共享存储 PVC、Service。离线构建器会在此 Chart 下引入已锁定的 NICo 依赖、生成 `Chart.lock`，再对完整镜像闭包执行一次搬迁。
 
-依赖树包含 cert-manager、平台基础设施及 Vault 初始化、NICo Core、可选材料发布器，以及 REST、Site Agent、Temporal 和 Keycloak 子 Chart。后四项按[原生命名空间](files/management/README.zh-CN.md)分别发布，不随 Core 默认安装。
+依赖树包含 cert-manager、平台基础设施及 Vault 初始化、NICo Core、可选材料发布器，以及 REST、Site Agent、Temporal、Keycloak、Flow 和 RMS 子 Chart。后六项按[原生命名空间](files/management/README.zh-CN.md)分别发布，不随 Core 默认安装。
 
 ## 安装
 
@@ -38,7 +38,7 @@ helm upgrade --install pxeye ./charts/pxeye \
 | `components.pxeye.enabled` | `true` | 在父 Release 中渲染 PXEye UI 资源 |
 | `components.certManager/platform/vaultBootstrap/core.enabled` | `false` | 启用锁定的 NICo 子组件；现场安装器按就绪阶段累计开启 |
 | `components.materials.enabled` | `false` | 预留的可选材料发布器；当前 POC 关闭 |
-| `components.{rest,siteagent,temporal,keycloak}.enabled` | 均为 `false` | 是否在现场启用对应管理面组件；关闭不影响标准离线包收录其 Chart、镜像和初始化材料。见[材料与启用前提](files/management/README.zh-CN.md)。 |
+| `components.{rest,siteagent,temporal,keycloak,flow,rms}.enabled` | 均为 `false` | 是否在现场启用对应管理面组件；关闭不影响标准离线包收录其 Chart、镜像和初始化材料。见[材料与启用前提](files/management/README.zh-CN.md)。 |
 | `nodeSelector` / `imagePullSecrets` | 空 | 调度约束与镜像拉取认证 |
 
 cert-manager 子配置使用 `certmanager` 键，与全小写的依赖别名一致；启用开关仍为 `components.certManager.enabled`。Helm 会将别名作为子 Chart 的 `.Chart.Name`，因此别名必须符合该子 Chart 生成资源名称的要求。

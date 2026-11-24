@@ -141,6 +141,6 @@ Fireseed: Linux amd64, Bash 4+, kubectl, curl and standard GNU utilities, an ava
 /srv/nico/              # onsite delivery files, runner, derived extraction and runtime records
 ```
 
-The standard bundle does not discover live cluster images. Core/PXEye is installed by default; REST, Site Agent, Temporal and Keycloak are [required offline materials with optional installation](../charts/pxeye/files/management/README.md). DPF services and Ubuntu ISOs remain outside this profile. Old Core-only archives are unchanged; new builds must pass the complete image-inventory check.
+The standard bundle does not discover live cluster images. Core/PXEye is installed by default; REST, Site Agent, Temporal, Keycloak, Flow and RMS are [required offline materials with optional installation](../charts/pxeye/files/management/README.md). DPF services and Ubuntu ISOs remain outside this profile. Old Core-only archives are unchanged; new builds must pass the complete image-inventory check.
 
 Compatibility-format maintenance is documented in [legacy material preparation](legacy-materials.md) and [legacy deployment configuration](CONFIGURE.md). Those input formats and entry points are separate from this workflow.

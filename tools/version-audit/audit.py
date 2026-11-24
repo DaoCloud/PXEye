@@ -336,7 +336,7 @@ def package(args):
 def runtime(args):
     report = snapshot('runtime')
     report['context'] = args.context
-    report['namespaces'] = args.namespace or ['nico-system', 'nico-rest', 'temporal', 'cert-manager']
+    report['namespaces'] = args.namespace or ['nico-system', 'nico-rest', 'temporal', 'flow', 'rack-manager', 'cert-manager']
     report['architecture'] = args.architecture
     report['file_scope'] = ROOT if not args.boot_root else args.boot_root
     report['include_site_files'] = args.include_site_files
@@ -493,8 +493,8 @@ No images are built/pulled, no workloads/configuration are changed. package may 
             p.add_argument('--include-arm64', action='store_true', help='Match make bundles INCLUDE_ARM64_MATERIALS=1')
         else:
             p.add_argument('--context', help='Defaults to the current kubectl context')
-            p.add_argument('--namespace', action='append', help='Repeatable; default nico-system, nico-rest, temporal and cert-manager')
-            p.add_argument('--name-pattern', default='nico|pxeye|os-install-console|cert-manager|temporal|keycloak', help='Pod name regex scope')
+            p.add_argument('--namespace', action='append', help='Repeatable; default nico-system, nico-rest, temporal, flow, rack-manager and cert-manager')
+            p.add_argument('--name-pattern', default='nico|pxeye|os-install-console|cert-manager|temporal|keycloak|flow|rms', help='Pod name regex scope')
             p.add_argument('--kubectl', default='kubectl')
             p.add_argument('--boot-root', help='PXE container published-file root')
             p.add_argument('--include-site-files', action='store_true', help='Also hash uploaded ISO/BFB and other files under nico/; potentially slow')
