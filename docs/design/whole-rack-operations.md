@@ -40,7 +40,7 @@ Its chapters correspond one to one with the [requirements specification](../arch
 - Storing and displaying time series such as metric curves, power and temperature; the monitoring system owns them, and the platform only links to it.
 - Cluster assembly and workload scheduling, such as Kubernetes and SLURM; the upper-layer platform owns them.
 - Adapting to hardware that is not a whole rack or to non-standard networks; these do not enter the main flow.
-- Deployments in which NICo manages the DPUs (DPU mode). In this version the BlueField cards of a compute tray are used as network cards only; DPU mode is left to a later phase.
+- Deployments in which NICo manages the DPUs (DPU mode). In this version the BlueField cards of a compute tray are used as network cards only (network-card mode). The DPU page is kept and states what is supported; DPU mode is left to a later phase, and 6.3 describes how the two differ.
 - Power and firmware operations at the level of an NVLink domain, and phased firmware rollout across racks.
 
 ## 4. Architecture
@@ -89,17 +89,17 @@ The platform does not configure the internal parameters of these components. It 
 
 ## 5. Operations workflow
 
-Site readiness and network planning are preparation: site readiness is done once, and network planning is extended when subnets are added. After that the main line has seven stages, each with one entry point and one completion condition. Rack bring-up is run by NICo on its own and needs no one to start it.
+Site readiness and network planning are preparation: site readiness is done once, and network planning is extended when subnets are added. After that the main line has seven stages, each with one entry point and one completion condition. A new rack needs a person's approval at one point only: “确认接入” (confirm onboarding), after checking the matching result. Rack bring-up after that is run by NICo on its own.
 
 ![Figure 2: operations workflow](figures/workflow.png)
 
 | Stage | Target state | Main activities | Completion condition |
 | --- | --- | --- | --- |
-| Site readiness | The platform and its dependencies are usable, and the site configuration is complete | Deploy the control plane and check each component; check the site preparation item by item: how the BlueField cards are used, storing switch NVOS credentials, rack profiles, firmware lists, DNS subdomains | Every dependency on the site page is ready, and every site preparation item is met |
-| Network planning | Every kind of device interface has a usable subnet | Plan the three kinds of subnet (out-of-band management, switch system management, host management) and their DHCP pools; confirm that gateways and DHCP relay are configured on the switches | The plan check passes: every purpose has a subnet, every subnet has a subdomain, and the assignable addresses are no fewer than the interfaces of the racks in the inventory need |
+| Site readiness | The platform and its dependencies are usable | Deploy the control plane; check each component and the rack profiles NICo has configured | Every dependency on the site page is ready |
+| Network planning | Every kind of device interface has a usable subnet | Plan the three kinds of subnet (out-of-band management, switch system management, host management) and their DHCP pools; confirm that gateways and DHCP relay are configured on the switches | The plan check passes: every purpose has a subnet, and the assignable addresses are no fewer than the interfaces of the racks in the inventory need |
 | Inventory import | The platform holds the complete arrival inventory | Upload the arrival inventory (rack, slot, device type, serial number, device credentials) and choose the rack topology and manufacturer; the platform validates it, shows the difference, and saves it after confirmation. Nothing is written to NICo yet | The inventory is saved, the rack profile is derived, and the credentials are complete |
-| Onboarding | Every device in the inventory is written to NICo and ingested | Power on; once a device has an address, the platform reads its identity, matches the inventory by serial number and writes the declaration to NICo; NICo probes and ingests it. People handle only the endpoints that do not match: authentication failures, and serial numbers the inventory does not contain | The number of ready switches reaches what the rack profile requires; no device in the inventory is still absent, or the missing ones are confirmed |
-| Rack bring-up | The rack is deliverable | NICo runs it on its own: once the switches are all there it goes through firmware upgrade, NVOS update, NMX-C cluster configuration, power sequence and rack validation in turn. When it stops in Error, a person removes the cause and runs rack maintenance again | The rack state is Ready and the NVLink domain is formed |
+| Onboarding | Every device in the inventory is written to NICo and ingested | Power on; once a device has an address, the platform reads its identity and matches the inventory by serial number, which only reads the device. People handle the endpoints that do not match (authentication failures, serial numbers the inventory does not contain) and, after checking, confirm onboarding for the rack; the platform then writes the declarations to NICo, and NICo probes and ingests the devices | The number of ready switches reaches what the rack profile requires; no device in the inventory is still absent, or the missing ones are confirmed |
+| Rack bring-up | The rack is deliverable | NICo runs it on its own after onboarding is confirmed: once the switches are ready it goes through firmware upgrade, NVOS update, power sequence, NMX-C cluster configuration and rack validation in turn. When it stops in Error, a person removes the cause and runs rack maintenance again | The rack state is Ready and the NVLink domain is formed |
 | Delivery | Machines become usable resources | Choose a rack or a set of machines, and an installation profile or a tenant; install and accept, or hand over to the upper-layer platform | Instances are ready and accepted, or the upper-layer platform has received them |
 | Running | State stays observable | Watch the health and alerts of racks, domains and trays; handle the items marked as needing attention | No unhandled critical alert |
 | Maintenance and change | Deliverable again after the change | Power, firmware update, maintenance, quarantine, tray replacement; the platform checks the impact and tracks the task | The task succeeds and the rack returns to Ready |
@@ -129,7 +129,7 @@ Modules describe responsibilities; the menu describes entry points. The menu goe
 | --- | --- | --- | --- |
 | 运维 (Operations) | 机柜管理 (Racks) | — | Rack |
 | 运维 | NVLink 域管理 (NVLink domains) | — | Rack |
-| 运维 | 设备管理 (Devices) | 计算托盘 (Compute trays), 交换机 (Switches), 供电框 (Power shelves) | Rack |
+| 运维 | 设备管理 (Devices) | 计算托盘 (Compute trays), 交换机 (Switches), 供电框 (Power shelves), DPU | Rack |
 | 运维 | 健康告警 (Health alerts) | — | Health |
 | 运维 | 运维任务 (Operation tasks) | — | Rack |
 | 运维 | 操作审计 (Operation audit) | — | Profiles and audit |
@@ -149,18 +149,18 @@ Interface text is Chinese throughout and does not join an English abbreviation w
 ### 6.1 Site
 
 - Shows whether NICo Core, Flow, RMS, NMX-C, the workflow engine and storage are ready.
-- Site preparation: what must be configured before devices arrive, each with its current value, the requirement, and what happens when it is not met. The items are how the BlueField cards are used (this version requires network-card mode), storing switch NVOS credentials, rack profiles, the firmware list of each rack profile, DNS subdomains, NVLink partitioning and rack validation. They are NICo's site configuration; the platform reads and checks them and does not change them from a page.
+- Rack profiles: the rack profiles NICo has configured, how the DPUs are used, and the current firmware baseline. A rack profile is NICo site configuration: it says how many compute trays, switches and power shelves such a rack has, and which firmware list it uses.
 - Subnets, DHCP and boot service addresses are not maintained here; see 6.7 Network.
-- Shows the operation rules in use for power, firmware and leak handling: the site's own rules, or NICo's built-in defaults.
+- Operation rules: one table says what NICo does in each situation, covering new rack bring-up, power on, power off, restart, firmware update and a rack-level leak. The purpose is transparency: an operation does not ask for order or timeouts, but how it actually runs can be read here. The rules are read-only.
 - When a component is not ready, the operations that depend on it are shown as unavailable across the platform, with the reason.
 
 ### 6.2 Inventory
 
 - The arrival inventory is the only manual input of device data. It comes from DCIM or the shipping list: one table, one row per device, covering all three tray types.
 - The inventory gives the rack, slot, device type, serial number and device credentials. It does not require MAC or IP addresses: a shipping list usually has no MAC addresses, and the MAC is obtained from DHCP after the device is powered on.
-- A row has two states. After import it is “待匹配” (waiting to be matched) and is held by the platform only, because NICo keys a device declaration by the MAC of the BMC. When the device is powered on, the platform reads its serial number and matches a row; the declaration is then written to NICo with the MAC, credentials, rack and slot, and the row becomes “已写入 NICo” (written to NICo).
+- A row has three states. After import it is “待匹配” (waiting to be matched) and is held by the platform only, because NICo keys a device declaration by the MAC of the BMC. When the device is powered on and the platform reads a serial number that matches the row, it is “已匹配” (matched); nothing is written to NICo yet. After onboarding is confirmed for the rack, the declaration is written to NICo with the MAC, credentials, rack and slot, and the row becomes “已写入 NICo” (written to NICo).
 - An import is a whole-table difference: it shows what is added, changed and removed, and saves after confirmation. Removing a device that has an instance or a task in progress is refused.
-- The rack profile is derived from the rack topology and rack manufacturer chosen at import; the import preview reports an error when the site has not configured that profile.
+- The rack profile is derived from the rack topology and rack manufacturer chosen at import. The rack topology is NICo's name for a rack hardware layout (for example gb200_nvl72r1_c2g4); the choices are read from the rack profiles NICo has configured, and the platform does not maintain that list. The import preview reports an error when NICo has not configured the derived profile.
 - Device credentials: a device uses the values in its own row, or the batch defaults entered at import when the row leaves them empty. A switch needs NVOS credentials as well as BMC credentials. A password is submitted once and held encrypted; it never appears on a page, in a version record or in the audit. After the declaration is written to NICo the credentials are NICo's, and the platform no longer keeps them.
 - Inventory files are versioned, and the password columns are removed before a file is kept.
 
@@ -184,21 +184,23 @@ The same objects can be entered in two ways: through the rack to see how they re
 
 | View | Question it answers | Content |
 | --- | --- | --- |
-| Racks | Which step of the flow each rack is in, and which members it has | The rack list; the rack detail has NICo's bring-up progress, the inventory check, the rack elevation, tasks, health and history, and the rack-level operations |
+| Racks | Which step of the flow each rack is in, and which members it has | The rack list; the rack detail has onboarding confirmation, NICo's bring-up progress, the inventory check, the rack elevation, tasks, health and history, and the rack-level operations |
 | NVLink domains | Whether a domain is formed, and which partitions it has | For each domain: whether NMX-C is reachable, the domain health, the number of switches whose Fabric Manager is healthy, and the NVLink partitions with their tenants. Read-only |
 | Devices | How the device I am looking for is doing | Search across types (serial number, address, MAC, instance); the devices that need attention |
 | Compute trays, switches, power shelves | The addresses, state and firmware of one device type, and which ones have problems | One list per type, with addresses and firmware versions in the table; power and other operations from the row, with batch support |
+| DPU | How each BlueField card is operating, and whether that matches the policy | A read-only list: serial number, owning compute tray, BMC address, policy, observed operating mode, NIC firmware; it states that this version supports network-card mode only |
 | Device discovery | How far the devices in the inventory have got, and which ones do not match | The endpoints waiting to be handled, with a way to handle each; the progress of every row of the inventory |
 | Tasks | How far rack-level power and firmware operations have got | The steps and results of all Flow tasks |
 
 - The default home page is the rack list. It contains every rack in the inventory; a rack that has no object in NICo yet is shown as “尚未建立” (not created yet). Rack objects are not created by hand: NICo creates one when the first member device is ingested.
-- One NVL72 rack is one NVLink domain, so there are no domain-level power or firmware operations. A domain has two identifiers: the rack group ID from the inventory, and the domain ID reported by NMX-C after rack bring-up. The page shows both.
-- Device discovery has five steps: obtain an address (NICo DHCP), read the identity (the platform reads the device BMC with the credentials from the inventory), match the inventory (by serial number), write the declaration (the platform writes to NICo), probe and ingest (NICo). A device that matches needs no confirmation. People handle only the endpoints that do not match: on an authentication failure, give that endpoint its own credentials and retry; when the inventory has no such serial number, replace a row of the inventory (a factory replacement part) or add the device to the inventory. Reading the identity never tries one password after another, so that a device does not lock its login.
-- Rack bring-up is run by NICo's rack state machine on its own. It starts when the number of ready switches reaches what the rack profile requires, and goes through firmware upgrade, NVOS update, NMX-C cluster configuration, power sequence and rack validation. The page shows the current stage; it offers no “start bring-up” and no cancel. When any stage fails the rack stops in Error and does not recover by itself even after the cause is gone; rack maintenance has to be run again from the page.
-- Inventory check: the rows of the inventory whose serial number no device has reported yet. It is advice only and does not hold bring-up back: bring-up does not start while switches are missing, and a missing compute tray or power shelf does not affect bring-up and only leaves an alert that the rack has fewer members than its profile.
-- Rack-level operations: power on, power off, restart, firmware update, expected-versus-actual validation, decommissioning, and running rack maintenance again when the rack has stopped in Error. A rack object has no power state, so the page shows how many of its members are powered on.
+- One NVL72 rack is one NVLink domain, so there are no domain-level power or firmware operations. A domain has two identifiers: the rack group ID from the inventory, and the domain ID reported by NMX-C after rack bring-up. The page shows both. Neither domains nor partitions are maintained on this page: a domain is declared automatically from the racks in the arrival inventory; a logical partition is created by the tenant at delivery; the matching NMX partition is created by NICo when the first instance joins.
+- Onboarding has six steps: obtain an address (NICo DHCP), read the identity (the platform reads the device BMC with the credentials from the inventory), match the inventory (by serial number), confirm onboarding (a person, once per rack), write the declaration (the platform writes to NICo), probe and ingest (NICo). The first three steps only read devices and write nothing to NICo. Matching is automatic, with no per-device confirmation. People do two things: confirm onboarding for the rack after looking at the matching result and the inventory check, and handle the endpoints that do not match: on an authentication failure, give that endpoint its own credentials and retry; when the inventory has no such serial number, replace a row of the inventory (a factory replacement part) or add the device to the inventory. Reading the identity never tries one password after another, so that a device does not lock its login.
+- Rack bring-up is run by NICo's rack state machine on its own. It starts when the number of ready switches reaches the count in the rack profile, and goes through firmware upgrade, NVOS update, power sequence (when required), NMX-C cluster configuration and rack validation. NICo has no switch that makes it wait for a person, and the order of the stages cannot be changed, so the person's approval is placed earlier, at onboarding confirmation: until then NICo ingests no device of the rack and therefore does not start bring-up. The page shows the current stage and offers no cancel. When any stage fails the rack stops in Error and does not recover by itself even after the cause is gone; rack maintenance has to be run again from the page.
+- Inventory check: two kinds of difference. One is a row of the inventory whose serial number no device has reported yet; the other is a device whose observed slot differs from the slot in the inventory, where the observed slot is what NICo reads from the hardware backend. It helps a person see the situation before confirming onboarding and does not hold bring-up back afterwards: bring-up does not start while switches are missing, and a missing compute tray or power shelf, or a slot difference, does not affect bring-up. The switch count is the minimum threshold for starting bring-up and is written in NICo's rack profile; bringing a rack up with fewer switches requires an administrator to change that count in the site configuration.
+- Rack-level operations: onboarding confirmation, power on, power off, restart, firmware update, expected-versus-actual validation, decommissioning, and running rack maintenance again when the rack has stopped in Error. A rack object has no power state, so the page shows how many of its members are powered on.
 - Device-level operations: power on, shut down, restart, firmware update, maintenance mark, quarantine, on-demand hardware validation, BMC restart, replacement, decommissioning. The available actions differ by type, and all of them use the same operation dialog.
-- Device running state: running state, health alerts, firmware compared with the baseline, state timeline. A compute tray also has its instance, BlueField cards, hardware capabilities and LLDP neighbours; a switch also has NVOS management ports and Fabric Manager. A power shelf has no readable firmware version or power figures, so only its address, state, health and power are shown.
+- Device running state: running state, health alerts, firmware compared with the baseline, state timeline. A compute tray also has its instance, DPUs, hardware capabilities and LLDP neighbours; a switch also has NVOS management ports and Fabric Manager. A power shelf has no readable firmware version or power figures, so only its address, state, health and power are shown.
+- The two ways to use a DPU. NICo has a DPU policy per host, with a site default that a host's declaration can override. In network-card mode a BlueField card is an ordinary network card: NICo only probes it, the host gets its address from the host management subnet, and delivery uses a network that does not pass through the DPU. In DPU mode each card is a device NICo manages, with its own system and firmware, and the host's address and tenant networks are provided through it. In this version every policy the platform writes is network-card mode, and onboarding, network planning and delivery are designed for it. When DPU mode is supported later, the policy becomes a column of the inventory, the DPU page adds each card's running state and its pairing with the host, network planning adds the subnets for the DPUs themselves and for hosts behind DPUs, and delivery uses a network that passes through the DPU.
 - Open: whether compute trays need to be released by the platform during bring-up. It will be decided after measurement.
 
 ### 6.4 Delivery
@@ -234,12 +236,12 @@ Device interfaces fall into three purposes, and each purpose has at least one su
 
 | Purpose | Device interfaces | NICo network type | Notes |
 | --- | --- | --- | --- |
-| Out-of-band management | The BMCs of compute trays, switches and power shelves, and the BMCs of the BlueField cards in compute trays | Underlay | The entry point of device discovery: once these interfaces have an address, the platform reads the device identity |
-| Switch system management | The NVOS management ports of a switch, two per switch | Underlay | Configuration and management of a switch after ingestion |
-| Host management | Compute tray host interface | HostInband | Network boot, installation and system management of the host. In this version the BlueField cards are in network-card mode, and the host gets its address from this subnet directly |
+| Out-of-band management | Compute tray BMC, switch BMC, power shelf PMC, DPU BMC | Underlay | The entry point of device discovery: once these interfaces have an address, the platform reads the device identity |
+| Switch system management | Switch NVOS management port | Underlay | Configuration and management of a switch after ingestion |
+| Host management | Compute tray host interface | HostInband | Network boot, installation and system management of the host |
 
-- Plan check: every purpose has a subnet, every subnet has a subdomain, and the assignable addresses are no fewer than needed. The need is counted by interface, not by device: one BMC per device, two more NVOS management ports per switch, and one per BlueField BMC when it is connected to the out-of-band network. The device inventory cannot be imported while the check fails; the import preview counts the new racks in.
-- Subnet: name, purpose, prefix, gateway, subdomain, DHCP pool, assigned and assignable. A subnet without a subdomain hands out no addresses. Only the DHCP pool of an existing subnet can be changed. The purpose and the switch-side VLAN are recorded by the platform; a NICo subnet has neither.
+- Plan check: every purpose has a subnet, and the assignable addresses are no fewer than needed. The need is counted by interface, not by device: one BMC per device, two more NVOS management ports per switch, and one for the BMC of each DPU. The device inventory cannot be imported while the check fails; the import preview counts the new racks in.
+- Subnet: name, purpose, prefix, gateway, DHCP pool, assigned and assignable. Only the DHCP pool of an existing subnet can be changed. The purpose and the switch-side VLAN are recorded by the platform; a NICo subnet has neither. The DNS domain of a subnet is filled in by the platform with the site's default domain; it is neither chosen nor shown, except that a new host management subnet asks for one when the site has several DNS domains.
 - DHCP service: a whole-rack site uses NICo DHCP only. For each subnet the page shows when an address was last handed out and how much of the pool is used, and marks a subnet that has never handed one out. The boot service addresses (network boot, installation material, DNS, NTP) are maintained here.
 - Address assignment: which interface of which device each address was given to, and the allocation type NICo reports (dynamic, fixed, reserved). The allocation type is decided per device; it is not a property of the subnet and is not set by hand. Addresses that belong to no device yet are handled in device discovery.
 - The platform only creates subnets and pools in NICo and does not configure switches. The VLAN, gateway and DHCP relay of each subnet are site prerequisites.
@@ -254,11 +256,12 @@ Device interfaces fall into three purposes, and each purpose has at least one su
 | --- | --- | --- | --- |
 | Arrival inventory | Imported by hand | File version; each row is identified by its serial number | Inventory |
 | Device credentials | The arrival inventory or the batch defaults | — | Inventory; the platform no longer keeps them once the declaration is written to NICo |
-| Device declarations (rack group, rack, tray) | Written to NICo by the platform after a device matches the inventory by serial number | Rack ID, BMC MAC, serial number | Device discovery |
+| Device declarations (rack group, rack, tray) | Written to NICo by the platform after a device matches the inventory by serial number and onboarding is confirmed for the rack | Rack ID, BMC MAC, serial number | Rack (onboarding confirmation), device discovery |
 | Rack | Created by NICo when the first member device is ingested | Rack ID | Read-only; operations are in the rack module |
 | NVLink domain | NICo and NMX-C | Rack group ID; the domain ID reported by NMX-C | Read-only |
 | NVLink partition | NICo | Partition ID | Read-only; created in delivery |
 | Compute tray, switch, power shelf | Discovered and ingested by NICo | NICo object ID, serial number | Read-only; operations are in the rack module |
+| DPU (BlueField card) | Probed by NICo | Serial number | Read-only |
 | Rack profile | NICo's site configuration, derived from the rack topology and manufacturer in the inventory | Profile ID | Read-only |
 | Task | Flow | Task ID | The task view of the rack module |
 | Instance | NICo | Instance ID | Delivery |
@@ -267,7 +270,7 @@ Device interfaces fall into three purposes, and each purpose has at least one su
 
 Relationship rules:
 
-- Membership has one key: the rack ID. A slot has one source: the arrival inventory. A device is matched by one thing: its serial number.
+- Membership has one key: the rack ID. A device is matched by one thing: its serial number. The expected slot comes from the arrival inventory and the observed slot is read by NICo from the hardware backend; the inventory check compares them.
 - A tray belongs to a rack through the rack ID; one NVL72 rack corresponds to one NVLink domain.
 - A task is the execution record of a rack-level power or firmware operation; the record of rack bring-up is the rack's state history. The audit records who submitted which task, when and why.
 - The platform stores locally only inventory versions, inventory rows waiting to be matched, device credentials held temporarily, profiles, installation tasks and the audit. Data written to NICo is keyed by NICo identifiers.
@@ -278,7 +281,7 @@ Pages show the state reported by NICo's state machines verbatim and define no st
 
 | Object | States | What triggers a transition |
 | --- | --- | --- |
-| Rack | Not created yet (in the inventory only), Discovering, Maintenance (firmware upgrade, NVOS update, NMX-C cluster configuration, power sequence), Validating, Ready, Error, Deleting | The first device is ingested; bring-up starts on its own once the number of ready switches is reached; a stage completes; a validation result; any stage failing leads to Error; rack maintenance is run again |
+| Rack | Not created yet (in the inventory only), Discovering, Maintenance (firmware upgrade, NVOS update, power sequence, NMX-C cluster configuration), Validating, Ready, Error, Deleting | The first device is ingested after onboarding is confirmed; bring-up starts on its own once the number of ready switches is reached; a stage completes; a validation result; any stage failing leads to Error; rack maintenance is run again |
 | Tray | The states of NICo's state machine for each tray type | Discovery, ingestion, validation, allocation, release, failure, decommissioning |
 | Task | Waiting, running, succeeded, failed, terminated | Submission, a step completes, a step fails, cancellation |
 | Instance | NICo's instance lifecycle states | Allocation, installation, ready, release |
@@ -293,7 +296,7 @@ Pages show the state reported by NICo's state machines verbatim and define no st
 | --- | --- | --- | --- |
 | Site | Network | Component readiness | Subnets cannot be created while the site is not ready |
 | Network | Inventory | The subnets and assignable addresses of each purpose | Import is refused while the plan check fails |
-| Site | Inventory | Supported rack profiles and the site preparation items | Import is refused while the site is not ready or the BlueField cards are not in network-card mode |
+| Site | Inventory | Supported rack profiles | Import is refused while the site is not ready |
 | Inventory | Rack | The racks and devices in the inventory | Every rack in the inventory appears, whether or not NICo has an object for it |
 | Profiles | Rack | Firmware baseline | A firmware update can only choose a baseline |
 | Rack | Delivery | Readiness of racks and trays | Delivery is refused while the rack is not Ready or the NVLink domain is not formed |
@@ -323,7 +326,8 @@ Every write operation has the same shape: choose the object, choose the action, 
 | --- | --- | --- | --- |
 | Import inventory | Site | File, rack topology and manufacturer, batch default credentials | The inventory is saved |
 | Retry with given credentials | An endpoint waiting to be handled | User name and password | The serial number is read and matches the inventory |
-| Replace a row of the inventory | An endpoint waiting to be handled | A row of the inventory | The declaration is written to NICo |
+| Replace a row of the inventory | An endpoint waiting to be handled | A row of the inventory | The row is matched |
+| Confirm onboarding | Rack | None | The matched devices are written to NICo |
 | Run rack maintenance again | A rack stopped in Error | None | The rack is Ready |
 | Power on, power off, restart | Rack, tray | Action | The task succeeds and the power state read back matches |
 | Firmware update | Rack, tray | Firmware baseline | The task succeeds and the versions equal the baseline |
@@ -337,7 +341,7 @@ Every write operation has the same shape: choose the object, choose the action, 
 Interaction rules:
 
 - The confirmation shows four things only: object, action, number of affected instances, and the steps the task will go through. A high-risk action requires typing the rack ID or the serial number.
-- When the rack has instances, a power or firmware task first waits for those hosts to become operable, for up to 30 minutes, and fails if they do not. The confirmation says so.
+- A disruptive power or firmware task does not run the moment it is submitted: the task first waits for the affected hosts to become operable, checking every 5 seconds for up to 30 minutes, and fails if they do not. The confirmation says how many hosts do not qualify now and why, and what will happen in turn after submission; waiting for hosts is a step of its own in the task.
 - After submission the user is taken to the task view. A task stops at the step that fails and does not undo the hardware actions already completed; the pages do not promise a rollback.
 - Cancelling a task is best effort: no new step is started, and an action already handed to the hardware backend does not stop.
 - When a result is unknown the platform reads the state back first and never resends automatically; the operator decides the next step.
@@ -353,7 +357,7 @@ Interaction rules:
 - Reliability: tasks are persisted by Flow, so a platform restart loses no task; before an upgrade the platform checks that no task is in progress.
 - Backup: NICo's database and credential store must be backed up; arrival inventory files are kept by version.
 - Scale: the default views aggregate by rack, and lists do not call an interface per row.
-- Site preparation: the site page checks, item by item, the site configuration that must be in place before devices arrive, and says what happens when an item is not met.
+- Transparency: the site page has one table saying what NICo does in each situation; for every action that happens on its own (bring-up, the power-off on a rack-level leak) the pages show what caused it and how it went.
 - Observability: pages show only the current state and where to handle it; time series go to the monitoring system.
 - Delivery form: the platform and all its dependencies are delivered as one version-locked offline bundle.
 
@@ -361,7 +365,7 @@ Interaction rules:
 
 | Phase | Focus | Outcome |
 | --- | --- | --- |
-| 1: inventory and onboarding | Site checks and site preparation, network planning, arrival inventory import, device discovery and matching to the inventory, health summary | From inventory import to every device ingested, without the command line |
+| 1: inventory and onboarding | Site checks, network planning, arrival inventory import, device discovery and matching to the inventory, health summary | From inventory import to every device ingested, without the command line |
 | 2: rack lifecycle | Bring-up progress and running it again, power, firmware update, task view, audit | A rack bring-up tracked and one complete maintenance done from the pages |
 | 3: delivery | Installing and accepting by rack, handing over to the upper-layer platform, release and reuse | All compute trays of one rack delivered |
 | 4: scale | Phased firmware rollout across racks, identity system and roles, DPU mode | Changes across racks are controlled and attributable |

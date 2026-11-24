@@ -2,7 +2,7 @@
 /* 设备：按设备类型直达的页面，对应左侧菜单“设备管理”及其子菜单。
    - 设备（总览）：跨类型搜索，以及当前需要处理的设备；
    - 计算托盘 / 交换机 / 供电框：各自的列表，地址和固件直接在表里，行上直接操作；
-   - 这一版计算托盘上的 BlueField 只作为网卡使用，不是独立的设备对象，所以没有 DPU 页面；它出现在计算托盘的运行状态里。
+   - DPU：计算托盘上的 BlueField 卡，只读。这一版只支持网卡模式，页面写明支持范围。
    机柜页是这些设备的关联与汇总视图；这里的“机柜 / 位置”链接回机柜。 */
 
 const DEVICE_ROUTE = { compute: "devices/compute", switch: "devices/switch", power_shelf: "devices/power-shelf" };
@@ -79,7 +79,7 @@ registerPage("devices", {
     const rows = list.slice(0, 30).map((t) => `<tr><td><a class="link-button" data-live="tray-detail" data-id="${t.id}">${code(t.serial)}</a><span class="cell-sub">${esc(t.model)}</span></td><td>${TYPE_LABEL[t.type]}</td><td>${placeCell(t)}</td><td>${t.bmcIp ? code(t.bmcIp) : "—"}${t.hostIp || (t.nvos && t.nvos.length) ? `<span class="cell-sub live-code">${t.hostIp || t.nvos[0].ip}</span>` : ""}</td><td>${stateCell(t)}</td><td>${healthBadge(t.health)}${t.alerts.length ? `<span class="cell-sub">${esc(t.alerts[0].msg)}</span>` : ""}</td><td>${fwCell(t)}</td><td>${rowActions(t)}</td></tr>`);
     return heading("设备管理", "按序列号、地址或实例直接找到一台设备，查看状态并操作。各类型的完整列表在左侧子菜单。", button("刷新数据", "refresh")) +
       `<div class="filter-bar" ${fp(1)}>${searchField("devQ", "搜索全部设备", view("devQ", ""), "序列号、BMC 或管理地址、MAC、机柜或实例")}</div>` +
-      `<div class="device-cards" ${fp(2)}>${["compute", "switch", "power_shelf"].map(card).join("")}</div>` +
+      `<div class="device-cards" ${fp(2)}>${["compute", "switch", "power_shelf"].map(card).join("")}<a class="device-card" data-go="devices/dpu"><strong>DPU</strong><b>${dpuRows().length}</b><span>${badge("网卡模式 " + dpuRows().filter(({ d }) => d.mode === "Nic").length, "green")}　${badge("DPU 模式不支持", "gray")}</span></a></div>` +
       `<h2 class="section-title">${q ? `搜索结果 · ${list.length} 台` : `需要处理的设备 · ${list.length} 台`}</h2>` +
       `<div ${fp(3)}>${table(["设备 / 序列号", "类型", "机柜 / 位置", "地址", "运行状态", "健康", "固件", "操作"], rows, q ? "没有匹配的设备。" : "当前没有需要处理的设备。")}</div>` +
       `<div ${fp(4)}>${note("要看一个机柜里的全部设备及它们的关系，从“机柜 / 位置”进入机柜详情：那里有机柜立面、清单核对和机柜级操作。")}</div>`;
@@ -89,12 +89,44 @@ registerPage("devices", {
     entry: "运维 → 设备管理", design: "6.3 机柜与设备", existing: "新增页面。现有产品要先选设备类型的页面再搜索",
     points: [
       { n: 1, name: "跨类型搜索", kind: "新增", desc: "一个输入框搜索全部计算托盘、交换机和供电框：序列号、BMC 或管理地址、MAC、机柜、实例。" },
-      { n: 2, name: "类型卡片", kind: "新增", desc: "每类设备的数量、需要处理的数量和固件与基线不同的数量。点击进入该类型的列表。" },
+      { n: 2, name: "类型卡片", kind: "新增", desc: "每类设备的数量、需要处理的数量和固件与基线不同的数量；DPU 卡片显示 BlueField 卡的数量和支持范围。点击进入该类型的列表。" },
       { n: 3, name: "需要处理的设备 / 搜索结果", kind: "调整", desc: "没有搜索词时列出各类型里需要处理的设备；有搜索词时列出匹配的设备。行操作与各类型页面相同。" },
       { n: 4, name: "机柜关联说明", kind: "新增", desc: "说明机柜页是关联与汇总视图，从“机柜 / 位置”进入。" },
     ],
     fields: [["地址", "NICo Core", "BMC 地址；计算托盘另有管理地址，交换机另有 NVOS 管理口"], ["固件", "NICo 读到的版本", "BMC 固件版本与基线是否相同；供电框没有"]],
-    rules: ["这一版计算托盘上的 BlueField 只作为网卡使用，不单独列为设备；它在计算托盘的运行状态里。", "列表最多显示 30 台，更多用子菜单里的类型页面筛选。"],
+    rules: ["DPU 不在搜索结果里：这一版 BlueField 只作为网卡使用，不是独立的设备。它有自己的只读页面。", "列表最多显示 30 台，更多用子菜单里的类型页面筛选。"],
+  },
+});
+
+/* ---------- DPU ----------
+   计算托盘上的 BlueField 卡。NICo 对每台主机有一个 DPU 策略：由 NICo 管理（DPU 模式）、当网卡用（网卡模式）、忽略。
+   这一版只支持网卡模式：NICo 仍会探测这些卡的 BMC，所以能看到序列号、固件和工作方式，但不把它们当成独立的设备来管理。 */
+const POLICY_LABEL = { nic: "网卡模式", manage: "DPU 模式", ignore: "忽略" }, MODE_LABEL = { Nic: "网卡", Dpu: "DPU" };
+const dpuRows = () => DB.trays().filter((t) => t.type === "compute" && t.state && t.nics.length).flatMap((t) => t.nics.map((d) => ({ d, t })));
+const dpuMatch = (d) => (d.policy === "nic") === (d.mode === "Nic");
+registerPage("devices/dpu", {
+  module: "dpu", title: "DPU",
+  render() {
+    const f = { rack: view("dpuRack", ""), q: view("dpuQ", "").toLowerCase() };
+    const all = dpuRows(), list = all.filter(({ d, t }) => (!f.rack || t.rack === f.rack) && (!f.q || [d.serial, d.ip, t.serial, t.rack].join(" ").toLowerCase().includes(f.q)));
+    return heading("DPU", "查看每个计算托盘上的 BlueField 卡：策略、实际工作方式、固件和 BMC 地址。", button("刷新数据", "refresh")) +
+      `<div ${fp(5)}>${note("<b>这一版只支持网卡模式。</b>BlueField 当普通网卡使用，主机直接从主机管理网段获得地址。由 NICo 管理 DPU 的方式（DPU 模式）这一版不支持：那种方式下每块卡是一台独立的设备，有自己的运行状态、系统和固件更新，主机的地址和租户网络也经它提供。", "warning")}</div>` +
+      `<div ${fp(1)}>${summary([["BlueField 卡", all.length], ["网卡模式", all.filter(({ d }) => d.mode === "Nic").length], ["DPU 模式（不支持）", all.filter(({ d }) => d.mode === "Dpu").length], ["策略与实际不一致", all.filter(({ d }) => !dpuMatch(d)).length]])}</div>` +
+      `<div class="filter-bar" ${fp(2)}>${selectField("dpuRack", "机柜", [["", "全部机柜"], ...S.racks.map((r) => [r.id, r.id])], f.rack)}${searchField("dpuQ", "搜索", view("dpuQ", ""), "卡的序列号、BMC 地址、主机序列号或机柜")}<span class="live-small">${list.length} 块</span></div>` +
+      `<div ${fp(3)}>${table(["BlueField / 序列号", "所属计算托盘", "机柜 / 位置", "BMC 地址", "策略", "实际工作方式", "网卡固件", "操作"], list.slice(0, 40).map(({ d, t }) => `<tr><td>${code(d.serial)}<span class="cell-sub">${d.name} · ${d.part}</span></td><td><a class="link-button" data-live="tray-detail" data-id="${t.id}">${code(t.serial)}</a></td><td>${placeCell(t)}</td><td>${code(d.ip)}</td><td>${POLICY_LABEL[d.policy]}</td><td>${badge(MODE_LABEL[d.mode] || "未知", d.mode === "Nic" ? "green" : "amber")}${dpuMatch(d) ? "" : `<span class="cell-sub">与策略不一致</span>`}</td><td>${code(d.fw)}</td><td><div class="inline-actions" ${fp(4)}>${button("所属主机", "tray-detail", false, `data-id="${t.id}"`)}</div></td></tr>`), "还没有计算托盘被 NICo 接管，所以没有读到 BlueField 卡。")}${list.length > 40 ? `<p class="live-small">显示前 40 块，共 ${list.length} 块。</p>` : ""}</div>`;
+  },
+  spec: {
+    purpose: "把计算托盘上的 BlueField 卡单独列出来，回答“每块卡现在是什么工作方式、和策略是否一致、是什么固件”。",
+    entry: "运维 → 设备管理 → DPU", design: "3.2 不纳入范围（DPU 模式）；6.3 机柜与设备", existing: "新增页面。现有产品只在设备管理的“DPU 子接口”和服务器运行状态的“关联 DPU”里出现",
+    points: [
+      { n: 1, name: "统计条", kind: "新增", desc: "BlueField 卡的总数、网卡模式的数量、DPU 模式的数量、策略与实际不一致的数量。" },
+      { n: 2, name: "筛选", kind: "新增", desc: "机柜和搜索（卡的序列号、BMC 地址、主机序列号）。" },
+      { n: 3, name: "卡的列表", kind: "新增", desc: "序列号和部件号、所属计算托盘、位置、BMC 地址、策略、实际工作方式、网卡固件。" },
+      { n: 4, name: "所属主机", kind: "新增", desc: "打开所属计算托盘的运行状态。" },
+      { n: 5, name: "支持范围", kind: "新增", desc: "写明这一版只支持网卡模式，以及 DPU 模式不支持的是什么。" },
+    ],
+    fields: [["策略", "NICo 的设备声明与站点配置", "站点有一个默认策略，单台主机可以覆盖。这一版平台写入的都是网卡模式"], ["实际工作方式", "NICo 探测 BlueField 的 BMC", "卡自己上报的是网卡还是 DPU；固件太旧时读不到，显示未知"], ["网卡固件 / 部件号 / 序列号", "NICo 的探测结果", ""], ["BMC 地址", "NICo", "卡的 BMC 在带外管理网段申请的地址"]],
+    rules: ["页面只读。", "这一版只支持网卡模式：卡不是独立的设备对象，没有运行状态，也不单独升级固件。", "实际工作方式与策略不一致时标出来。把卡切换到网卡模式由 NICo 在接管主机时完成，不在这里操作。", "以后支持 DPU 模式时，这一页增加每块卡的运行状态、系统版本和与主机的配对，页面结构不变。"],
   },
 });
 
@@ -107,7 +139,7 @@ registerAction("tray-detail", ({ id }) => {
   body += `<h3 class="section-title">健康告警</h3>` + table(["告警", "说明", "开始时间", "分类"], t.alerts.map((a) => `<tr><td>${code(a.id)}${a.target ? `<span class="cell-sub live-code">${esc(a.target)}</span>` : ""}</td><td>${esc(a.msg)}</td><td>${code(a.since)}</td><td>${alertClass(a) || "—"}</td></tr>`), "当前没有健康告警。");
   if (t.type === "compute") {
     body += `<h3 class="section-title">主机</h3>` + defs([["SKU", code(t.sku)], ["实例", t.instance ? code(t.instance) : "未分配"], ["隔离", t.quarantine ? badge("已隔离", "red") + " " + esc(t.quarantine) : "未隔离"], ["维护标记", t.maintenance ? esc(t.maintenance) : "—"], ["主机管理地址", code(t.hostIp) + " · " + code(t.hostMac)], ["NVLink 域", code(r.domain)]]);
-    body += `<h3 class="section-title">BlueField 网卡</h3>` + table(["网卡", "工作方式", "BMC MAC", "BMC 地址"], t.nics.map((c) => `<tr><td>${c.name}</td><td>网卡模式</td><td>${code(c.mac)}</td><td>${code(c.ip)}</td></tr>`));
+    body += `<h3 class="section-title">DPU（BlueField）</h3>` + table(["卡 / 序列号", "策略", "实际工作方式", "网卡固件", "BMC 地址"], t.nics.map((c) => `<tr><td>${c.name}<span class="cell-sub live-code">${c.serial}</span></td><td>${POLICY_LABEL[c.policy]}</td><td>${MODE_LABEL[c.mode] || "未知"}</td><td>${code(c.fw)}</td><td>${code(c.ip)}</td></tr>`)) + `<p class="live-small">这一版只支持网卡模式。</p>`;
     body += `<h3 class="section-title">硬件能力</h3>` + table(["类别", "规格"], Object.entries(t.hardware).map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`));
     body += `<h3 class="section-title">LLDP 邻居</h3>` + table(["本机接口", "邻居交换机", "邻居端口"], t.lldp.map((l) => `<tr><td>${code(l.port)}</td><td>${l.sw}</td><td>${code(l.remote)}</td></tr>`));
   }

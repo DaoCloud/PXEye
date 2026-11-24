@@ -1,7 +1,8 @@
 "use strict";
 /* 操作：机柜和设备的写操作，以及它们共用的门控。
    规则（设计说明书第 8、9 章）：
-   - 机柜上线不是操作：它由 NICo 的机柜状态机自动进行。页面只在它停在 Error 时提供“重新执行机柜维护”。
+   - 新机柜要人“确认接入”：确认之前平台只读设备，确认之后才写入 NICo。
+   - 机柜上线不是操作：确认接入后它由 NICo 的机柜状态机自动进行。页面只在它停在 Error 时提供“重新执行机柜维护”。
    - 会跨多台设备排序的电源和固件操作提交为 Flow 任务；单设备的状态类操作直接调用 Core 并读回。
    - 同一机柜同一时间只有一个进行中的任务。
    - 依赖组件缺失时操作不可用并说明原因；有整柜泄漏的机柜拒绝上电。 */
@@ -17,11 +18,31 @@ function rackGate(r, kind) {
   if (kind === "decommission" && DB.rackInstances(r.id).length) return "机柜上还有实例，先释放";
   return "";
 }
-/* 有实例时的提示：NICo 的任务会先等主机可以操作，等不到就失败。 */
-const instanceWait = (n) => (n ? note(`机柜上有 <b>${n} 个实例</b>。任务会先等这些主机可以操作，<b>最多等 30 分钟，等不到就失败</b>，期间显示为执行中。建议先释放实例再提交。`, "warning") : "");
+/* 任务什么时候真正开始：会中断业务的任务先做就绪检查。把现在的检查结果和提交后的过程写在确认页上。 */
+function readiness(r, what) {
+  const n = DB.rackInstances(r.id).length, total = r.trays.filter((t) => t.type === "compute" && t.state).length;
+  return `<div class="live-card" style="margin:14px 0 0"><h3 style="margin:0 0 8px">提交后的过程</h3><ol class="live-small" style="margin:0;padding-left:18px">
+    <li><b>等待主机就绪。</b>任务先检查这个机柜的主机能不能被操作，每 5 秒查一次，最多等 30 分钟。${n ? `<b style="color:var(--red)">现在 ${total} 台里有 ${n} 台不满足：已分配给实例。</b>实例不释放，任务会一直等到超时后失败。` : `现在 ${total} 台全部满足，<b>提交后立即开始</b>。`}</li>
+    <li><b>${what}。</b>按下面的步骤逐类设备执行，每一步由硬件后端完成。</li>
+    <li><b>读回结果。</b>任务轮询每台设备的状态，直到成功、失败或超时；失败时停在那一步。</li></ol></div>`;
+}
 const RULE_NOTE = "顺序、等待时间和重试由站点的操作规则决定；站点没有自定义规则时使用 NICo 内置的默认规则。这里不填写。";
 
 /* ---------- 机柜操作 ---------- */
+registerAction("rack-admit", ({ id }) => {
+  const r = DB.rack(id), got = r.trays.filter((t) => t.matched), sw = got.filter((t) => t.type === "switch").length, diff = DB.absent(r).length + DB.misplaced(r).length;
+  confirmOperation({ title: "确认接入", target: id, action: `把已匹配的 ${got.length} 台设备写入 NICo`, stages: ["写入声明", "NICo 探测并接管", "交换机就绪后自动上线"], why: "到货核对完成", submit: "确认接入", sub: "这是新机柜唯一需要人点头的一步。确认之前平台只读设备，不写 NICo。",
+    extra: defs([["已匹配", `${got.length} / ${r.trays.length} 台，其中交换机 ${sw} / ${PROFILE_NEED.switch}`], ["清单核对的差异", diff ? `${diff} 项，确认后仍可处理` : "没有"], ["待处理的端点", S.endpoints.length ? `${S.endpoints.length} 个，确认后匹配上的会自动写入` : "没有"]]) +
+      note(`<b>确认后不能撤回。</b>NICo 接管设备时会轮换设备口令；交换机就绪后自动开始上线，依次是固件升级、NVOS 更新、上电顺序、配置 NMX-C 集群、机柜校验，开始后不能取消。${sw < PROFILE_NEED.switch ? `<br><b>现在交换机只匹配上 ${sw} 台，不到 ${PROFILE_NEED.switch} 台：确认后设备会被接管，但上线要等交换机到齐才开始。</b>` : ""}`, "warning"),
+    run: (why) => { admitRack(id); addAudit(id, "确认接入", why, "—", `${got.length} 台已写入 NICo`); S.guide = Math.max(S.guide, 5); toast(`${id}：已写入 NICo，等待 NICo 接管和上线`); } });
+});
+registerAction("slot-fix", ({ id }) => {
+  const t = DB.tray(id), r = DB.rack(t.rack), other = r.trays.find((x) => x.slot === t.seenSlot), from = t.slot;
+  if (other && other.seenSlot === t.slot) { [t.slot, other.slot] = [other.slot, t.slot]; [t.id, other.id] = [other.id, t.id]; other.seenSlot = other.slot; } else t.slot = t.seenSlot;
+  t.seenSlot = t.slot; r.trays.sort((a, b) => a.slot - b.slot);
+  S.inventory.unshift({ v: S.inventory[0].v + 1, at: nowText(), by: "ops-01", file: "（更正槽位）", note: `${r.id} ${t.serial} 槽位 ${pad2(from)} 改为 ${pad2(t.slot)}`, why: "按实测槽位更正" });
+  addAudit(`${r.id} / 槽位 ${pad2(t.slot)}`, "按实测更正清单", "实测槽位与清单不同", "—", "清单已更新"); toast("清单已按实测槽位更正"); render();
+});
 registerAction("rack-remaint", ({ id }) => {
   const r = DB.rack(id);
   confirmOperation({ title: "重新执行机柜维护", target: id, action: "让 NICo 从头再走一遍上线的各个阶段", stages: STAGES.bringup, why: "故障原因已消除", submit: "重新执行",
@@ -44,7 +65,7 @@ registerAction("rack-power-next", ({ id }) => {
     return modal("上电被拒绝", id, note(`<b>${id} 有整柜泄漏告警。</b>有泄漏的机柜不能上电。请先由设施侧确认并清除告警；平台不提供跳过检查的入口。`, "error"), button("查看告警", "close-go", false, 'data-to="health"') + button("关闭", "close", true), { wide: false });
   }
   const cfg = { off: ["机柜下电", "正常下电", STAGES.power_off, "Off"], on: ["机柜上电", "上电", STAGES.power_on, "On"], cycle: ["机柜重启", "全部断电后重新上电", STAGES.power_cycle, "On"] }[pick];
-  confirmOperation({ title: cfg[0], target: id, action: cfg[1], stages: cfg[2], instances: pick === "on" ? 0 : n, high: pick !== "on", confirmText: id, extra: pick === "on" ? "" : instanceWait(n),
+  confirmOperation({ title: cfg[0], target: id, action: cfg[1], stages: cfg[2], instances: pick === "on" ? 0 : n, high: pick !== "on", confirmText: id, extra: pick === "on" ? "" : readiness(r, cfg[1]),
     run: (why) => { startTask(id, "power", cfg[0], cfg[2], { why, onDone: () => r.trays.forEach((t) => t.state && (t.power = cfg[3])), readback: () => "成员电源：" + DB.power(r).text }); S.view["rackTab:" + id] = "tasks"; } });
 });
 registerAction("close-go", ({ to }) => { closeModal(); go(to); });
@@ -52,7 +73,7 @@ const baselinePicker = (current) => `<div class="live-form">${field("固件基�
 registerAction("rack-firmware", ({ id }) => {
   const r = DB.rack(id), n = DB.rackInstances(id).length;
   confirmOperation({ title: "固件更新", target: id, action: "按固件基线更新计算托盘和交换机", stages: STAGES.firmware, instances: n, high: n > 0, confirmText: id,
-    extra: baselinePicker(r.baseline) + instanceWait(n) + note("刷写完成后不会自动断电重启；需要重启才生效的部件，另外提交一次机柜重启。供电框的固件不在这个操作里。"),
+    extra: baselinePicker(r.baseline) + readiness(r, "刷写固件") + note("刷写完成后不会自动断电重启；需要重启才生效的部件，另外提交一次机柜重启。供电框的固件不在这个操作里。"),
     run: (why, pick) => { startTask(id, "firmware", "固件更新 → " + pick, STAGES.firmware, { why, onDone: () => { r.baseline = pick; r.trays.forEach((t) => t.state && (t.baseline = pick)); }, readback: () => "版本与 " + pick + " 相同" }); S.view["rackTab:" + id] = "tasks"; } });
 });
 registerAction("rack-validate", ({ id }) => {
@@ -136,7 +157,7 @@ registerAction("tray-op-submit", ({ ids, action }) => {
 });
 
 /* ---------- 模拟控制（只在设计稿中存在） ---------- */
-registerAction("sim-discover", () => { if (simulateDiscovery("RACK-A03")) { S.guide = 4; S.view["rackTab:RACK-A03"] = "check"; toast("RACK-A03 已通电：32 台匹配上清单并写入 NICo，新增 2 个待处理的端点"); go("discovery"); } });
+registerAction("sim-discover", () => { if (simulateDiscovery("RACK-A03")) { S.guide = 4; S.view["rackTab:RACK-A03"] = "check"; toast("RACK-A03 已通电：32 台匹配上清单，新增 2 个待处理的端点。确认接入后才写入 NICo"); go("discovery"); } });
 /* 整柜泄漏：NICo 自动对整柜强制下电，页面只是如实显示。告警清除后设备保持关机。 */
 registerAction("sim-leak", () => {
   const r = DB.rack("RACK-A01");

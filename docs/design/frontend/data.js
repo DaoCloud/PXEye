@@ -8,20 +8,20 @@ const TOPOLOGY = "gb200_nvl72r1_c2g4", RACK_VENDOR = "Wiwynn";
 const PROFILE = "GB200_NVL72R1_C2G4_WIWYNN";
 const PROFILE_NEED = { compute: 18, switch: 9, power_shelf: 8 };
 const TYPE_LABEL = { compute: "计算托盘", switch: "交换机", power_shelf: "供电框" };
-/* bringup 是 Core 机柜状态机自己走的阶段，不是任务；其余是 Flow 任务按站点规则展开的步骤。 */
+/* bringup 是 Core 机柜状态机自己走的阶段，不是任务；其余是 Flow 任务的步骤：会中断业务的任务先等受影响的主机就绪，再按站点规则展开。 */
 const STAGES = {
-  bringup: ["固件升级", "NVOS 更新", "配置 NMX-C 集群", "上电顺序", "机柜校验"],
-  power_off: ["计算托盘下电", "交换机下电", "供电框下电"],
+  bringup: ["固件升级", "NVOS 更新", "上电顺序", "配置 NMX-C 集群", "机柜校验"],
+  power_off: ["等待主机就绪", "计算托盘下电", "交换机下电", "供电框下电"],
   power_on: ["供电框上电", "交换机上电", "计算托盘上电"],
-  power_cycle: ["计算托盘下电", "交换机下电", "供电框下电", "供电框上电", "交换机上电", "计算托盘上电"],
+  power_cycle: ["等待主机就绪", "计算托盘下电", "交换机下电", "供电框下电", "供电框上电", "交换机上电", "计算托盘上电"],
   force_off: ["全部设备强制下电"],
-  firmware: ["计算托盘固件", "交换机固件"],
+  firmware: ["等待主机就绪", "计算托盘固件", "交换机固件"],
   tray_power: ["执行电源动作"],
   tray_firmware: ["更新组件固件"],
   decommission: ["确认无实例", "释放与清理", "退役", "移出期望清单"],
 };
 /* 机柜状态机各阶段对应的状态原文。 */
-const BRINGUP_STATE = { 固件升级: "Maintenance(FirmwareUpgrade)", "NVOS 更新": "Maintenance(NVOSUpdate)", "配置 NMX-C 集群": "Maintenance(ConfigureNmxCluster)", 上电顺序: "Maintenance(PowerSequence)", 机柜校验: "Validating" };
+const BRINGUP_STATE = { 固件升级: "Maintenance(FirmwareUpgrade)", "NVOS 更新": "Maintenance(NVOSUpdate)", 上电顺序: "Maintenance(PowerSequence)", "配置 NMX-C 集群": "Maintenance(ConfigureNmxCluster)", 机柜校验: "Validating" };
 /* 固件基线：只列 NICo 能读回并比对的部件，加上只能下发、不能读回的 NVOS 目标版本。 */
 const BASELINES = [
   { id: "GB200-NVL72 2026.11", profile: PROFILE, released: "2026-11-10", note: "当前推荐", parts: { "计算托盘 BMC": "25.11.2", "计算托盘 UEFI": "2.19.0", "交换机 BMC": "25.11.1" }, nvos: "25.02.4012" },
@@ -29,9 +29,9 @@ const BASELINES = [
 ];
 /* 网络用途：每类设备的每种接口必须落在一个已规划的子网里。需要的地址数按接口算，不按设备算。 */
 const NET_ROLES = [
-  { id: "oob", label: "带外管理", devices: "计算托盘、交换机、供电框的 BMC，以及计算托盘上 BlueField 网卡的 BMC", kind: "Underlay", perRack: 35 + 36, formula: "每台设备 1 个 + 每块 BlueField 网卡 1 个" },
-  { id: "nvos", label: "交换机系统管理", devices: "交换机的 NVOS 管理口", kind: "Underlay", perRack: 18, formula: "每台交换机 2 个" },
-  { id: "host", label: "主机管理", devices: "计算托盘主机网口：引导、装机与系统管理", kind: "HostInband", perRack: 18, formula: "每个计算托盘 1 个" },
+  { id: "oob", label: "带外管理", devices: "计算托盘 BMC、交换机 BMC、供电框 PMC、DPU BMC", kind: "Underlay", perRack: 35 + 36 },
+  { id: "nvos", label: "交换机系统管理", devices: "交换机 NVOS 管理口", kind: "Underlay", perRack: 18 },
+  { id: "host", label: "主机管理", devices: "计算托盘主机网口：引导、装机与系统管理", kind: "HostInband", perRack: 18 },
 ];
 const pad2 = (n) => String(n).padStart(2, "0");
 const hex2 = (n) => n.toString(16).padStart(2, "0");
@@ -43,7 +43,7 @@ function makeTray(rackId, n, slot, discovered, baseline) {
   const type = slotType(slot), key = { compute: "C", switch: "S", power_shelf: "P" }[type];
   const serial = `DEMO-${key}-${rackId.slice(-3)}-${pad2(slot)}`;
   const tray = {
-    id: `${rackId}/${pad2(slot)}`, rack: rackId, n, slot, type, serial, declared: discovered,
+    id: `${rackId}/${pad2(slot)}`, rack: rackId, n, slot, type, serial, matched: discovered, declared: discovered, seenSlot: discovered ? slot : 0,
     model: discovered ? { compute: "GB200 Compute Tray", switch: "NVLink Switch Tray", power_shelf: "Power Shelf" }[type] : "",
     bmcMac: "", bmcIp: "", addrMode: type === "compute" ? "保留" : "动态分配",
     state: discovered ? "Ready" : "", reason: "", health: discovered ? "ok" : "none", alerts: [], power: discovered ? "On" : "",
@@ -63,16 +63,16 @@ function assignAddresses(t) {
   if (t.type === "compute") {
     const c = s <= 14 ? s - 5 : s - 24 + 10;
     t.hostMac = `02:10:${pad2(n)}:00:00:${hex2(s)}`; t.hostIp = `198.51.100.${host}`;
-    t.nics = [1, 2].map((i) => ({ name: "BlueField 网卡 " + i, mac: `02:3${i}:${pad2(n)}:00:00:${hex2(s)}`, ip: `192.0.2.${base + 45 + c * 2 + i}` }));
+    t.nics = [1, 2].map((i) => ({ name: "BlueField-3 · " + i, serial: `DEMO-D-${t.rack.slice(-3)}-${pad2(s)}${i}`, part: "900-9D3B6-00CV-AA0", fw: "32.45.1020", policy: "nic", mode: "Nic", mac: `02:3${i}:${pad2(n)}:00:00:${hex2(s)}`, ip: `192.0.2.${base + 45 + c * 2 + i}` }));
   }
   if (t.type === "switch") t.nvos = [0, 1].map((i) => ({ mac: `02:2${i}:${pad2(n)}:00:00:${hex2(s)}`, ip: `203.0.113.${(n - 1) * 40 + (s - 15) * 2 + i + 11}`, primary: i === 0, name: "eth" + i }));
 }
 function makeRack(id, n, discovered, baseline, location) {
   const trays = []; for (let s = 1; s <= 35; s++) trays.push(makeTray(id, n, s, discovered, baseline));
   /* state 为空表示 NICo 里还没有这个机柜的对象：机柜只在清单里。 */
-  return { id, n, domain: "NVL-" + id.slice(-3), topology: TOPOLOGY, vendor: RACK_VENDOR, profile: PROFILE, location, state: discovered ? "Ready" : "", stateSince: discovered ? "2026-11-02 15:02" : "", reason: "",
+  return { id, n, domain: "NVL-" + id.slice(-3), topology: TOPOLOGY, vendor: RACK_VENDOR, profile: PROFILE, location, admit: discovered, admitAt: discovered ? "2026-11-02 09:30" : "", state: discovered ? "Ready" : "", stateSince: discovered ? "2026-11-02 15:02" : "", reason: "",
     baseline: discovered ? baseline : "", trays, tasks: [], task: null, bring: null,
-    history: discovered ? [["2026-11-02 09:40", "Discovering"], ["2026-11-02 11:05", "Maintenance(FirmwareUpgrade)"], ["2026-11-02 11:06", "Maintenance(NVOSUpdate)"], ["2026-11-02 11:07", "Maintenance(ConfigureNmxCluster)"], ["2026-11-02 14:20", "Maintenance(PowerSequence)"], ["2026-11-02 14:31", "Validating"], ["2026-11-02 15:02", "Ready"]] : [] };
+    history: discovered ? [["2026-11-02 09:40", "Discovering"], ["2026-11-02 11:05", "Maintenance(FirmwareUpgrade)"], ["2026-11-02 11:06", "Maintenance(NVOSUpdate)"], ["2026-11-02 11:07", "Maintenance(PowerSequence)"], ["2026-11-02 11:20", "Maintenance(ConfigureNmxCluster)"], ["2026-11-02 14:31", "Validating"], ["2026-11-02 15:02", "Ready"]] : [] };
 }
 /* 一个 NVL72 机柜就是一个 NVLink 域。域有两个编号：机柜组编号（清单里的）和 NMX-C 回报的域编号。 */
 const makeDomain = (r, formed) => ({ id: r.domain, rack: r.id, topology: r.topology, uuid: formed ? `7f3a${pad2(r.n)}c2-0000-4000-8000-0000000000${pad2(r.n)}` : "", nmxc: formed ? "ok" : "", health: formed ? "ok" : "none", partitions: [] });
@@ -102,9 +102,9 @@ function freshState() {
     ],
     /* 子网：NICo 的网络段。capacity 为可分配地址数（去掉保留地址）。vlan 只是平台记的备注，NICo 不存。 */
     subnets: [
-      { id: "net-oob", name: "oob-mgmt", role: "oob", kind: "Underlay", cidr: "192.0.2.0/24", gateway: "192.0.2.1", subdomain: "oob.example.internal", vlan: "401", pool: ["192.0.2.11", "192.0.2.250"], reserved: 10, capacity: 240, mtu: 1500, state: "READY" },
-      { id: "net-nvos", name: "nvos-mgmt", role: "nvos", kind: "Underlay", cidr: "203.0.113.0/24", gateway: "203.0.113.1", subdomain: "nvos.example.internal", vlan: "431", pool: ["203.0.113.11", "203.0.113.250"], reserved: 10, capacity: 240, mtu: 1500, state: "READY" },
-      { id: "net-host", name: "host-inband", role: "host", kind: "HostInband", cidr: "198.51.100.0/24", gateway: "198.51.100.1", subdomain: "host.example.internal", vlan: "301", pool: ["198.51.100.11", "198.51.100.250"], reserved: 10, capacity: 240, mtu: 9000, state: "READY" },
+      { id: "net-oob", name: "oob-mgmt", role: "oob", kind: "Underlay", cidr: "192.0.2.0/24", gateway: "192.0.2.1", vlan: "401", pool: ["192.0.2.11", "192.0.2.250"], reserved: 10, capacity: 240, mtu: 1500, state: "READY" },
+      { id: "net-nvos", name: "nvos-mgmt", role: "nvos", kind: "Underlay", cidr: "203.0.113.0/24", gateway: "203.0.113.1", vlan: "431", pool: ["203.0.113.11", "203.0.113.250"], reserved: 10, capacity: 240, mtu: 1500, state: "READY" },
+      { id: "net-host", name: "host-inband", role: "host", kind: "HostInband", cidr: "198.51.100.0/24", gateway: "198.51.100.1", vlan: "301", pool: ["198.51.100.11", "198.51.100.250"], reserved: 10, capacity: 240, mtu: 9000, state: "READY" },
     ],
     /* 拿到了地址、但还没有归属的端点：认证失败、读不到身份，或读到的序列号不在清单里。 */
     endpoints: [{ id: "ep-0007", mac: "02:00:ee:00:00:07", ip: "192.0.2.247", subnet: "net-oob", seen: "2026-11-24 07:41", problem: "unlisted", type: "compute", serial: "DEMO-X-0007", model: "GB200 Compute Tray" }],
@@ -127,7 +127,9 @@ const DB = {
   roleSubnets: (role) => S.subnets.filter((n) => n.role === role),
   ready: (r, type) => r.trays.filter((t) => (!type || t.type === type) && /Ready$/.test(t.state)).length,
   /* 清单与实物的差异：清单里有、但还没有任何设备读出这个序列号的行。只在机柜已有设备出现之后才算差异。 */
-  absent: (r) => (r.trays.some((t) => t.declared) ? r.trays.filter((t) => !t.declared) : []),
+  absent: (r) => (r.trays.some((t) => t.matched) ? r.trays.filter((t) => !t.matched) : []),
+  /* 槽位不一致：清单里写的槽位，和 NICo 从硬件后端读到的槽位不同。 */
+  misplaced: (r) => r.trays.filter((t) => t.seenSlot && t.seenSlot !== t.slot),
   /* 机柜的电源：机柜对象没有电源状态，只能数成员。 */
   power(r) { const known = r.trays.filter((t) => t.state), on = known.filter((t) => t.power === "On").length; return { known: known.length, on, text: !known.length ? "未报告" : on === known.length ? "全部开机" : on === 0 ? "全部关机" : `${on} / ${known.length} 开机` }; },
   /* 设备的各个接口。地址分配和规划检查都按接口算。 */
@@ -139,16 +141,16 @@ const DB = {
       if (t.type === "switch") t.nvos.forEach((p) => add("nvos", `NVOS 管理口 ${p.name}${p.primary ? "（主）" : ""}`, p.mac, p.ip, "动态分配"));
       if (t.type === "compute") {
         if (t.hostIp) add("host", "主机管理口", t.hostMac, t.hostIp, "动态分配");
-        t.nics.forEach((c) => add("oob", c.name + " 的 BMC", c.mac, c.ip, "动态分配"));
+        t.nics.forEach((c) => add("oob", "DPU BMC " + c.name.slice(-1), c.mac, c.ip, "动态分配"));
       }
     });
     return out;
   },
   subnetUsed: (id) => DB.interfaces().filter((i) => i.subnet === id).length + S.endpoints.filter((e) => e.subnet === id).length,
-  /* 规划检查：每种用途都有子网、每个子网都有子域，且可分配地址不少于清单里全部机柜需要的数量。extra 是导入前预估要新增的机柜数。 */
+  /* 规划检查：每种用途都有子网，且可分配地址不少于清单里全部机柜需要的数量。extra 是导入前预估要新增的机柜数。 */
   planChecks(extraRacks = 0) {
     return NET_ROLES.map((r) => { const nets = DB.roleSubnets(r.id), capacity = nets.reduce((n, x) => n + x.capacity, 0), need = r.perRack * (S.racks.length + extraRacks);
-      return { role: r, nets, capacity, need, ok: nets.length > 0 && capacity >= need && nets.every((x) => x.subdomain), reason: !nets.length ? "缺少子网" : capacity < need ? "地址不足" : nets.some((x) => !x.subdomain) ? "子网缺少子域" : "" }; });
+      return { role: r, nets, capacity, need, ok: nets.length > 0 && capacity >= need, reason: !nets.length ? "缺少子网" : capacity < need ? "地址不足" : "" }; });
   },
   planOk: (extraRacks) => DB.planChecks(extraRacks).every((c) => c.ok),
   /* 当前告警。编号和分类用 NICo 的原文：阻止分配只对它所在的那台主机生效；RackLeak 分类才是整柜泄漏。 */
@@ -204,7 +206,7 @@ function coreBringup(r) {
   r.bring.timer = setInterval(() => {
     const b = r.bring, cur = b.stages.find((s) => s.s === "run"); if (cur) cur.s = "done";
     const next = b.stages.find((s) => s.s === "wait");
-    if (next && !S.rms && ["固件升级", "NVOS 更新", "上电顺序"].includes(next.n)) { next.s = "fail"; clearInterval(b.timer); b.timer = 0; setRackState(r, "Error", "RMS 不可达：" + next.n + "无法执行"); }
+    if (next && !S.rms && ["固件升级", "NVOS 更新", "上电顺序", "配置 NMX-C 集群"].includes(next.n)) { next.s = "fail"; clearInterval(b.timer); b.timer = 0; setRackState(r, "Error", "RMS 不可达：" + next.n + "无法执行"); }
     else if (next) { next.s = "run"; if (r.state !== BRINGUP_STATE[next.n]) setRackState(r, BRINGUP_STATE[next.n]); }
     else { clearInterval(b.timer); b.timer = 0; setRackState(r, "Ready"); r.baseline = BASELINES[0].id; r.trays.forEach((t) => t.state && (t.baseline = BASELINES[0].id)); const d = DB.domain(r.domain); Object.assign(d, makeDomain(r, true)); S.guide = Math.max(S.guide, 6); if (window.toast) toast(`${r.id}：NICo 已完成上线，机柜就绪`); }
     if (window.render) render();
@@ -212,26 +214,37 @@ function coreBringup(r) {
   return true;
 }
 
-/* 模拟：新机柜通电。设备拿到地址，平台读取身份、按序列号匹配清单并把声明写进 NICo，随后 NICo 探测和接管。
-   留下三种需要人处理的情况：一台交换机认证失败、一台计算托盘换了序列号、一个供电框没有申请地址。 */
+/* 模拟：新机柜通电。设备拿到地址，平台读取身份并按序列号匹配清单。这一步只读，不写 NICo。
+   留下三种需要人处理的情况：一台交换机认证失败、一台计算托盘换了序列号、一个供电框没有申请地址；另有两台计算托盘插反了槽位。
+   人确认接入之后，平台才把声明写进 NICo，随后 NICo 探测和接管，交换机到齐后自动上线。 */
+function matchTray(t) { assignAddresses(t); Object.assign(t, { matched: true, seenSlot: t.slot, lastSeen: nowText(), model: { compute: "GB200 Compute Tray", switch: "NVLink Switch Tray", power_shelf: "Power Shelf" }[t.type] }); }
 function takeOver(t) {
-  assignAddresses(t);
-  Object.assign(t, { declared: true, state: "Ready", health: "ok", power: "On", baseline: BASELINES[1].id, lastSeen: nowText(), model: { compute: "GB200 Compute Tray", switch: "NVLink Switch Tray", power_shelf: "Power Shelf" }[t.type], history: [[nowText(), t.type === "compute" ? "HostInit/Discovered" : "Initializing"], [nowText(), "Ready"]] });
+  if (!t.matched) matchTray(t);
+  Object.assign(t, { declared: true, state: "Ready", health: "ok", power: "On", baseline: BASELINES[1].id, lastSeen: nowText(), history: [[nowText(), t.type === "compute" ? "HostInit/Discovered" : "Initializing"], [nowText(), "Ready"]] });
   if (t.type === "switch") t.fabricManager = "UNKNOWN";
 }
 function simulateDiscovery(rackId) {
-  const r = DB.rack(rackId); if (!r || r.state) return false;
-  r.trays.filter((t) => ![9, 20, 33].includes(t.slot)).forEach(takeOver);
-  setRackState(r, "Discovering");
+  const r = DB.rack(rackId); if (!r || r.trays.some((t) => t.matched)) return false;
+  r.trays.filter((t) => ![9, 20, 33].includes(t.slot)).forEach(matchTray);
+  const a = r.trays.find((t) => t.slot === 12), b = r.trays.find((t) => t.slot === 13); a.seenSlot = 13; b.seenSlot = 12;
   const n = r.n, ip = (s) => `192.0.2.${(n - 1) * 80 + s + 10}`, mac = (s) => `02:00:${pad2(n)}:00:00:${hex2(s)}`;
   S.endpoints.push({ id: "ep-" + rackId.slice(-3) + "-20", mac: mac(20), ip: ip(20), subnet: "net-oob", seen: nowText(), problem: "auth", type: "", serial: "", model: "", sim: rackId + "/20" });
   S.endpoints.push({ id: "ep-" + rackId.slice(-3) + "-09", mac: mac(9), ip: ip(9), subnet: "net-oob", seen: nowText(), problem: "unlisted", type: "compute", serial: "DEMO-C-" + rackId.slice(-3) + "-99", model: "GB200 Compute Tray", sim: rackId + "/09" });
   return true;
 }
-/* 一个端点匹配上清单里的一行之后：写入声明、接管；交换机数量达标后 Core 自动开始上线。 */
+/* 确认接入：把已经匹配上的设备写进 NICo。之后再匹配上的设备自动写入。 */
+function admitRack(rackId) {
+  const r = DB.rack(rackId); r.admit = true; r.admitAt = nowText();
+  r.trays.filter((t) => t.matched && !t.declared).forEach(takeOver);
+  if (r.trays.some((t) => t.declared)) { setRackState(r, "Discovering"); coreBringup(r); }
+}
+/* 一个端点匹配上清单里的一行之后：机柜已确认接入就直接写入并接管，否则只记为已匹配。 */
 function matchEndpoint(epId, trayId, patch) {
   const e = S.endpoints.find((x) => x.id === epId), t = DB.tray(trayId), r = DB.rack(t.rack);
   if (e) S.endpoints = S.endpoints.filter((x) => x.id !== epId);
-  Object.assign(t, patch || {}); takeOver(t);
+  Object.assign(t, patch || {});
+  if (!r.admit) return matchTray(t);
+  takeOver(t);
+  if (!r.state) setRackState(r, "Discovering");
   if (r.state === "Discovering" && !(r.bring && r.bring.timer)) coreBringup(r);
 }

@@ -60,14 +60,14 @@ const DESIGN_EXT = { topbar: [], guide: [] };
 /* 左侧菜单：按“对象直达”组织。每个菜单项是一个入口（nav id），可以带子菜单。
    机柜是关联与汇总视图；设备按类型各有自己的入口，不需要先进机柜。 */
 const NAV = [
-  ["运维", [["racks"], ["domains"], ["devices", ["compute", "switch", "power_shelf"]], ["health"], ["tasks"], ["audit"]]],
+  ["运维", [["racks"], ["domains"], ["devices", ["compute", "switch", "power_shelf", "dpu"]], ["health"], ["tasks"], ["audit"]]],
   ["交付", [["delivery"], ["installs"], ["instances"]]],
   ["接入", [["network"], ["inventory"], ["discovery"]]],
   ["配置", [["site"], ["baselines"], ["os"]]],
 ];
 /* 菜单名用四个字的正式名称，与主分支的“设备管理”“实例管理”“站点设置”“安装任务”同一规格；子菜单是设备类型名。页面标题与菜单名一致。 */
-const MODULE_LABEL = { racks: "机柜管理", domains: "NVLink 域管理", devices: "设备管理", compute: "计算托盘", switch: "交换机", power_shelf: "供电框", health: "健康告警", tasks: "运维任务", audit: "操作审计", delivery: "机柜交付", installs: "安装任务", instances: "实例管理", site: "站点设置", network: "网络规划", inventory: "设备清单", discovery: "设备发现", baselines: "固件基线", os: "安装方案" };
-const MODULE_ROUTE = { compute: "devices/compute", switch: "devices/switch", power_shelf: "devices/power-shelf", installs: "delivery/installs", instances: "delivery/instances", os: "os-templates" };
+const MODULE_LABEL = { racks: "机柜管理", domains: "NVLink 域管理", devices: "设备管理", compute: "计算托盘", switch: "交换机", power_shelf: "供电框", dpu: "DPU", health: "健康告警", tasks: "运维任务", audit: "操作审计", delivery: "机柜交付", installs: "安装任务", instances: "实例管理", site: "站点设置", network: "网络规划", inventory: "设备清单", discovery: "设备发现", baselines: "固件基线", os: "安装方案" };
+const MODULE_ROUTE = { compute: "devices/compute", switch: "devices/switch", power_shelf: "devices/power-shelf", dpu: "devices/dpu", installs: "delivery/installs", instances: "delivery/instances", os: "os-templates" };
 const MODULE_PARENT = {}; NAV.forEach(([, items]) => items.forEach(([id, kids]) => (kids || []).forEach((k) => (MODULE_PARENT[k] = id))));
 const navRoute = (id) => MODULE_ROUTE[id] || id;
 /* 带说明的页面，按菜单顺序排列。 */
@@ -144,10 +144,10 @@ function toast(text) { const el = $("#toast"); el.textContent = text; el.classLi
 const field = (label, control, hint = "") => `<label class="form-field"><span>${esc(label)}</span>${control}${hint ? `<small class="muted">${esc(hint)}</small>` : ""}</label>`;
 
 /* 所有写操作共用的确认弹窗：只显示对象、动作、受影响的实例、将经过的阶段；输入只有原因（和高风险时的对象确认）。 */
-function confirmOperation({ title, target, action, instances = 0, stages = [], extra = "", high = false, confirmText = "", why = "", submit = "提交", run }) {
+function confirmOperation({ title, target, action, instances = 0, stages = [], extra = "", high = false, confirmText = "", why = "", submit = "提交", sub = "", run }) {
   const facts = [["对象", `<b>${esc(target)}</b>`], ["动作", esc(action)], ["受影响的实例", instances ? `<b style="color:var(--red)">${instances} 个</b>` : "0 个"]];
   if (stages.length) facts.push(["将经过的步骤", esc(stages.join(" → "))]);
-  modal(title, stages.length ? "确认后提交。顺序、超时和重试由站点的操作规则决定。" : "确认后立即执行，并读回结果。",
+  modal(title, sub || (stages.length ? "确认后提交。顺序、超时和重试由站点的操作规则决定。" : "确认后立即执行，并读回结果。"),
     `<div class="confirm-facts">${defs(facts)}</div>${extra}<div class="live-form">${field("原因", `<input class="input" id="op-why" value="${esc(why)}" placeholder="工单号或原因">`)}${high ? field(`高风险操作：输入 ${confirmText} 以确认`, `<input class="input live-code" id="op-confirm" autocomplete="off">`) : ""}</div>`,
     button("取消", "close") + `<button class="button ${high ? "danger" : "primary"}" data-live="op-submit">${esc(submit)}</button>`, { wide: false });
   confirmOperation.pending = () => {
@@ -175,19 +175,19 @@ function specHtml(spec) {
 }
 const GUIDE_STEPS = [
   ["站点设置", "检查依赖组件是否就绪", "site"], ["网络规划", "规划各类设备的网段与 DHCP 地址池", "network"], ["设备清单", "导入到货清单，确认差异", "inventory"],
-  ["设备发现", "模拟通电，处理匹配不上清单的端点", "discovery"], ["机柜上线", "交换机到齐后 NICo 自动上线，跟踪各阶段", "rack/RACK-A03"], ["机柜交付", "按机柜装机或交给上层平台", "delivery"],
+  ["设备发现", "模拟通电，处理匹配不上清单的端点", "discovery"], ["机柜上线", "核对后确认接入，NICo 自动上线，跟踪各阶段", "rack/RACK-A03"], ["机柜交付", "按机柜装机或交给上层平台", "delivery"],
   ["健康告警", "告警、阻止分配与整柜泄漏", "health"], ["设备管理", "从菜单直接进入交换机：看地址、固件，上下电", "devices/switch"], ["NVLink 域管理", "NMX-C、域健康与 NVLink 分区", "domains"], ["操作审计", "每次操作的记录", "audit"],
 ];
 function renderGuide(page, arg) {
   const tab = view("guideTab", "spec"), a03 = DB.rack("RACK-A03");
   const sim = `<h3>讲解主线</h3><ol class="guide-steps">${GUIDE_STEPS.map(([t, d, h], i) => `<li class="${S.guide === i + 1 ? "now" : ""}" data-guide="${i + 1}" data-go="${h}">${i + 1}. ${t}<small>${d}</small></li>`).join("")}</ol>
     <h3>模拟现场与 NICo 的变化</h3><div class="guide-sim">
-      <button class="button compact" data-live="sim-discover" ${a03 && !a03.state ? "" : `disabled title="${a03 ? "已通电" : "先导入清单"}"`}>RACK-A03 通电</button>
+      <button class="button compact" data-live="sim-discover" ${a03 && !a03.trays.some((t) => t.matched) ? "" : `disabled title="${a03 ? "已通电" : "先导入清单"}"`}>RACK-A03 通电</button>
       <button class="button compact" data-live="sim-leak">${S.leak ? "清除泄漏告警" : "触发整柜泄漏（RACK-A01）"}</button>
       <button class="button compact" data-live="sim-rms">${S.rms ? "RMS 不可用" : "恢复 RMS"}</button>
       <button class="button compact" data-live="sim-flow">${S.flow ? "Flow 不可用" : "恢复 Flow"}</button>
       <button class="button compact" data-live="sim-reset">重置示例数据</button></div>
-    <p class="muted" style="margin-top:12px">任务和 NICo 上线的进度用定时器模拟，每个阶段约一秒，不代表真实耗时。先让 RMS 不可用再给机柜通电，可以看到上线停在 Error 以及“重新执行机柜维护”。</p>`;
+    <p class="muted" style="margin-top:12px">任务和 NICo 上线的进度用定时器模拟，每个阶段约一秒，不代表真实耗时。通电后到机柜详情“确认接入”，上线才会开始；先让 RMS 不可用再确认接入，可以看到上线停在 Error 以及“重新执行机柜维护”。</p>`;
   const name = page.crumb ? page.crumb(arg) : page.tab || page.title;
   if (S.view.guide === false) { $("#guide").innerHTML = `<button class="guide-handle" data-design="guide" aria-label="展开页面说明" title="展开页面说明">${CHEVRON}<span>页面说明</span></button>`; return; }
   $("#guide").innerHTML = `<div class="guide-head"><div class="guide-title"><div><h2>${esc(name)}</h2><p>${navPath(page).join(" › ") || "汇总"} · 页面说明随页面一起维护</p></div>
