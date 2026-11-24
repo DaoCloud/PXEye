@@ -15,7 +15,7 @@
 | 组件 | 工作负载 | 级别 | 提供什么 | 部署方式 | 缺失时 | 接口数 | 依赖它的页面 | 出处 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | NICo Core | nico-api（含站点发现和各状态机）、数据库、密钥库 | 必需 | 全部 Core gRPC：子网、设备声明、发现、设备读取与单设备操作、实例、健康报告 | 随产品的 Chart 安装 | 平台不可用 | 78 | 全部调用 NICo 的页面 | `helm/charts/nico-api` |
-| DHCP 服务 | nico-dhcp | 必需 | 给各管理网段的设备分配地址，并在 Core 里留下设备接口；设备发现从这里开始 | 随 Core 的 Chart 安装 | 新设备拿不到地址，不会被发现；已发现的设备不受影响 | 3 | 接入 › 网络规划 › DHCP 服务；接入 › 网络规划 › 地址分配；接入 › 设备发现；运维 › 设备管理 › 服务器；运维 › 设备管理 › 交换机；运维 › 设备管理 › 供电框；交付 › 安装任务 | `helm/charts/nico-dhcp` |
+| DHCP 服务 | nico-dhcp | 必需 | 给各管理网段的设备分配地址，并在 Core 里留下设备接口；设备发现从这里开始 | 随 Core 的 Chart 安装 | 新设备拿不到地址，不会被发现；已发现的设备不受影响 | 3 | 接入 › 网络规划 › DHCP 服务；接入 › 网络规划 › 地址分配；接入 › 设备清单 › 到货清单；接入 › 设备发现；运维 › 设备管理 › 服务器；运维 › 设备管理 › 交换机；运维 › 设备管理 › 供电框；交付 › 安装任务 | `helm/charts/nico-dhcp` |
 | 引导服务 | nico-pxe、nico-dns、nico-ntp | 必需 | iPXE 引导、装机材料、名称解析和时间 | 随 Core 的 Chart 安装 | 不能装机；新主机走不完接管流程 | 2 | 交付 › 安装任务；配置 › 安装方案 | `helm/charts/nico-pxe` |
 | 硬件健康服务 | nico-hardware-health | 必需 | 采集 BMC 传感器和托盘泄漏检测，写成设备的健康报告 | 随 Core 的 Chart 安装 | 健康告警页只剩站点发现和手工写入的报告；托盘泄漏不会阻止分配 | 2 | 运维 › NVLink 域管理；运维 › 机柜管理 › 机柜详情；运维 › 健康告警；交付 › 安装任务 | `helm/charts/nico-hardware-health` |
 | RMS | Rack Management Service | 整机柜 | 整机柜里计算托盘、交换机、供电框的电源和固件；交换机的证书与口令配置、复位、退役；设备的槽位信息 | 官方 Chart rack-manager；镜像从公开源码自己构建。已在没有整机柜硬件的环境里部署，Core 探测结果为已连通 | 设备和机柜的电源、固件操作不可用；交换机过不了配置阶段，机柜走不到就绪 | 13 | 配置 › 站点设置 › 站点概况；配置 › 站点设置 › 控制面；运维 › 机柜管理 › 机柜详情；运维 › 设备管理 › 服务器；运维 › 设备管理 › 交换机；运维 › 设备管理 › 供电框；配置 › 固件基线 | `docs/configuration/rms.md` |
@@ -45,7 +45,7 @@
 | 接入 › 网络规划 › 子网 | NICo Core | 5 | 3 | NICo Core → 正向 DNS 域 → VLAN 与 VNI 资源池 → 子网 → 设备声明 |
 | 接入 › 网络规划 › DHCP 服务 | NICo Core、DHCP 服务、监控系统 | 5 | 0 | NICo Core → 正向 DNS 域 → VLAN 与 VNI 资源池 → DHCP 与引导服务 → 子网 → 现场 DHCP 中继 → 设备接口与地址 |
 | 接入 › 网络规划 › 地址分配 | NICo Core、DHCP 服务 | 2 | 0 | NICo Core → 正向 DNS 域 → VLAN 与 VNI 资源池 → DHCP 与引导服务 → 子网 → 现场 DHCP 中继 → 设备接口与地址 |
-| 接入 › 设备清单 › 到货清单 | NICo Core | 7 | 0 | NICo Core → 正向 DNS 域 → VLAN 与 VNI 资源池 → 机柜规格配置 → 子网 → 机柜组声明 → 机柜声明 → 设备声明 |
+| 接入 › 设备清单 › 到货清单 | NICo Core、DHCP 服务 | 9 | 0 | NICo Core → 正向 DNS 域 → VLAN 与 VNI 资源池 → 机柜规格配置 → DHCP 与引导服务 → 子网 → 机柜组声明 → 机柜声明 → 设备声明 → 现场 DHCP 中继 → 设备接口与地址 → 系统定义 |
 | 接入 › 设备清单 › 版本记录 | — | 0 | 0 | 不调用 NICo，数据由平台自己保存 |
 | 接入 › 设备发现 | NICo Core、DHCP 服务 | 12 | 6 | NICo Core → 正向 DNS 域 → VLAN 与 VNI 资源池 → 机柜规格配置 → 站点默认凭据 → DHCP 与引导服务 → 集群级证书签发者 → 编排用数据库 → RMS → 组件管理器 → 子网 → 机柜组声明 → 设备声明 → 现场 DHCP 中继 → 设备接口与地址 → 探测结果 → 计算托盘对象 → 交换机对象 → 供电框对象 |
 | 配置 › 站点设置 › 站点概况 | NICo Core、RMS、REST 接口、Flow、NMX-C | 8 | 2 | NICo Core → 机柜规格配置 → 集群级证书签发者 → 编排用数据库 → Temporal → RMS → 组件管理器 → REST 身份认证 → REST 站点 → Flow → 操作规则 → NMX-C 接入 |
@@ -125,7 +125,7 @@
 | `FindNetworkSegmentDhcpRanges` | Core gRPC · 读 | — | 子网 ID 列表 | segment_id、prefix、range.{start,end}、revision | 子网 | Core | 接入 › 网络规划 › 子网；接入 › 网络规划 › DHCP 服务 | 定义；现有产品已调用 | — | 命令行没有对应命令 | `forge.proto:148` |
 | `SetNetworkSegmentDhcpRange` | Core gRPC · 写 | — | segment_id 必填；range 省略表示清除；if_revision 填上次读到的修订号，0 表示还没有地址池 | range.{start,end}、revision | 子网 | Core | 接入 › 网络规划 › 子网 | 定义；现有产品已调用 | — | 只对有且只有一个 IPv4 前缀的 ADMIN、UNDERLAY、HOST_INBAND 子网有效；已有动态地址落在新范围之外时拒绝。命令行没有对应命令 | `forge.proto:149` |
 | `FindInterfaces` | Core gRPC · 读 | `nico-admin-cli machine-interfaces show` | id 或 ip；都不填返回全部 | id、mac_address、address[]、segment_id、hostname、vendor、last_dhcp、machine_id、switch_id、power_shelf_id、association_type、interface_type、primary_interface | 设备接口与地址 | Core | 接入 › 网络规划 › DHCP 服务；接入 › 网络规划 › 地址分配；接入 › 设备发现；运维 › 设备管理 › 服务器；交付 › 安装任务 | 调用；现有产品已调用 | 返回 8 个接口。字段与这里一致，另外还有 is_bmc、attached_dpu_machine_id、domain_id、created | 没有租约到期时间。association_type 为 NONE 的就是拿到地址但没有归属的设备 | `forge.proto:318` |
-| `FindInterfaceAddresses / FindIpAddress` | Core gRPC · 读 | `nico-admin-cli machine-interfaces show-addresses；nico-admin-cli ip find <IP>` | — | addresses[].{address,allocation_type}、matches[].{ip_type,owner_id,message} | 设备接口与地址 | Core | 接入 › 网络规划 › 地址分配；运维 › 设备管理 › 服务器；运维 › 设备管理 › 交换机；运维 › 设备管理 › 供电框；交付 › 安装任务 | 定义；现有产品已调用 | — | 按地址反查归属：地址可能属于设备接口、BMC、实例、资源池或子网本身 | `forge.proto:315` |
+| `FindInterfaceAddresses / FindIpAddress` | Core gRPC · 读 | `nico-admin-cli machine-interfaces show-addresses；nico-admin-cli ip find <IP>` | — | addresses[].{address,allocation_type}、matches[].{ip_type,owner_id,message} | 设备接口与地址 | Core | 接入 › 网络规划 › 地址分配；接入 › 设备清单 › 到货清单；运维 › 设备管理 › 服务器；运维 › 设备管理 › 交换机；运维 › 设备管理 › 供电框；交付 › 安装任务 | 定义；现有产品已调用 | — | 按地址反查归属：地址可能属于设备接口、BMC、实例、资源池或子网本身 | `forge.proto:315` |
 | `carbide_dhcp_requests_total、carbide_dhcp_dropped_requests_total、carbide_dhcp_replies_sent_total、carbide_available_ips_count` | 指标 · 读 | — | — | message_type、reason、name、type、prefix | DHCP 与引导服务 | 监控系统 | 接入 › 网络规划 › DHCP 服务 | 定义 | — | DHCP 的请求计数只按报文类型和丢弃原因分，不按子网或中继分；空闲地址数按子网前缀分 | `crates/dhcp-server/src/metrics.rs:495` |
 
 ## 接口：设备清单
@@ -216,7 +216,7 @@
 
 | 接口 | 类型 | 命令行 | 请求参数 | 用到的字段 | 前置资源 | 执行方 | 使用的页面 | 证据 | 实测 | 说明 | 出处 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `FindOperatingSystemIds → FindOperatingSystemsByIds` | Core gRPC · 读 | `nico-admin-cli operating-system show` | — | id、name、type、status、is_active、ipxe_template_id、ipxe_template_parameters、ipxe_template_artifacts[].{name,url,cached_url} | 系统定义 | Core | 运维 › 设备管理 › 服务器；交付 › 安装任务；配置 › 安装方案 | 调用；现有产品已调用 | 返回 1 个系统定义。字段与这里一致，制品另有 sha、auth_type、cache_strategy |  | `forge.proto:1380` |
+| `FindOperatingSystemIds → FindOperatingSystemsByIds` | Core gRPC · 读 | `nico-admin-cli operating-system show` | — | id、name、type、status、is_active、ipxe_template_id、ipxe_template_parameters、ipxe_template_artifacts[].{name,url,cached_url} | 系统定义 | Core | 接入 › 设备清单 › 到货清单；运维 › 设备管理 › 服务器；交付 › 安装任务；配置 › 安装方案 | 调用；现有产品已调用 | 返回 1 个系统定义。字段与这里一致，制品另有 sha、auth_type、cache_strategy |  | `forge.proto:1380` |
 | `CreateOperatingSystem / UpdateOperatingSystem / DeleteOperatingSystem` | Core gRPC · 写 | `nico-admin-cli operating-system create；nico-admin-cli operating-system set-cached-url` | name 必填；ipxe_script，或 ipxe_template_id 加参数和制品，二选一；is_active、user_data 可选 | — | NICo Core | Core | 配置 › 安装方案 | 定义；现有产品已调用 | — | 删除时 Core 不检查是否还有实例在引用，平台要自己检查 | `crates/api-core/src/handlers/operating_system.rs:196` |
 | `AllocateInstances / AllocateInstance` | Core gRPC · 写 | `nico-admin-cli instance allocate --machine-id <ID>... --transactional --os <OS_ID> [--flat-vpc-id\|--vpc-prefix-id]` | 每个实例：machine_id、config 必填（config.tenant、config.os、config.network）；instance_type_id、metadata、allow_unhealthy_machine 可选 | instances[].{id,machine_id,status} | 计算托盘对象、系统定义、默认租户与 VPC | Core | 交付 › 安装任务 | 定义；现有产品已调用 | — | 批量接口在一个事务里，全部成功或全部失败。不满足条件时的错误带有 nico-error-code、nico-error-text、nico-error-mitigation 三个附加信息 | `crates/api-core/src/instance/mod.rs:2009` |
 | `FindInstanceIds → FindInstancesByIds / FindInstanceByMachineID` | Core gRPC · 读 | `nico-admin-cli instance show` | — | id、machine_id、config.tenant.{tenant_organization_id,hostname}、config.os、status.tenant.state、status.network、metadata | 实例 | Core | 运维 › 设备管理 › 服务器；交付 › 安装任务；交付 › 实例管理 | 调用；现有产品已调用 | 返回 1 个实例。顶层字段是 id、machine_id、instance_type_id、config、status、metadata 和各配置的版本号。config 和 status 里面的字段没有逐项核对 | 状态：PROVISIONING、READY、CONFIGURING、UPDATING、TERMINATING、TERMINATED、FAILED、REPAIRING | `forge.proto:230` |
@@ -468,6 +468,8 @@
 
 | 用途 | 接口 | 类型 | 命令行 | 用到的字段 |
 | --- | --- | --- | --- | --- |
+| 系统配置：这种架构已发布的安装方案 | `FindOperatingSystemIds → FindOperatingSystemsByIds` | Core gRPC · 读 | `nico-admin-cli operating-system show` | id、name、type、status、is_active、ipxe_template_id、ipxe_template_parameters、ipxe_template_artifacts[].{name,url,cached_url} |
+| 系统配置：管理地址有没有被占用 | `FindInterfaceAddresses / FindIpAddress` | Core gRPC · 读 | `nico-admin-cli machine-interfaces show-addresses；nico-admin-cli ip find <IP>` | addresses[].{address,allocation_type}、matches[].{ip_type,owner_id,message} |
 | 核对清单里的机柜拓扑和厂商能推导出已配置的机柜规格 | `ListRackProfiles / GetRackProfile` | Core gRPC · 读 | `nico-admin-cli rack profile list；nico-admin-cli rack profile show <RACK_ID>` | rack_profile_id、profile.rack_hardware_topology、profile.capabilities.{compute,switch,power_shelf}.count、profile.product_family |
 | 哪些机柜组已经写入 | `GetAllExpectedRackGroups` | Core gRPC · 读 | `nico-admin-cli expected-rack-group show` | rack_group_id、topology、protocol、racks[].rack_id、racks[].members[].{type,manufacturer,id} |
 | 哪些机柜的声明已经写入 | `GetAllExpectedRacks` | Core gRPC · 读 | `nico-admin-cli expected-rack show` | rack_id、rack_profile_id、rack_group_id、metadata |

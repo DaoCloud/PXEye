@@ -67,7 +67,7 @@ registerPage("delivery/installs", {
       { name: "新建安装任务 · 步骤 1 选择设备", desc: "沿用现有向导的第一步。列出服务器，每一行有“当前系统”和“安装条件”：安装条件写明可预检、自动准备，或不可选及其原因。底部显示“显示 N / M 台 · 已选 n / 50 台”。", fields: [["搜索、机柜、CPU 架构、当前系统", "否", "筛选。现有向导里的“管理网段”换成“机柜”，可以选“未分配机柜”"], ["仅看可选设备、仅看已选", "否", ""], ["查询当前系统", "否", "查询已选的设备；没有选择时查询当前筛选结果，最多 50 台"], ["勾选设备", "是", "不可选的行不能勾选；每批最多 50 台"]] },
       { name: "新建安装任务 · 步骤 2 核对配置", desc: "只核对，不做检查。一张列表，一台一行，列出这台设备将要使用的配置：主机名、目标 OS / 方案、管理地址 / 启动网卡、系统盘。这些值来自设备管理里的系统配置，没有单独填的按默认值并标“默认”，所以默认情况下不需要填任何东西，看一遍就可以进入下一步。要改某一台，点这一行（或“修改”）打开它的系统配置，保存后回到这张表。配置本身不完整的设备（例如方案规则定不出系统盘）标红并在表上方点名，处理完才能进入下一步。", fields: [["点击一行 / 修改", "否", "打开这台设备的系统配置"]] },
       { name: "新建安装任务 · 步骤 3 检查并确认", desc: "进入这一步时才做安装条件检查，因为它要登录每台设备的 BMC、核对地址占用和安装材料，比较耗时。检查期间页面写明正在检查和大概在做什么。“安装条件”面板里三组检查各显示已通过、需处理或检查中；不通过的项目逐条列出设备、检查名和原因；需要首次接入的设备提示“将清理全部磁盘”。全部通过后才出现影响说明和确认项。配置没有改动时，从上一步回来沿用上一次的检查结果，不重新检查。", fields: [["上一步：核对配置", "否", "回到列表修改配置"], ["重新检查", "否", "再执行一次检查"], ["原因", "是", "写入批次和审计"], ["确认所选设备、主机名、管理地址及系统盘", "是", "勾选"], ["允许安装及重启验证", "是", "勾选"], ["允许需接入设备清理全部磁盘", "有首次接入的设备时", "勾选；含非系统盘"]] },
-      { name: "系统配置（设备管理里的同一个弹窗）", desc: "一台服务器下次装系统时用的配置，归设备管理维护；新建安装任务只是引用它，打开的是同一个弹窗，写入同一份数据。弹窗上面只读显示启动网卡和管理子网，下面是四项可以改的内容，每一项都有默认值。设备上有实例或有进行中的安装任务时，弹窗里提示这次修改只影响下次装系统。其他网口平台不管理，也不显示。", fields: [["管理地址", "否", "设备规划时定下的地址，和启动网卡的 MAC 对应，一般不用改；改的话要在管理子网内，不能和其他设备重复；留空则由 NICo 分配"], ["主机名", "否", "留空则按管理地址生成，例如管理地址 198.51.100.78 生成 node-198-51-100-78；填了就用填的"], ["安装方案", "否", "默认用这种架构的默认方案；只列出已发布、架构一致的方案"], ["系统盘", "规则定不出时必填", "默认按安装方案的规则，并写明规则选中的是哪块盘；可以指定一块盘。还没有被接管的服务器读不到硬盘，不能指定"]] },
+      { name: "系统配置（设备清单和设备管理里的同一个弹窗）", desc: "一台服务器下次装系统时用的配置。入口有三处：设备清单的行上、设备管理的服务器列表和运行状态里、这里的核对列表；打开的是同一个弹窗，写入同一份数据。弹窗上面只读显示启动网卡和管理子网，下面是四项可以改的内容，每一项都有默认值。设备上有实例或有进行中的安装任务时，弹窗里提示这次修改只影响下次装系统。其他网口平台不管理，也不显示。", fields: [["管理地址", "否", "设备规划时定下的地址，和启动网卡的 MAC 对应，一般不用改；改的话要在管理子网内，不能和其他设备重复；留空则由 NICo 分配"], ["主机名", "否", "留空则按管理地址生成，例如管理地址 198.51.100.78 生成 node-198-51-100-78；填了就用填的"], ["安装方案", "否", "默认用这种架构的默认方案；只列出已发布、架构一致的方案"], ["系统盘", "规则定不出时必填", "默认按安装方案的规则，并写明规则选中的是哪块盘；可以指定一块盘。还没有被接管的服务器读不到硬盘，不能指定"]] },
     ],
   },
 });
@@ -168,7 +168,9 @@ registerAction("install-to-2", () => {
    管理口（启动网卡和管理地址）在设备规划时就对应好了，这里只显示，不修改。其他网口平台不管，也不显示。
    所以默认情况下不需要人填任何东西。新建安装任务时只是把这些配置列出来给人核对，要改某一台才打开这个弹窗。 */
 /* 管理口：网络引导和系统管理用的那个网口。MAC 来自硬件发现，地址来自设备规划。 */
-const mgmtNic = (t) => ({ name: "eno1", mac: t.hostMac, speed: t.rack ? "1GbE" : "25GbE" });
+/* MAC 的来源：设备被发现后用发现到的；还没被发现时用清单里带来的；两者都没有就等接电。 */
+const mgmtNic = (t) => ({ name: "eno1", mac: t.hostMac || t.planMac || "", seen: !!t.hostMac, speed: t.rack ? "1GbE" : "25GbE" });
+const mgmtNicText = (n) => (n.mac ? `${n.name} · ${n.mac}` : "MAC 接电后获得");
 const hostSubnet = () => DB.roleSubnets("host")[0];
 const IP4 = /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/;
 const ipInt = (ip) => ip.split(".").reduce((n, x) => n * 256 + +x, 0);
@@ -211,7 +213,7 @@ function serverConfigDialog() {
   const err = (k) => `<small class="wiz-err" data-wf-err="${k}"></small>`, opt = (v, text, cur) => `<option value="${esc(v)}" ${v === cur ? "selected" : ""}>${esc(text)}</option>`;
   const rule = t.state ? resolveDisk(t, { ...c, disk: "" }) : null, ruleText = !t.state ? "" : rule.problem ? "请选择系统盘" : `按安装方案的规则（${rule.disk}）`;
   modal("系统配置", `${t.serial} · ${typeLabel(t)} · ${placeText(t)}`,
-    `<div class="confirm-facts">${defs([["启动网卡", `${c.mnic.name} · ${code(c.mnic.mac)} · ${c.mnic.speed}`], ["管理子网", `${net.name} · ${code(net.cidr)} · 网关 ${code(net.gateway)}`]])}</div>
+    `<div class="confirm-facts">${defs([["启动网卡", c.mnic.mac ? `${c.mnic.name} · ${code(c.mnic.mac)} · ${c.mnic.speed}${c.mnic.seen ? "" : ` <span class="live-small">清单提供，接电后核对</span>`}` : `<span class="muted">MAC 接电后获得</span>`], ["管理子网", `${net.name} · ${code(net.cidr)} · 网关 ${code(net.gateway)}`]])}</div>
      ${t.instance ? `<div class="live-note">这台设备上有实例。这里改的是<b>下次装系统</b>用的配置，不改变正在运行的系统。</div>` : DB.installing(t) ? `<div class="live-note">这台设备有进行中的安装任务。任务用的是提交时的配置，这里的修改<b>下次装系统</b>才生效。</div>` : ""}
      <div class="live-form">
        ${field("管理地址", `<input class="input live-code" id="wf-mip" value="${esc(raw.mip || "")}" placeholder="留空则由 NICo 分配" autocomplete="off">${err("mip")}`, "设备规划时定下的地址，和启动网卡的 MAC 对应。一般不用改")}
@@ -246,7 +248,7 @@ function installReview() {
       return `<tr class="row-link ${prob.get(t.id) ? "wiz-attn" : ""}" data-live="server-config" data-id="${t.id}" data-back="wizard" title="点击修改这台设备的配置"><td><strong class="live-code">${t.serial}</strong><span class="cell-sub">${placeText(t)} · ${t.arch}${t.state ? "" : " · 安装时先由 NICo 接管"}</span></td>
         <td>${c.host ? code(c.host) : badge("未确定", "red")}<span class="cell-sub">${p.host ? esc(p.host) : c.hostAuto ? "默认 · 按管理地址生成" : "单独填写"}</span></td>
         <td>${esc(os[0] || "未确定")}<span class="cell-sub">${esc(os[1] || "")}${os[1] ? " · " : ""}${c.osAuto ? "默认方案" : "单独选择"}</span></td>
-        <td>${c.mip ? code(c.mip) : `<span class="muted">由 NICo 分配</span>`}<span class="cell-sub">${c.mnic.name} · ${c.mnic.mac}</span></td>
+        <td>${c.mip ? code(c.mip) : `<span class="muted">由 NICo 分配</span>`}<span class="cell-sub">${mgmtNicText(c.mnic)}</span></td>
         <td>${!t.state ? `按方案的规则<span class="cell-sub">接管后、执行前确定</span>` : r.problem ? badge("未确定", "red") + `<span class="cell-sub">方案规则匹配到不止一块盘</span>` : `${esc(r.disk)}<span class="cell-sub">${r.source === "方案规则" ? "默认 · 按方案的规则" : "单独指定"}</span>`}</td>
         <td><button class="link-button" data-live="server-config" data-id="${t.id}" data-back="wizard">修改</button></td></tr>`; })) +
     (cold.length ? `<p class="live-small">${cold.length} 台设备还没有被 NICo 接管，提交后会自动准备设备。</p>` : ""),

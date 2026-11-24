@@ -338,6 +338,8 @@ const PAGE_CALLS = {
     ["interface.addresses", "分配方式，按地址反查归属"],
   ],
   "inventory": [
+    ["os.list", "系统配置：这种架构已发布的安装方案"],
+    ["interface.addresses", "系统配置：管理地址有没有被占用"],
     ["rack-profile.list", "核对清单里的机柜拓扑和厂商能推导出已配置的机柜规格"],
     ["rack-group.list", "哪些机柜组已经写入"],
     ["expected-rack.list", "哪些机柜的声明已经写入"],
