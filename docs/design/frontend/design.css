@@ -140,30 +140,49 @@ body.annotate .live-table-wrap { padding: 12px 0 0 12px; }
 .spec-doc ul { margin: 0; padding-left: 18px; font-size: 12.5px; line-height: 1.8; }
 @media print { .sidebar, .topbar, .guide, .app-footer { display: none !important; } .app-shell { margin-right: 0; display: block; } }
 
-/* 新建安装任务 · 逐台配置：上面是说明和三项默认值，下面是逐台的结果；只有例外才展开成输入框。 */
-.wiz-lead { margin: 2px 0 16px; }
-.wiz-lead h3 { margin: 0 0 6px; font-size: 18px; font-weight: 600; }
-.wiz-lead p { margin: 0; max-width: 860px; color: var(--muted); font-size: 13px; line-height: 1.7; }
-.wiz-defaults { display: grid; grid-template-columns: 1.25fr 1.25fr 1fr; margin-bottom: 20px; border: 1px solid var(--line); border-radius: 12px; background: #fbfdfc; }
-.wiz-defaults > div { padding: 16px 18px 14px; min-width: 0; }
-.wiz-defaults > div + div { border-left: 1px solid var(--line); }
-.wiz-defaults h4 { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; font-size: 14px; font-weight: 600; }
-.wiz-num { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-size: 12px; font-weight: 600; }
-.wiz-defaults p { margin: 10px 0 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
-.wiz-defaults p.wiz-static { margin: 0; color: var(--text); font-size: 14px; }
-.wiz-defaults label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
-.wiz-defaults .input { height: 34px; }
-.wiz-inline { display: grid; grid-template-columns: minmax(0, 1fr) 84px auto; gap: 8px; align-items: end; }
-.wiz-arch + .wiz-arch { margin-top: 8px; }
-.wiz-table-head { display: flex; align-items: center; gap: 12px; margin: 0 0 8px; }
-.wiz-table-head h4 { margin: 0; font-size: 15px; font-weight: 600; }
-.wiz-table-head .grow { flex: 1; }
-.wiz-table-head label { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
-.wiz-config .live-table td { padding-top: 9px; padding-bottom: 9px; vertical-align: middle; }
-.wiz-config .wiz-host { width: 200px; height: 32px; }
-.wiz-config .wiz-select { width: 100%; max-width: 280px; height: 32px; }
-.wiz-config .wiz-msg { color: var(--red); }
-.wiz-config .wiz-msg:empty { display: none; }
-.wiz-config tr.wiz-attn td { background: var(--red-soft); }
-.wiz-config tr.wiz-attn td:first-child { box-shadow: inset 3px 0 0 var(--red); }
-
+/* 新建安装任务 · 逐台配置：一次配置一台。左边是已选的设备和各自填到哪了，右边是当前这一台的表单。 */
+.wiz-config .modal-body { display: flex; flex-direction: column; min-height: 0; }
+.wiz-two { display: grid; grid-template-columns: 264px minmax(0, 1fr); gap: 0; flex: 1; min-height: 0; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: #fff; }
+.wiz-two.single { grid-template-columns: minmax(0, 1fr); }
+.wiz-list { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--line); background: #fafbfc; }
+.wiz-list h4 { margin: 0; padding: 14px 16px 10px; font-size: 13px; font-weight: 600; color: var(--muted); }
+.wiz-list > div { overflow: auto; padding: 0 8px 10px; }
+.wiz-list button { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; padding: 9px 10px; border: 0; border-radius: 8px; background: transparent; text-align: left; cursor: pointer; font: inherit; color: inherit; }
+.wiz-list button:hover { background: #f0f3f6; }
+.wiz-list button.active { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+.wiz-list button > span:first-child { display: grid; gap: 2px; min-width: 0; }
+.wiz-list button strong { font-size: 12.5px; font-weight: 600; }
+.wiz-list button small { color: var(--muted); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wiz-form { overflow: auto; padding: 4px 28px 22px; max-height: 60vh; }
+.wiz-dev { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; padding: 18px 0 14px; border-bottom: 1px solid var(--line); }
+.wiz-dev div { display: grid; gap: 4px; }
+.wiz-dev strong { font-size: 17px; font-weight: 600; }
+.wiz-dev span { color: var(--muted); font-size: 13px; }
+.wiz-pos { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.wiz-sec { display: grid; grid-template-columns: 96px minmax(0, 1fr); column-gap: 20px; padding: 20px 0 6px; }
+.wiz-sec + .wiz-sec { border-top: 1px solid var(--line); margin-top: 14px; }
+.wiz-sec > h4 { grid-row: 1 / span 20; margin: 6px 0 0; font-size: 14px; font-weight: 600; }
+.wiz-sec > :not(h4) { grid-column: 2; }
+.wiz-sec h5 { display: flex; align-items: baseline; gap: 10px; margin: 0 0 10px; font-size: 13px; font-weight: 600; }
+.wiz-sec h5 + .wiz-grid, .wiz-sec h5 + .wiz-nics { margin-bottom: 18px; }
+.wiz-sec h5 small { color: var(--muted); font-size: 12px; font-weight: 400; }
+.wiz-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 16px; }
+.wiz-grid.three { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1.25fr) minmax(0, 1fr); }
+.wiz-field { display: grid; gap: 5px; align-content: start; min-width: 0; }
+.wiz-field.wide { max-width: 420px; }
+.wiz-field > span { color: var(--muted); font-size: 12px; }
+.wiz-field .input { width: 100%; height: 36px; }
+.wiz-field small { color: var(--muted); font-size: 12px; line-height: 1.55; }
+.wiz-static { display: flex; align-items: center; min-height: 36px; margin: 0; font-size: 13.5px; }
+.wiz-config .wiz-err { color: var(--red); }
+.wiz-config .wiz-err:empty { display: none; }
+.wiz-nics { display: grid; gap: 8px; }
+.wiz-nic { display: grid; grid-template-columns: minmax(0, 1.5fr) 120px minmax(0, 1.2fr) minmax(0, 1fr); gap: 10px; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-radius: 9px; background: #fbfdfc; }
+.wiz-nic > div { display: grid; gap: 2px; min-width: 0; }
+.wiz-nic strong { font-size: 13px; }
+.wiz-nic div span { color: var(--muted); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wiz-nic .input { height: 34px; width: 100%; }
+.wiz-nic .wiz-err { grid-column: 3 / -1; font-size: 12px; }
+.wiz-muted { color: var(--muted); }
+.wiz-note { margin: 0; color: var(--muted); font-size: 12px; }
+.wiz-left { margin-right: auto; color: var(--muted); font-size: 13px; }
