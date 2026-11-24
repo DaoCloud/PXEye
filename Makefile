@@ -24,6 +24,9 @@ REQUIRE_CLEAN_BUILD ?= false
 # Optional ARM64 boot-material image.  Keep it disabled unless the input
 # directory is intentionally supplied for this build.
 INCLUDE_ARM64_MATERIALS ?= 0
+# Optional incremental delivery: the absolute path of an earlier delivery's
+# manifests/images-lock.json. Images whose digest is in it are not packaged again.
+BASELINE_IMAGES_LOCK ?=
 ARM64_MATERIALS_DIR ?=
 DHCP_TIMEOUT ?= 15
 DHCP_ATTEMPTS ?= 3
@@ -135,7 +138,7 @@ ensure-build-config:
 
 bundles: ensure-build-config
 	@test -n "$(REGISTRY)" || { echo "Set REGISTRY=host:port" >&2; exit 1; }
-	REGISTRY="$(REGISTRY)" REGISTRY_INSECURE="$(REGISTRY_INSECURE)" REQUIRE_CLEAN_BUILD="$(REQUIRE_CLEAN_BUILD)" SOURCE_BUILD_LOCK="$(SOURCE_BUILD_LOCK)" INCLUDE_ARM64_MATERIALS="$(INCLUDE_ARM64_MATERIALS)" ARM64_MATERIALS_DIR="$(ARM64_MATERIALS_DIR)" $(PYTHON) "$(DELIVERY_SCRIPT)" --config "$(BUILD_CONFIG)" $(VERSION_ARG)
+	REGISTRY="$(REGISTRY)" REGISTRY_INSECURE="$(REGISTRY_INSECURE)" REQUIRE_CLEAN_BUILD="$(REQUIRE_CLEAN_BUILD)" BASELINE_IMAGES_LOCK="$(BASELINE_IMAGES_LOCK)" SOURCE_BUILD_LOCK="$(SOURCE_BUILD_LOCK)" INCLUDE_ARM64_MATERIALS="$(INCLUDE_ARM64_MATERIALS)" ARM64_MATERIALS_DIR="$(ARM64_MATERIALS_DIR)" $(PYTHON) "$(DELIVERY_SCRIPT)" --config "$(BUILD_CONFIG)" $(VERSION_ARG)
 
 # Validate and publish only the existing Grace payload; bundles stays the archive entry.
 arm64-materials: ensure-build-config
