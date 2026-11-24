@@ -13,29 +13,41 @@ const SITE_COMPONENTS = () => [
 ];
 const siteReady = () => S.rms && S.flow;
 /* 组件未就绪时哪些操作不可用。站点概况只回答“能不能用、缺了什么会怎样”，部署细节在控制面页签。 */
-const SITE_IMPACT = { "NICo Core": "全部页面无法读取和操作", "NICo REST 与 Flow": "机柜上线、机柜与域级电源、固件发布、任务不可用", RMS: "设备与机柜的电源、复位和固件操作不可用", "NMX-C": "NVLink 域显示为未报告，交付被拒绝", Temporal: "机柜级任务和装机编排不可用", PostgreSQL: "控制面不可用", "DHCP / PXE": "新设备无法被发现，装机不可用", "BMS 泄漏事件": "只显示设备自带传感器的泄漏" };
+const SITE_IMPACT = { "NICo Core": "全部页面无法读取和操作", "NICo REST 与 Flow": "机柜级电源、固件更新和任务不可用", RMS: "设备与机柜的电源、复位和固件操作不可用；NICo 的机柜上线会停在 Error", "NMX-C": "NVLink 域显示为未形成，分区不可用", Temporal: "机柜级任务和装机编排不可用", PostgreSQL: "控制面不可用", "DHCP / PXE": "新设备无法被发现，装机不可用", "BMS 泄漏事件": "只显示设备自带传感器的泄漏" };
 
+/* 站点准备：设备到货之前要配好的东西。它们都是 Core 的运行配置，平台只读出来核对，不在页面上改。 */
+const SITE_PREP = () => [
+  ["BlueField 的工作方式", "网卡模式", true, "这一版只支持网卡模式", "按 DPU 模式部署的站点，主机的地址来源、发现过程和交付网络都不一样，本平台的流程不适用"],
+  ["交换机 NVOS 凭据入库", "已开启", true, "必须开启", "机柜上线走到“配置 NMX-C 集群”时找不到 NVOS 凭据，停在 Error"],
+  ["机柜规格", PROFILE, true, "清单里用到的规格都已配置", "导入清单时报错"],
+  ["固件清单", BASELINES[0].id, true, "要升级固件的机柜规格都有清单", "上线的“固件升级”和“NVOS 更新”直接通过，不做任何事，也没有提示"],
+  ["DNS 子域", "3 个", true, "每个子网都要有子域", "子网发不出地址"],
+  ["NVLink 分区", "已启用", true, "需要按租户划分 NVLink 时开启", "NVLink 域管理里没有分区"],
+  ["机柜校验", "未开启", null, "可选", "上线的“机柜校验”直接通过"],
+];
 registerPage("site", {
   module: "site", tab: "站点概况", title: "站点设置",
   render() {
-    const comps = SITE_COMPONENTS();
-    return heading("站点设置", "查看平台和依赖组件是否可用。某个组件未就绪时，依赖它的操作显示为不可用。", button("刷新数据", "refresh") + button("查看控制面", "noop", false, 'data-go="site/cluster"') + act("编辑站点", "site-edit", { primary: true, admin: true })) +
-      `<div ${fp(1)}>${siteReady() ? note("全部依赖为就绪，可以导入清单和操作机柜。") : note(`<b>${[!S.rms && "RMS", !S.flow && "Flow"].filter(Boolean).join("、")} 未就绪。</b>依赖它的机柜级操作不可用；读取、对账和单设备的维护标记照常。`, "error")}</div>` +
+    const comps = SITE_COMPONENTS(), prep = SITE_PREP();
+    return heading("站点设置", "查看平台和依赖组件是否可用，以及设备到货前站点要配好的各项是否齐备。", button("刷新数据", "refresh") + button("查看控制面", "noop", false, 'data-go="site/cluster"') + act("编辑站点", "site-edit", { primary: true, admin: true })) +
+      `<div ${fp(1)}>${siteReady() ? note("全部依赖为就绪，可以导入清单和操作机柜。") : note(`<b>${[!S.rms && "RMS", !S.flow && "Flow"].filter(Boolean).join("、")} 未就绪。</b>依赖它的机柜级操作不可用；读取、清单核对和单设备的维护标记照常。`, "error")}</div>` +
       `<div ${fp(2)}>${table(["组件", "作用", "未就绪时的影响", "状态"], comps.map((c) => `<tr><td><strong>${c[0]}</strong></td><td>${c[1]}</td><td>${SITE_IMPACT[c[0]]}</td><td>${c[4] ? badge("已就绪", "green") : badge("需处理", "red")}</td></tr>`))}</div>` +
-      `<div class="live-grid"><section class="live-card" ${fp(3)}><h2>站点发现</h2>${defs([["站点发现", badge("已启用", "green")], ["自动建机", badge("已启用", "green")], ["接管凭据", badge("已配置", "green")], ["最近扫描", "2026-11-23 08:00 · 完成"]])}</section>
-       <section class="live-card" ${fp(4)}><h2>机柜规格与规则</h2>${defs([["支持的机柜规格", code("GB200_NVL72R1_C2G4") + "　" + code("GB300_NVL72R1_C2G4")], ["兼容性核对", badge("当前组合在兼容列表内", "green")], ["电源规则", code("graceful-power-on") + "　" + code("graceful-power-off")], ["固件规则", code("rack-firmware-default")]])}</section></div>`;
+      `<h2 class="section-title">站点准备</h2><div ${fp(3)}>${table(["项目", "当前", "要求", "不满足时会怎样", "结果"], prep.map((c) => `<tr><td><strong>${c[0]}</strong></td><td>${code(c[1])}</td><td>${c[3]}</td><td>${c[4]}</td><td>${c[2] === null ? badge("可选", "gray") : c[2] ? badge("满足", "green") : badge("不满足", "red")}</td></tr>`))}<p class="live-small">这些都是 NICo 的站点配置，在部署时确定。平台读出来核对，不在这里修改。</p></div>` +
+      `<div class="live-grid"><section class="live-card" ${fp(4)}><h2>站点发现</h2>${defs([["站点发现", badge("已启用", "green") + ` <span class="live-small">平台最近一次设置的值</span>`], ["自动建机", badge("已启用", "green") + ` <span class="live-small">平台最近一次设置的值</span>`], ["接管后的站点凭据", badge("已配置", "green")], ["最近扫描", "2026-11-24 08:00 · 完成"]])}</section>
+       <section class="live-card" ${fp(5)}><h2>操作规则</h2>${defs([["电源：上电、下电、重启", "NICo 内置的默认规则"], ["固件更新", "NICo 内置的默认规则"], ["泄漏处理", "NICo 内置：整柜泄漏时强制下电整柜"]])}<p class="live-small">站点没有自定义规则时使用内置的默认规则。电源和固件任务的步骤、顺序和等待时间由规则决定，操作时不填写。</p></section></div>`;
   },
   spec: {
-    purpose: "回答“平台现在能不能用”。把控制面、硬件后端和设施接入的就绪状态放在一页，并说明缺失时哪些操作受影响。",
+    purpose: "回答两件事：平台现在能不能用；设备到货之前，站点要配好的东西齐不齐。",
     entry: "配置 → 站点设置 → 站点概况", design: "6.1 站点；8.3 外部依赖缺失时的行为", existing: "站点设置（概览、站点发现）与 NICo 集群（服务状态）合并而来；网络部分移到“网络规划”",
     points: [
       { n: 1, name: "就绪结论", kind: "新增", desc: "一句话给出能否导入清单和操作机柜。有组件未就绪时写明哪些操作不可用、哪些照常。" },
       { n: 2, name: "依赖组件", kind: "新增", desc: "每个组件的作用、未就绪时哪些操作不可用、当前状态。工作负载、副本和端口不在这里重复，点“查看控制面”查看。" },
-      { n: 3, name: "站点发现", kind: "沿用", desc: "沿用站点设置的站点发现、自动建机、接管凭据和最近扫描。" },
-      { n: 4, name: "机柜规格与规则", kind: "新增", desc: "显示当前版本支持的机柜规格、兼容性核对结果，以及生效的电源和固件规则名称。规则在这里只读。" },
+      { n: 3, name: "站点准备", kind: "新增", desc: "设备到货前要配好的各项：BlueField 的工作方式、交换机 NVOS 凭据入库、机柜规格、固件清单、DNS 子域、NVLink 分区、机柜校验。逐项给出当前值、要求和不满足时的后果。" },
+      { n: 4, name: "站点发现", kind: "调整", desc: "沿用站点设置的站点发现、自动建机和最近扫描。两个开关显示的是平台最近一次设置的值。" },
+      { n: 5, name: "操作规则", kind: "新增", desc: "电源、固件和泄漏处理当前用的是哪套规则。规则在这里只读。" },
     ],
-    fields: [["未就绪时的影响", "设计约定", "与各页面按钮的禁用原因一致"], ["兼容性核对", "NICo + RMS", "当前 NICo、RMS、机柜规格的组合是否在兼容列表内"], ["电源规则 / 固件规则", "NICo Flow", "站点级操作规则的名称，操作时不填写顺序和超时"]],
-    rules: ["RMS 未就绪：电源与固件操作不可用。", "Flow 未就绪：机柜上线、机柜级电源、固件发布和任务不可用。", "编辑站点需要管理角色。", "子网、DHCP 和引导服务地址在“网络规划”里维护。"],
+    fields: [["未就绪时的影响", "设计约定", "与各页面按钮的禁用原因一致"], ["站点准备的各项", "NICo Core 的运行配置", "只读"], ["站点发现 / 自动建机", "平台", "NICo 只提供设置这两个开关的接口，没有读取的接口，所以显示平台最近一次设置的值"], ["依赖组件的状态", "NICo 的状态接口与所在集群", "NICo 不报告的组件（工作流引擎、数据库、DHCP 与引导服务）从集群读取"], ["操作规则", "NICo Flow", "站点自定义的规则，或内置的默认规则"]],
+    rules: ["RMS 未就绪：电源与固件操作不可用；NICo 的机柜上线会停在 Error。", "Flow 未就绪：机柜级电源、固件更新和任务不可用。", "站点准备里有“不满足”的项目时，页面顶部给出提示；BlueField 不是网卡模式时不能导入清单。", "编辑站点需要管理角色。", "子网、DHCP 和引导服务地址在“网络规划”里维护。"],
     dialogs: [{ name: "编辑站点", desc: "沿用现有弹窗。", fields: [["站点名称", "是", ""], ["Core HTTPS 地址", "是", ""], ["默认安装并发", "是", "交付时同时装机的台数"]] }],
   },
 });

@@ -3,11 +3,11 @@ digraph G {
   node  [shape=box, style="rounded,filled", fontname="PingFang SC", fontsize=12, color="#1F4E79", fillcolor="#EAF1F8", penwidth=1.2, margin="0.16,0.12", width=2.1];
   edge  [fontname="PingFang SC", fontsize=10, color="#1F4E79", fontcolor="#44546A", arrowsize=0.8, penwidth=1.3];
   s0 [fillcolor="#F4F6F9", color="#7F7F7F", label=<<b>站点与网络就绪</b><br/><font point-size="10" color="#44546A">依赖组件就绪<br/>网段规划检查通过</font>>];
-  s1 [label=<<b>1 导入清单</b><br/><font point-size="10" color="#44546A">期望清单与文件一致</font>>];
-  s2 [label=<<b>2 接入与对账</b><br/><font point-size="10" color="#44546A">对账无阻塞项</font>>];
-  s3 [label=<<b>3 机柜上线</b><br/><font point-size="10" color="#44546A">机柜就绪，域健康</font>>];
+  s1 [label=<<b>1 导入清单</b><br/><font point-size="10" color="#44546A">到货清单已保存，凭据齐全</font>>];
+  s2 [label=<<b>2 接入</b><br/><font point-size="10" color="#44546A">设备匹配上清单并被接管</font>>];
+  s3 [label=<<b>3 机柜上线</b><br/><font point-size="10" color="#44546A">NICo 自动进行<br/>机柜就绪，域已形成</font>>];
   s4 [label=<<b>4 交付</b><br/><font point-size="10" color="#44546A">验收通过或上层已接收</font>>];
-  s5 [fillcolor="#1F4E79", fontcolor="white", label=<<b>5 运行</b><br/><font point-size="10">无未处理的阻塞告警</font>>];
+  s5 [fillcolor="#1F4E79", fontcolor="white", label=<<b>5 运行</b><br/><font point-size="10">无未处理的严重告警</font>>];
   s6 [label=<<b>6 维护与变更</b><br/><font point-size="10" color="#44546A">任务成功，回到就绪</font>>];
   s7 [fillcolor="#F4F6F9", color="#7F7F7F", label=<<b>7 退役</b><br/><font point-size="10" color="#44546A">对象已退役，审计闭环</font>>];
   {rank=same; s0 -> s1 -> s2 -> s3}

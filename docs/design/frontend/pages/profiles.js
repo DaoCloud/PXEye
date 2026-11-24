@@ -5,21 +5,22 @@ registerPage("baselines", {
   module: "baselines", title: "固件基线",
   render() {
     return heading("固件基线", "固件基线是绑定机柜规格的一组版本。固件更新只能选择基线，不能填写任意版本。", button("刷新数据", "refresh")) +
-      `<div ${fp(1)}>${table(["固件基线", "机柜规格", "发布日期", "使用中的机柜", "偏差的托盘", "操作"], BASELINES.map((b, i) => `<tr><td><strong>${b.id}</strong><span class="cell-sub">${b.note}</span></td><td>${code(b.profile)}</td><td>${code(b.released)}</td><td>${S.racks.filter((r) => r.baseline === b.id).map((r) => `<a class="link-button" data-go="rack/${r.id}">${r.id}</a>`).join("　") || "—"}</td><td ${fp(2)}>${i === 0 ? DB.trays().filter(DB.drift).length + " 台低于此基线" : "—"}</td><td>${button("查看", "baseline-view", false, `data-id="${b.id}"`)}</td></tr>`))}</div>` +
-      `<div ${fp(3)}>${note("基线随 NICo 与 RMS 的版本组合发布，在这里只读。固件的实际更新在“机柜管理”或“NVLink 域管理”里发起。")}</div>`;
+      `<div ${fp(1)}>${table(["固件基线", "机柜规格", "发布日期", "使用中的机柜", "版本不同的设备", "操作"], BASELINES.map((b, i) => `<tr><td><strong>${b.id}</strong><span class="cell-sub">${b.note}</span></td><td>${code(b.profile)}</td><td>${code(b.released)}</td><td>${S.racks.filter((r) => r.baseline === b.id).map((r) => `<a class="link-button" data-go="rack/${r.id}">${r.id}</a>`).join("　") || "—"}</td><td ${fp(2)}>${i === 0 ? DB.trays().filter((t) => t.type !== "power_shelf" && DB.drift(t)).length + " 台与此基线不同" : "—"}</td><td>${button("查看", "baseline-view", false, `data-id="${b.id}"`)}</td></tr>`))}</div>` +
+      `<div ${fp(3)}>${note("基线对应站点为每个机柜规格配置的固件清单，在这里只读。固件的实际更新在“机柜管理”里发起。NICo 只能判断设备的版本和基线是否相同，不能判断高低；选择旧基线就是降级。")}</div>`;
   },
   spec: {
     purpose: "把固件版本从操作参数里拿出来，变成可审计的档案。操作人只选基线。", entry: "配置 → 固件基线", design: "6.6 档案与审计；10 非功能设计（固件基线的来源）", existing: "新增页面。现有服务器运行状态里的“固件”表是实际版本的来源",
     points: [
       { n: 1, name: "基线列表", kind: "新增", desc: "基线、适用的机柜规格、发布日期、使用中的机柜。" },
-      { n: 2, name: "偏差统计", kind: "新增", desc: "低于推荐基线的托盘数量，对应托盘页的“固件偏差”筛选。" },
-      { n: 3, name: "只读说明", kind: "新增", desc: "基线在这里只读；更新固件从机柜或 NVLink 域发起。" },
+      { n: 2, name: "偏差统计", kind: "新增", desc: "版本与推荐基线不同的设备数量，对应设备页的“固件与基线不同”筛选。" },
+      { n: 3, name: "只读说明", kind: "新增", desc: "基线在这里只读；更新固件从机柜发起。" },
     ],
-    fields: [["固件基线", "NICo 机柜规格的固件清单", "一组部件版本"], ["偏差的托盘", "托盘实际版本对比推荐基线", ""]],
+    fields: [["固件基线", "站点为机柜规格配置的固件清单", "计算托盘的 BMC 和 UEFI、交换机的 BMC，以及 NVOS 的目标版本"], ["版本不同的设备", "设备实际版本对比推荐基线", "只比较 NICo 读得到的部件：NVOS 和供电框没有可读的版本"]],
+    rules: ["没有为某个机柜规格配置固件清单时，这个规格的机柜上线和固件更新都不会刷写任何固件。"],
     dialogs: [{ name: "基线详情", desc: "列出基线包含的部件和版本。" }],
   },
 });
-registerAction("baseline-view", ({ id }) => { const b = DB.baseline(id); modal(b.id, `固件基线 · ${b.profile}`, table(["部件", "版本"], Object.entries(b.parts).map(([k, v]) => `<tr><td>${k}</td><td>${code(v)}</td></tr>`)), button("关闭", "close", true), { wide: false }); });
+registerAction("baseline-view", ({ id }) => { const b = DB.baseline(id); modal(b.id, `固件基线 · ${b.profile}`, table(["部件", "版本", "能否读回"], Object.entries(b.parts).map(([k, v]) => `<tr><td>${k}</td><td>${code(v)}</td><td>可以，用于比对</td></tr>`).concat([`<tr><td>NVOS</td><td>${code(b.nvos)}</td><td>不能：只在机柜上线时下发，NICo 读不到已安装的版本</td></tr>`])), button("关闭", "close", true), { wide: false }); });
 
 registerPage("os-templates", {
   module: "os", title: "安装方案",

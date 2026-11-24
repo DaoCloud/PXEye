@@ -60,7 +60,7 @@ The menu goes straight to objects: each device type has its own entry, with no n
 
 | Group | Menu items |
 | --- | --- |
-| 运维 (Operations) | 机柜管理; NVLink 域管理; 设备管理 (submenu: 计算托盘, 交换机, 供电框, DPU); 健康告警; 运维任务; 操作审计 |
+| 运维 (Operations) | 机柜管理; NVLink 域管理; 设备管理 (submenu: 计算托盘, 交换机, 供电框); 健康告警; 运维任务; 操作审计 |
 | 交付 (Delivery) | 机柜交付; 安装任务; 实例管理 |
 | 接入 (Onboarding) | 网络规划; 设备清单; 设备发现 |
 | 配置 (Configuration) | 站点设置; 固件基线; 安装方案 |

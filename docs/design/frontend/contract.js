@@ -168,9 +168,11 @@ C("tray.rest", "机柜与 NVLink 域", "REST", "GET /tray、GET /tray/{id}", { c
 C("domain.list", "机柜与 NVLink 域", "REST", "GET /domain/nvlink、GET /domain/nvlink/{id}", { cli: "nicocli domain list --site-id <SITE>", request: "siteId 必填；includeComponents 可选", fields: ["id（等于机柜组编号）", "name", "nmxcClusterId", "topology", "operationStatus", "components"], requires: ["nvlink-domain"], executedBy: "Flow", note: "nicocli 的子命令名由接口规范生成，这里的写法没有实际运行核对", source: "spec.yaml:13335" });
 
 /* ================= 接口：设备读取 ================= */
+C("nvlink.domain-health", "机柜与 NVLink 域", "Core gRPC", "ListNVLinkDomainHealthReports", { fields: ["health_report_entries[]"], requires: ["nvlink-domain"], note: "按 NMX-C 的域编号记录，不是按机柜组编号", source: "forge.proto:262" });
+C("nvlink.partitions", "机柜与 NVLink 域", "Core gRPC", "FindNVLinkPartitionIds → FindNVLinkPartitionsByIds", { fields: ["id", "name", "nmx_m_id", "domain_uuid", "logical_partition_id"], requires: ["nvlink-domain"], note: "要先在 Core 的配置里启用 NVLink 分区", source: "forge.proto:1294" });
+C("nvlink.logical-partitions", "机柜与 NVLink 域", "Core gRPC", "FindNVLinkLogicalPartitionIds → FindNVLinkLogicalPartitionsByIds", { fields: ["id", "config.metadata.name", "config.tenant_organization_id", "status.state", "created"], requires: ["nvlink-domain"], note: "创建、修改、删除分区属于交付，这一页只读", source: "forge.proto:1300" });
 C("machine.list", "设备读取", "Core gRPC", "FindMachineIds → FindMachinesByIds", { cli: "nico-admin-cli machine show [--hosts]", request: "筛选：rack_id、include_dpus、exclude_hosts、only_maintenance、only_quarantine、only_with_health_alert；include_history 带回状态事件", fields: ["id", "rack_id", "placement_in_rack.{slot_number,tray_index}", "state", "state_reason.{outcome,outcome_msg}", "state_sla.time_in_state_above_sla", "status.health.alerts[]", "bmc.{ip,mac}", "status.bmc_status.firmware_version", "status.discovery_info.dmi_data.chassis_serial", "status.associated_dpu_machine_ids", "config.maintenance_reference", "status.quarantine", "status.nvlink_info.domain_uuid", "status.lldp_neighbors[]", "inventory.components[]"], requires: ["machine"], note: "没有电源状态和实例字段，这两项另读。一次按编号读取的数量有上限", source: "forge.proto:5137" });
 C("host.states", "设备读取", "Core gRPC", "FindHostStatesByIds", { request: "host_ids", fields: ["state", "state_reason", "rack_id", "nvlink_domain_id", "bmc_ip", "dpu_ids", "health_alerts", "quarantine", "allocation.{allocatable,blocking_reason,blocking_detail}", "explored.{bmc_version,uefi_version}"], requires: ["machine"], note: "一次给出“能不能分配，被什么挡住”。只允许管理端证书调用；命令行没有对应命令", source: "forge.proto:13734" });
-C("dpu.list", "设备读取", "Core gRPC", "FindMachineIds（include_dpus、exclude_hosts）→ FindMachinesByIds", { cli: "nico-admin-cli dpu status；nico-admin-cli dpu versions", fields: ["id", "state", "status.associated_host_machine_id", "status.discovery_info.dpu_info.firmware_version", "status.bmc_status.firmware_version", "status.dpu_agent_version", "status.health"], requires: ["dpu"], note: "DPU 的工作模式不在这里：策略在设备声明的 dpu_mode，实测值在探测到的网卡设备上", source: "forge.proto:5021" });
 C("switch.list", "设备读取", "Core gRPC", "FindSwitchIds → FindSwitchesByIds", { cli: "nico-admin-cli switch list；nico-admin-cli switch show <SWITCH_ID>", request: "筛选：rack_id、controller_state、bmc_mac、nvos_mac、only_with_health_alert", fields: ["id", "rack_id", "placement_in_rack", "nvlink_domain_uuid", "bmc_info.{ip,mac,firmware_version}", "status.serial_number", "status.power_state", "status.controller_state", "status.state_reason", "status.health", "status.fabric_manager_status_details", "status.nvos_ports[].{mac,addresses,is_primary}"], requires: ["switch"], source: "forge.proto:3332" });
 C("shelf.list", "设备读取", "Core gRPC", "FindPowerShelfIds → FindPowerShelvesByIds", { cli: "nico-admin-cli power-shelf list；nico-admin-cli power-shelf show <ID>", request: "筛选：rack_id、controller_state、bmc_mac", fields: ["id", "rack_id", "bmc_info.{ip,mac,firmware_version}", "config.{capacity,voltage}", "status.power_state", "status.controller_state", "status.state_reason", "status.health"], requires: ["power-shelf"], note: "没有槽位字段，也没有序列号字段", source: "forge.proto:3087" });
 C("device.history", "设备读取", "Core gRPC", "FindMachineStateHistories / FindSwitchStateHistories / FindPowerShelfStateHistories", { cli: "nico-admin-cli machine show <ID> -c <条数>", fields: ["histories[id].records[].{state 或 event,version,time}"], requires: ["machine"], source: "forge.proto:329" });
@@ -197,9 +199,6 @@ C("device.decommission", "设备操作", "Core gRPC", "DecommissionSwitch / Deco
 C("rack.bringup", "机柜级任务", "REST", "POST /rack/{id}/bringup", { write: true, cli: "nicocli rack bringup --site-id <SITE> <RACK_ID>", request: "siteId 必填；description、ruleId、overrideReadinessCheck 可选", fields: ["taskIds[]"], requires: ["flow-inventory", "firmware-object", "operation-rule"], executedBy: "Flow → Core → 硬件后端", note: "默认规则的阶段：供电框上电、计算托盘上电、计算托盘固件、交换机上电、交换机固件一致性核对、计算托盘重新上电。完成后还要看 Core 的机柜状态走到 Ready", source: "spec.yaml:14357" });
 C("rack.power", "机柜级任务", "REST", "PATCH /rack/{id}/power", { write: true, cli: "nicocli rack power --site-id <SITE> --data '{\"state\":\"On\"}' <RACK_ID>", request: "siteId、state 必填（On、Off、Cycle、ForceOff、ForceCycle、ACPowerCycle）；ruleId、overrideReadinessCheck 可选", fields: ["taskIds[]"], requires: ["flow-inventory", "operation-rule"], executedBy: "Flow → Core → 硬件后端", note: "机柜级上下电只有 Flow 提供，Core 的设备电源接口没有机柜这个目标。相同的进行中请求会合并成同一个任务", source: "spec.yaml:14125" });
 C("rack.firmware", "机柜级任务", "REST", "PATCH /rack/{id}/firmware", { write: true, cli: "nicocli rack firmware --site-id <SITE> <RACK_ID>", request: "siteId 必填；version 省略表示用机柜固件清单；ruleId、overrideVersionCheck、overrideReadinessCheck 可选", fields: ["taskIds[]"], requires: ["flow-inventory", "firmware-object", "operation-rule"], executedBy: "Flow → Core → 硬件后端", note: "走硬件后端时 version 是一整份固件清单文本，不是版本号。机柜接口不转发 targets", source: "spec.yaml:14245" });
-C("domain.power", "机柜级任务", "REST", "PATCH /domain/nvlink/{id}/power", { write: true, request: "siteId、state 必填；ruleId、overrideReadinessCheck 可选", fields: ["taskIds[]"], requires: ["nvlink-domain", "operation-rule"], executedBy: "Flow → Core → 硬件后端", note: "按域展开成每个机柜一个任务", source: "spec.yaml:15956" });
-C("domain.firmware", "机柜级任务", "REST", "PATCH /domain/nvlink/{id}/firmware", { write: true, request: "siteId 必填；version 省略表示用机柜固件清单；ruleId、overrideVersionCheck、overrideReadinessCheck 可选", fields: ["taskIds[]"], requires: ["nvlink-domain", "firmware-object", "operation-rule"], executedBy: "Flow → Core → 硬件后端", source: "spec.yaml:16014" });
-C("task-run", "机柜级任务", "REST", "POST /task/run、GET /task/run、GET /task/run/{id}/target、POST /task/run/{id}/pause|resume|advance|cancel", { write: true, request: "siteId、name、options.maxConcurrentTargets、operation.firmware.version 必填；selector.percentage、options.phasePolicy、options.safetyPolicy 可选", fields: ["id", "status", "statusReason", "totalPhases", "targets[].{rackId,phaseIndex,taskId,status}"], requires: ["flow-inventory", "firmware-object"], executedBy: "Flow", note: "分阶段发布只支持固件。目标是“所有符合条件的机柜”，上限 100 个，不能传入机柜列表", source: "spec.yaml:15201" });
 C("task.list", "机柜级任务", "REST", "GET /task、GET /rack/{id}/task、GET /tray/{id}/task、GET /task/{id}", { cli: "nicocli rack task get --site-id <SITE> <RACK_ID>", request: "siteId 必填；activeOnly、includeReport、分页可选", fields: ["id", "status（Pending、Running、Succeeded、Failed、Terminated）", "description", "message", "ruleId", "started", "finished", "report"], requires: ["flow-task"], executedBy: "Flow", note: "任务里没有操作者和原因，这两项由平台的审计记录", source: "spec.yaml:14768" });
 C("task.cancel", "机柜级任务", "REST", "POST /task/{id}/cancel", { write: true, cli: "nicocli task cancel --site-id <SITE> <TASK_ID>", request: "siteId 必填", fields: ["status"], requires: ["flow-task"], executedBy: "Flow", note: "已经成功或失败的任务返回 412；已终止的任务重复取消不报错", source: "spec.yaml:14913" });
 C("rack.maintenance", "机柜级任务", "Core gRPC", "OnDemandRackMaintenance / TerminateRackMaintenance", { write: true, cli: "nico-admin-cli rack maintenance start --rack <ID> --activities <firmware-upgrade,nvos-update,power-sequence,configure-nmx-cluster>；nico-admin-cli rack maintenance terminate --rack <ID>", request: "rack_id 必填；scope 可选（设备范围和活动）", requires: ["rack", "rms"], executedBy: "机柜状态机 → RMS", note: "机柜要在 Ready 或 Error。NVOS 更新和 NMX-C 集群配置只有这条路径提供，REST 和 Flow 都没有", source: "forge.proto:977" });
@@ -253,7 +252,6 @@ const OBSERVED = {
   "domain.list": "返回 200 和空列表，字段没法核对",
   // 设备读取
   "machine.list": "返回 1 台主机。顶层字段与这里一致：id、state、state_reason、state_sla、rack_id、placement_in_rack、bmc、config、status、inventory、metadata、version。config 和 status 里面的字段没有逐项核对",
-  "dpu.list": "调用成功，环境里没有 DPU，字段没法核对",
   "switch.list": "调用成功，没有交换机。没有数据时命令行只输出一行文字，不是 JSON",
   "shelf.list": "调用成功，没有供电框。没有数据时命令行只输出一行文字，不是 JSON",
   "device.power-state": "只调用了 GetPowerOptions 这一半：返回 desired_state、actual_state 和各自的更新时间、host_id、off_counter 等。GetComponentPowerDetails 没有命令行，没有调用",
@@ -266,7 +264,6 @@ const OBSERVED = {
 /* 只调用过其中读取那一半的写接口：证据仍是“定义”，但把看到的记下来。 */
 const OBSERVED_PARTIAL = {
   "tray.power": "只调用过读回用的 GET /tray/{id}/power：返回 actual（state、source、observed、error）、desired（status、state、error）和 operations（actions、tasks 及各自的错误）。写操作没有调用",
-  "task-run": "只调用过列表：返回 200 和空列表。创建、暂停、推进、取消都没有调用",
 };
 Object.entries(OBSERVED).forEach(([id, text]) => { const c = NICO_CALLS.find((x) => x.id === id); if (c) { c.evidence = "调用"; c.observed = text; } });
 Object.entries(OBSERVED_PARTIAL).forEach(([id, text]) => { const c = NICO_CALLS.find((x) => x.id === id); if (c) c.observed = text; });
@@ -274,21 +271,22 @@ Object.entries(OBSERVED_PARTIAL).forEach(([id, text]) => { const c = NICO_CALLS.
 /* ================= 缺口 =================
    分三类：NICo 没有的（要由平台补或者改设计）、两条路径要选一条的、源码里对不上要实测的。 */
 G("到货清单里的槽位写入 NICo 的期望清单", ["设备清单"], "Core 的设备声明没有槽位字段。REST 的设备声明有 slotId、trayIdx、hostId，存在 REST 自己的数据库里，并以 slot_id、tray_idx、host_id 三个标签写进 Core 的 metadata。实际位置来自 RMS 或 BMC 的探测报告，不来自声明", "走 Core 时把槽位写成同样的三个 metadata 标签，与 REST 保持一致；或者设备声明改走 REST", "rest-api/db/pkg/db/model/common.go:100");
-G("对账里的“序列号不符”", ["机柜详情", "设备发现"], "REST 的期望与实际校验按 BMC MAC 比对存在性，只对计算托盘比对槽位、托盘号和主机号，不比对序列号。Core 的站点发现会比对序列号，但结果只是一个计数指标，以及设备对象建好之后的一条 SerialNumberMismatch 告警，不拦截接管", "由平台判断：对比设备声明的序列号和探测结果里的序列号。设备对象建好后再用 SerialNumberMismatch 告警交叉核对", "crates/site-explorer/src/lib.rs:1046");
+G("到货清单没有 MAC：设备的身份由平台读取", ["设备发现", "设备清单"], "NICo 的设备声明以 BMC 的 MAC 为键，没有 MAC 就写不进去；NICo 也不会去读一个没有声明的地址背后是什么设备。Core 的站点发现在设备有声明之后才比对序列号，结果只是一个计数指标和一条 SerialNumberMismatch 告警", "平台自己做：对拿到地址但没有归属的接口，用清单里的凭据读设备 BMC 的 Redfish，得到设备类型、序列号和型号，按序列号匹配清单后再写声明。现有产品已有这套读取（discovery.py、device_identity.py），但没有在 GB200/GB300 的计算托盘、NVLink 交换机和供电框上验证过分类是否正确。清单里的口令按批还是按台、每台不同时如何避免触发登录锁定，待确认", "crates/site-explorer/src/lib.rs:1046");
+G("交换机 NVOS 管理口的 MAC 从哪来", ["设备发现"], "交换机声明至少要一个 NVOS 管理口的 MAC，多于一个时要标主口。NVOS 管理口自己也会申请地址，但 NICo 不知道哪个 NVOS 口属于哪台交换机", "设计按“从交换机的 BMC 读出 NVOS 管理口的 MAC”写，读不到时人工关联。这个读取现有代码里没有，要在模拟环境或真实设备上验证", "crates/api-db/src/expected_switch.rs");
 G("对账里的“未声明的设备”", ["设备发现", "机柜详情"], "没有一个接口能列全。GetAllUnexpectedMachines 只含探测成功的主机 BMC；探测失败的、交换机和供电框都不在里面。未声明的主机 BMC 因为没有凭据，通常就是探测失败", "用设备接口列表里没有归属的记录，加上探测结果，由平台与声明对比得出", "crates/api-db/src/expected_machine.rs:292");
 G("“没有收到 DHCP 请求”按子网定位", ["网络规划", "设备发现"], "NICo 不记录每个子网或每个中继最近一次收到请求的时间和次数。DHCP 的指标只按报文类型和丢弃原因分；接口上只有该设备最近一次请求的时间", "DHCP 服务页的“最近请求”改成从设备接口的 last_dhcp 按子网汇总得出：只能反映拿到过地址的设备。完全没有请求到达的情况，页面只能提示去看中继配置和 DHCP 的丢弃计数", "crates/dhcp-server/src/metrics.rs:496");
 G("引导服务地址和时间服务器的展示", ["网络规划"], "域名服务器、时间服务器、引导服务器地址在 DHCP 服务的部署参数里，没有接口可读；运行配置里只有 DHCP 服务器地址", "从平台自己保存的部署配置读，并标明来源是部署配置而不是 NICo 的回报", "helm/charts/nico-dhcp/values.yaml:199");
-G("固件基线", ["固件基线", "机柜详情", "NVLink 域管理", "设备管理"], "NICo 里没有可命名的固件基线对象。期望版本有两处：每个机柜规格的固件清单地址，和按厂商型号配置的主机期望版本。固件操作要么不带版本（用机柜规格的清单），要么带一整份清单文本", "固件基线做成平台自己的档案：一条基线对应一份清单文件。操作时把清单内容作为 version 传入，或者只允许选择与机柜规格配置一致的那一份。“低于基线”由平台对比探测到的版本和清单得出", "docs/configuration/rms.md:183");
+G("固件基线", ["固件基线", "机柜详情", "设备管理"], "NICo 里没有可命名的固件基线对象。期望版本有两处：每个机柜规格的固件清单地址，和按厂商型号配置的主机期望版本。固件操作要么不带版本（用机柜规格的清单），要么带一整份清单文本", "固件基线做成平台自己的档案：一条基线对应一份清单文件。操作时把清单内容作为 version 传入，或者只允许选择与机柜规格配置一致的那一份。“低于基线”由平台对比探测到的版本和清单得出", "docs/configuration/rms.md:183");
 G("站点概况里的硬件后端和设施接入状态", ["站点设置"], "当前生效的组件管理器后端没有读取接口；设施事件消费者是否连上也没有接口，只有它自己的指标。NMX-C 没有状态接口", "RMS 用版本接口判断；NMX-C 从机柜健康报告里的 NmxcUnreachable 判断；设施接入读消费者的指标，读不到就显示未知，不显示正常", "crates/api-core/src/cfg/README.md:140");
 G("平台访问 REST 接口的身份", ["机柜管理", "机柜详情", "运维任务", "NVLink 域管理"], "REST 接口用的是身份系统签发的令牌，按组织和角色授权，和 Core 的客户端证书是两套。平台现在只有访问 Core 的证书，没有访问 REST 的身份。令牌必须从集群内的地址获取，否则签发者地址对不上", "给平台建一个服务账号，用客户端凭据方式取令牌并缓存、到期前刷新；组织名作为站点配置的一项。身份系统用官方的 Keycloak 还是现场已有的，按站点决定", "rest-api/openapi/auth.md:43");
 G("依赖组件的证书到期", ["站点设置"], "RMS、Flow、站点代理和编排用数据库的证书最长 30 天，会自动续期，但 RMS 和数据库不会自动重新加载，过期后 Core 就连不上 RMS。NICo 没有接口报告这些证书的到期时间", "站点概况的依赖组件里显示各证书的到期时间，数据从集群里的证书对象读；临近到期而组件还没重启时给出提示", "docs/configuration/rms.md:82");
 G("任务里的操作者和原因", ["运维任务", "操作审计"], "Flow 的任务只有描述、规则和阶段报告，没有操作者和原因字段。REST 有自己的审计接口，记录的是调用它的账号", "操作者和原因由平台审计保存，用任务编号关联；提交时把原因写进任务的 description", "rest-api/openapi/spec.yaml:28731");
 G("单台设备电源走任务还是直接执行", ["设备管理"], "两条路径都能用：REST 的托盘电源提交为 Flow 任务，可取消、有阶段；Core 的设备电源接口立即执行。供电框在 Core 里另有一个走状态机的专用接口。现有产品用的是 Core 的直接接口", "设计稿目前写的是走任务。建议保持：有 Flow 时走任务，电源动作因此受“同一机柜只有一个任务”的约束；Flow 不可用时这些操作不可用，不悄悄改走直接接口", "crates/api-core/src/handlers/component_manager.rs:3244");
 G("设备声明和机柜读取走 Core 还是走 REST", ["设备清单", "机柜管理", "机柜详情"], "REST 和 Core 是两套存储，靠工作流和定时任务同步；REST 的资源编号是它自己的 UUID。机柜的状态机状态只在 Core，任务计数、槽位和对账只在 REST", "写入只走 Core。读取分工：状态、健康、历史读 Core；槽位、对账、任务读 REST。两边用机柜 ID 和 BMC MAC 关联，页面上不显示 REST 的编号", "rest-api/api/pkg/api/handler/expectedrack.go:161");
-G("机柜上线由谁推进", ["机柜详情"], "有两套机制：Core 的机柜状态机在交换机就绪后自动进入 Maintenance，依次做固件、NVOS、上电顺序和 NMX-C 配置；Flow 的上线任务按规则做上电、固件和核对。两者的阶段不同，也没有找到它们之间的协调：Flow 上线里的计算托盘固件走状态机路径时，要求机柜已经在 Ready 或 Error", "先在模拟环境里把两条路径各跑一遍，确定“开始上线”按钮对应哪一个、阶段条显示哪一套阶段，再定稿。在此之前，机柜详情的阶段只作示意", "docs/architecture/state_machines/rackstatemachine.md:142");
+G("机柜上线由谁推进", ["机柜详情"], "有两套机制。Core 的机柜状态机：在旧版本的模拟环境里实测，就绪的交换机数达标后自动进入 Maintenance，依次是固件、NVOS、配置 NMX-C 集群、上电顺序、校验，不需要人触发；失败后停在 Error，原因消除也不会自己恢复，要重新发起机柜维护。Flow 的上线任务按规则做上电、固件和核对，还没有实测", "设计按 Core 自动推进来画：没有“开始上线”按钮，机柜详情显示状态机的阶段，Error 时提供“重新执行机柜维护”。Flow 的上线任务（放行计算托盘、暂停标记）要不要用、和状态机的先后关系，等在现场版本的模拟环境里实测后再定", "docs/architecture/state_machines/rackstatemachine.md:142");
 G("更换设备后机柜重新发现", ["机柜详情"], "文档说更换托盘会让机柜因 topology_changed 回到 Discovering，但源码里没有找到设置这个标志的非测试代码。更换的实际步骤是：打上待更换标记并等 NVLink 隔离完成、强制删除旧设备、改设备声明、等新设备被发现", "更换设备做成平台编排的分步流程，每步读回；机柜状态是否变化以实测为准，页面不预先承诺", "crates/rack-controller/src/ready.rs:50");
 G("机柜退役", ["机柜详情"], "DeleteRack 只把机柜标记为删除，状态机进入 Deleting 后一直等待；真正删除只有强制删除，而且不处理成员设备。Flow 有退役任务，但只在 Flow 自己的接口上，REST 没有端点", "退役拆成明确的几步由平台编排：确认无实例、成员设备逐个退役并强制删除、删除设备声明和机柜声明、最后强制删除机柜；或者本阶段不提供机柜退役", "crates/api-core/src/handlers/rack.rs:201");
-G("NVLink 域的分阶段发布", ["NVLink 域管理"], "分阶段发布的目标是站点内所有符合条件的机柜，按百分比抽取，不能限定为某个域，也不能传入机柜列表", "域级固件用域的固件接口一次提交；分阶段发布作为站点级功能单独呈现，不挂在某个域下面", "docs/operations/flow/operation-runs.md:123");
+G("跨机柜的固件分阶段发布", ["固件基线"], "一个 NVL72 机柜就是一个 NVLink 域，所以没有“域内按机柜分批”。Flow 的分阶段发布目标是站点内所有符合条件的机柜，按百分比抽取，不能传入机柜列表；只调用过它的列表接口，返回空", "这一版不设计：域级电源、域级固件和分阶段发布都已从设计稿里去掉。以后作为站点级功能单独设计", "docs/operations/flow/operation-runs.md:123");
 G("交付条件里的“机柜就绪”和“NVLink 域健康”", ["机柜交付"], "NICo 分配实例时只看主机自己：状态、维护标记和阻止分配的告警。机柜的健康报告会并入主机，所以泄漏会挡住整柜；但机柜状态不是 Ready、域的健康报告有告警，都不会让分配失败", "这两个条件由平台在交付前检查并拦截，页面上标明是平台的规则。“可交付的托盘数”用主机状态接口里的 allocatable 得出，与 NICo 的判断保持一致", "crates/api-model/src/machine/mod.rs:543");
 G("交付用的租户和 VPC 由谁创建", ["机柜交付"], "Core 的创建租户和创建 VPC 接口只对站点代理放行，管理端证书调不了。现有产品只读取已有的 VPC", "租户和 VPC 作为部署前提，由 REST 一侧或部署步骤建好；平台只读取并在交付时选择。计算托盘的 DPU 模式决定 VPC 类型，交付向导里要按它筛选", "crates/api-core/src/auth/internal_rbac_rules.rs:75");
 G("按机柜整柜交付", ["机柜交付"], "REST 的批量建实例按实例类型和数量挑设备，优先同一个 NVLink 域，不能指定机柜或设备列表。Core 的批量接口可以传入明确的设备列表，并且是一个事务", "按机柜交付走 Core：按机柜 ID 筛出主机，读可分配状态，再一次提交。“交给上层平台”则是建实例类型、关联设备和配额，不建实例", "crates/api-core/src/instance/mod.rs:2009");
@@ -337,80 +335,74 @@ const PAGE_CALLS = {
     ["interface.addresses", "分配方式，按地址反查归属"],
   ],
   "inventory": [
-    ["rack-profile.list", "核对机柜规格是否受支持"],
-    ["segment.list", "核对固定地址落在已有子网内"],
-    ["rack-group.list", "读取机柜组"],
-    ["rack-group.write", "写入机柜组"],
-    ["expected-rack.list", "读取机柜声明和推导出的规格"],
-    ["expected-rack.write", "写入机柜声明"],
-    ["expected-machine.list", "读取计算托盘声明"],
-    ["expected-machine.write", "写入计算托盘声明"],
-    ["expected-switch.list", "读取交换机声明"],
-    ["expected-switch.write", "写入交换机声明"],
-    ["expected-shelf.list", "读取供电框声明"],
-    ["expected-shelf.write", "写入供电框声明"],
-    ["expected-domain.write", "写入 NVLink 域声明"],
+    ["rack-profile.list", "核对清单里的机柜拓扑和厂商能推导出已配置的机柜规格"],
+    ["rack-group.list", "哪些机柜组已经写入"],
+    ["expected-rack.list", "哪些机柜的声明已经写入"],
+    ["expected-machine.list", "哪些计算托盘已经写入 NICo"],
+    ["expected-switch.list", "哪些交换机已经写入 NICo"],
+    ["expected-shelf.list", "哪些供电框已经写入 NICo"],
+    ["segment.list", "导入预览：各用途的地址够不够"],
   ],
   "discovery": [
+    ["interface.list", "拿到了地址、但还没有归属的接口，以及最近一次申请地址的时间"],
+    ["rack-group.write", "匹配上第一台设备时写入机柜组"],
+    ["expected-rack.write", "匹配上第一台设备时写入机柜声明（拓扑、厂商）"],
+    ["expected-machine.write", "写入计算托盘声明：MAC、凭据、序列号、机柜和槽位"],
+    ["expected-switch.write", "写入交换机声明：BMC 与 NVOS 管理口的 MAC、两组凭据"],
+    ["expected-shelf.write", "写入供电框声明"],
+    ["expected-domain.write", "机柜的声明齐了之后写入 NVLink 域声明"],
     ["expected-machine.list", "计算托盘声明走到了哪一步"],
     ["expected-switch.list", "交换机声明走到了哪一步"],
     ["expected-shelf.list", "供电框声明走到了哪一步"],
-    ["interface.list", "有没有收到 DHCP 请求"],
-    ["explorer.endpoints", "探测结果和失败原因"],
-    ["explorer.managed-hosts", "主机与 DPU 的配对"],
-    ["explorer.unexpected", "未声明的主机"],
+    ["explorer.endpoints", "NICo 的探测结果和失败原因"],
+    ["explorer.managed-hosts", "主机的接管进度"],
+    ["explorer.unexpected", "NICo 探测到、但没有声明的主机"],
+    ["explorer.retry", "重新探测、清除探测错误"],
     ["ingestion.state", "是否在等待放行"],
-    ["machine.list", "计算托盘的状态机阶段"],
-    ["switch.list", "交换机的状态机阶段"],
-    ["shelf.list", "供电框的状态机阶段"],
+    ["ingestion.allow", "放行等待中的主机"],
+    ["machine.list", "计算托盘的状态"],
+    ["switch.list", "交换机的状态"],
+    ["shelf.list", "供电框的状态"],
     ["explorer.last-run", "最近一次扫描"],
   ],
   "racks": [
-    ["rack.list", "机柜状态与健康"],
-    ["expected-rack.list", "机柜规格，以及还没有出现的机柜"],
+    ["rack.list", "机柜状态（含上线所在的阶段）与健康"],
+    ["expected-rack.list", "机柜规格"],
     ["rack.rest", "托盘计数与任务计数"],
-    ["rack.validation", "对账差异数"],
     ["task.list", "当前任务"],
   ],
   "rack": [
-    ["rack.list", "状态、原因与健康"],
-    ["rack-profile.list", "机柜规格"],
+    ["rack.list", "状态、所在阶段、原因与健康"],
+    ["rack-profile.list", "机柜规格和它要求的各类设备数量"],
     ["rack.history", "状态历史"],
+    ["rack.maintenance", "重新执行机柜维护"],
+    ["rack.bringup", "Flow 的上线任务：是否使用、与机柜状态机的先后关系待实测"],
     ["rack.rest", "任务计数与所属域"],
-    ["rack.validation", "对账统计与差异"],
+    ["rack.validation", "期望与实际校验"],
     ["tray.rest", "机柜立面的槽位"],
     ["machine.list", "设备表：计算托盘"],
     ["switch.list", "设备表：交换机"],
     ["shelf.list", "设备表：供电框"],
-    ["expected-machine.list", "对账：声明的序列号"],
-    ["explorer.endpoints", "对账：实测序列号和探测失败原因"],
-    ["explorer.retry", "重新发现、重新探测"],
-    ["ingestion.allow", "放行等待中的主机"],
-    ["expected-machine.write", "更换设备：更新声明"],
-    ["rack.bringup", "开始上线"],
+    ["device.power-state", "成员电源"],
     ["rack.power", "机柜电源"],
     ["rack.firmware", "固件更新"],
-    ["firmware.status", "固件阶段的逐台进度"],
-    ["task.list", "任务卡与阶段"],
+    ["firmware.status", "固件步骤的逐台进度"],
+    ["task.list", "任务卡与步骤"],
     ["task.cancel", "取消任务"],
-    ["rack.maintenance", "NVOS 更新与 NMX-C 配置（见缺口：机柜上线由谁推进）"],
-    ["health.reports", "机柜健康与泄漏告警"],
+    ["health.reports", "机柜健康与整柜泄漏"],
   ],
   "domains": [
-    ["domain.list", "域、成员机柜和 NMX-C 集群"],
-    ["switch.list", "交换机回报的域编号"],
-    ["device.inventory", "域内各设备的固件版本"],
-    ["health.reports", "域的健康报告"],
-    ["domain.power", "域级电源"],
-    ["domain.firmware", "域级固件更新"],
-    ["task-run", "分阶段发布"],
-    ["task.list", "域级任务的进度"],
+    ["domain.list", "域（机柜组编号）、拓扑和 NMX-C 集群"],
+    ["switch.list", "交换机回报的 NMX-C 域编号和 Fabric Manager 状态"],
+    ["health.reports", "机柜健康里的 NMX-C 不可达"],
+    ["nvlink.domain-health", "域的健康报告"],
+    ["nvlink.partitions", "NMX 分区"],
+    ["nvlink.logical-partitions", "逻辑分区、租户和状态"],
   ],
   "devices": [
     ["machine.list", "计算托盘的数量和需要处理的设备"],
     ["switch.list", "交换机的数量和需要处理的设备"],
     ["shelf.list", "供电框的数量和需要处理的设备"],
-    ["dpu.list", "DPU 的数量和需要处理的设备"],
     ["device.identify", "按序列号、MAC、地址搜索"],
   ],
   "devices/compute": [
@@ -453,10 +445,6 @@ const PAGE_CALLS = {
     ["task.list", "任务进度"],
     ["device.decommission", "退役"],
     ["shelf.power", "电源的直接执行路径（见缺口）"],
-  ],
-  "devices/dpu": [
-    ["dpu.list", "DPU 列表、状态和固件"],
-    ["machine.list", "所属主机"],
   ],
   "health": [
     ["health.reports", "各对象当前的告警与分类"],
@@ -520,7 +508,7 @@ const NICO_COMPONENTS = [
   { id: "rest", deploy: "官方 Chart nico-rest、nico-rest-site-agent、temporal；镜像自己构建，要和 Core 同一个源码提交。已部署，接口实际调用通过", name: "REST 接口", workload: "REST API、工作流、站点管理、站点代理、Temporal", level: "整机柜", provides: "机柜、托盘、NVLink 域和任务的 REST 接口；期望与实际的对账",
     missing: "机柜对账、机柜立面的槽位、任务列表不可用；机柜级任务无法提交", resources: ["rest-site", "rest-auth", "temporal"], surfaces: ["REST"], source: "rest-api/INSTALLATION.md" },
   { id: "flow", deploy: "官方 Chart nico-flow；镜像自己构建，要和 Core 同一个源码提交。已部署，已从 Core 同步到清单", name: "Flow", workload: "nico-flow", level: "整机柜", provides: "机柜级任务的编排：上线、电源、固件、分阶段发布；机柜与托盘的清单和任务记录",
-    missing: "机柜上线、机柜和域的电源与固件、运维任务不可用；单设备的状态类操作照常", resources: ["flow", "flow-inventory", "flow-task", "operation-rule"], executors: ["Flow"], surfaces: [], source: "docs/architecture/flow.md" },
+    missing: "机柜级电源与固件、运维任务不可用，整柜泄漏时也不会自动下电；机柜上线由 Core 的状态机进行，不受影响；单设备的状态类操作照常", resources: ["flow", "flow-inventory", "flow-task", "operation-rule"], executors: ["Flow"], surfaces: [], source: "docs/architecture/flow.md" },
   { id: "nmxc", deploy: "不在集群里部署：它运行在交换机上，由 RMS 配置，Core 通过交换机的管理地址访问", name: "NMX-C", workload: "交换机上的 NMX-C", level: "整机柜", provides: "NVLink 域的集群配置和域编号",
     missing: "NVLink 域管理没有数据；机柜上线里的 NMX-C 配置阶段无法完成", resources: ["nmxc", "nvlink-domain"], surfaces: [], source: "docs/development/machine-a-tron-nmxc-mock.md" },
   { id: "facility", deploy: "Core Chart 里的一个开关；另外需要现场楼宇系统的消息总线。未部署", name: "设施事件接入", workload: "nico-dsx-exchange-consumer、消息总线", level: "可选", provides: "把楼宇管理系统的泄漏事件写成机柜的健康报告",

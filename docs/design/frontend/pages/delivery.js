@@ -2,16 +2,17 @@
 /* 交付：把就绪的机器变成可用资源。合并现有的“安装任务”和“实例管理”，入口改为按机柜交付。 */
 
 function deliveryGate(r) {
-  const free = r.trays.filter((t) => t.type === "compute" && t.state === "Ready" && !t.maintenance && !t.quarantine).length;
+  const free = freeTrays(r).length, p = DB.power(r);
   if (r.state !== "Ready") return "机柜未就绪";
-  if (r.power !== "On") return "机柜未上电";
-  if (DB.preventAlloc(r.id)) return "有阻止分配的告警";
+  if (DB.leak(r.id)) return "机柜有整柜泄漏告警";
+  if (p.on < p.known) return "机柜成员没有全部开机";
   if (DB.busy(r)) return "机柜有进行中的任务";
   if (S.deliveries.some((d) => d.rack === r.id && d.done < d.total)) return "该机柜正在交付";
   if (!free) return "没有可交付的计算托盘";
   return "";
 }
-const freeTrays = (r) => r.trays.filter((t) => t.type === "compute" && t.state === "Ready" && !t.maintenance && !t.quarantine);
+/* 可交付：就绪、没有隔离、没有“阻止分配”的告警（维护标记也属于这一类）。按台判断，不因为一台设备挡住整柜。 */
+function freeTrays(r) { return r.trays.filter((t) => t.type === "compute" && t.state === "Ready" && !t.quarantine && !DB.blocked(t) && !t.maintenance); }
 
 registerPage("delivery", {
   module: "delivery", title: "机柜交付",
@@ -19,23 +20,23 @@ registerPage("delivery", {
     const cond = (ok, text) => badge(text, ok ? "green" : "gray");
     return heading("机柜交付", "把就绪的计算托盘变成可用资源：按安装方案装机并验收，或交给租户和上层平台。默认按机柜批量。", button("刷新数据", "refresh")) +
       `<div ${fp(1)}>${table(["机柜", "NICo 状态", "交付条件", "可交付 / 计算托盘", "已交付实例", "操作"], S.racks.map((r) => { const g = deliveryGate(r), n = freeTrays(r).length; return `<tr><td><strong>${r.id}</strong><span class="cell-sub">NVLink 域 ${r.domain}</span></td><td>${stateBadge(r.state)}</td>
-        <td ${fp(2)}>${cond(r.state === "Ready", "机柜就绪")} ${cond(r.state === "Ready" && r.power === "On", "NVLink 域健康")} ${DB.preventAlloc(r.id) ? badge("有阻止分配的告警", "red") : cond(r.state !== "Created", "无阻止分配的告警")}</td>
-        <td>${r.state === "Ready" ? n : 0}<small class="muted"> / 18</small>${r.trays.some((t) => t.maintenance) ? `<span class="cell-sub">${r.trays.filter((t) => t.maintenance).length} 台带维护标记，不参与交付</span>` : ""}</td><td>${DB.rackInstances(r.id).length}</td>
+        <td ${fp(2)}>${cond(r.state === "Ready", "机柜就绪")} ${cond((DB.domain(r.domain) || {}).nmxc === "ok", "NVLink 域已形成")} ${DB.leak(r.id) ? badge("整柜泄漏", "red") : cond(!!r.state, "无整柜泄漏")}</td>
+        <td>${r.state === "Ready" ? n : 0}<small class="muted"> / 18</small>${r.trays.some((t) => t.maintenance) ? `<span class="cell-sub">${r.trays.filter((t) => t.maintenance).length} 台带维护标记（阻止分配），不参与交付</span>` : ""}</td><td>${DB.rackInstances(r.id).length}</td>
         <td><span ${fp(3)}>${act("交付", "deliver-open", { primary: !g, gate: g, extra: `data-id="${r.id}"` })}</span>${g ? `<span class="cell-sub">${g}</span>` : ""}</td></tr>`; }))}</div>` +
       `<h2 class="section-title">交付批次</h2><div ${fp(4)}>${table(["批次", "机柜", "类型", "目标", "设备进度", "操作"], S.deliveries.map((d) => `<tr><td>${code(d.id)}<span class="cell-sub">${d.at}</span></td><td>${d.rack}</td><td>${d.how}</td><td>${esc(d.target)}</td><td>完成 ${d.done} / ${d.total}<div class="progress-meter"><i style="width:${(d.done / d.total) * 100}%"></i></div></td><td>${button("逐台查看", "noop", false, 'data-go="delivery/installs"')}</td></tr>`), "还没有交付批次。")}</div>` +
-      note("交付门控沿用 NICo 的原生门控：机柜就绪、NVLink 域健康、没有阻止分配的告警。平台只显示原因，不提供绕过。");
+      note("交付条件：机柜就绪、NVLink 域已形成、没有整柜泄漏。带“阻止分配”告警的计算托盘（包括带维护标记的）按台排除，不会挡住整柜。平台只显示原因，不提供绕过。");
   },
   spec: {
     purpose: "交付是平台价值兑现的一步。入口是机柜而不是单台设备：选一个就绪的机柜，选一种交付方式。",
     entry: "交付 → 机柜交付", design: "5 整体操作运维流程（交付）；6.4 交付", existing: "安装任务的“新建安装任务”向导改为按机柜交付；“安装批次”表沿用",
     points: [
       { n: 1, name: "可交付的机柜", kind: "新增", desc: "每个机柜的状态、交付条件、可交付的计算托盘数和已交付实例数。" },
-      { n: 2, name: "交付条件", kind: "新增", desc: "三个条件逐项显示：机柜就绪、NVLink 域健康、无阻止分配的告警。不满足的显示为灰色或红色。" },
+      { n: 2, name: "交付条件", kind: "新增", desc: "三个条件逐项显示：机柜就绪、NVLink 域已形成、无整柜泄漏。不满足的显示为灰色或红色。" },
       { n: 3, name: "交付", kind: "调整", desc: "打开两步向导。不可用时按钮禁用，下方写明原因。" },
       { n: 4, name: "交付批次", kind: "沿用", desc: "沿用安装任务页的“安装批次”表：批次、类型、设备进度、逐台查看。" },
     ],
-    fields: [["可交付", "NICo Core", "状态为 Ready、没有维护标记和隔离、没有实例的计算托盘"], ["类型", "交付方式", "装机并验收 / 交给上层平台"]],
-    rules: ["机柜未就绪、未上电、有阻止分配的告警、有进行中的任务时不能交付。", "带维护标记或已隔离的托盘不参与交付。"],
+    fields: [["可交付", "NICo Core", "状态为 Ready、没有隔离、没有“阻止分配”的告警（维护标记属于这一类）、没有实例的计算托盘"], ["类型", "交付方式", "装机并验收 / 交给上层平台"]],
+    rules: ["机柜未就绪、成员没有全部开机、有整柜泄漏、有进行中的任务时不能交付。", "带“阻止分配”告警、带维护标记或已隔离的托盘按台排除，不参与交付。"],
     dialogs: [{ name: "交付向导", desc: "步骤 1 选择方式，步骤 2 核对并确认。沿用安装向导的“步骤 N / 2”写法，去掉逐机筛选。",
       fields: [["交付方式", "是", "装机并验收 / 交给上层平台"], ["安装方案 或 租户", "是", "只能选择已发布的方案或已有租户"], ["原因", "是", ""], ["确认所选机柜、安装方案及系统盘", "是", "勾选；沿用安装向导的确认项"], ["允许安装及重启验证", "装机时", "勾选"]] }],
   },
