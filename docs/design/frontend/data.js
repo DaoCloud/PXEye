@@ -55,7 +55,7 @@ function makeTray(rackId, n, slot, discovered, baseline) {
     baseline: discovered ? baseline : "", maintenance: "", quarantine: "", instance: "", lastSeen: discovered ? "2026-11-24 08:00" : "",
     history: discovered ? [["2026-11-02 09:41", type === "compute" ? "HostInit/Discovered" : "Initializing"], ["2026-11-02 10:30", "Ready"]] : [],
   };
-  if (type === "compute") Object.assign(tray, { arch: "aarch64", disks: ["nvme0n1 · 480 GB", "nvme1n1 · 1.92 TB"], hostMac: "", hostIp: "", nics: [], hardware: { CPU: "2 × Grace 72C", GPU: "4 × GB200", 内存: "960 GiB", 系统盘: "1 × 480 GB NVMe", 数据盘: "1 × 1.92 TB NVMe", 网卡: "2 × BlueField-3（网卡模式）" }, sku: "gb200-compute-c2g4",
+  if (type === "compute") Object.assign(tray, { cfg: { host: "", os: "", disk: "", mnic: "", mip: "", nics: {} }, arch: "aarch64", disks: ["nvme0n1 · 480 GB", "nvme1n1 · 1.92 TB"], hostMac: "", hostIp: "", nics: [], hardware: { CPU: "2 × Grace 72C", GPU: "4 × GB200", 内存: "960 GiB", 系统盘: "1 × 480 GB NVMe", 数据盘: "1 × 1.92 TB NVMe", 网卡: "2 × BlueField-3（网卡模式）" }, sku: "gb200-compute-c2g4",
     lldp: [{ port: "eno1", sw: "mgmt-leaf-" + pad2(n), remote: "swp" + slot }, { port: "p0", sw: "spine-" + pad2(n) + "a", remote: "Ethernet" + slot }] });
   if (type === "switch") Object.assign(tray, { nvos: [], primary: slot === 15, fabricManager: discovered ? "OK" : "" });
   if (discovered) assignAddresses(tray);
@@ -68,6 +68,8 @@ function assignAddresses(t) {
   if (t.type === "compute") {
     const c = s <= 14 ? s - 5 : s - 24 + 10;
     t.hostMac = `02:10:${pad2(n)}:00:00:${hex2(s)}`; t.hostIp = `198.51.100.${host}`;
+    /* 管理地址是设备规划时定下的，和这个网口的 MAC 对应；NICo 按它分配。 */
+    if (!t.cfg.mip) t.cfg.mip = t.hostIp;
     t.nics = [1, 2].map((i) => ({ name: "BlueField-3 · " + i, serial: `DEMO-D-${t.rack.slice(-3)}-${pad2(s)}${i}`, part: "900-9D3B6-00CV-AA0", fw: "32.45.1020", policy: "nic", mode: "Nic", mac: `02:3${i}:${pad2(n)}:00:00:${hex2(s)}`, ip: `192.0.2.${base + 45 + c * 2 + i}` }));
   }
   if (t.type === "switch") t.nvos = [0, 1].map((i) => ({ mac: `02:2${i}:${pad2(n)}:00:00:${hex2(s)}`, ip: `203.0.113.${(n - 1) * 40 + (s - 15) * 2 + i + 11}`, primary: i === 0, name: "eth" + i }));
@@ -79,11 +81,11 @@ function makeServer(i, stage) {
   return { id: "SRV/" + pad2(i), rack: "", n: 0, slot: 0, type: "compute", arch: "x86_64", serial: "DEMO-H-00" + pad2(i), matched: true, declared: stage !== "matched", seenSlot: 0, model: "GPU Server 8G",
     bmcMac: `02:00:0f:00:00:${hex2(i)}`, bmcIp: `192.0.2.${241 + i}`, addrMode: "保留", state: ready ? "Ready" : "", reason: "", health: ready ? "ok" : "none", alerts: [], power: ready ? "On" : "",
     baseline: "", maintenance: "", quarantine: "", instance: "", lastSeen: "2026-11-24 08:00", history: ready ? [["2026-11-18 10:02", "HostInit/Discovered"], ["2026-11-18 10:40", "Ready"]] : [],
-    hostMac: `02:10:0f:00:00:${hex2(i)}`, hostIp: ready ? `198.51.100.${200 + i}` : "", nics: [], sku: "gpu-server-8g", disks: ["nvme0n1 · 480 GB", "nvme1n1 · 3.84 TB", "nvme2n1 · 3.84 TB"],
+    hostMac: `02:10:0f:00:00:${hex2(i)}`, hostIp: ready ? `198.51.100.${200 + i}` : "", cfg: { host: "", os: "", disk: "", mnic: "", mip: `198.51.100.${200 + i}`, nics: {} }, nics: [], sku: "gpu-server-8g", disks: ["nvme0n1 · 480 GB", "nvme1n1 · 3.84 TB", "nvme2n1 · 3.84 TB"],
     hardware: { CPU: "2 × 64C x86_64", GPU: "8 × GPU", 内存: "1 TiB", 系统盘: "1 × 480 GB NVMe", 数据盘: "2 × 3.84 TB NVMe", 网卡: "2 × 25GbE" }, lldp: [{ port: "eno1", sw: "mgmt-leaf-09", remote: "swp" + i }] };
 }
 /* 服务器被 NICo 接管之后的样子。 */
-function takeOverServer(t) { Object.assign(t, { declared: true, state: "Ready", health: "ok", power: "On", hostIp: t.hostIp || `198.51.100.${200 + +t.id.slice(-2)}`, lastSeen: nowText(), history: [[nowText(), "HostInit/Discovered"], [nowText(), "Ready"]] }); }
+function takeOverServer(t) { Object.assign(t, { declared: true, state: "Ready", health: "ok", power: "On", hostIp: t.hostIp || t.cfg.mip || `198.51.100.${200 + +t.id.slice(-2)}`, lastSeen: nowText(), history: [[nowText(), "HostInit/Discovered"], [nowText(), "Ready"]] }); }
 function makeRack(id, n, discovered, baseline, location) {
   const trays = []; for (let s = 1; s <= 35; s++) trays.push(makeTray(id, n, s, discovered, baseline));
   /* state 为空表示 NICo 里还没有这个机柜的对象：机柜只在清单里。 */
@@ -112,8 +114,6 @@ function freshState() {
   mt.alerts = [{ id: "BmcSensor", target: "fan3", msg: "风扇 3 转速低于阈值", since: "2026-11-22 21:40", cls: [] }, { id: "Maintenance", target: "", msg: "维护标记：CHG-1042 更换风扇", since: "2026-11-22 21:55", cls: ["PreventAllocations"] }];
   /* 一台计算托盘换过盘：两块 NVMe 一样大，按方案的规则解析不出唯一的系统盘。用来演示安装条件检查不通过、逐台指定系统盘后通过。 */
   const odd = a02.trays.find((t) => t.slot === 29); odd.disks = ["nvme0n1 · 1.92 TB", "nvme1n1 · 1.92 TB"]; odd.hardware = { ...odd.hardware, 系统盘: "2 × 1.92 TB NVMe（换过盘）" }; delete odd.hardware.数据盘;
-  /* 另一台的 BMC 第一次检查时超时：用来演示安装条件检查发现阻断项、“更新状态”后通过。 */
-  a02.trays.find((t) => t.slot === 30).checkFlaky = 1;
   const d01 = makeDomain(a01, true), d02 = makeDomain(a02, true);
   d01.partitions = [{ id: "lp-train-a", name: "train-a", state: "Ready", physical: "nmx-part-0001", created: "2026-11-04 16:18" }];
   return {

@@ -1,8 +1,9 @@
 "use strict";
 /* 交付：给就绪的机器装系统，并管理装好的实例。
    装系统是逐台机器的事：NICo 里一台机器建一个实例，实例名称就是装好之后系统里的主机名。机柜上没有“装系统”这个操作。
-   所以入口是“安装任务”：选设备，逐台确定主机名、安装方案和系统盘，核对后提交，每台一个实例。
-   机柜详情、服务器列表和设备发现里的“新建安装任务”打开的是同一个向导，只是预先选好了设备。
+   所以入口是“安装任务”，向导沿用现有产品的两步：选择设备、核对配置。
+   每台机器的安装配置（主机名、安装方案、系统盘、网络）归设备管理里的“系统配置”维护，并且都有默认值：
+   默认情况下人不需要填任何东西，只是在核对页看一遍并确认；要改某一台才点开它的系统配置。
    平台不做多租户：所有实例建在站点的默认租户下，页面上不出现租户。 */
 
 /* 一台服务器现在能不能装系统：返回不能装的原因，空字符串表示可以。
@@ -51,21 +52,21 @@ registerPage("delivery/installs", {
   },
   spec: {
     purpose: "装系统的入口和进度页。装系统是逐台机器的事：一台机器建一个实例，实例名称就是系统里的主机名。所以这里按台新建和跟踪，机柜只是选择设备时的一个筛选条件。",
-    entry: "交付 → 安装任务；机柜详情“装系统”一步里的“新建安装任务”；服务器列表和设备发现里的“新建安装任务”", design: "5 整体操作运维流程（交付）；6.4 交付", existing: "安装任务页。表头、阶段和状态用词、任务详情和“新建安装任务”向导都沿用：向导的选择设备、核对配置两步和安装条件检查照搬，中间增加“逐台配置”一步",
+    entry: "交付 → 安装任务；机柜详情“装系统”一步里的“新建安装任务”；服务器列表和设备发现里的“新建安装任务”", design: "5 整体操作运维流程（交付）；6.4 交付", existing: "安装任务页。表头、阶段和状态用词、任务详情和“新建安装任务”向导都沿用：选择设备、核对配置两步和安装条件检查照搬",
     points: [
-      { n: 1, name: "新建安装任务", kind: "调整", desc: "打开三步向导：选择设备、逐台配置、核对配置。第一步和第三步沿用现有向导的页面和检查项；第二步是新增的，因为整机柜的清单里没有主机名和安装方案。从机柜详情、服务器列表或设备发现进入时，向导里已经选好了设备。" },
+      { n: 1, name: "新建安装任务", kind: "沿用", desc: "打开两步向导：选择设备、核对配置，页面和检查项沿用现有向导。每台设备的配置都有默认值，所以默认情况下不需要填写，只要核对并确认；要改某一台时在核对页点它。从机柜详情、服务器列表或设备发现进入时，向导里已经选好了设备。" },
       { n: 2, name: "统计条", kind: "新增", desc: "现在可以装系统的服务器数、进行中的批次、正在安装的台数、已装好的实例数。" },
       { n: 3, name: "安装批次", kind: "沿用", desc: "一次提交是一个批次：设备数量和分布、用到的安装方案、设备进度、原因和操作者。" },
       { n: 4, name: "筛选", kind: "调整", desc: "按批次和是否完成筛选逐台任务。" },
       { n: 5, name: "逐台任务", kind: "沿用", desc: "任务 / 创建时间、设备、目标主机名、阶段 / 状态、操作沿用；增加“位置”和“安装方案 / 系统盘”，因为这两项现在逐台确定。" },
       { n: 6, name: "任务详情", kind: "沿用", desc: "点击任务编号或“实时日志 / 记录”打开现有的“物理机安装记录”：状态、安装进度、实时日志、执行与恢复记录、安装验收。" },
     ],
-    fields: [["可以装系统", "NICo 的机器状态 + 平台检查", "机器就绪、没有实例、没有隔离和维护标记、没有阻止分配的告警；机柜里的还要求机柜就绪、没有整柜泄漏、没有进行中的任务"], ["目标主机名", "新建安装任务时逐台确定", "同时是 NICo 里的实例名称；装好后是系统里的主机名"], ["安装方案", "安装方案档案", "逐台选用，架构要和设备一致"], ["系统盘", "安装方案的选盘规则，或逐台指定", "默认按方案的规则选；个别设备可以指定一块盘"], ["启动网卡", "这台机器上采集到的主机网口", "网络引导和系统管理用的网口"], ["管理地址", "NICo 分配，或逐台指定固定地址", "固定地址要在管理子网内，不能和已有设备或本批的其他设备重复"], ["其他网口", "逐台填写", "按网口填地址/前缀和网关；不填就不配置"]],
-    rules: ["装系统按台进行：一台机器一个实例。可以跨机柜选择，也可以选不属于机柜的服务器。每批最多 50 台。", "提交前必须通过安装条件检查。检查分三组，逐台进行：设备身份（BMC 认证与序列号）；安装配置（机器就绪且没有实例、主机名与安装方案、管理地址与地址占用、系统盘）；操作系统材料（安装材料可以取到，长度与登记一致）。任何一台的任何一项不通过，整批不能提交。", "系统盘按安装方案的选盘规则解析，必须解析出唯一的一块盘。已经被接管的设备在“逐台配置”里就能看出来：解析不出时要求指定一块盘，否则不能进入下一步；安装条件检查时再核对一次。", "检查通过只表示当时可以执行：提交时服务端再检查一次配置和占用，执行前另做安装材料的完整摘要校验。", "“当前系统”按需查询，只读：用来在覆盖系统盘之前看一眼设备上现在是什么。状态用词：未查询、已关机、无 SSH 无法访问、已读取系统、发现 / 安装环境。", "主机名逐台填写，没有默认值，也不由 NICo 分配。1–63 个小写字母、数字或连字符，首尾是字母或数字，不能和已有的实例或本批的其他设备重名。", "网络配置逐台确定：选启动网卡；管理地址可以由 NICo 分配，也可以指定管理子网里的固定地址；其他网口可以各配一个固定地址。这些地址在装系统时写进系统的网络配置。这一版不含 Bond、VLAN 和 IPv6。", "安装方案按架构匹配：只列出已发布、架构与设备一致的方案。", "带维护标记、已隔离或有阻止分配告警的设备不能选；机柜未就绪、有整柜泄漏或有进行中任务时，柜里的设备不能选。原因写在每一行上，平台不提供绕过。", "不属于机柜的服务器纳管后还没有被接管的也可以选，安装条件显示“自动准备”：安装任务的第一步“准备设备”让 NICo 给它上电并接管，之后才写系统盘。它的“机器就绪”和“系统盘”两项标为“执行前确定”，不算失败；首次接入会清理全部磁盘，要另外勾选确认。", "所有实例建在站点的默认租户下，页面上不出现租户；平台不向其他平台分发机器。", "同时装机的台数取站点的默认安装并发。", "阶段用词：等待执行、准备设备、安装前检查、安装系统、启动系统盘、安装验收、GPU 环境检查、重启验收、完成。", "状态用词：待执行、执行中、已完成、需处理、已终止。", "失败的设备暂停等待处理，不影响同批其他设备。"],
+    fields: [["可以装系统", "NICo 的机器状态 + 平台检查", "机器就绪、没有实例、没有隔离和维护标记、没有阻止分配的告警；机柜里的还要求机柜就绪、没有整柜泄漏、没有进行中的任务"], ["目标主机名", "设备的系统配置；没有填时按管理地址生成", "同时是 NICo 里的实例名称；装好后是系统里的主机名"], ["安装方案", "设备的系统配置；没有填时用这种架构的默认方案", "架构要和设备一致"], ["系统盘", "安装方案的选盘规则，或逐台指定", "默认按方案的规则选；个别设备可以指定一块盘"], ["管理地址 / 启动网卡", "设备规划", "管理地址在设备规划时就和网口的 MAC 对应好了，这里只是显示；没有规划管理地址的设备由 NICo 分配"], ["其他网口", "设备的系统配置", "按网口填地址/前缀和网关；不填就不配置"]],
+    rules: ["装系统按台进行：一台机器一个实例。可以跨机柜选择，也可以选不属于机柜的服务器。每批最多 50 台。", "提交前必须通过安装条件检查。检查分三组，逐台进行：设备身份（BMC 认证与序列号）；安装配置（机器就绪且没有实例、主机名与安装方案、管理地址与地址占用、系统盘）；操作系统材料（安装材料可以取到，长度与登记一致）。任何一台的任何一项不通过，整批不能提交。", "系统盘按安装方案的选盘规则解析，必须解析出唯一的一块盘；解析不出时安装条件检查不通过，这一行标红，点它在系统配置里指定系统盘。", "检查通过只表示当时可以执行：提交时服务端再检查一次配置和占用，执行前另做安装材料的完整摘要校验。", "“当前系统”按需查询，只读：用来在覆盖系统盘之前看一眼设备上现在是什么。状态用词：未查询、已关机、无 SSH 无法访问、已读取系统、发现 / 安装环境。", "每台设备的安装配置归设备管理里的“系统配置”维护，新建安装任务只引用和核对；在核对页点一台设备，打开的就是它的系统配置。", "配置都有默认值，默认情况下不需要填写：主机名按管理地址生成（例如 node-198-51-100-78），安装方案用这种架构的默认方案，系统盘按方案的选盘规则，管理地址和启动网卡用设备规划时对应好的。", "主机名可以单独填写：1–63 个小写字母、数字或连字符，首尾是字母或数字，不能和其他设备或已有的实例重名。没有管理地址的设备不能自动生成，要单独填写。", "网络只做核对：管理地址在设备规划时已经和网口的 MAC 对应好，一般不改。其他网口可以在系统配置里各配一个固定地址，装系统时写进系统的网络配置。这一版不含 Bond、VLAN 和 IPv6。", "安装方案按架构匹配：只列出已发布、架构与设备一致的方案。", "带维护标记、已隔离或有阻止分配告警的设备不能选；机柜未就绪、有整柜泄漏或有进行中任务时，柜里的设备不能选。原因写在每一行上，平台不提供绕过。", "不属于机柜的服务器纳管后还没有被接管的也可以选，安装条件显示“自动准备”：安装任务的第一步“准备设备”让 NICo 给它上电并接管，之后才写系统盘。它的“机器就绪”和“系统盘”两项标为“执行前确定”，不算失败；首次接入会清理全部磁盘，要另外勾选确认。", "所有实例建在站点的默认租户下，页面上不出现租户；平台不向其他平台分发机器。", "同时装机的台数取站点的默认安装并发。", "阶段用词：等待执行、准备设备、安装前检查、安装系统、启动系统盘、安装验收、GPU 环境检查、重启验收、完成。", "状态用词：待执行、执行中、已完成、需处理、已终止。", "失败的设备暂停等待处理，不影响同批其他设备。"],
     dialogs: [
       { name: "新建安装任务 · 步骤 1 选择设备", desc: "沿用现有向导的第一步。列出服务器，每一行有“当前系统”和“安装条件”：安装条件写明可预检、自动准备，或不可选及其原因。底部显示“显示 N / M 台 · 已选 n / 50 台”。", fields: [["搜索、机柜、CPU 架构、当前系统", "否", "筛选。现有向导里的“管理网段”换成“机柜”，可以选“未分配机柜”"], ["仅看可选设备、仅看已选", "否", ""], ["查询当前系统", "否", "查询已选的设备；没有选择时查询当前筛选结果，最多 50 台"], ["勾选设备", "是", "不可选的行不能勾选；每批最多 50 台"]] },
-      { name: "新建安装任务 · 步骤 2 逐台配置", desc: "一次配置一台机器，字段沿用现有产品的“系统配置”。选了多台时，左边列出已选的设备和各自的状态（待填写、已填好、需处理），点哪台右边就是哪台的表单；只选一台时没有左边的列表。表单分三段：主机名；系统（安装方案、系统盘）；网络（管理口和其他网口）。输入时即时校验，全部设备填好才能进入下一步。现有产品里这些值事先保存在设备规划里；整机柜的清单里没有，所以在这里填。", fields: [["主机名", "是", "没有默认值；同时是实例名称"], ["安装方案", "是", "只列出已发布、架构一致的方案；登录方式沿用方案"], ["系统盘", "规则定不出时必填", "默认按安装方案的规则，并写明规则选中的是哪块盘；可以指定一块盘。还没有被接管的服务器读不到硬盘，执行前确定"], ["启动网卡", "是", "这台机器上的主机网口，默认是 NICo 引导时用的那个"], ["管理地址", "是", "由 NICo 分配（显示当前地址），或指定固定地址"], ["管理 IP", "固定地址时", "在管理子网内，不能和已有设备或本批其他设备重复"], ["其他网口", "否", "每个网口：不配置，或固定地址（地址/前缀，网关可不填）"], ["上一台、下一台", "否", "选了多台时出现"]] },
-      { name: "新建安装任务 · 步骤 3 核对配置", desc: "沿用现有向导的第二步。上面是逐台的配置表（目标 OS / 方案、主机名 / 管理地址、系统盘）；中间是“安装条件”面板，三组检查各显示已通过、需处理或检查中；不通过的项目逐条列出设备、检查名和原因；需要首次接入的设备提示“将清理全部磁盘”。全部通过后才出现影响说明和确认项。", fields: [["修改配置", "否", "回到第二步；改完重新检查"], ["更新状态", "否", "重新执行一次检查"], ["原因", "是", "写入批次和审计"], ["确认所选设备、主机名、管理地址及系统盘", "是", "勾选"], ["允许安装及重启验证", "是", "勾选"], ["允许需接入设备清理全部磁盘", "有首次接入的设备时", "勾选；含非系统盘"]] },
+      { name: "新建安装任务 · 步骤 2 核对配置", desc: "沿用现有向导的第二步。上面是一张列表，一台一行，列出这台设备将要使用的配置：主机名、目标 OS / 方案、管理地址 / 启动网卡、系统盘。这些值来自设备管理里的系统配置，没有单独填的按默认值并标“默认”，所以默认情况下不需要填任何东西，只需要核对。要改某一台，点这一行（或“修改”）打开它的系统配置，保存后回到这里并重新检查。列表下面是“安装条件”面板，三组检查各显示已通过、需处理或检查中；不通过的项目逐条列出设备、检查名和原因，对应的行标红；需要首次接入的设备提示“将清理全部磁盘”。全部通过后才出现影响说明和确认项。", fields: [["点击一行 / 修改", "否", "打开这台设备的系统配置"], ["更新状态", "否", "重新执行一次检查"], ["原因", "是", "写入批次和审计"], ["确认所选设备、主机名、管理地址及系统盘", "是", "勾选"], ["允许安装及重启验证", "是", "勾选"], ["允许需接入设备清理全部磁盘", "有首次接入的设备时", "勾选；含非系统盘"]] },
+      { name: "系统配置（设备管理里的同一个弹窗）", desc: "一台服务器下次装系统时用的配置，归设备管理维护；新建安装任务只是引用它。表单分三段：主机名；系统（安装方案、系统盘）；网络（管理口和其他网口）。每一项都有默认值，留空就用默认值。", fields: [["主机名", "否", "留空则按管理地址生成，例如管理地址 198.51.100.78 生成 node-198-51-100-78；填了就用填的"], ["安装方案", "否", "默认用这种架构的默认方案；只列出已发布、架构一致的方案"], ["系统盘", "规则定不出时必填", "默认按安装方案的规则，并写明规则选中的是哪块盘；可以指定一块盘"], ["启动网卡", "否", "默认是设备规划时和管理地址对应好的那个网口"], ["管理 IP", "否", "设备规划时定下的管理地址，一般不用改；改的话要在管理子网内，不能和其他设备重复；留空则由 NICo 分配"], ["其他网口", "否", "每个网口：不配置，或固定地址（地址/前缀，网关可不填）"]] },
     ],
   },
 });
@@ -77,11 +78,9 @@ registerAction("install-detail", ({ id, batch }) => {
 });
 
 /* ---------- 新建安装任务向导 ----------
-   向导的页面和检查项沿用现有产品的“新建安装任务”：选择设备（带“当前系统”和“安装条件”两列）、核对配置（安装条件检查、失败明细、清理范围、执行确认）。
-   与现有产品不同的只有中间多一步“逐台配置”：现有产品的主机名、安装方案和系统盘来自事先保存的设备规划，
-   整机柜的到货清单里没有这些，所以在向导里一台一行地确定。
-   向导的状态放在 S.view.wiz：筛选条件、已选的设备、主机名规则、逐台的主机名 / 安装方案 / 系统盘、检查结果。 */
-const WIZ_STEPS = ["选择设备", "逐台配置", "核对配置"], WIZ_MAX = 50;
+   页面和检查项沿用现有产品的“新建安装任务”：选择设备（带“当前系统”和“安装条件”两列）、核对配置（配置列表、安装条件检查、失败明细、清理范围、执行确认）。
+   向导的状态放在 S.view.wiz：筛选条件、已选的设备、检查结果。每台设备的配置不在向导里，在设备的系统配置里。 */
+const WIZ_STEPS = ["选择设备", "核对配置"], WIZ_MAX = 50;
 const wizHead = (n) => `<div class="live-step">${WIZ_STEPS.map((s, i) => `<${n === i + 1 ? "strong" : "span"}>${i + 1}. ${s}</${n === i + 1 ? "strong" : "span"}>`).join(" → ")}</div>`;
 const wiz = () => S.view.wiz;
 const wizList = () => Object.keys(wiz().picked).map(DB.tray).filter((t) => t && !installGate(t)).sort((a, b) => (a.rack ? 0 : 1) - (b.rack ? 0 : 1) || a.rack.localeCompare(b.rack) || a.slot - b.slot || a.id.localeCompare(b.id));
@@ -101,7 +100,7 @@ registerAction("install-new", ({ rack, ids }) => {
   const asked = (ids || "").split(",").filter(Boolean).map(DB.tray).filter(Boolean), pre = asked.filter((t) => !installGate(t)), picked = {};
   (pre.length ? pre : rack ? DB.rack(rack).trays.filter((t) => t.type === "compute" && !installGate(t)) : []).slice(0, WIZ_MAX).forEach((t) => (picked[t.id] = true));
   const one = asked.length && asked.every((t) => t.rack === asked[0].rack) ? asked[0].rack || "none" : "", scope = rack || one;
-  S.view.wiz = { filters: { scope, arch: "", sys: "", q: "", available: !scope, selected: false }, picked, rows: {}, cur: "", touched: {}, why: "", check: null };
+  S.view.wiz = { filters: { scope, arch: "", sys: "", q: "", available: !scope, selected: false }, picked, why: "", check: null };
   installStep1();
   if (asked.length && !pre.length) toast("所选的设备现在都不能装系统，原因见“安装条件”一列");
   else if (asked.length > pre.length) toast(`所选的 ${asked.length} 台里有 ${asked.length - pre.length} 台现在不能装系统，已去掉`);
@@ -121,7 +120,7 @@ function wizRenderList() {
 function installStep1() {
   const w = wiz(), f = w.filters, opt = (list, cur) => list.map(([v, text]) => `<option value="${v}" ${cur === v ? "selected" : ""}>${text}</option>`).join("");
   w.step = 1;
-  modal("新建安装任务", "步骤 1 / 3", wizHead(1) +
+  modal("新建安装任务", "步骤 1 / 2", wizHead(1) +
     `<div class="batch-filter-grid"><label>搜索设备<input class="input" type="search" id="wiz-q" value="${esc(f.q)}" placeholder="序列号、IP、MAC、型号"></label>
       <label>机柜<select class="input" id="wiz-scope">${opt([["", "全部"], ...S.racks.map((r) => [r.id, r.id]), ["none", "未分配机柜"]], f.scope)}</select></label>
       <label>CPU 架构<select class="input" id="wiz-arch">${opt([["", "全部架构"], ["aarch64", "aarch64"], ["x86_64", "x86_64"]], f.arch)}</select></label>
@@ -129,7 +128,7 @@ function installStep1() {
      <div class="live-tools batch-selection-tools"><label><input id="wiz-available" type="checkbox" ${f.available ? "checked" : ""}> 仅看可选设备</label><label><input id="wiz-selected" type="checkbox" ${f.selected ? "checked" : ""}> 仅看已选</label><button class="link-button" data-live="install-sysquery" title="查询已选设备；未选择时查询当前筛选结果，最多 ${WIZ_MAX} 台">查询当前系统</button><span id="wiz-summary" role="status" aria-live="polite"></span></div>
      <div id="wiz-list" class="batch-device-list"></div>
      <p class="live-small">装系统按台进行，一台机器一个实例；机柜只是筛选条件，可以切换筛选累计选择，每批最多 ${WIZ_MAX} 台。已有安装任务、已有实例或回收未完成的设备不可选，原因写在“安装条件”里。</p>`,
-    button("取消", "close") + button("全选当前列表里可选的", "install-all") + button("下一步", "install-to-2", true));
+    button("取消", "close") + button("全选当前列表里可选的", "install-all") + button("下一步：核对配置", "install-to-2", true));
   $("#overlay-root .modal").classList.add("batch-install-modal");
   wizRenderList();
   const body = $("#overlay-root .modal-body"), sync = (e) => {
@@ -159,11 +158,13 @@ registerAction("install-to-2", () => {
   const list = wizList(); if (!list.length) return toast("先勾选要装系统的设备");
   if (list.length > WIZ_MAX) return toast(`每批最多 ${WIZ_MAX} 台`);
   Object.keys(w.picked).forEach((id) => { if (!list.some((t) => t.id === id)) delete w.picked[id]; });
-  list.forEach((t) => { w.rows[t.id] = w.rows[t.id] || wizRowDefault(t); });
-  installStep2();
+  installRunCheck();
 });
-/* 第 2 步：逐台配置。一次只配置一台机器，字段沿用现有产品的“系统配置”：主机名、安装方案、系统盘、
-   管理口（启动网卡、管理 IP、管理子网）和其他网口的地址。选了多台时，左边列出设备和各自填到哪了，右边是当前这一台的表单。 */
+
+/* ---------- 系统配置：逐台的安装配置，归设备管理维护 ----------
+   沿用现有产品的“系统配置”：主机名、安装方案、系统盘、启动网卡、管理地址、其他网口的地址。
+   管理地址在设备规划时就和网口的 MAC 对应好了；主机名不填就按管理地址生成；安装方案不填就用这种架构的默认方案。
+   所以默认情况下不需要人填任何东西。新建安装任务时只是把这些配置列出来给人核对，要改某一台才打开这个弹窗。 */
 /* 主机上的以太网口。现有产品从 BMC 和 NICo 的硬件发现里读到这张表，这里是示例。 */
 function hostNics(t) {
   const m = (t.hostMac || "").split(":"), alt = (x) => [m[0], x, ...m.slice(2)].join(":");
@@ -174,114 +175,104 @@ const hostSubnet = () => DB.roleSubnets("host")[0];
 const IP4 = /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/;
 const ipInt = (ip) => ip.split(".").reduce((n, x) => n * 256 + +x, 0);
 const inCidr = (ip, cidr) => { const [base, len] = cidr.split("/"), size = 2 ** (32 - +len); return Math.floor(ipInt(ip) / size) === Math.floor(ipInt(base) / size); };
-const wizRowDefault = (t) => ({ host: "", os: (osReady(t.arch)[0] || {}).id || "", disk: "", mnic: hostNics(t)[0].mac, mmode: "dhcp", mip: "", nics: {} });
-/* 这台设备还缺什么：返回第一个问题，带上它在表单里的位置；都填好了返回 null。 */
-function wizProblems(t) {
-  const w = wiz(), row = w.rows[t.id], out = {}, list = wizList(), hosts = list.map((x) => w.rows[x.id].host);
-  const h = row.host ? hostProblem(row.host, hosts) : "请填写主机名"; if (h) out.host = h;
-  if (!row.os) out.os = "这个架构没有已发布的安装方案";
-  if (t.state && resolveDisk(t, row).problem) out.disk = "安装方案的规则匹配到不止一块盘，请指定一块";
-  if (row.mmode === "static") {
-    const net = hostSubnet(), ip = row.mip, other = list.find((x) => x.id !== t.id && w.rows[x.id].mmode === "static" && w.rows[x.id].mip === ip), used = DB.interfaces().find((i) => i.ip === ip && i.tray.id !== t.id);
-    out.mip = !ip ? "请填写管理 IP" : !IP4.test(ip) ? "不是合法的 IPv4 地址" : !inCidr(ip, net.cidr) ? `不在管理子网 ${net.cidr} 内` : ip === net.gateway ? "不能使用网关地址" : used ? `地址已被 ${used.tray.serial} 使用` : other ? `和本批的 ${other.serial} 重复` : "";
-    if (!out.mip) delete out.mip;
-  }
-  hostNics(t).filter((n) => n.mac !== row.mnic).forEach((n) => { const c = row.nics[n.mac]; if (!c || c.mode !== "static") return;
-    const p = /^(.+)\/(\d{1,2})$/.exec(c.ip || ""), bad = !c.ip ? "请填写地址和前缀，例如 10.0.0.5/24" : !p || !IP4.test(p[1]) || +p[2] > 32 ? "写成“地址/前缀长度”，例如 10.0.0.5/24" : c.gw && !IP4.test(c.gw) ? "网关不是合法的 IPv4 地址" : "";
-    if (bad) out["nic:" + n.mac] = bad; });
+const hostFromIp = (ip) => "node-" + ip.replace(/\./g, "-");
+/* 一台服务器实际生效的配置：没有填的项目换成默认值，并记下哪些是默认的。 */
+function sysCfg(t, raw = t.cfg) {
+  const nics = hostNics(t), mip = raw.mip || "", os0 = (osReady(t.arch)[0] || {}).id || "";
+  return { host: raw.host || (mip && IP4.test(mip) ? hostFromIp(mip) : ""), hostAuto: !raw.host, os: raw.os || os0, osAuto: !raw.os, disk: raw.disk || "", mnic: raw.mnic || (nics[0] || {}).mac || "", mip, nics: raw.nics || {} };
+}
+const diskSize = (d) => { const m = / · ([\d.]+) (GB|TB)/.exec(d); return m ? +m[1] * (m[2] === "TB" ? 1000 : 1) : 0; };
+/* 按安装方案的选盘规则解析系统盘：容量最小或最大的 NVMe，必须唯一。 */
+function resolveDisk(t, c) {
+  if (c.disk) return { disk: c.disk, source: "逐台指定" };
+  const rule = (S.osTemplates.find((o) => o.id === c.os) || {}).disk || "", largest = /最大/.test(rule), sizes = t.disks.map(diskSize), pick = largest ? Math.max(...sizes) : Math.min(...sizes), hit = t.disks.filter((d) => diskSize(d) === pick);
+  return hit.length === 1 ? { disk: hit[0], source: "方案规则" } : { disk: "", source: "", problem: `按安装方案的规则（${rule.split("，")[0]}）匹配到 ${hit.length} 块盘，不能确定唯一的系统盘。点这台设备的“修改”，指定系统盘。` };
+}
+/* 配置里的问题，按表单里的位置给出。没有问题返回 null。 */
+function cfgProblems(t, c) {
+  const out = {}, net = hostSubnet(), others = servers().filter((x) => x.id !== t.id);
+  const taken = c.host && (others.some((x) => sysCfg(x).host === c.host) || S.instances.some((i) => i.host === c.host && i.tray !== t.id));
+  if (!c.host) out.host = "没有管理地址，不能自动生成，请填写主机名"; else if (!HOST_RE.test(c.host)) out.host = "只能用小写字母、数字和连字符，首尾是字母或数字"; else if (taken) out.host = "和另一台设备或已有的实例重名";
+  if (!c.os) out.os = "这个架构没有已发布的安装方案";
+  if (t.state && resolveDisk(t, c).problem) out.disk = "安装方案的规则匹配到不止一块盘，请指定一块";
+  if (c.mip) { const used = DB.interfaces().find((i) => i.ip === c.mip && i.tray.id !== t.id) || others.map((x) => ({ tray: x, ip: x.cfg.mip })).find((i) => i.ip === c.mip);
+    const bad = !IP4.test(c.mip) ? "不是合法的 IPv4 地址" : !inCidr(c.mip, net.cidr) ? `不在管理子网 ${net.cidr} 内` : c.mip === net.gateway ? "不能使用网关地址" : used ? `地址已被 ${used.tray.serial} 使用` : ""; if (bad) out.mip = bad; }
+  hostNics(t).filter((n) => n.mac !== c.mnic).forEach((n) => { const x = c.nics[n.mac]; if (!x || x.mode !== "static") return;
+    const p = /^(.+)\/(\d{1,2})$/.exec(x.ip || ""), bad = !x.ip ? "请填写地址和前缀，例如 10.0.0.5/24" : !p || !IP4.test(p[1]) || +p[2] > 32 ? "写成“地址/前缀长度”，例如 10.0.0.5/24" : x.gw && !IP4.test(x.gw) ? "网关不是合法的 IPv4 地址" : ""; if (bad) out["nic:" + n.mac] = bad; });
   return Object.keys(out).length ? out : null;
 }
-const wizState = (t) => { const p = wizProblems(t); return !p ? ["已填好", "green"] : !wiz().rows[t.id].host && Object.keys(p).length === 1 ? ["待填写", "gray"] : ["需处理", "red"]; };
-/* 把右边表单里的值收回到当前这台设备上。 */
-function wizKeepRows() {
-  const w = wiz(), row = w.rows[w.cur]; if (!row || !$("#wf-host")) return;
-  Object.assign(row, { host: $("#wf-host").value.trim(), os: $("#wf-os").value, disk: $("#wf-disk") ? $("#wf-disk").value : row.disk, mnic: $("#wf-mnic").value, mmode: $("#wf-mmode").value, mip: $("#wf-mip") ? $("#wf-mip").value.trim() : row.mip });
-  document.querySelectorAll("[data-wf-nmode]").forEach((el) => { const mac = el.dataset.wfNmode, ip = document.querySelector(`[data-wf-nip="${mac}"]`), gw = document.querySelector(`[data-wf-ngw="${mac}"]`), old = row.nics[mac] || {}; row.nics[mac] = { mode: el.value, ip: ip ? ip.value.trim() : old.ip || "", gw: gw ? gw.value.trim() : old.gw || "" }; });
+const nicCount = (c) => Object.values(c.nics).filter((x) => x.mode === "static").length;
+/* 把弹窗里的值收回到草稿上。 */
+function cfgKeep() {
+  const d = S.view.cfgDraft; if (!d || !$("#wf-host")) return;
+  Object.assign(d.raw, { host: $("#wf-host").value.trim(), os: $("#wf-os").value, disk: $("#wf-disk") ? $("#wf-disk").value : d.raw.disk, mnic: $("#wf-mnic").value, mip: $("#wf-mip").value.trim() });
+  document.querySelectorAll("[data-wf-nmode]").forEach((el) => { const mac = el.dataset.wfNmode, ip = document.querySelector(`[data-wf-nip="${mac}"]`), gw = document.querySelector(`[data-wf-ngw="${mac}"]`), old = d.raw.nics[mac] || {}; d.raw.nics[mac] = { mode: el.value, ip: ip ? ip.value.trim() : old.ip || "", gw: gw ? gw.value.trim() : old.gw || "" }; });
 }
-/* 只更新提示和左边的状态，不重画表单：输入时不丢焦点。 */
-function wizRefreshMarks() {
-  const w = wiz(), t = DB.tray(w.cur), p = wizProblems(t) || {};
-  document.querySelectorAll("[data-wf-err]").forEach((el) => (el.textContent = (w.touched[w.cur] || el.dataset.wfErr !== "host" || wiz().rows[w.cur].host ? p[el.dataset.wfErr] : "") || ""));
-  wizList().forEach((x) => { const el = document.querySelector(`[data-wf-chip="${x.id}"]`); if (el) { const s = wizState(x); el.innerHTML = badge(s[0], s[1]); } });
-  const left = wizList().filter((x) => wizProblems(x)).length; if ($("#wf-left")) $("#wf-left").textContent = left ? `还有 ${left} 台没有填好` : "全部填好，可以检查安装条件";
+function cfgRefresh() {
+  const d = S.view.cfgDraft, t = DB.tray(d.id), c = sysCfg(t, d.raw), p = cfgProblems(t, c) || {};
+  document.querySelectorAll("[data-wf-err]").forEach((el) => (el.textContent = p[el.dataset.wfErr] || ""));
+  if ($("#wf-host")) $("#wf-host").placeholder = c.mip && IP4.test(c.mip) ? hostFromIp(c.mip) : "没有管理地址，请填写";
+  if ($("#wf-host-auto")) $("#wf-host-auto").textContent = d.raw.host ? "已单独填写。清空就恢复为按管理地址生成。" : c.host ? `没有填，按管理地址生成：${c.host}` : "没有管理地址，不能自动生成。";
 }
-function installStep2(keepScroll) {
-  const w = wiz(), list = wizList(); w.step = 2; w.touched = w.touched || {};
-  if (!list.some((t) => t.id === w.cur)) w.cur = (list.find((t) => wizProblems(t)) || list[0]).id;
-  const t = DB.tray(w.cur), row = w.rows[t.id], at = list.findIndex((x) => x.id === t.id), many = list.length > 1, p = wizProblems(t) || {}, show = (k) => (w.touched[t.id] || k !== "host" || row.host ? p[k] : "") || "";
-  const top = keepScroll && $("#overlay-root .wiz-form") ? $("#overlay-root .wiz-form").scrollTop : 0, nics = hostNics(t), net = hostSubnet(), d = t.state ? resolveDisk(t, { ...row, disk: "" }) : null;
-  const err = (k) => `<small class="wiz-err" data-wf-err="${k}">${esc(show(k))}</small>`;
-  const opt = (v, text, cur) => `<option value="${esc(v)}" ${v === cur ? "selected" : ""}>${esc(text)}</option>`;
-  const ruleText = !t.state ? "按安装方案的规则（NICo 接管后才读得到硬盘，执行前确定）" : d.problem ? "请选择系统盘" : `按安装方案的规则（${d.disk}）`;
-  const others = nics.filter((n) => n.mac !== row.mnic);
-  const form = `<header class="wiz-dev"><div><strong class="live-code">${t.serial}</strong><span>${typeLabel(t)} · ${placeText(t)} · ${t.arch}${t.state ? "" : " · 安装时先由 NICo 接管"}</span></div>${many ? `<span class="wiz-pos">第 ${at + 1} / ${list.length} 台</span>` : ""}</header>
-    <section class="wiz-sec"><h4>主机名</h4><div class="wiz-field wide"><input class="input live-code" id="wf-host" value="${esc(row.host)}" placeholder="例如 gpu-01" autocomplete="off" aria-label="主机名">${err("host")}<small>装好后是系统里的主机名，也是 NICo 里的实例名称。1–63 个小写字母、数字或连字符，首尾是字母或数字。</small></div></section>
-    <section class="wiz-sec"><h4>系统</h4><div class="wiz-grid">
-      <label class="wiz-field"><span>安装方案</span><select class="input" id="wf-os">${osReady(t.arch).map((o) => opt(o.id, o.id, row.os)).join("") || opt("", "没有这个架构的已发布方案", "")}</select>${err("os")}<small>只列出已发布、架构为 ${t.arch} 的方案。登录方式沿用方案里的设置。</small></label>
-      <label class="wiz-field"><span>系统盘</span>${t.state ? `<select class="input" id="wf-disk">${opt("", ruleText, row.disk)}${t.disks.map((x) => opt(x, x, row.disk)).join("")}</select>` : `<p class="wiz-static">${ruleText}</p>`}${err("disk")}<small>默认按安装方案的选盘规则；也可以指定这台机器的一块盘。</small></label></div></section>
-    <section class="wiz-sec"><h4>网络</h4>
-      <h5>管理口<small>网络引导和系统管理用的那个网口</small></h5><div class="wiz-grid three">
-        <label class="wiz-field"><span>启动网卡</span><select class="input" id="wf-mnic">${nics.map((n) => opt(n.mac, `${n.name} · ${n.mac} · ${n.speed}`, row.mnic)).join("")}</select><small>${esc((nics.find((n) => n.mac === row.mnic) || {}).note || "")}</small></label>
-        <label class="wiz-field"><span>管理地址</span><select class="input" id="wf-mmode">${opt("dhcp", "由 NICo 分配" + (t.hostIp ? `（当前 ${t.hostIp}）` : "（接管后确定）"), row.mmode)}${opt("static", "指定固定地址", row.mmode)}</select><small>管理子网 ${net.name} · ${net.cidr} · 网关 ${net.gateway}</small></label>
-        ${row.mmode === "static" ? `<label class="wiz-field"><span>管理 IP</span><input class="input live-code" id="wf-mip" value="${esc(row.mip)}" placeholder="${net.cidr.replace(/\d+\/\d+$/, "x")}" autocomplete="off">${err("mip")}<small>要在管理子网内，不能和已有设备重复。</small></label>` : `<div class="wiz-field"><span>管理 IP</span><p class="wiz-static live-code">${t.hostIp || "接管后由 NICo 分配"}</p><small>装好后系统用这个地址。</small></div>`}</div>
-      <h5>其他网口<small>不填就不配置；装好后系统里这些网口没有地址</small></h5>
-      <div class="wiz-nics">${others.map((n) => { const c = row.nics[n.mac] || { mode: "none", ip: "", gw: "" }, st = c.mode === "static";
-        return `<div class="wiz-nic"><div><strong class="live-code">${n.name}</strong><span>${n.mac} · ${n.speed} · ${n.note}</span></div><select class="input" data-wf-nmode="${n.mac}" aria-label="${n.name} 的地址方式">${opt("none", "不配置", c.mode)}${opt("static", "固定地址", c.mode)}</select>${st ? `<input class="input live-code" data-wf-nip="${n.mac}" value="${esc(c.ip)}" placeholder="地址/前缀，例如 10.0.0.5/24" aria-label="${n.name} 的地址"><input class="input live-code" data-wf-ngw="${n.mac}" value="${esc(c.gw)}" placeholder="网关（可不填）" aria-label="${n.name} 的网关">` : `<span class="wiz-muted">—</span><span class="wiz-muted">—</span>`}${err("nic:" + n.mac)}</div>`; }).join("")}</div>
-      <p class="wiz-note">这些地址在装系统时写进系统的网络配置。这一版不含 Bond、VLAN 和 IPv6。</p></section>`;
-  modal("新建安装任务", "步骤 2 / 3", wizHead(2) +
-    `<div class="wiz-two ${many ? "" : "single"}">${many ? `<aside class="wiz-list" aria-label="已选设备"><h4>已选 ${list.length} 台，一台一台配置</h4><div>${list.map((x) => { const s = wizState(x); return `<button class="${x.id === t.id ? "active" : ""}" data-live="install-pick-dev" data-id="${x.id}"><span><strong class="live-code">${x.serial}</strong><small>${placeText(x)}${w.rows[x.id].host ? " · " + esc(w.rows[x.id].host) : ""}</small></span><span data-wf-chip="${x.id}">${badge(s[0], s[1])}</span></button>`; }).join("")}</div></aside>` : ""}<div class="wiz-form">${form}</div></div>`,
-    `<span class="wiz-left" id="wf-left"></span>` + button("上一步", "install-back-1") + (many ? button("上一台", "install-prev-dev", false, at ? "" : "disabled") + button("下一台", "install-next-dev", false, at < list.length - 1 ? "" : "disabled") : "") + button("下一步：检查安装条件", "install-to-3", true));
-  $("#overlay-root .modal").classList.add("batch-install-modal", "wiz-config");
-  if (top) $("#overlay-root .wiz-form").scrollTop = top;
-  const act = $("#overlay-root .wiz-list .active"); if (act) act.scrollIntoView({ block: "nearest" });
-  wizRefreshMarks();
+registerAction("server-config", ({ id, back }) => { const t = DB.tray(id); S.view.cfgDraft = { id, back: back || "", raw: JSON.parse(JSON.stringify(t.cfg)) }; serverConfigDialog(); });
+function serverConfigDialog(keepScroll) {
+  const d = S.view.cfgDraft, t = DB.tray(d.id), raw = d.raw, c = sysCfg(t, raw), nics = hostNics(t), net = hostSubnet(), os0 = (osReady(t.arch)[0] || {}).id || "", top = keepScroll && $("#overlay-root .modal-body") ? $("#overlay-root .modal-body").scrollTop : 0;
+  const err = (k) => `<small class="wiz-err" data-wf-err="${k}"></small>`, opt = (v, text, cur) => `<option value="${esc(v)}" ${v === cur ? "selected" : ""}>${esc(text)}</option>`;
+  const rule = t.state ? resolveDisk(t, { ...c, disk: "" }) : null, ruleText = !t.state ? "按安装方案的规则（NICo 接管后才读得到硬盘，执行前确定）" : rule.problem ? "请选择系统盘" : `按安装方案的规则（${rule.disk}）`;
+  modal("系统配置", `${t.serial} · ${typeLabel(t)} · ${placeText(t)} · ${t.arch}`,
+    `<div class="wiz-form plain"><p class="wiz-lead-note">这台机器下次装系统时用的配置。没有填的项目按默认值：主机名按管理地址生成，安装方案用这种架构的默认方案，系统盘按方案的规则。</p>
+     <section class="wiz-sec"><h4>主机名</h4><div class="wiz-field wide"><input class="input live-code" id="wf-host" value="${esc(raw.host)}" autocomplete="off" aria-label="主机名">${err("host")}<small id="wf-host-auto"></small><small>装好后是系统里的主机名，也是 NICo 里的实例名称。</small></div></section>
+     <section class="wiz-sec"><h4>系统</h4><div class="wiz-grid">
+       <label class="wiz-field"><span>安装方案</span><select class="input" id="wf-os">${opt("", os0 ? `默认：${os0}` : "没有这个架构的已发布方案", raw.os)}${osReady(t.arch).map((o) => opt(o.id, o.id, raw.os)).join("")}</select>${err("os")}<small>只列出已发布、架构为 ${t.arch} 的方案。登录方式沿用方案里的设置。</small></label>
+       <label class="wiz-field"><span>系统盘</span>${t.state ? `<select class="input" id="wf-disk">${opt("", ruleText, raw.disk)}${t.disks.map((x) => opt(x, x, raw.disk)).join("")}</select>` : `<p class="wiz-static">${ruleText}</p>`}${err("disk")}<small>默认按安装方案的选盘规则；也可以指定这台机器的一块盘。</small></label></div></section>
+     <section class="wiz-sec"><h4>网络</h4>
+       <h5>管理口<small>网络引导和系统管理用的网口。管理地址在设备规划时已经和这个网口的 MAC 对应好，一般不用改</small></h5><div class="wiz-grid">
+         <label class="wiz-field"><span>启动网卡</span><select class="input" id="wf-mnic">${nics.map((n) => opt(n.mac, `${n.name} · ${n.mac} · ${n.speed} · ${n.note}`, c.mnic)).join("")}</select></label>
+         <label class="wiz-field"><span>管理 IP</span><input class="input live-code" id="wf-mip" value="${esc(raw.mip)}" placeholder="留空则由 NICo 分配" autocomplete="off">${err("mip")}<small>管理子网 ${net.name} · ${net.cidr} · 网关 ${net.gateway}</small></label></div>
+       <h5>其他网口<small>不填就不配置；装好后系统里这些网口没有地址</small></h5>
+       <div class="wiz-nics">${nics.filter((n) => n.mac !== c.mnic).map((n) => { const x = raw.nics[n.mac] || { mode: "none", ip: "", gw: "" }, st = x.mode === "static";
+         return `<div class="wiz-nic"><div><strong class="live-code">${n.name}</strong><span>${n.mac} · ${n.speed} · ${n.note}</span></div><select class="input" data-wf-nmode="${n.mac}" aria-label="${n.name} 的地址方式">${opt("none", "不配置", x.mode)}${opt("static", "固定地址", x.mode)}</select>${st ? `<input class="input live-code" data-wf-nip="${n.mac}" value="${esc(x.ip)}" placeholder="地址/前缀，例如 10.0.0.5/24" aria-label="${n.name} 的地址"><input class="input live-code" data-wf-ngw="${n.mac}" value="${esc(x.gw)}" placeholder="网关（可不填）" aria-label="${n.name} 的网关">` : `<span class="wiz-muted">—</span><span class="wiz-muted">—</span>`}${err("nic:" + n.mac)}</div>`; }).join("")}</div>
+       <p class="wiz-note">这些地址在装系统时写进系统的网络配置。这一版不含 Bond、VLAN 和 IPv6。</p></section></div>`,
+    button(d.back ? "返回核对" : "取消", "server-config-cancel") + (S.role === "只读" ? "" : button("保存", "server-config-save", true)));
+  $("#overlay-root .modal").classList.add("wiz-config");
+  if (top) $("#overlay-root .modal-body").scrollTop = top;
+  cfgRefresh();
   const body = $("#overlay-root .modal-body");
-  body.addEventListener("input", (e) => { if (e.target.tagName === "INPUT") { wizKeepRows(); wizRefreshMarks(); } });
-  body.addEventListener("focusout", (e) => { if (e.target.id === "wf-host") { w.touched[w.cur] = true; wizRefreshMarks(); } });
-  body.addEventListener("change", (e) => { if (e.target.tagName !== "SELECT") return; wizKeepRows(); if (/^wf-(mmode|mnic)$/.test(e.target.id) || e.target.dataset.wfNmode) return installStep2(true); wizRefreshMarks(); });
+  body.addEventListener("input", (e) => { if (e.target.tagName === "INPUT") { cfgKeep(); cfgRefresh(); } });
+  body.addEventListener("change", (e) => { if (e.target.tagName !== "SELECT") return; cfgKeep(); if (e.target.id === "wf-mnic" || e.target.dataset.wfNmode) return serverConfigDialog(true); cfgRefresh(); });
 }
-const wizGo = (id) => { wizKeepRows(); const w = wiz(); w.touched[w.cur] = true; w.cur = id; installStep2(); const h = $("#wf-host"); if (h && !h.value) h.focus(); };
-registerAction("install-pick-dev", ({ id }) => wizGo(id));
-registerAction("install-prev-dev", () => { const l = wizList(), i = l.findIndex((t) => t.id === wiz().cur); if (i > 0) wizGo(l[i - 1].id); });
-registerAction("install-next-dev", () => { const l = wizList(), i = l.findIndex((t) => t.id === wiz().cur); if (i < l.length - 1) wizGo(l[i + 1].id); });
-registerAction("install-back-1", () => { wizKeepRows(); installStep1(); });
-registerAction("install-to-3", () => {
-  wizKeepRows(); const w = wiz(), list = wizList(), bad = list.filter((t) => wizProblems(t));
-  if (bad.length) { const first = bad.find((t) => t.id === w.cur) || bad[0]; list.forEach((t) => (w.touched[t.id] = true)); w.cur = first.id; installStep2(); return toast(`还有 ${bad.length} 台没有填好：${first.serial} ${Object.values(wizProblems(first))[0]}`); }
-  installRunCheck();
+const cfgDone = (back) => { S.view.cfgDraft = null; if (back === "wizard" && S.view.wiz) return installRunCheck(); closeModal(); render(); };
+registerAction("server-config-cancel", () => cfgDone(S.view.cfgDraft.back));
+registerAction("server-config-save", () => {
+  cfgKeep(); const d = S.view.cfgDraft, t = DB.tray(d.id), p = cfgProblems(t, sysCfg(t, d.raw));
+  if (p) { cfgRefresh(); return toast("还有需要修改的地方：" + Object.values(p)[0]); }
+  Object.values(d.raw.nics).forEach((x) => { if (x.mode !== "static") { x.ip = ""; x.gw = ""; } });
+  t.cfg = d.raw; addAudit(t.rack ? placeText(t) : t.serial, "修改系统配置", "—", "—", "已保存，下次安装生效"); toast(`${t.serial} 的系统配置已保存`); cfgDone(d.back);
 });
 
 /* ---------- 安装条件检查 ----------
    检查项和分组沿用现有产品：设备身份、安装配置、操作系统材料。逐台检查，任何一项不通过都不能提交。
    还没有被 NICo 接管的服务器，有两项要到执行前才能确定（机器就绪、系统盘），标为“执行前确定”，不算失败。 */
 const CHECK_GROUPS = [["设备身份", "BMC 登录与序列号"], ["安装配置", "机器状态、主机名、管理地址、启动网卡与系统盘"], ["操作系统材料", "kernel、initrd、ISO 与自动安装配置"]];
-const diskSize = (d) => { const m = / · ([\d.]+) (GB|TB)/.exec(d); return m ? +m[1] * (m[2] === "TB" ? 1000 : 1) : 0; };
-/* 按安装方案的选盘规则解析系统盘：容量最小或最大的 NVMe，必须唯一。 */
-function resolveDisk(t, row) {
-  if (row.disk) return { disk: row.disk, source: "逐台指定" };
-  const rule = (S.osTemplates.find((o) => o.id === row.os) || {}).disk || "", largest = /最大/.test(rule), sizes = t.disks.map(diskSize), pick = largest ? Math.max(...sizes) : Math.min(...sizes), hit = t.disks.filter((d) => diskSize(d) === pick);
-  return hit.length === 1 ? { disk: hit[0], source: "方案规则" } : { disk: "", source: "", problem: `按安装方案的规则（${rule.split("，")[0]}）匹配到 ${hit.length} 块盘，不能确定唯一的系统盘。回到“逐台配置”，为这台设备指定系统盘。` };
-}
-function installChecks(t, row) {
-  const cold = !t.state, d = resolveDisk(t, row), ok = (group, name, detail = "实际检查通过") => ({ group, name, passed: true, detail }), later = (group, name, detail) => ({ group, name, passed: true, deferred: true, detail });
+function installChecks(t) {
+  const c = sysCfg(t), cold = !t.state, p = cfgProblems(t, c) || {}, d = cold ? null : resolveDisk(t, c), ok = (group, name, detail = "实际检查通过") => ({ group, name, passed: true, detail }), later = (group, name, detail) => ({ group, name, passed: true, deferred: true, detail }), bad = (group, name, detail) => ({ group, name, passed: false, detail: detail + "点这台设备的“修改”处理。" });
   return [
-    t.checkFlaky ? { group: 0, name: "BMC 认证与序列号", passed: false, detail: "BMC 没有响应（连接超时）。确认这台设备的 BMC 在线后点“更新状态”重新检查；也可以回到第一步把它移出本批。" } : ok(0, "BMC 认证与序列号", "登录成功，读到的序列号与设备一致"),
+    ok(0, "BMC 认证与序列号", "登录成功，读到的序列号与设备一致"),
     cold ? later(1, "机器就绪", "当前未要求就绪；创建任务后由 NICo 自动上电接管，并等待它回报就绪") : ok(1, "机器就绪、没有实例"),
-    ok(1, "主机名与安装方案", "主机名合规、没有重名；方案已发布，架构一致"),
-    row.mmode === "static" ? ok(1, "管理地址、子网与地址占用", `固定地址 ${row.mip} 在管理子网内，没有被占用`) : cold ? later(1, "管理地址", "接管后由 NICo 分配") : ok(1, "管理地址、子网与地址占用"),
+    p.host || p.os ? bad(1, "主机名与安装方案", (p.host || p.os) + "。") : ok(1, "主机名与安装方案", "主机名合规、没有重名；方案已发布，架构一致"),
+    p.mip ? bad(1, "管理地址、子网与地址占用", p.mip + "。") : c.mip ? ok(1, "管理地址、子网与地址占用", `${c.mip} 在管理子网内，和启动网卡对应，没有被占用`) : later(1, "管理地址", "没有规划管理地址，由 NICo 分配"),
     ok(1, "启动网卡与网络配置", "启动网卡在这台机器上；装机时写入系统的网络配置已生成"),
     cold ? later(1, "系统盘", "执行前读取硬件后确定：按方案的规则解析唯一的系统盘") : d.problem ? { group: 1, name: "系统盘", passed: false, detail: d.problem } : ok(1, "系统盘", `${d.source}：${d.disk}`),
     ok(2, "安装材料可以取到，长度与登记一致", "实际检查通过；执行前另做完整摘要校验"),
   ];
 }
 function installRunCheck() {
-  const w = wiz(); w.check = null; w.checking = true; installStep3();
+  const w = wiz(); if ($("#wiz-why")) w.why = $("#wiz-why").value.trim(); w.check = null; w.checking = true; installReview();
   setTimeout(() => {
-    if (S.view.wiz !== w) return;
-    const list = wizList(), devices = list.map((t) => ({ id: t.id, serial: t.serial, cleanup: !t.state, disk: t.state ? resolveDisk(t, w.rows[t.id]) : null, checks: installChecks(t, w.rows[t.id]) }));
+    if (S.view.wiz !== w || w.step !== 2) return;
+    const list = wizList(), devices = list.map((t) => ({ id: t.id, serial: t.serial, cleanup: !t.state, disk: t.state ? resolveDisk(t, sysCfg(t)) : null, checks: installChecks(t) }));
     w.check = { at: nowText(), devices, passed: devices.every((d) => d.checks.every((c) => c.passed)) }; w.checking = false;
-    list.forEach((t) => t.checkFlaky && t.checkFlaky--); /* 模拟：BMC 超时是暂时的，再检查一次就通过 */
-    if (w.step === 3) installStep3();
+    if ($("#wiz-review")) installReview();
   }, 900);
 }
 function checkPanel(check) {
@@ -291,13 +282,17 @@ function checkPanel(check) {
   return `<section class="install-check-panel" aria-label="安装条件检查"><header><div><span class="site-eyebrow">安装条件</span><strong>${check ? (check.passed ? "配置可以执行" : "发现阻断项") : "正在核对配置"}</strong></div><span>${passed} / ${steps.length}</span></header><progress value="${passed}" max="${steps.length}" aria-label="已通过 ${passed} 项，共 ${steps.length} 项"></progress><ol>${steps.map((s) =>
     `<li class="${s.status}"><span class="install-check-dot" aria-hidden="true"></span><div><strong>${s.label}</strong><span>${s.detail}</span></div><small>${{ passed: "已通过", failed: "需处理", checking: "检查中" }[s.status]}</small></li>`).join("")}</ol></section>`;
 }
-function installStep3() {
+/* 第 2 步：核对配置。把每台设备将要使用的配置列出来给人看；默认都已经有值，要改某一台就点它。下面是安装条件检查和确认项。 */
+function installReview() {
   const w = wiz(), list = wizList(), check = w.check, of = (t) => (check ? check.devices.find((d) => d.id === t.id) : null), cold = list.filter((t) => !t.state);
-  w.step = 3;
-  const diskCell = (t) => { const row = w.rows[t.id], d = of(t); if (!t.state) return `${esc(row.disk || "按方案的规则")}<span class="cell-sub">接管后、执行前确定</span>`; if (!d) return "检查中…"; return d.disk.problem ? badge("未确定", "red") : `${esc(d.disk.disk)}<span class="cell-sub">${d.disk.source}</span>`; };
-  let body = wizHead(3) + (cold.length ? `<div class="live-note">${cold.length} 台设备当前还没有被 NICo 接管；提交后将自动准备设备。</div>` : "") +
-    table(["设备 / 位置", "CPU 架构", "BMC 地址 / MAC", "目标 OS / 方案", "主机名 / 管理地址", "系统盘", "操作"], list.map((t) => { const row = w.rows[t.id], os = row.os.split(" · ");
-      return `<tr><td><strong>${t.serial}</strong><span class="cell-sub">${placeText(t)}</span></td><td>${code(t.arch)}</td><td>${code(t.bmcIp)}<span class="cell-sub live-code">${t.bmcMac}</span></td><td>${esc(os[0])}<span class="cell-sub">${esc(os[1] || "")}</span></td><td>${code(row.host)}<span class="cell-sub">${row.mmode === "static" ? `<span class="live-code">${esc(row.mip)}</span> · 固定地址` : `<span class="live-code">${t.hostIp || "接管后确定"}</span> · NICo 分配`}${Object.values(row.nics).filter((c) => c.mode === "static").length ? ` · 另有 ${Object.values(row.nics).filter((c) => c.mode === "static").length} 个网口配了地址` : ""}</span></td><td>${diskCell(t)}</td><td><button class="link-button" data-live="install-back-2">修改配置</button></td></tr>`; })) +
+  w.step = 2;
+  const failed = (t) => { const d = of(t); return d && d.checks.some((c) => !c.passed); };
+  const diskCell = (t, c) => { const d = of(t); if (!t.state) return `按方案的规则<span class="cell-sub">接管后、执行前确定</span>`; const r = d ? d.disk : resolveDisk(t, c); return r.problem ? badge("未确定", "red") + `<span class="cell-sub">方案规则匹配到不止一块盘</span>` : `${esc(r.disk)}<span class="cell-sub">${r.source === "方案规则" ? "按方案的规则" : "单独指定"}</span>`; };
+  let body = wizHead(2) + `<div id="wiz-review"><p class="wiz-lead-note">下面是每台设备将要使用的配置，来自设备管理里的系统配置；标着“默认”的是没有单独填、按默认值得到的。<b>一般不用改，核对后在底部确认。</b>要改某一台，点这一行。</p>` +
+    (cold.length ? `<div class="live-note">${cold.length} 台设备当前还没有被 NICo 接管；提交后将自动准备设备。</div>` : "") +
+    table(["设备 / 位置", "主机名", "目标 OS / 方案", "管理地址 / 启动网卡", "系统盘", "操作"], list.map((t) => { const c = sysCfg(t), os = c.os.split(" · "), nic = hostNics(t).find((n) => n.mac === c.mnic) || {}, n = nicCount(c);
+      return `<tr class="row-link ${failed(t) ? "wiz-attn" : ""}" data-live="server-config" data-id="${t.id}" data-back="wizard" title="点击修改这台设备的配置"><td><strong class="live-code">${t.serial}</strong><span class="cell-sub">${placeText(t)} · ${t.arch}</span></td><td>${c.host ? code(c.host) : badge("未确定", "red")}<span class="cell-sub">${!c.host ? "没有管理地址，不能生成" : c.hostAuto ? "默认 · 按管理地址生成" : "单独填写"}</span></td><td>${esc(os[0])}<span class="cell-sub">${esc(os[1] || "")} · ${c.osAuto ? "默认方案" : "单独选择"}</span></td>
+        <td>${c.mip ? code(c.mip) : `<span class="muted">由 NICo 分配</span>`}<span class="cell-sub">${nic.name || ""} · ${c.mnic}${n ? ` · 另有 ${n} 个网口配了地址` : ""}</span></td><td>${diskCell(t, c)}</td><td><button class="link-button" data-live="server-config" data-id="${t.id}" data-back="wizard">修改</button></td></tr>`; })) +
     checkPanel(check);
   if (check) {
     const fails = check.devices.flatMap((d) => d.checks.filter((c) => !c.passed).map((c) => `<div class="install-check-failure"><strong>${d.serial} · ${c.name}</strong><span>${esc(c.detail)}</span></div>`));
@@ -305,23 +300,23 @@ function installStep3() {
     if (fails.length) body += `<div class="install-check-failures">${fails.join("")}</div>`;
     if (later.length) body += `<div class="live-note"><b>执行前确定的项目</b>（不算失败）：<ul class="live-small" style="margin:6px 0 0;padding-left:18px">${later.join("")}</ul></div>`;
     if (cold.length) body += `<div class="live-note live-warning"><strong>首次接入将清理全部磁盘：</strong>${cold.map((t) => t.serial).join("、")}</div>`;
-    if (check.passed) body += `<div class="live-note live-warning">将安装 ${list.length} 台设备：每台建一个实例，实例名称就是主机名；覆盖所选系统盘并重启验证。本批最多并发 5 台；失败设备暂停，其余设备继续。</div>
+    if (check.passed) body += `<div class="live-note live-warning">将安装 ${list.length} 台设备：每台建一个实例，实例名称就是主机名；应用上面的管理地址，覆盖所选系统盘并重启验证。本批最多并发 5 台；失败设备暂停，其余设备继续。</div>
       <div class="live-form">${field("原因", `<input class="input" id="wiz-why" value="${esc(w.why)}" placeholder="工单号或原因">`)}<label class="live-check"><input type="checkbox" id="wiz-c1">确认所选设备、主机名、管理地址及系统盘。</label><label class="live-check"><input type="checkbox" id="wiz-c2">允许安装及重启验证。</label>${cold.length ? `<label class="live-check live-warning"><input type="checkbox" id="wiz-c3">允许需接入设备清理全部磁盘（含非系统盘），并执行站点凭据和固件配置。</label>` : ""}</div>`;
     body += `<p class="live-small">检查时间 ${check.at}。提交时服务端会再检查一次配置和占用；这里通过不代表之后一定通过。</p>`;
   }
-  modal("新建安装任务", "步骤 3 / 3", body, `<div class="batch-review-actions">${button("重新选择设备", "install-back-1")}${button("修改配置", "install-back-2")}${button(check ? "更新状态" : "检查中…", "install-recheck", false, w.checking ? "disabled" : "")}</div>` + button("确认并安装", "install-run", true, 'id="wiz-submit" disabled'));
-  $("#overlay-root .modal").classList.add("batch-install-modal");
+  modal("新建安装任务", "步骤 2 / 2", body + "</div>", `<div class="batch-review-actions">${button("重新选择设备", "install-back-1")}${button(check ? "更新状态" : "检查中…", "install-recheck", false, w.checking ? "disabled" : "")}</div>` + button("确认并安装", "install-run", true, 'id="wiz-submit" disabled'));
+  $("#overlay-root .modal").classList.add("batch-install-modal", "wiz-config");
   const ready = () => { const b = $("#wiz-submit"); if (b) b.disabled = !(check && check.passed && $("#wiz-c1").checked && $("#wiz-c2").checked && (!$("#wiz-c3") || $("#wiz-c3").checked)); };
   $("#overlay-root .modal-body").addEventListener("change", ready);
 }
-registerAction("install-recheck", () => { if ($("#wiz-why")) wiz().why = $("#wiz-why").value.trim(); installRunCheck(); });
-registerAction("install-back-2", () => { if ($("#wiz-why")) wiz().why = $("#wiz-why").value.trim(); installStep2(); });
+registerAction("install-back-1", () => { if ($("#wiz-why")) wiz().why = $("#wiz-why").value.trim(); installStep1(); });
+registerAction("install-recheck", () => installRunCheck());
 registerAction("install-run", () => {
   const w = wiz(), why = $("#wiz-why") ? $("#wiz-why").value.trim() : "";
   if (!w.check || !w.check.passed) return toast("安装条件检查没有通过");
   if (!why) return toast("请填写原因");
   if (!$("#wiz-c1").checked || !$("#wiz-c2").checked || ($("#wiz-c3") && !$("#wiz-c3").checked)) return toast("请勾选确认项");
-  const list = wizList(), b = { id: "batch-" + String(S.installs.length + 6).padStart(3, "0"), at: nowText(), by: "ops-01", why, items: list.map((t) => ({ tray: t.id, host: w.rows[t.id].host, os: w.rows[t.id].os, disk: w.rows[t.id].disk, mip: w.rows[t.id].mmode === "static" ? w.rows[t.id].mip : "", s: "wait" })) };
+  const list = wizList(), b = { id: "batch-" + String(S.installs.length + 6).padStart(3, "0"), at: nowText(), by: "ops-01", why, items: list.map((t) => { const c = sysCfg(t); return { tray: t.id, host: c.host, os: c.os, disk: c.disk, mip: c.mip, s: "wait" }; }) };
   S.installs.unshift(b); const rec = addAudit("安装批次 " + b.id, `新建安装任务（${list.length} 台）`, why, "—", "已提交"); closeModal(); S.view.wiz = null; S.guide = Math.max(S.guide, 7); S.view.insBatch = b.id; S.view.insSt = "";
   /* 模拟：同时最多 5 台。还没有被接管的服务器先经过“准备设备”，由 NICo 上电接管。 */
   b.timer = setInterval(() => {

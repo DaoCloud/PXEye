@@ -27,14 +27,14 @@ registerPage("os-templates", {
   render() {
     return heading("安装方案", "设置 OS、系统盘、分区和默认登录配置值。新建安装任务时只能选择已发布的方案。", button("刷新数据", "refresh") + act("新建方案", "os-new", { primary: true, admin: true })) +
       `<div ${fp(1)}>${table(["名称 / 版本", "默认系统 / 安装器", "分区 / 默认登录配置", "状态 / 引用", "操作"], S.osTemplates.map((o) => `<tr><td><strong>${o.id}</strong><span class="cell-sub">v1</span></td><td>Ubuntu Server 24.04 · ${o.arch}<span class="cell-sub">autoinstall</span></td><td>${o.disk}<span class="cell-sub">${o.login}</span></td><td ${fp(2)}>${stateBadge(o.state)}<span class="cell-sub">${o.used} 个实例引用</span></td><td><div class="inline-actions">${button(o.state === "草稿" ? "编辑草稿" : "查看", "os-view")}${button("复制", "os-view")}${o.state === "草稿" ? "" : button("新版本", "os-view")}</div></td></tr>`))}</div>` +
-      `<div ${fp(3)}>${note("方案里只放能复用的内容，不填逐台不同的东西。主机名、每台用哪个方案、系统盘的例外，在新建安装任务时逐台确定；地址由 NICo 分配。")}</div>`;
+      `<div ${fp(3)}>${note("方案里只放能复用的内容，不填逐台不同的东西。主机名、每台用哪个方案、系统盘的例外和网络，在设备管理的“系统配置”里逐台维护，并且都有默认值。")}</div>`;
   },
   spec: {
     purpose: "可复用的系统安装配置。合并现有的操作系统材料和安装方案。方案按架构区分，新建安装任务时逐台选用。", entry: "配置 → 安装方案", design: "6.6 档案与审计", existing: "安装方案页（表头、状态、行操作沿用）与操作系统页（ISO 与 OS 版本）合并",
     points: [
       { n: 1, name: "方案列表", kind: "沿用", desc: "名称 / 版本、默认系统 / 安装器、分区 / 默认登录配置、状态 / 引用、操作，与安装方案页一致。" },
       { n: 2, name: "状态 / 引用", kind: "沿用", desc: "草稿、已发布、已停用。已发布的版本只读，修改要建新版本。" },
-      { n: 3, name: "不做逐机配置", kind: "调整", desc: "方案里去掉设备覆盖设置和逐机网卡规划。逐台不同的内容（主机名、用哪个方案、系统盘的例外）移到“新建安装任务”的向导里，一台一行。" },
+      { n: 3, name: "不做逐机配置", kind: "调整", desc: "方案里去掉设备覆盖设置和逐机网卡规划。逐台不同的内容（主机名、用哪个方案、系统盘的例外、网络）在设备管理的“系统配置”里维护，都有默认值。" },
     ],
     rules: ["新建和发布方案需要管理角色。", "安装任务只能选择已发布的方案，并且方案的架构要和设备一致。", "编辑弹窗沿用安装方案的基本信息、系统盘选择、分区布局、默认登录配置、安装验收。"],
   },

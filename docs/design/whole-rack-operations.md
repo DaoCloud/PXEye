@@ -20,7 +20,7 @@ Its chapters correspond one to one with the [requirements specification](../arch
 - The device is the base object, and the rack is a layer on top of devices. The address, state, firmware and single-device operations of a device are managed by device; the rack is the unit of operation only for what holds for a whole rack at once (bring-up, rack-wide power and firmware, rack maintenance). One NVL72 rack is one NVLink domain.
 - Objects, states and operations mean what they mean in NICo: a rack offers only the operations NICo defines on the rack object; installing an operating system and instances exist only on a single machine. What the platform adds (device operations started for a whole rack, the inventory check, the rack elevation) is stated as such on the page.
 - Device data has a single manual input: the arrival inventory, which gives the rack, slot, serial number and device credentials. MAC addresses, IP addresses and models come from discovery; site-level configuration is prepared once at deployment and checked item by item by the platform.
-- An operation takes at most three inputs: object, action, reason. Order, timeouts and retries are decided by site-level rules and are not filled in per operation. Installing an operating system is the one exception: its inputs are set per machine.
+- An operation takes at most three inputs: object, action, reason. Order, timeouts and retries are decided by site-level rules and are not filled in per operation. The per-machine configuration used to install an operating system has defaults for every item, so by default it only has to be reviewed.
 - Every write operation can be previewed, tracked and audited; an unknown result is never resent automatically.
 - Critical safety interlocks stay with the facility. The platform does not replace them and only refuses an operation when it detects a risk.
 
@@ -296,14 +296,14 @@ Rack maintenance has one start condition: the number of ready switches is not le
 | ID | Activity | Performed by |
 | --- | --- | --- |
 | P8-1 | Choose devices: filter by rack, choose across racks, or choose servers that do not belong to a rack | Operator |
-| P8-2 | Fill in the host name, installation profile, system disk and network configuration of each machine: the host name has no default; the installation profile is chosen by the architecture of the device; the system disk follows the rule of the installation profile by default and can be set per machine; the network configuration covers the boot interface, the management address and the addresses of the other interfaces | Operator |
-| P8-3 | Review the configuration: the platform runs the installation-condition check on each machine (device identity, installation configuration, operating system materials); the operator confirms once everything passes | Platform, operator |
+| P8-2 | Review the configuration each machine will use: host name, installation profile, system disk, management address and boot interface. It comes from the system configuration in device management, with defaults for what was not filled in; change a machine when needed | Operator |
+| P8-3 | Installation-condition check: the platform checks device identity, installation configuration and operating system materials on each machine, and the operator confirms once everything passes | Platform, operator |
 | P8-4 | NICo powers on and ingests a server that has not been ingested yet (only a server outside a rack, at its first installation) | NICo |
 | P8-5 | Create one instance per machine; the instance name is the host name | Platform, NICo |
 | P8-6 | The server boots the installer from the network and writes the operating system to the system disk | NICo, platform |
 | P8-7 | Acceptance: check the host name, system disk and network, and verify with a restart | Platform |
 
-The host name is set in P8-2. It is also the instance name, and after installation it is the host name inside the system; NICo does not assign it. The host management address is assigned by NICo by default, and a fixed address can be given in P8-2 instead; the addresses of the other interfaces are entered in P8-2 as well and are written into the network configuration of the system at installation. All instances are created under the site's default tenant, and the pages do not show a tenant.
+The host name is also the instance name, and after installation it is the host name inside the system; NICo does not assign it, and when it was not filled in the platform generates it from the management address. The management address is matched to the MAC of the boot interface when devices are planned, and this stage only reviews it. All instances are created under the site's default tenant, and the pages do not show a tenant.
 
 ### 5.5 Device state and impact on devices
 
@@ -335,7 +335,7 @@ The observed slot is read by NICo from the hardware backend after it ingests a d
 | --- | --- | --- | --- | --- |
 | Confirm enrollment | P6 | The number matched, the differences found by the inventory check, the unmatched devices still to handle, what will and will not be done | P6-2 to P6-5 | The management passwords have been changed and are not restored automatically; returning devices means decommissioning them one by one |
 | Start bring-up | P7 | The number enrolled, whether the switches are all there, the steps of the bring-up task, the impact on devices | P7-2 to P7-13 | The bring-up task can be cancelled, but hardware actions already done are not undone; rack maintenance can be terminated, and the rack then enters Error |
-| Confirm installation | P8 | The chosen devices; the host name, installation profile and system disk of each; the result of the installation-condition check; the devices that have to be ingested first and their disk-cleaning scope | P8-4 to P8-7 | After the instance is deleted, the device is cleaned and validated again and can then be installed again |
+| Confirm installation | P8 | The chosen devices and the configuration each will use (host name, installation profile, system disk, management address); the result of the installation-condition check; the devices that have to be ingested first and their disk-cleaning scope | P8-4 to P8-7 | After the instance is deleted, the device is cleaned and validated again and can then be installed again |
 
 ### 5.7 Running period
 
@@ -449,6 +449,7 @@ Columns of the arrival inventory:
 | type | compute, switch, power_shelf | Yes |
 | serial | Device serial number, the only thing a device is matched by | Yes |
 | location | Physical location of the rack | No |
+| management_ip | Planned management address of a server, for servers only; matched to the MAC of the boot interface once the device is discovered | No |
 | bmc_user, bmc_password | User name and password of the device BMC; the batch default is used when empty | No |
 | nvos_user, nvos_password | User name and password of the switch NVOS; the batch default is used when empty | No |
 
@@ -480,6 +481,7 @@ The device is the base object, and the rack is a layer on top of devices. The sa
 - Enrollment confirmation: enrollment registers devices one by one. The 确认纳管 (Confirm enrollment) on the rack detail starts it for all matched devices of the rack at once, and writes the rack-level declarations of that rack.
 - Deleting a rack: it deletes the rack object only and does not handle the member devices. The preconditions are that the rack has no instance, every member device has been decommissioned, and no task is in progress; the page shows whether each one holds, and the deletion cannot be submitted until all of them do.
 - Device-level operations: power on, shut down, restart, firmware update, maintenance mark, quarantine, on-demand hardware validation, BMC restart, replacement, decommissioning. The available actions differ by type, and all of them use the same operation dialog. Decommissioning is a per-device operation, and all three device types have it.
+- System configuration: the configuration a server uses at its next installation, namely host name, installation profile, system disk, boot interface, management address and the addresses of the other interfaces. It is maintained on the device page, and an installation task only refers to it. Every item has a default: the host name is generated from the management address, the installation profile is the default of the architecture, the system disk follows the disk rule of the profile, and the management address and boot interface are the ones matched when devices were planned.
 - A server that does not belong to a rack appears on the device pages only, with “未分配机柜” (no rack assigned) as its rack and position. It has no bring-up: it is enrolled one server at a time on the device discovery page, is not powered on after enrollment, and NICo powers it on and ingests it at its first operating system installation.
 - Device running state: running state, health alerts, firmware compared with the baseline, state timeline. A compute tray also has its instance, DPUs, hardware capabilities and LLDP neighbours; a switch also has NVOS management ports and Fabric Manager. A power shelf has no readable firmware version or power figures, so only its address, state, health and power are shown.
 - The two ways to use a DPU. NICo has a DPU policy per host, with a site default that a host's declaration can override. In network-card mode a BlueField card is an ordinary network card: NICo only probes it, the host gets its address from the host management subnet, and delivery uses a network that does not pass through the DPU. In DPU mode each card is a device NICo manages, with its own system and firmware, and the host's address and tenant networks are provided through it. In this version every policy the platform writes is network-card mode, and onboarding, network planning and delivery are designed for it. When DPU mode is supported later, the policy becomes a column of the inventory, the DPU page adds each card's running state and its pairing with the host, network planning adds the subnets for the DPUs themselves and for hosts behind DPUs, and delivery uses a network that passes through the DPU.
@@ -489,15 +491,15 @@ The device is the base object, and the rack is a layer on top of devices. The sa
 
 - What is delivered is a server, one machine at a time: one instance per machine. A rack is not the object of delivery, only a filter when choosing devices; devices can be chosen across racks, and servers that do not belong to a rack can be chosen too.
 - The entry point is 新建安装任务 (New installation task) on 安装任务 (Installation tasks). The entries of the same name on the rack detail, the server list and device discovery open the same wizard with the devices already chosen.
-- The wizard has three steps: choose devices, configure each machine, review the configuration. Choosing devices and reviewing the configuration are taken from the installation wizard of the existing product, pages and check items included; configuring each machine is the added step, one machine at a time, with the fields of the system configuration of the existing product: host name, installation profile, system disk and network configuration. In the existing product these values come from a device plan saved beforehand; the arrival inventory of a whole rack does not have them, so they are filled in the wizard. A batch has at most 50 machines.
-- The host name is filled in per machine; it has no default and no rule that generates it in bulk. The host name is also the instance name, and after installation it is the host name inside the system; before submission the platform checks its form and that it is not the name of an existing instance.
-- Installation profiles are listed by the architecture of the device, published ones only. The system disk follows the rule of the installation profile by default and can be set for individual machines.
-- The network configuration is set per machine. Management interface: choose the boot interface; the management address is assigned by NICo by default, or a fixed address inside the management subnet is given, which must not repeat an existing device or another machine of the batch. Other interfaces: each can get one fixed address (address, prefix length and an optional gateway) and is left unconfigured when empty. These addresses are written into the network configuration of the system at installation. This version has no bond, VLAN or IPv6.
+- The wizard has two steps: choose devices, review the configuration. Both are taken from the installation wizard of the existing product, pages and check items included. A batch has at most 50 machines.
+- The configuration of each machine comes from the system configuration in device management (see 6.3) and every item has a default, so by default the operator fills in nothing and only reviews and confirms. The review is a list, one row per machine, with the host name, installation profile, management address and boot interface, and system disk; an item that comes from a default is marked as default. To change a machine, click it to open its system configuration; saving returns to the list and runs the check again.
+- The host name is also the instance name, and after installation it is the host name inside the system. When it was not filled in it is generated from the management address, for example node-198-51-100-78 for 198.51.100.78; before submission the platform checks its form and that it repeats no other name.
+- The network is only reviewed: the management address is matched to the MAC of the boot interface when devices are planned and is normally not changed. Each of the other interfaces can get one fixed address in the system configuration, written into the network configuration of the system at installation. This version has no bond, VLAN or IPv6.
 - A machine can be installed when it is ready, has no instance, has no quarantine or maintenance mark, and has no alert that prevents allocation; a device in a rack also needs the rack to be Ready, with no rack-level leak and no task in progress. The reason a machine cannot be installed is shown per machine in the 安装条件 (installation condition) column, a problem on one device does not affect the others in its rack, and the platform offers no bypass.
 - While choosing devices the operator can query the 当前系统 (current system) on demand. The query is read-only and confirms what is on a device before its system disk is overwritten.
 - Installation-condition check: before submission the platform checks three groups on each machine. Device identity: BMC authentication and serial number. Installation configuration: the machine is ready and has no instance, the host name and installation profile, the management address and its occupancy, the system disk. Operating system materials: the installation materials can be fetched and their length equals what is registered. If any item fails on any machine the batch cannot be submitted; each failing item is listed with its device, the check name and the reason.
-- The system disk is resolved by the disk rule of the installation profile and must resolve to exactly one disk. For a machine that is already ingested, the per-machine configuration shows when it does not, and the next step opens only after a disk is set; the installation-condition check verifies it again.
-- The per-machine configuration page shows the form of one machine at a time; when several are chosen, a list beside it shows the chosen devices and how far each one is filled in. The review step opens once every machine is filled in.
+- The system disk is resolved by the disk rule of the installation profile and must resolve to exactly one disk; when it does not, the installation-condition check fails, and the disk is set in the system configuration of that machine.
+- Installation profiles are matched by the architecture of the device, published ones only, and the default profile of the architecture is used when none was chosen; the system disk follows the rule of the installation profile by default and can be set for a machine in its system configuration.
 - A passed check only says the batch could run at that time: on submission the server checks the configuration and occupancy again, and a full digest check of the installation materials is done before execution.
 - A server outside a rack that is enrolled but not yet ingested can be installed too: the first step of the installation task has NICo power it on and ingest it, and only then is the system disk written. Its machine readiness and system disk are settled before execution and do not count as failed checks; the first ingestion cleans all disks, non-system disks included, and that needs a separate confirmation.
 - Installation uses NICo's DHCP, PXE and templated OS. One submission is one batch, and the installation process and the acceptance result are kept per machine.
@@ -615,7 +617,7 @@ Pages show the state reported by NICo's state machines verbatim and define no st
 
 ## 9. Design of operations
 
-Every write operation has the same shape: choose the object, choose the action, write the reason. A new installation task is the one exception: its inputs are set per machine in a three-step wizard, see 6.4.
+Every write operation has the same shape: choose the object, choose the action, write the reason. A new installation task and the system configuration of a server are the exceptions: an installation task uses a two-step wizard to choose devices and review the configuration of each, and the configuration itself is maintained per machine in the system configuration; see 6.3 and 6.4.
 
 | Operation | Object | Input | Completion condition |
 | --- | --- | --- | --- |
@@ -631,7 +633,8 @@ Every write operation has the same shape: choose the object, choose the action, 
 | Expected-versus-actual validation | Rack, tray | None | No difference |
 | Maintenance mark, quarantine | Tray | Reason | The state read back matches |
 | On-demand hardware validation | Compute tray | None | The validation record completes |
-| New installation task | One or more servers | Host name, installation profile and system disk of each machine | The instance of each machine is ready and accepted |
+| Change system configuration | One server | Host name, installation profile, system disk, network; all have defaults | Saved; takes effect at the next installation |
+| New installation task | One or more servers | None; the system configuration of each is reviewed | The instance of each machine is ready and accepted |
 | Replace a tray | Tray | Serial number and credentials of the new device | The new device is ingested and the rack returns to Ready |
 | Decommission | Device | Reason | The device is decommissioned |
 | Delete rack | A rack with no instance whose member devices are all decommissioned | None | The rack object is deleted |
@@ -665,7 +668,7 @@ Interaction rules:
 | --- | --- | --- |
 | 1: inventory and onboarding | Site checks, network planning, arrival inventory import, device discovery and matching to the inventory, enrollment, health summary | From inventory import to every device enrolled, without the command line |
 | 2: rack lifecycle | Bring-up, rack maintenance progress and running it again, power, firmware update, task view, audit | A rack bring-up and one complete maintenance done from the pages |
-| 3: delivery | Installing and accepting machine by machine; per-machine host name, installation profile and system disk; release and reuse | All compute trays of one rack and one server outside a rack installed |
+| 3: delivery | Installing and accepting machine by machine; the system configuration of servers and its defaults; the installation-condition check; release and reuse | All compute trays of one rack and one server outside a rack installed |
 | 4: scale | Phased firmware rollout across racks, identity system and roles, DPU mode | Changes across racks are controlled and attributable |
 
 ## 12. Acceptance principles
