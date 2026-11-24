@@ -99,6 +99,23 @@ With a selected node, derived Charts add missing subchart placement settings. Ev
 including install hooks, is checked before installation; unsupported layouts stop the run. Placement uses
 the scheduler and `nodeSelector`; the runner does not reconfigure other nodes.
 
+## Import an incremental delivery
+
+An incremental delivery adds images and Charts to a site that is already installed. Import it without installing or changing any release:
+
+```bash
+bash install.sh --archive /absolute/path/incremental.tar.gz --mode k8s --import-only
+```
+
+It runs only the unpack, site, preflight and import stages, and skips the fresh-namespace checks. It prints the path of the new `catalog.json` and of the relocated parent Chart. The incremental delivery gets its own Registry scope and work directory, so the earlier import is untouched.
+
+Then install a component from it with the management helper, naming the earlier import's catalog so that images left to the earlier delivery resolve:
+
+```bash
+bash tools/management-release.sh upgrade flow <new work dir>/deployment/relocation/pxeye/chart.tgz \
+  --baseline-catalog <earlier work dir>/deployment/catalog.json -f site-values.yaml
+```
+
 ## Verify
 
 `PXEYE_CORE_CONNECTED` and `ONSITE_COMPLETE` mean Helm readiness and the PXEye/Core connection passed:

@@ -93,6 +93,23 @@ Caddy 只在本机 loopback 上为 relok8s 提供传输适配，随本次进程�
 指定节点时，派生 Chart 会补齐子 Chart 的节点选择配置，并逐阶段核对渲染后的所有 Pod 模板（含安装 Hook）；
 无法覆盖的模板会在安装前停止。节点由调度器通过 `nodeSelector` 选择，执行器不修改其他节点配置。
 
+## 导入增量交付包
+
+增量包给已经装好的站点追加镜像和 Chart。导入时不安装、不改动任何发布：
+
+```bash
+bash install.sh --archive /绝对路径/incremental.tar.gz --mode k8s --import-only
+```
+
+它只执行解包、站点、预检和导入四个阶段，跳过“命名空间必须是全新的”那组检查，结束时打印新的 `catalog.json` 和重定位后父 Chart 的路径。增量包有自己的仓库路径和工作目录，之前的导入不受影响。
+
+然后用管理组件脚本从它安装组件，并指明之前那次导入的目录文件，这样留给旧包的镜像才能解析：
+
+```bash
+bash tools/management-release.sh upgrade flow <新工作目录>/deployment/relocation/pxeye/chart.tgz \
+  --baseline-catalog <旧工作目录>/deployment/catalog.json -f site-values.yaml
+```
+
 ## 确认命令
 
 末尾出现 `PXEYE_CORE_CONNECTED` 和 `ONSITE_COMPLETE` 表示 Helm 就绪及 PXEye/Core 连接通过：

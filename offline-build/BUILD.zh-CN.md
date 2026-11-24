@@ -129,6 +129,24 @@ docs/                               # 交付文档和许可证
 本离线包不会接管它们。初始控制面包还会将 `nico-dhcp` 保持为零副本；真实 DNS/NTP/PXE/VIP 与显式启用 DHCP
 属于后续站点网络配置。
 
+## 增量交付包
+
+增量包与完整包格式相同，但只带之前某个交付包里没有的镜像。用于给已经导入过旧包的站点追加组件或更新镜像，不重复传输旧包的镜像。
+
+从旧包的归档里取出 `manifests/images-lock.json`，把它的绝对路径传给构建：
+
+```bash
+make bundles REGISTRY=127.0.0.1:1027 REQUIRE_CLEAN_BUILD=true \
+  BUNDLE_VERSION=<新批次> BASELINE_IMAGES_LOCK=/绝对路径/images-lock.json
+```
+
+- 摘要已在基线锁定清单里的镜像，在父 Chart 里保留原始引用，不生成搬运提示；它们不进归档，也不出现在新的 `images-lock.json` 里。
+- `bundle.json` 多一个 `baseline` 对象，记录基线锁定清单的 SHA256 和留给基线的镜像。
+- 包括留给基线的镜像在内，所有镜像仍然要在构建仓库里：构建会渲染并检查完整的 Chart。
+- 不能与 `SOURCE_BUILD_LOCK` 同时使用。
+
+增量包不能单独装一个站点。现场用 `install.sh --import-only` 导入，再用 `management-release.sh --baseline-catalog` 安装其中的组件，见[现场指南](onsite/README.zh-CN.md#导入增量交付包)。
+
 ## 与测试环境核对版本
 
 使用[版本核对脚本](../tools/version-audit/README.zh-CN.md)导出已提交打包配置和环境镜像、Scout文件清单，生成逐项对比。脚本不会修改打包配置或运行服务。

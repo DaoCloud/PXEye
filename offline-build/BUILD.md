@@ -145,6 +145,24 @@ installation needs an explicit migration or a clean `nico-system`; it is not ado
 control-plane-only delivery also keeps `nico-dhcp` at zero replicas: real DNS/NTP/PXE/VIP values and explicit DHCP
 enablement are a later site-network action.
 
+## Incremental delivery
+
+An incremental delivery has the same format as a complete one but carries only the images an earlier delivery lacks. Use it to add components or newer images to a site that has already imported the earlier delivery, without transferring its images again.
+
+Take `manifests/images-lock.json` from the earlier delivery's archive and pass its absolute path:
+
+```bash
+make bundles REGISTRY=127.0.0.1:1027 REQUIRE_CLEAN_BUILD=true \
+  BUNDLE_VERSION=<new batch> BASELINE_IMAGES_LOCK=/abs/path/images-lock.json
+```
+
+- Images whose digest is in the baseline lock keep their source reference in the parent Chart and get no relocation hint. They are neither archived nor listed in the new `images-lock.json`.
+- `bundle.json` gains a `baseline` object with the SHA256 of the baseline lock and the images left to it.
+- Every image, including the ones left to the baseline, must still be in the build Registry: the build renders and checks the complete Chart.
+- Do not combine it with `SOURCE_BUILD_LOCK`.
+
+An incremental delivery cannot install a site on its own. Onsite it is imported with `install.sh --import-only`, and its components are installed with `management-release.sh --baseline-catalog`; see the [onsite guide](onsite/README.md#import-an-incremental-delivery).
+
 ## Compare with a test environment
 
 Use the [version audit tool](../tools/version-audit/README.md) to export committed packaging inputs and runtime image/Scout file inventories, then compare them. It does not change packaging configuration or running services.

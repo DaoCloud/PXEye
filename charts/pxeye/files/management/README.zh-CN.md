@@ -21,7 +21,7 @@ bash tools/management-release.sh template temporal "$PARENT_CHART" -f site-value
 bash tools/management-release.sh template temporal "$PARENT_CHART" --native-values temporal-values.yaml
 ```
 
-其他选择为 `rest`、`siteagent`、`keycloak`、`flow`、`rms`。从完整交付工具目录运行（Bash、GNU tar、Helm、yq、jq）；单独复制脚本时，将 `PXEYE_ONSITE_LIB` 指向同一工具包可信的 `onsite/lib`。标准 `relocation/pxeye/chart.tgz` 自动匹配本次导入的 `catalog.json`；若归档另存，使用 `--catalog /path/to/catalog.json`。入口要求导入已完成、父包 SHA256 匹配，并在 Helm 写操作前核对包括 init 容器和 Hook 在内的渲染镜像均在该现场 Registry 清单内。
+其他选择为 `rest`、`siteagent`、`keycloak`、`flow`、`rms`。父 Chart 来自增量交付包时，加上 `--baseline-catalog`，指向之前那次导入的 `catalog.json`：增量包留给旧包的镜像会被接受，values 里仍写着原始引用的镜像会解析成已导入的镜像。从完整交付工具目录运行（Bash、GNU tar、Helm、yq、jq）；单独复制脚本时，将 `PXEYE_ONSITE_LIB` 指向同一工具包可信的 `onsite/lib`。标准 `relocation/pxeye/chart.tgz` 自动匹配本次导入的 `catalog.json`；若归档另存，使用 `--catalog /path/to/catalog.json`。入口要求导入已完成、父包 SHA256 匹配，并在 Helm 写操作前核对包括 init 容器和 Hook 在内的渲染镜像均在该现场 Registry 清单内。
 
 `-f` 沿用父级格式：只传对应子树及父 `global`，同名 global 键以父级为准。`--native-values` 直接接受子 Chart 格式；同类文件后者覆盖前者。升级时保留已有原生 release 的显式配置，现场 `-f` 和最后的 `--native-values` 可以覆盖；离线镜像绑定优先，不允许退回公网镜像。`template` 不读取集群；要预演既有 release 的定制配置，请用受限的 `--native-values` 文件显式提供。不要在命令参数中写入凭据。
 
