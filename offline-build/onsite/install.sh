@@ -22,7 +22,7 @@ source "$KIT_DIR/lib/helm.sh"
 
 usage() {
     cat <<'HELP'
-Usage: install.sh --archive /absolute/path/bundle.tar.gz [--mode kind|k8s] [--node NODE]
+Usage: install.sh --archive /absolute/path/bundle.tar.gz [--mode kind|k8s] [--node NODE] [--import-only]
 
 Install PXEye/NICo into an existing cluster without host Python.
   --archive PATH  Absolute offline archive path (required)
@@ -30,6 +30,8 @@ Install PXEye/NICo into an existing cluster without host Python.
   --node NODE     Schedule all new delivery workloads and hooks on this node
   --new-site        Generate missing defaults on first Core connection (new hardware estate only)
   --site-credentials-secret NAME  Use approved site passwords from a Secret in the PXEye namespace
+  --import-only   Only import this delivery's images and Charts into the Registry of an already
+                  installed site, e.g. an incremental delivery; installs and changes no release
   -h, --help      Show this help
 
 If Registry discovery is ambiguous, set NICO_REGISTRY_URL=http(s)://host[:port].
@@ -37,11 +39,12 @@ Rerun the same command after fixing a failure to resume this installation.
 HELP
 }
 
-ARCHIVE= MODE=kind NODE_NAME= NODE_SELECTOR='{}' NEW_SITE=false SITE_CREDENTIALS_SECRET=
+ARCHIVE= MODE=kind NODE_NAME= NODE_SELECTOR='{}' NEW_SITE=false SITE_CREDENTIALS_SECRET= IMPORT_ONLY=false
 while (($#)); do
     case $1 in
         --archive) (($# >= 2)) || die '--archive needs a path'; ARCHIVE=$2; shift 2 ;;
         --new-site) NEW_SITE=true; shift ;;
+        --import-only) IMPORT_ONLY=true; shift ;;
         --site-credentials-secret) (($# >= 2)) && [[ $2 =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ ]] || die 'Expected a Secret name'; SITE_CREDENTIALS_SECRET=$2; shift 2 ;;
         --mode) (($# >= 2)) || die '--mode needs kind or k8s'; MODE=$2; shift 2 ;;
         --node) (($# >= 2)) && [[ -n $2 ]] || die '--node needs a Kubernetes node name'; NODE_NAME=$2; shift 2 ;;
@@ -51,6 +54,7 @@ while (($#)); do
 done
 [[ -n $ARCHIVE ]] || { usage >&2; exit 2; }
 [[ $MODE == kind || $MODE == k8s ]] || die '--mode must be kind or k8s'
+[[ $IMPORT_ONLY == false || ( $NEW_SITE == false && -z $SITE_CREDENTIALS_SECRET ) ]] || die '--import-only installs nothing; do not combine it with site options'
 [[ $(uname -s) == Linux && $(uname -m) == x86_64 ]] || die 'Use a Linux amd64 fireseed host'
 ((BASH_VERSINFO[0] >= 4)) || die 'Bash 4+ is required'
 for _tool in kubectl curl tar gzip flock sha256sum timeout find sort cmp stat awk sync readlink df; do
@@ -234,6 +238,15 @@ print_access() {
 onsite_main() {
     stage 01-unpack 'Unpack delivery and verify its embedded inventory' unpack_delivery
     stage 02-site 'Resolve the Registry and fixed installation identity' resolve_site
+    if [[ $IMPORT_ONLY == true ]]; then
+        stage 03-preflight 'Check bundle, target cluster, tools and Registry' import_preflight
+        stage 04-import 'Import images and publish Helm OCI Charts' import_bundle
+        jq_atomic "$PROGRESS" '.status="completed" | .current_stage=null | del(.error) | .updated_at=$at' --arg at "$(now)"
+        printf 'IMPORT_ONLY_COMPLETE %s ; no release was installed or changed\n' "$WORK"
+        printf 'CATALOG %s\n' "$DEPLOY/catalog.json"
+        find "$DEPLOY/relocation" -mindepth 2 -maxdepth 2 -name chart.tgz -printf 'RELOCATED_CHART %p\n'
+        return
+    fi
     stage 03-preflight 'Check bundle, target cluster and tools' cluster_preflight
     stage 04-import 'Import images and publish Helm OCI Charts' import_bundle
     stage 05-recipe 'Freeze and validate the installation recipe' prepare_recipe

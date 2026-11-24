@@ -186,3 +186,35 @@ def bind_images(values, mapping):
                 raise ValueError('Image array needs an explicit relok8s mapping: ' + '.'.join(path))
     walk(values)
     return sorted(set(hints))
+
+
+def unbind_images(values, hints, skipped):
+    """Restore the source reference of images that a baseline delivery already carries.
+
+    skipped maps a build reference to its source reference. Those images get no relok8s hint,
+    so they are neither archived nor rewritten onsite; the site resolves them from the baseline
+    delivery's catalog by their source reference.
+    """
+    repositories = {k.rsplit(':', 1)[0]: v.rsplit(':', 1)[0] for k, v in skipped.items()}
+    removed = set()
+
+    def walk(item, path=()):
+        if not isinstance(item, dict):
+            return
+        if isinstance(item.get('repository'), str) and isinstance(item.get('tag'), str):
+            ref = item['repository'] + ':' + item['tag']
+            if ref in skipped:
+                item['repository'], item['tag'] = skipped[ref].rsplit(':', 1)
+                prefix = '.' + '.'.join(path)
+                removed.add('{{ ' + prefix + '.repository }}:{{ ' + prefix + '.tag }}')
+        for key, child in list(item.items()):
+            if isinstance(child, str):
+                if child in skipped:
+                    item[key] = skipped[child]
+                    removed.add('{{ .' + '.'.join(path + (str(key),)) + ' }}')
+                elif child in repositories and key != 'repository':
+                    item[key] = repositories[child]
+            else:
+                walk(child, path + (str(key),))
+    walk(values)
+    return sorted(set(hints) - removed)

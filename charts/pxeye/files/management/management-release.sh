@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-    printf 'Usage: %s template|upgrade rest|siteagent|temporal|keycloak|flow|rms RELOCATED-PARENT.tgz [--catalog CATALOG.json] [-f PARENT-VALUES.yaml ...] [--native-values CHILD-VALUES.yaml ...]\n' "${0##*/}" >&2
+    printf 'Usage: %s template|upgrade rest|siteagent|temporal|keycloak|flow|rms RELOCATED-PARENT.tgz [--catalog CATALOG.json] [--baseline-catalog CATALOG.json ...] [-f PARENT-VALUES.yaml ...] [--native-values CHILD-VALUES.yaml ...]\n' "${0##*/}" >&2
     exit 2
 }
 (( $# >= 3 )) || usage
@@ -22,10 +22,10 @@ umask 077
 WORK=$(mktemp -d)
 trap 'rm -rf -- "$WORK"' EXIT
 catalog=$(dirname -- "$parent")/../../catalog.json
-inputs=(); native_inputs=()
+inputs=(); native_inputs=(); baselines=()
 while (( $# )); do
     [[ $# -ge 2 && -f $2 ]] || usage
-    case "$1" in --catalog) catalog=$2 ;; -f) inputs+=("$2") ;; --native-values) native_inputs+=("$2") ;; *) usage ;; esac
+    case "$1" in --catalog) catalog=$2 ;; --baseline-catalog) baselines+=("$2") ;; -f) inputs+=("$2") ;; --native-values) native_inputs+=("$2") ;; *) usage ;; esac
     shift 2
 done
 
@@ -39,6 +39,21 @@ REGISTRY=$("$JQ" -er --arg sha "$(sha "$WORK/parent.tgz")" '
     select(([.charts[]|select(.id=="pxeye")]|map(.sha256))==[$sha]) |
     select((.images|length)>0 and all(.images[]; (.image|startswith($registry+"/")) and (.digest|test("^sha256:[0-9a-f]{64}$")))) | $registry
 ' "$catalog") || die 'Parent checksum, registry or image inventory does not match the ready onsite catalog'
+# An incremental delivery does not repeat images that an earlier delivery already imported.
+# Each --baseline-catalog is the ready catalog of such an earlier import into the same Registry:
+# its images become acceptable, and Chart values that still name one of its source references
+# are resolved to the imported image below.
+printf '[]\n' > "$WORK/baseline-images.json"
+for baseline in ${baselines[@]+"${baselines[@]}"}; do
+    "$JQ" -e --arg registry "$REGISTRY" --slurpfile seen "$WORK/baseline-images.json" '
+        select(.kind=="pxeye-nico-onsite" and .ready==true and .registry==$registry) |
+        select((.images|length)>0 and all(.images[]; (.source|type)=="string" and (.image|startswith($registry+"/")) and
+            (.digest|test("^sha256:[0-9a-f]{64}$")))) | $seen[0] + .images
+    ' "$baseline" > "$WORK/baseline-images.next" || die 'A baseline catalog is not a ready onsite catalog of this Registry'
+    mv "$WORK/baseline-images.next" "$WORK/baseline-images.json"
+done
+"$JQ" --slurpfile baseline "$WORK/baseline-images.json" '.images += $baseline[0]' "$catalog" > "$WORK/catalog.next"
+mv "$WORK/catalog.next" "$catalog"
 safe_extract "$WORK/parent.tgz" "$WORK/tree" 268435456
 root=$WORK/tree/pxeye
 [[ -f $root/Chart.yaml && -f $root/values.yaml ]] || die 'Expected a PXEye parent Chart'
@@ -59,7 +74,22 @@ merge_files() {
     if (( $# == 0 )); then printf '{}\n'; return; fi
     "$YQ" eval-all -o=json '. as $item ireduce ({}; . * $item)' "$@" | "$JQ" -es 'select(length==1 and (.[0]|type)=="object") | .[0]'
 }
-merge_files "$root/values.yaml" > "$WORK/defaults.json"
+merge_files "$root/values.yaml" > "$WORK/defaults.raw.json"
+"$JQ" --slurpfile baseline "$WORK/baseline-images.json" '
+    ($baseline[0] | map({key:.source, value:.}) | from_entries) as $known |
+    def resolved:
+      if type == "object" then
+        with_entries(.value |= resolved) |
+        (if (.repository|type) == "string" and (.tag|type) == "string" then $known[.repository + ":" + .tag] else null end) as $target |
+        if $target then
+          ($target.image | split("@")[0]) as $tagged |
+          .repository = ($tagged | sub(":[^/:]+$"; "")) | .tag = ($tagged | capture(":(?<tag>[^/:]+)$").tag)
+        else . end
+      elif type == "array" then map(resolved)
+      elif type == "string" and $known[.] then $known[.] | (.image | sub(":[^/:]+$"; "")) + "@" + .digest
+      else . end;
+    resolved
+' "$WORK/defaults.raw.json" > "$WORK/defaults.json" || die 'Cannot resolve baseline image references'
 merge_files ${inputs[@]+"${inputs[@]}"} > "$WORK/site.json"
 merge_files ${native_inputs[@]+"${native_inputs[@]}"} > "$WORK/native.json"
 IFS=$'\t' read -r release namespace < <("$JQ" -er --arg key "$component" --slurpfile site "$WORK/site.json" '

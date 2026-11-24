@@ -168,7 +168,8 @@ refresh_catalog_images() {
 }
 
 import_bundle() {
-    if declare -F cluster_preflight > /dev/null; then cluster_preflight; else preflight; fi
+    if [[ ${IMPORT_ONLY:-false} == true ]]; then import_preflight
+    elif declare -F cluster_preflight > /dev/null; then cluster_preflight; else preflight; fi
     local inventory prefix key item record target relocation attempt path root original chart digest repository metadata catalog
     inventory=$(sha "$BUNDLE/manifests/file-inventory.json")
     prefix=$("$JQ" -r '.registry.repository_prefix // "nico-offline"' "$CONFIG")

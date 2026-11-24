@@ -188,6 +188,25 @@ def download(url, destination):
             time.sleep(1)
 
 
+def baseline_images_lock():
+    """Optional BASELINE_IMAGES_LOCK: the images-lock.json of an earlier delivery.
+
+    When set, the build produces an incremental delivery that carries only images whose digest
+    is absent from that lock. Returns None for a normal, complete delivery.
+    """
+    supplied = os.environ.get('BASELINE_IMAGES_LOCK')
+    if not supplied:
+        return None
+    path = Path(supplied)
+    b.require(path.is_absolute() and path.is_file() and not path.is_symlink(),
+              'BASELINE_IMAGES_LOCK must be an absolute path to a regular images-lock.json')
+    rows = json.loads(path.read_text())
+    b.require(isinstance(rows, list) and rows and all(
+        isinstance(row, dict) and re.fullmatch(r'sha256:[0-9a-f]{64}', str(row.get('digest', ''))) for row in rows),
+        'BASELINE_IMAGES_LOCK is not an images-lock.json')
+    return {'sha256': b.sha(path), 'rows': rows}
+
+
 def hinted_images(root):
     values = yaml.safe_load((root / 'values.yaml').read_text())
     hints = yaml.safe_load((root / '.relok8s-images.yaml').read_text())
@@ -400,7 +419,7 @@ def material_image_mapping(material_records):
     return mapping
 
 
-def stage_charts(bundle, source, mapping, material_images, bootstrap, core_references, chart_directory=None, helm='helm', material_records=None):
+def stage_charts(bundle, source, mapping, material_images, bootstrap, core_references, chart_directory=None, helm='helm', material_records=None, skipped=None):
     """Compose one PXEye umbrella Chart with all locked runtime dependencies.
 
     The child Charts remain separate Helm dependencies so the onsite runner can
@@ -521,6 +540,11 @@ def stage_charts(bundle, source, mapping, material_images, bootstrap, core_refer
     values = yaml.safe_load((root / 'values.yaml').read_text()) or {}
     identity = chart_mapping | {v: v for v in material_images.values()}
     hints = charts.bind_images(values, identity)
+    if skipped:
+        # Incremental delivery: images already in the baseline keep their source reference and
+        # get no hint, so relok8s archives only what the baseline lacks.
+        hints = charts.unbind_images(values, hints, skipped)
+        b.require(hints, 'Every image is already in the baseline delivery; nothing to package')
     b.write(root / 'values.yaml', yaml.safe_dump(values, sort_keys=False))
     b.write(root / '.relok8s-images.yaml', yaml.safe_dump(hints))
     return {'pxeye': root}
@@ -539,8 +563,10 @@ def _named_init_containers(objects, name):
     return found
 
 
-def validate_charts(roots, helm, mapping, material_images, directory, material_records=None):
+def validate_charts(roots, helm, mapping, material_images, directory, material_records=None, skipped=None):
     material_records = list(material_records or [])
+    skipped = skipped or {}
+    baseline_sources = set(skipped.values())
     arm_material = boot_aarch64_material(material_records)
     known = set(mapping.values()) | set(material_images.values()) | set(material_image_mapping(material_records).values())
     settings = {'release_prefix': 'nico', 'namespace': 'nico-system', 'site_name': 'Build validation'}
@@ -559,9 +585,9 @@ def validate_charts(roots, helm, mapping, material_images, directory, material_r
             has_site_crd = any(obj and obj['kind'] == 'CustomResourceDefinition' and
                                obj['metadata']['name'] == 'sites.forge.nvidia.io' for obj in objects)
             b.require(has_site_crd == (mode == 'rest'), 'Unexpected Site CRD coverage in ' + mode)
-            b.require(images <= known, 'Rendered image is outside the archive closure: ' + ', '.join(sorted(images - known)))
-            b.require(images <= expected, 'Rendered image is absent from this Chart hints: ' + ', '.join(sorted(images - expected)))
-            native_boot = [v for k, v in mapping.items() if 'boot-artifacts-x86' in k]
+            b.require(images <= known | baseline_sources, 'Rendered image is outside the archive closure: ' + ', '.join(sorted(images - known - baseline_sources)))
+            b.require(images <= expected | baseline_sources, 'Rendered image is absent from this Chart hints: ' + ', '.join(sorted(images - expected - baseline_sources)))
+            native_boot = [skipped.get(v, v) for k, v in mapping.items() if 'boot-artifacts-x86' in k]
             if mode == 'default':
                 b.require(native_boot and set(native_boot) <= images, 'Native x86_64 boot-artifacts initContainer was lost during Chart composition')
             if arm_material and mode == 'default':
@@ -678,6 +704,14 @@ def build(config, args, progress=None):
                                   'Prepared material image lacks material_id: ' + reference)
                         image_record['material_id'] = material_id
                     image_records.append(image_record)
+                baseline = baseline_images_lock()
+                baseline_digests = {row['digest'] for row in baseline['rows']} if baseline else set()
+                # build reference -> source reference of every image the baseline delivery already carries
+                skipped = {r['build_reference']: r['source'] for r in image_records
+                           if r['digest'] in baseline_digests and r.get('source')}
+                if baseline:
+                    print('BASELINE_IMAGES', len(skipped), 'of', len(image_records), 'already delivered; packaging',
+                          len(image_records) - len(skipped), flush=True)
                 mapping['__ui__'] = mapping[next(r['source_image'] for r in extra if r['purpose'] == 'ui')]
                 bootstrap_ref = mapping[bootstrap['source_image']]
                 material_images = {r['id']: mapping[r['image']] for r in prepared_materials}
@@ -720,10 +754,10 @@ def build(config, args, progress=None):
                     image_records.append({'build_reference': ref, 'digest': digest, 'kind': 'material'})
                 if (stage / '.charts').exists(): shutil.rmtree(stage / '.charts')
                 with progress.stage('03-charts', 'Compose and render Charts'):
-                    roots = stage_charts(bundle, source, mapping, material_images, bootstrap_ref, [r['image'] for r in base], config.get('chart_directory'), config['tools']['helm'], material_records=chart_material_records)
+                    roots = stage_charts(bundle, source, mapping, material_images, bootstrap_ref, [r['image'] for r in base], config.get('chart_directory'), config['tools']['helm'], material_records=chart_material_records, skipped=skipped)
                     render_dir = stage / 'render'; render_dir.mkdir(exist_ok=True)
-                    render = validate_charts(roots, config['tools']['helm'], mapping, material_images, render_dir, material_records=chart_material_records)
-                image_usage = [{'image': r['build_reference'], 'source': r.get('source'), 'used_by': [v['chart'] + '/' + v['mode'] for v in render if r['build_reference'] in v['images']]} for r in image_records]
+                    render = validate_charts(roots, config['tools']['helm'], mapping, material_images, render_dir, material_records=chart_material_records, skipped=skipped)
+                image_usage = [{'image': r['build_reference'], 'source': r.get('source'), 'used_by': [v['chart'] + '/' + v['mode'] for v in render if r['build_reference'] in v['images'] or skipped.get(r['build_reference']) in v['images']]} for r in image_records]
                 if is_prepared:
                     b.require(all(r['used_by'] for r in image_usage), 'Prepared images include entries unused by the selected Charts')
                 for key, root in roots.items():
@@ -775,7 +809,9 @@ def build(config, args, progress=None):
                           'SOURCE_BUILD_LOCK changed while packaging; use a new version')
                 verify_source_build_images(selected_source_build, image_records, staged_images)
                 b.dump(bundle / 'manifests/source-build-lock.json', selected_source_build)
-            b.dump(bundle / 'manifests/images-lock.json', image_records)
+            # An incremental delivery locks only the images it carries; the installer requires
+            # transfer evidence for every locked row.
+            b.dump(bundle / 'manifests/images-lock.json', [r for r in image_records if r['build_reference'] not in skipped])
             b.dump(bundle / 'manifests/materials.json', material_records)
             plan = json.loads((REPO / 'deploy/offline-core/deployment.json').read_text())
             component_sets = {
@@ -798,7 +834,11 @@ def build(config, args, progress=None):
             b.dump(bundle / 'bundle.json', {'schema_version': 1, 'kind': 'pxeye-nico-helm', 'id': config['bundle_id'],
                 'build_id': version, 'source_snapshot_sha256': snapshot['sha256'],
                 'version': version, 'source_revision': revision, 'architecture': 'linux/amd64', 'charts': packages,
-                'initial_provisioning_network_state': 'unconfigured', 'multi_phase_oci_ui_ready': True})
+                'initial_provisioning_network_state': 'unconfigured', 'multi_phase_oci_ui_ready': True}
+                | ({'baseline': {'images_lock_sha256': baseline['sha256'],
+                                 'images': sorted(({'source': r['source'], 'digest': r['digest']} for r in image_records
+                                                   if r['build_reference'] in skipped), key=lambda row: row['source'])}}
+                   if baseline else {}))
             chart_provenance = Path(config.get('chart_directory', source / 'deployment/charts')).parent / 'upstream-sources.json'
             b.dump(bundle / 'manifests/build-report.json', {'build_id': version, 'source_snapshot_sha256': snapshot['sha256'],
                 'source_revision': revision, 'input_bundle': json.loads((source / ('prepared.json' if is_prepared else 'bundle.json')).read_text()),
@@ -954,10 +994,13 @@ def run_build(config, args):
     require_clean_build()
     snapshot = build_source_snapshot()
     selected_source_build = source_build_lock()
+    baseline = baseline_images_lock()
+    b.require(not (baseline and selected_source_build), 'Use either BASELINE_IMAGES_LOCK or SOURCE_BUILD_LOCK, not both')
     output = config['output_root']; output.mkdir(parents=True, exist_ok=True)
     identity = {'config': {k: str(v) if isinstance(v, Path) else v for k, v in config.items()},
                 'implementation': snapshot['sha256'],
                 'source_build_lock_sha256': hashlib.sha256(json.dumps(selected_source_build, sort_keys=True).encode()).hexdigest() if selected_source_build else None,
+                'baseline_images_lock_sha256': baseline['sha256'] if baseline else None,
                 'input_inventory_sha256': b.sha(config['materials_bundle'] / ('manifests/files.json' if (config['materials_bundle'] / 'prepared.json').exists() else 'manifests/file-inventory.json'))}
     # Persist a default version per configuration. New deliveries use --version.
     key = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()[:24]

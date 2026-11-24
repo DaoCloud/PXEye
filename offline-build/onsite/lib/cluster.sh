@@ -158,6 +158,28 @@ check_namespace_resources() {
     printf 'NAMESPACE_LAYOUT_OK %s\n' "$NAMESPACE"
 }
 
+# Preflight for --import-only: the site is already installed, so the fresh-namespace checks of
+# cluster_preflight do not apply. Only the delivery, the cluster endpoint, tools and Registry matter.
+import_preflight() {
+    local endpoint previous
+    verify_bundle
+    "$JQ" -e '.architecture == "linux/amd64" and .kind == "pxeye-nico-helm"' "$BUNDLE/bundle.json" >/dev/null ||
+        die 'Use a current amd64 Helm/relok8s delivery'
+    kctl nodes get nodes -o json || die 'Cannot inspect target cluster nodes'
+    "$JQ" -e 'any(.items[]; .status.nodeInfo.architecture == "amd64" and any(.status.conditions[]?; .type == "Ready" and .status == "True"))' \
+        "$RESULT" >/dev/null || die 'An amd64 Ready node is required'
+    kctl cluster-endpoint config view --minify -o 'jsonpath={.clusters[0].cluster.server}' || die 'Cannot resolve the target API server'
+    endpoint=$(cat "$RESULT")
+    [[ -n "$endpoint" ]] || die 'The target context has no API server'
+    previous=$("$JQ" -r '.cluster_endpoint // empty' "$STATE")
+    [[ -z "$previous" || "$previous" == "$endpoint" ]] || die 'Context now points at another API server'
+    jq_atomic "$STATE" '.cluster_endpoint = $endpoint' --arg endpoint "$endpoint"
+    hrun helm-version version --short || die 'Bundled Helm is unavailable'
+    run relok8s-version "$RELOK" version || die 'Bundled relok8s is unavailable'
+    probe_registry "$REGISTRY_URL"
+    printf 'IMPORT_PREFLIGHT_OK %s\n' "$CONTEXT"
+}
+
 cluster_preflight() {
     local endpoint previous allowed unexpected
     verify_bundle
