@@ -58,15 +58,16 @@ const PAGES = {}, PAGE_ORDER = [], ACTIONS = {};
 /* 扩展点：实现参考版（internal.html）用它往顶栏和页面说明面板里加内容。对外版不加载任何扩展。 */
 const DESIGN_EXT = { topbar: [], guide: [] };
 /* 左侧菜单：按“对象直达”组织。每个菜单项是一个入口（nav id），可以带子菜单。
-   机柜是关联与汇总视图；设备按类型各有自己的入口，不需要先进机柜。 */
+   设备是基础对象，按类型各有自己的入口；机柜是叠在设备上面的一层，只放 NICo 在机柜对象上定义的东西。
+   装系统是逐台机器的事，入口在“安装任务”，不挂在机柜下面。 */
 const NAV = [
   ["运维", [["racks"], ["domains"], ["devices", ["compute", "switch", "power_shelf", "dpu"]], ["health"], ["tasks"], ["audit"]]],
-  ["交付", [["delivery"], ["installs"], ["instances"]]],
+  ["交付", [["installs"], ["instances"]]],
   ["接入", [["network"], ["inventory"], ["discovery"]]],
   ["配置", [["site"], ["baselines"], ["os"]]],
 ];
 /* 菜单名用四个字的正式名称，与主分支的“设备管理”“实例管理”“站点设置”“安装任务”同一规格；子菜单是设备类型名。页面标题与菜单名一致。 */
-const MODULE_LABEL = { racks: "机柜管理", domains: "NVLink 域管理", devices: "设备管理", compute: "计算托盘", switch: "交换机", power_shelf: "供电框", dpu: "DPU", health: "健康告警", tasks: "运维任务", audit: "操作审计", delivery: "机柜交付", installs: "安装任务", instances: "实例管理", site: "站点设置", network: "网络规划", inventory: "设备清单", discovery: "设备发现", baselines: "固件基线", os: "安装方案" };
+const MODULE_LABEL = { racks: "机柜管理", domains: "NVLink 域管理", devices: "设备管理", compute: "服务器", switch: "交换机", power_shelf: "供电框", dpu: "DPU", health: "健康告警", tasks: "运维任务", audit: "操作审计", installs: "安装任务", instances: "实例管理", site: "站点设置", network: "网络规划", inventory: "设备清单", discovery: "设备发现", baselines: "固件基线", os: "安装方案" };
 const MODULE_ROUTE = { compute: "devices/compute", switch: "devices/switch", power_shelf: "devices/power-shelf", dpu: "devices/dpu", installs: "delivery/installs", instances: "delivery/instances", os: "os-templates" };
 const MODULE_PARENT = {}; NAV.forEach(([, items]) => items.forEach(([id, kids]) => (kids || []).forEach((k) => (MODULE_PARENT[k] = id))));
 const navRoute = (id) => MODULE_ROUTE[id] || id;
@@ -175,7 +176,7 @@ function specHtml(spec) {
 }
 const GUIDE_STEPS = [
   ["站点设置", "检查依赖组件是否就绪", "site"], ["网络规划", "规划各类设备的网段与 DHCP 地址池", "network"], ["设备清单", "导入到货清单，确认差异", "inventory"],
-  ["设备发现", "模拟机柜接电，处理匹配不上清单的端点", "discovery"], ["机柜上线", "确认纳管，开始上线，跟踪任务和机柜维护", "rack/RACK-A03"], ["机柜交付", "按机柜装机或交给上层平台", "delivery"],
+  ["设备发现", "模拟机柜接电，处理匹配不上清单的端点", "discovery"], ["机柜上线", "确认纳管，开始上线，跟踪任务和机柜维护", "rack/RACK-A03"], ["安装任务", "选设备，逐台确定主机名和安装方案，装系统并验收", "delivery/installs"],
   ["健康告警", "告警、阻止分配与整柜泄漏", "health"], ["设备管理", "从菜单直接进入交换机：看地址、固件，上下电", "devices/switch"], ["NVLink 域管理", "NMX-C、域健康与 NVLink 分区", "domains"], ["操作审计", "每次操作的记录", "audit"],
 ];
 function renderGuide(page, arg) {

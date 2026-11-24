@@ -6,10 +6,10 @@ digraph G {
   s1 [label=<<b>P3–P4 清单导入与上架接线</b><br/><font point-size="10" color="#44546A">清单已保存<br/>机柜已接电</font>>];
   s2 [label=<<b>P5–P6 识别匹配与纳管</b><br/><font point-size="10" color="#44546A">设备匹配上清单<br/>人确认后登记到 NICo</font>>];
   s3 [label=<<b>P7 上线</b><br/><font point-size="10" color="#44546A">人开始上线<br/>机柜就绪，域已形成</font>>];
-  s4 [label=<<b>P8 交付</b><br/><font point-size="10" color="#44546A">验收通过或上层已接收</font>>];
+  s4 [label=<<b>P8 交付</b><br/><font point-size="10" color="#44546A">逐台安装并验收通过</font>>];
   s5 [fillcolor="#1F4E79", fontcolor="white", label=<<b>P9 运行</b><br/><font point-size="10">无未处理的严重告警</font>>];
   s6 [label=<<b>P10 维护与变更</b><br/><font point-size="10" color="#44546A">任务成功，回到就绪</font>>];
-  s7 [fillcolor="#F4F6F9", color="#7F7F7F", label=<<b>P11 退役</b><br/><font point-size="10" color="#44546A">对象已退役，审计闭环</font>>];
+  s7 [fillcolor="#F4F6F9", color="#7F7F7F", label=<<b>P11 退役</b><br/><font point-size="10" color="#44546A">设备已退役，审计闭环</font>>];
   {rank=same; s0 -> s1 -> s2 -> s3}
   s3 -> s4;
   {rank=same; s7 -> s6 [style=invis]; s6 -> s5 [label="  处理完成  "]; s5 -> s4 [dir=back]}

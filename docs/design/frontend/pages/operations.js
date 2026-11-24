@@ -1,8 +1,9 @@
 "use strict";
 /* 操作：机柜和设备的写操作，以及它们共用的门控。
    规则（设计说明书第 8、9 章）：
-   - 新机柜有两处要人确认：“确认纳管”把设备登记到 NICo，不上电；“开始上线”提交上线任务，上电并放行接管。装系统是第三件事，在交付里。
-   - 交换机就绪后的机柜维护不是操作：它由 NICo 的机柜状态机自动进行。页面只在它停在 Error 时提供“重新执行机柜维护”。
+   - 机柜页只放 NICo 在机柜对象上定义的操作：上线、电源、固件、期望与实际校验、机柜维护（重新执行、终止）、删除机柜。
+     “确认纳管”是对本机柜全部已匹配设备的批量纳管：NICo 里纳管是逐台设备的声明，机柜自身只有一条机柜声明。装系统是逐台机器的事，在“安装任务”里。
+   - 交换机就绪后的机柜维护不是任务：它由 NICo 的机柜状态机自动进行。进行中可以终止，终止后机柜停在 Error；停在 Error 时提供“重新执行机柜维护”。
    - 会跨多台设备排序的电源和固件操作提交为 Flow 任务；单设备的状态类操作直接调用 Core 并读回。
    - 同一机柜同一时间只有一个进行中的任务。
    - 依赖组件缺失时操作不可用并说明原因；有整柜泄漏的机柜拒绝上电。 */
@@ -13,10 +14,10 @@ function rackGate(r, kind) {
   if (!r.state) return r.admit ? "机柜还没有上线" : "NICo 里还没有这个机柜的对象";
   if (DB.busy(r)) return "该机柜有进行中的任务，同一机柜同时只能有一个任务";
   if (kind === "remaint") return !S.rms ? "RMS 未就绪，机柜维护无法执行" : r.state !== "Error" ? "只在机柜停在 Error 时使用" : "";
-  if (!S.flow && ["power", "firmware", "decommission"].includes(kind)) return "Flow 未就绪，机柜级任务不可用";
+  if (kind === "terminate") return /^Maintenance/.test(r.state) ? "" : "只在机柜处于维护阶段时可以终止";
+  if (!S.flow && ["power", "firmware"].includes(kind)) return "Flow 未就绪，机柜级任务不可用";
   if (!S.rms && ["power", "firmware"].includes(kind)) return "RMS 未就绪，电源与固件操作不可用";
   if (["power", "firmware"].includes(kind) && !["Ready", "Error"].includes(r.state)) return "机柜正在上线，完成后可用";
-  if (kind === "decommission" && DB.rackInstances(r.id).length) return "机柜上还有实例，先释放";
   return "";
 }
 /* 任务什么时候真正开始：会中断业务的任务先做就绪检查。把现在的检查结果和提交后的过程写在确认页上。 */
@@ -32,16 +33,16 @@ const RULE_NOTE = "顺序、等待时间和重试由站点的操作规则决定�
 /* ---------- 机柜操作 ---------- */
 registerAction("rack-admit", ({ id }) => {
   const r = DB.rack(id), got = r.trays.filter((t) => t.matched), sw = got.filter((t) => t.type === "switch").length, diff = DB.absent(r).length + DB.misplaced(r).length;
-  confirmOperation({ title: "确认纳管", target: id, action: `把已匹配的 ${got.length} 台设备登记到 NICo`, stages: ["写入声明", "NICo 登录 BMC 并更换口令"], why: "到货核对完成", submit: "确认纳管", sub: "纳管只是登记：不上电、不动磁盘、不装系统。上线和装系统之后各自再确认。",
+  confirmOperation({ title: "确认纳管", target: `${id} 的 ${got.length} 台已匹配设备`, action: "逐台登记到 NICo，并写入这个机柜的机柜声明", stages: ["写入机柜声明", "逐台写入设备声明", "NICo 登录 BMC 并更换口令"], why: "到货核对完成", submit: "确认纳管", sub: "这是对本机柜设备的批量纳管，不是机柜自身的操作。纳管只是登记：不上电、不动磁盘、不装系统。",
     extra: defs([["已匹配", `${got.length} / ${r.trays.length} 台，其中交换机 ${sw} / ${PROFILE_NEED.switch}`], ["清单核对的差异", diff ? `${diff} 项，纳管后仍可处理` : "没有"], ["待处理的端点", S.endpoints.length ? `${S.endpoints.length} 个，之后匹配上的会自动纳管` : "没有"], ["地址", "不变。BMC 的地址在机柜接电时已经分配"]]) +
-      doList(ADMIT_DO, ADMIT_NOT) + note("<b>纳管后设备的 BMC 口令由 NICo 接手</b>，清单里的出厂口令不再有效，平台也不再保存。要把设备交还，走退役。", "warning"),
+      doList(ADMIT_DO, ADMIT_NOT) + note("<b>纳管后设备的 BMC 口令由 NICo 接手</b>，清单里的出厂口令不再有效，平台也不再保存。要把设备交还，逐台退役。", "warning"),
     run: (why) => { admitRack(id); addAudit(id, "确认纳管", why, "—", `${got.length} 台已纳管，设备未上电`); S.guide = Math.max(S.guide, 5); toast(`${id}：${got.length} 台已纳管。下一步：开始上线`); } });
 });
 registerAction("rack-bringup", ({ id }) => {
   const r = DB.rack(id), n = r.trays.filter((t) => t.declared).length;
-  confirmOperation({ title: "开始上线", target: id, action: `给已纳管的 ${n} 台设备上电，并让 NICo 接管`, stages: STAGES.bringup_task, why: "新机柜上线", submit: "开始上线", high: true, confirmText: id, sub: "提交为一个上线任务。上线不装操作系统，装系统在“机柜交付”里另外确认。",
+  confirmOperation({ title: "开始上线", target: id, action: `给已纳管的 ${n} 台设备上电，并让 NICo 接管`, stages: STAGES.bringup_task, why: "新机柜上线", submit: "开始上线", high: true, confirmText: id, sub: "提交为一个上线任务。上线不装操作系统，装系统在“安装任务”里逐台确认。",
     extra: doList(UP_DO, UP_NOT) + note("<b>对设备的影响：</b>设备会上电并重启；计算托盘的 BIOS 设置会被修改并锁定；<b>按站点策略可能清理全部磁盘，包括非系统盘</b>；固件与期望版本不同时会被更新。主机管理地址在计算托盘第一次从网络启动时分配。", "warning") +
-      note("任务完成后，交换机就绪数达到机柜规格要求时，NICo 自动开始机柜维护（固件升级、NVOS 更新、上电顺序、配置 NMX-C 集群、机柜校验），这一段不能取消。全部完成后机柜状态为 Ready，才能交付。"),
+      note("任务完成后，交换机就绪数达到机柜规格要求时，NICo 自动开始机柜维护（固件升级、NVOS 更新、上电顺序、配置 NMX-C 集群、机柜校验）。这一段不是任务，顺序不能调整；进行中可以终止，终止后机柜停在 Error。全部完成后机柜状态为 Ready，柜里的计算托盘才能装系统。"),
     run: (why) => { bringUpRack(id, why); S.guide = Math.max(S.guide, 5); S.view["rackTab:" + id] = "tasks"; } });
 });
 registerAction("slot-fix", ({ id }) => {
@@ -89,9 +90,32 @@ registerAction("rack-validate", ({ id }) => {
   addAudit(id, "期望与实际校验", "例行核对", "—", open ? open + " 项差异" : "无差异");
   toast(open ? `校验完成：${open} 项差异，见清单核对` : "校验完成：期望与实际一致"); S.view["rackTab:" + id] = "check"; render();
 });
-registerAction("rack-decommission", ({ id }) => {
-  confirmOperation({ title: "机柜退役", target: id, action: "退役整柜并从清单移除", stages: STAGES.decommission, high: true, confirmText: id,
-    run: (why) => startTask(id, "decommission", "机柜退役", STAGES.decommission, { why, onDone: () => { S.domains = S.domains.filter((d) => d.rack !== id); S.racks = S.racks.filter((x) => x.id !== id); S.inventory.unshift({ v: S.inventory[0].v + 1, at: nowText(), by: "ops-01", file: "（机柜退役）", note: "移除 " + id, why }); go("racks"); }, readback: () => "对象已退役" }) });
+/* 终止机柜维护：NICo 只在机柜处于维护阶段时接受。终止后机柜进入 Error，要人重新执行一次机柜维护。 */
+registerAction("rack-terminate", ({ id }) => {
+  const r = DB.rack(id), cur = r.bring && r.bring.stages.find((s) => s.s === "run");
+  confirmOperation({ title: "终止机柜维护", target: id, action: "让 NICo 停止正在进行的机柜维护", why: "", submit: "终止维护", high: true, confirmText: id, sub: "终止后机柜进入 Error，不会自己恢复。",
+    extra: defs([["当前阶段", cur ? esc(cur.n) : "—"], ["终止之后", "机柜状态变为 Error；要继续，重新执行机柜维护，从头再走一遍"]]) + note("NICo 会清理已经发给设备的请求。<b>已经在设备上开始的动作不保证能撤回</b>，例如正在刷写的固件；终止后以设备读回的状态为准。", "warning"),
+    run: (why) => { if (r.bring && r.bring.timer) { clearInterval(r.bring.timer); r.bring.timer = 0; } if (cur) cur.s = "fail"; setRackState(r, "Error", "操作人终止了机柜维护"); addAudit(id, "终止机柜维护", why, "—", "读回 Error"); toast(`${id}：机柜维护已终止，机柜停在 Error`); } });
+});
+/* 删除机柜：NICo 只删除机柜对象，不检查也不处理成员设备。所以前提由平台检查：没有实例、成员设备都已逐台退役、没有进行中的任务。 */
+function rackDeleteChecks(r) {
+  const inst = DB.rackInstances(r.id).length, left = r.trays.filter((t) => t.state && !/Decommission/.test(t.state)).length;
+  return [["机柜上没有实例", !inst, inst ? `还有 ${inst} 个实例，先在“实例管理”里删除` : "没有实例"], ["成员设备都已退役", !left, left ? `还有 ${left} 台设备在 NICo 里，先在“设备管理”里逐台退役` : "成员设备都已退役"], ["没有进行中的任务", !DB.busy(r), DB.busy(r) ? "有进行中的任务" : "没有"]];
+}
+registerAction("rack-delete", ({ id }) => {
+  const r = DB.rack(id), checks = rackDeleteChecks(r), ok = checks.every((c) => c[1]);
+  modal("删除机柜", id, `<div class="confirm-facts">${defs([["对象", `<b>${id}</b>`], ["动作", "删除 NICo 里的机柜对象和机柜声明，并从清单移除这个机柜"]])}</div>` +
+    `<h3 class="section-title">删除前要满足</h3>` + table(["前提", "现在", "说明"], checks.map((c) => `<tr><td>${c[0]}</td><td>${c[1] ? badge("满足", "green") : badge("不满足", "red")}</td><td>${c[2]}</td></tr>`)) +
+    note("<b>删除机柜不会替你处理成员设备。</b>NICo 只删除机柜对象：不给设备下电，不退役设备，也不检查柜里还有没有设备。所以要先逐台退役，再回到这里删除机柜。") +
+    `<div class="live-form">${field("原因", `<input class="input" id="op-why" placeholder="工单号或原因">`)}${field(`高风险操作：输入 ${id} 以确认`, `<input class="input live-code" id="op-confirm" autocomplete="off">`)}</div>`,
+    button("取消", "close") + `<button class="button danger" data-live="rack-delete-run" data-id="${id}" ${ok ? "" : 'disabled title="前提没有全部满足"'}>删除机柜</button>`, { wide: false });
+});
+registerAction("rack-delete-run", ({ id }) => {
+  const why = $("#op-why").value.trim(); if (!why) return toast("请填写原因");
+  if ($("#op-confirm").value.trim() !== id) return toast("输入的内容与对象不一致");
+  closeModal(); S.domains = S.domains.filter((d) => d.rack !== id); S.racks = S.racks.filter((x) => x.id !== id);
+  S.inventory.unshift({ v: S.inventory[0].v + 1, at: nowText(), by: "ops-01", file: "（删除机柜）", note: "移除 " + id, why });
+  addAudit(id, "删除机柜", why, "—", "机柜对象已删除"); toast(id + " 已删除"); go("racks");
 });
 registerAction("task-cancel", ({ id }) => { cancelTask(id); render(); });
 registerAction("discovery-rack", ({ rack }) => { S.view.dsRack = rack; S.view.dsRes = ""; go("discovery"); });
@@ -110,7 +134,7 @@ const TRAY_ACTIONS = [
   { id: "validate", label: "按需硬件校验", types: ["compute"], risk: "高", via: "Core", guard: () => "", apply: (t) => t.history.push([nowText(), "Validation/Requested"]), readback: "已返回校验编号" },
   { id: "sku", label: "核对 SKU", types: ["compute"], risk: "低", via: "Core", guard: () => "", apply: () => {}, readback: "读回核对请求时间" },
   { id: "bmc-reset", label: "重启 BMC", types: ["compute", "switch"], risk: "中", via: "Core", guard: () => "", apply: () => {}, readback: "", unknown: true },
-  { id: "decommission", label: "退役", types: ["switch", "power_shelf"], risk: "高", via: "Core", guard: (t) => (!/Ready$/.test(t.state) ? "设备要在 Ready 状态" : DB.rack(t.rack).trays.some((x) => x.instance) ? "机柜上还有已分配的计算托盘，先释放实例" : ""), apply: (t) => { t.state = "Decommissioning"; t.health = "none"; }, readback: "已提交，设备进入退役流程；完成后在这里消失" },
+  { id: "decommission", label: "退役", types: ["compute", "switch", "power_shelf"], risk: "高", via: "Core", guard: (t) => (t.instance ? "这台设备上有实例，先删除实例" : !/Ready$/.test(t.state) ? "设备要在 Ready 状态" : t.type !== "compute" && DB.rack(t.rack).trays.some((x) => x.instance) ? "机柜上还有已分配的计算托盘，先删除实例" : ""), apply: (t) => { t.state = "Decommissioning"; t.health = "none"; }, readback: "已提交，设备进入退役流程；完成后在这里消失" },
 ];
 /* 逐个目标的检查，对应现有产品的“服务端预览”：先让装机，再看生命周期状态。 */
 function trayCheck(t, a) {
@@ -118,16 +142,16 @@ function trayCheck(t, a) {
   if (a.via === "Flow" && DB.busy(DB.rack(t.rack))) return "所在机柜有进行中的任务";
   if (a.rms && !S.rms) return "RMS 未就绪";
   if (a.via === "Flow" && !S.flow) return "Flow 未就绪";
-  if (S.deliveries.some((d) => d.rack === t.rack && d.done < d.total) && a.risk !== "低") return "该设备有进行中的安装任务";
+  if (DB.installing(t) && a.risk !== "低") return "该设备有进行中的安装任务";
   return a.guard(t);
 }
 function trayOpDialog(ids, actionId) {
   const trays = ids.map(DB.tray), type = trays[0].type, options = TRAY_ACTIONS.filter((a) => a.types.includes(type)), a = options.find((x) => x.id === actionId) || options[0];
-  const rows = trays.map((t) => { const why = trayCheck(t, a); return `<tr><td>${code(t.serial)}</td><td>${t.rack} / 槽位 ${pad2(t.slot)}</td><td>${stateBadge(t.state)}</td><td>${t.instance ? code(t.instance) : "—"}</td><td>${why ? badge("拒绝：" + why, "red") : badge("通过", "green")}</td></tr>`; });
+  const rows = trays.map((t) => { const why = trayCheck(t, a); return `<tr><td>${code(t.serial)}</td><td>${placeText(t)}</td><td>${stateBadge(t.state)}</td><td>${t.instance ? code(t.instance) : "—"}</td><td>${why ? badge("拒绝：" + why, "red") : badge("通过", "green")}</td></tr>`; });
   const pass = trays.filter((t) => !trayCheck(t, a)), affected = pass.filter((t) => t.instance).length + (type !== "compute" && a.risk === "高" ? new Set(pass.map((t) => t.rack)).size && [...new Set(pass.map((t) => t.rack))].reduce((n, r) => n + DB.rackInstances(r).length, 0) : 0);
   const high = a.risk === "高", confirmText = trays.length === 1 ? trays[0].serial : `${pass.length} 台`;
   const stages = a.via === "Flow" ? a.stages || STAGES.tray_power : [];
-  modal(trays.length > 1 ? `批量操作（${trays.length} 台${TYPE_LABEL[type]}）` : `操作 ${trays[0].serial}`, "选对象，选动作，写原因。检查在提交时由服务端再执行一次。",
+  modal(trays.length > 1 ? `批量操作（${trays.length} 台${type === "compute" ? "服务器" : TYPE_LABEL[type]}）` : `操作 ${trays[0].serial}`, "选对象，选动作，写原因。检查在提交时由服务端再执行一次。",
     `<div class="live-form">${field("动作", `<select class="input" id="tray-action" data-tray-action="${ids.join(",")}">${options.map((o) => `<option value="${o.id}" ${o.id === a.id ? "selected" : ""}>${o.label}（风险${o.risk}）</option>`).join("")}</select>`)}</div>
      <div class="confirm-facts" style="margin-top:14px">${defs([["执行路径", a.via === "Flow" ? "提交为任务，由 NICo 编排、硬件后端执行" : "立即执行，并读回结果"], ["受影响的实例", affected ? `<b style="color:var(--red)">${affected} 个</b>${type !== "compute" ? "（按整柜计算）" : ""}` : "0 个"], ...(stages.length ? [["将经过的步骤", esc(stages.join(" → "))]] : []), ...(a.unknown ? [["结果", "NICo 没有读回方式，结果记为未知，不自动重发"]] : [])])}</div>
      ${table(["序列号", "位置", "状态", "实例", "检查"], rows)}
@@ -154,11 +178,11 @@ registerAction("tray-op-submit", ({ ids, action }) => {
     /* Flow 按机柜拆分任务：每个机柜一个任务。 */
     [...new Set(pass.map((t) => t.rack))].forEach((rackId) => {
       const mine = pass.filter((t) => t.rack === rackId);
-      startTask(rackId, "tray", `${a.label}（${mine.length} 台${TYPE_LABEL[mine[0].type]}）`, a.stages || STAGES.tray_power, { why, target: mine.length === 1 ? `${rackId} / 槽位 ${pad2(mine[0].slot)}` : `${rackId} / ${mine.length} 台`, onDone: () => mine.forEach((t) => a.apply(t, pick, why)), readback: () => a.readback });
+      startTask(rackId, "tray", `${a.label}（${mine.length} 台${typeLabel(mine[0])}）`, a.stages || STAGES.tray_power, { why, target: mine.length === 1 ? (rackId ? placeText(mine[0]) : mine[0].serial) : `${rackId || "未分配机柜"} / ${mine.length} 台`, onDone: () => mine.forEach((t) => a.apply(t, pick, why)), readback: () => a.readback });
     });
     toast(`已提交 ${new Set(pass.map((t) => t.rack)).size} 个任务`);
   } else {
-    pass.forEach((t) => { a.apply(t, pick, why); addAudit(`${t.rack} / 槽位 ${pad2(t.slot)}`, a.label, why, "—", a.unknown ? "未知：NICo 无读回方式，未自动重发" : a.readback); });
+    pass.forEach((t) => { a.apply(t, pick, why); addAudit(t.rack ? placeText(t) : t.serial, a.label, why, "—", a.unknown ? "未知：NICo 无读回方式，未自动重发" : a.readback); });
     toast(a.unknown ? `${a.label}已发送，结果未知` : `${a.label}完成，读回一致`);
   }
   S.view.checked = {}; S.guide = Math.max(S.guide, 9); render();
@@ -178,4 +202,4 @@ registerAction("sim-leak", () => {
 });
 registerAction("sim-rms", () => { S.rms = !S.rms; toast(S.rms ? "RMS 已恢复" : "RMS 不可用：电源与固件操作被禁用"); render(); });
 registerAction("sim-flow", () => { S.flow = !S.flow; toast(S.flow ? "Flow 已恢复" : "Flow 不可用：机柜级任务被禁用"); render(); });
-registerAction("sim-reset", () => { S.racks.forEach((r) => { if (r.task) clearInterval(r.task.timer); if (r.bring && r.bring.timer) clearInterval(r.bring.timer); }); const keep = Object.fromEntries(Object.entries(S.view).filter(([k]) => k.startsWith("nav:") || ["guide", "guideWide", "annotate", "guideTab", "lastPage"].includes(k))); S = freshState(); Object.assign(S.view, keep); go("racks"); toast("示例数据已重置"); });
+registerAction("sim-reset", () => { DB.groups().forEach((r) => { if (r.task) clearInterval(r.task.timer); if (r.bring && r.bring.timer) clearInterval(r.bring.timer); }); S.installs.forEach((b) => b.timer && clearInterval(b.timer)); const keep = Object.fromEntries(Object.entries(S.view).filter(([k]) => k.startsWith("nav:") || ["guide", "guideWide", "annotate", "guideTab", "lastPage"].includes(k))); S = freshState(); Object.assign(S.view, keep); go("racks"); toast("示例数据已重置"); });

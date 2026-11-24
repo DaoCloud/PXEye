@@ -45,20 +45,20 @@ registerPage("domains", {
       `<div ${fp(1)}>${summary([["NVLink 域", S.domains.length], ["NMX-C 连通", S.domains.filter((d) => d.nmxc === "ok").length], ["未形成", S.domains.filter((d) => !d.uuid).length], ["逻辑分区", parts.length]])}</div>` +
       `<div ${fp(2)}>${table(["NVLink 域 / 拓扑", "机柜", "NMX-C 域编号", "NMX-C", "域健康", "Fabric Manager 正常的交换机", "逻辑分区"], S.domains.map((d) => { const r = DB.rack(d.rack);
         return `<tr><td><strong>${d.id}</strong><span class="cell-sub live-code">${d.topology}</span></td><td><a class="link-button" data-go="rack/${d.rack}">${d.rack}</a><span class="cell-sub">${r.state ? r.state : "尚未建立"}</span></td><td ${fp(3)}>${d.uuid ? code(d.uuid) : `<span class="muted">机柜上线后由 NMX-C 回报</span>`}</td><td>${nmxc(d)}</td><td>${healthBadge(d.health)}</td><td>${r.state ? fm(r) : "—"}</td><td>${d.partitions.length}</td></tr>`; }))}</div>` +
-      `<h2 class="section-title">NVLink 分区</h2><div ${fp(4)}>${table(["逻辑分区", "NVLink 域", "租户", "状态", "NMX 分区", "创建时间"], parts.map(({ d, p }) => `<tr><td><strong>${esc(p.name)}</strong><span class="cell-sub live-code">${p.id}</span></td><td>${d.id}</td><td>${esc(p.tenant)}</td><td>${stateBadge(p.state)}</td><td>${code(p.physical)}</td><td>${code(p.created)}</td></tr>`), "还没有分区。分区在交付时按租户建立。")}</div>` +
-      `<div ${fp(5)}>${note("<b>这一页只读，三样东西各有来处。</b>NVLink 域：按到货清单里的机柜自动声明，不需要人维护；机柜上线配置好 NMX-C 集群后才算形成。逻辑分区：由租户在交付时建立和删除。NMX 分区：第一个实例加入逻辑分区时由 NICo 自动建立。没有划进逻辑分区的 GPU，只能和同一个计算托盘里的 GPU 共享内存。更换计算托盘之前，要先把它的 GPU 从分区里移出。")}</div>`;
+      `<h2 class="section-title">NVLink 分区</h2><div ${fp(4)}>${table(["逻辑分区", "NVLink 域", "状态", "NMX 分区", "创建时间"], parts.map(({ d, p }) => `<tr><td><strong>${esc(p.name)}</strong><span class="cell-sub live-code">${p.id}</span></td><td>${d.id}</td><td>${stateBadge(p.state)}</td><td>${code(p.physical)}</td><td>${code(p.created)}</td></tr>`), "NICo 里还没有分区。")}</div>` +
+      `<div ${fp(5)}>${note("<b>这一页只读，三样东西各有来处。</b>NVLink 域：按到货清单里的机柜自动声明，不需要人维护；机柜上线配置好 NMX-C 集群后才算形成。逻辑分区：这一版平台不提供建立和删除的入口，NICo 里已有的分区在这里只读显示。NMX 分区：第一个实例加入逻辑分区时由 NICo 自动建立。没有划进逻辑分区的 GPU，只能和同一个计算托盘里的 GPU 共享内存。更换计算托盘之前，要先把它的 GPU 从分区里移出。")}</div>`;
   },
   spec: {
-    purpose: "NVLink 域的状态页：域有没有形成、NMX-C 是否连通、域里划了哪些分区、分给了谁。",
-    entry: "运维 → NVLink 域管理", design: "6.3 机柜与设备；6.6 交付（NVLink 分区）", existing: "新增页面。现有交换机详情里的“NVLink 域”字段是它的来源",
+    purpose: "NVLink 域的状态页：域有没有形成、NMX-C 是否连通、域里划了哪些分区。",
+    entry: "运维 → NVLink 域管理", design: "6.3 机柜与设备", existing: "新增页面。现有交换机详情里的“NVLink 域”字段是它的来源",
     points: [
       { n: 1, name: "统计条", kind: "新增", desc: "域的数量、NMX-C 连通的数量、还没有形成的数量、逻辑分区数。" },
       { n: 2, name: "域列表", kind: "新增", desc: "域和拓扑、所属机柜、NMX-C 是否连通、域健康、Fabric Manager 正常的交换机数、分区数。机柜可点击进入详情。" },
       { n: 3, name: "NMX-C 域编号", kind: "新增", desc: "域有两个编号：清单里的机柜组编号，和机柜上线后 NMX-C 回报的域编号。两个都显示，后者没有回报时说明原因。" },
-      { n: 4, name: "NVLink 分区", kind: "新增", desc: "逻辑分区的名称、所在的域、租户、状态和对应的 NMX 分区。" },
-      { n: 5, name: "谁来维护", kind: "新增", desc: "说明域、逻辑分区和 NMX 分区各由谁建立：域按清单自动声明，逻辑分区由租户在交付时建立，NMX 分区由 NICo 自动建立。本页只读。" },
+      { n: 4, name: "NVLink 分区", kind: "新增", desc: "逻辑分区的名称、所在的域、状态和对应的 NMX 分区。" },
+      { n: 5, name: "谁来维护", kind: "新增", desc: "说明域、逻辑分区和 NMX 分区各由谁建立：域按清单自动声明，逻辑分区这一版不在平台里建立，NMX 分区由 NICo 自动建立。本页只读。" },
     ],
-    fields: [["NVLink 域", "清单", "机柜组编号，一个 NVL72 机柜一个"], ["NMX-C 域编号", "NICo Core", "交换机和计算托盘回报的域编号；机柜上线配置好 NMX-C 集群后才有"], ["NMX-C", "NICo 机柜健康", "连通、不可达、未报告"], ["域健康", "NICo Core", "按 NMX-C 域编号记录的健康报告"], ["Fabric Manager", "NICo Core", "交换机回报的 OK、NOT_OK、UNKNOWN 里 OK 的台数"], ["逻辑分区 / 租户 / 状态", "NICo Core", "分区名称、租户的组织、分区的状态"], ["NMX 分区", "NICo Core", "逻辑分区在 NMX-C 上对应的分区"]],
-    rules: ["页面只读。域不需要人维护；分区在交付里建立，不在这里。", "没有域级的电源和固件操作：一个域就是一个机柜。", "NICo 没有启用 NVLink 分区时，分区表为空。"],
+    fields: [["NVLink 域", "清单", "机柜组编号，一个 NVL72 机柜一个"], ["NMX-C 域编号", "NICo Core", "交换机和计算托盘回报的域编号；机柜上线配置好 NMX-C 集群后才有"], ["NMX-C", "NICo 机柜健康", "连通、不可达、未报告"], ["域健康", "NICo Core", "按 NMX-C 域编号记录的健康报告"], ["Fabric Manager", "NICo Core", "交换机回报的 OK、NOT_OK、UNKNOWN 里 OK 的台数"], ["逻辑分区 / 状态", "NICo Core", "分区名称和分区的状态"], ["NMX 分区", "NICo Core", "逻辑分区在 NMX-C 上对应的分区"]],
+    rules: ["页面只读。域不需要人维护；这一版平台不提供建立分区的入口。", "没有域级的电源和固件操作：一个域就是一个机柜。", "NICo 没有启用 NVLink 分区时，分区表为空。"],
   },
 });

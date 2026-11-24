@@ -87,12 +87,12 @@
         "task.list",
         "task.cancel",
         "rack.maintenance",
+        "rack.delete",
         "os.list",
         "os.write",
         "instance.allocate",
         "instance.list",
         "instance.release",
-        "instance-type.write",
         "health.reports",
         "health.history"
       ],
@@ -134,7 +134,7 @@
         "instance.allocate"
       ],
       "pages": [
-        "交付 › 机柜交付",
+        "交付 › 安装任务",
         "配置 › 安装方案"
       ]
     },
@@ -155,7 +155,7 @@
         "运维 › NVLink 域管理",
         "运维 › 机柜管理 › 机柜详情",
         "运维 › 健康告警",
-        "交付 › 机柜交付"
+        "交付 › 安装任务"
       ]
     },
     {
@@ -186,7 +186,7 @@
         "配置 › 站点设置 › 站点概况",
         "配置 › 站点设置 › 控制面",
         "运维 › 机柜管理 › 机柜详情",
-        "运维 › 设备管理 › 计算托盘",
+        "运维 › 设备管理 › 服务器",
         "运维 › 设备管理 › 交换机",
         "运维 › 设备管理 › 供电框",
         "配置 › 固件基线"
@@ -222,7 +222,7 @@
         "运维 › 机柜管理",
         "运维 › NVLink 域管理",
         "运维 › 机柜管理 › 机柜详情",
-        "运维 › 设备管理 › 计算托盘",
+        "运维 › 设备管理 › 服务器",
         "运维 › 设备管理 › 交换机",
         "运维 › 设备管理 › 供电框",
         "运维 › 运维任务"
@@ -256,7 +256,7 @@
         "运维 › 机柜管理",
         "运维 › NVLink 域管理",
         "运维 › 机柜管理 › 机柜详情",
-        "运维 › 设备管理 › 计算托盘",
+        "运维 › 设备管理 › 服务器",
         "运维 › 设备管理 › 交换机",
         "运维 › 设备管理 › 供电框",
         "运维 › 运维任务"
@@ -856,9 +856,9 @@
     },
     {
       "id": "vpc",
-      "name": "租户与 VPC",
+      "name": "默认租户与 VPC",
       "object": "Tenant、Vpc",
-      "createdBy": "CreateTenant、CreateVpc。计算托盘的 DPU 处于 DPU 模式时用 FNN 或 ETHERNET_VIRTUALIZER，网卡模式或没有 DPU 时用 FLAT",
+      "createdBy": "平台只用一个默认租户。CreateTenant、CreateVpc。计算托盘的 DPU 处于 DPU 模式时用 FNN 或 ETHERNET_VIRTUALIZER，网卡模式或没有 DPU 时用 FLAT",
       "requires": [
         "core"
       ],
@@ -870,27 +870,10 @@
       ]
     },
     {
-      "id": "instance-type",
-      "name": "实例类型与配额",
-      "object": "InstanceType、ComputeAllocation",
-      "createdBy": "CreateInstanceType，把计算托盘关联到实例类型，再给租户建配额",
-      "requires": [
-        "machine",
-        "vpc"
-      ],
-      "prep": "direct",
-      "note": "只在“交给上层平台”时需要。Core 默认对超配额只告警不拒绝；REST 一侧强制检查",
-      "source": "crates/api-core/src/instance/mod.rs:2077",
-      "requiresNames": [
-        "计算托盘对象",
-        "租户与 VPC"
-      ]
-    },
-    {
       "id": "instance",
       "name": "实例",
       "object": "Instance",
-      "createdBy": "AllocateInstances：计算托盘 ID 和实例配置（租户、系统、网络）",
+      "createdBy": "AllocateInstances：每个实例一个机器 ID，加实例配置（默认租户和主机名、系统、网络）",
       "requires": [
         "machine",
         "os-definition",
@@ -902,7 +885,7 @@
       "requiresNames": [
         "计算托盘对象",
         "系统定义",
-        "租户与 VPC"
+        "默认租户与 VPC"
       ]
     },
     {
@@ -1823,7 +1806,8 @@
         "设备声明"
       ],
       "pages": [
-        "接入 › 设备发现"
+        "接入 › 设备发现",
+        "交付 › 安装任务"
       ]
     },
     {
@@ -1845,7 +1829,8 @@
         "探测结果"
       ],
       "pages": [
-        "接入 › 设备发现"
+        "接入 › 设备发现",
+        "交付 › 安装任务"
       ]
     },
     {
@@ -1879,7 +1864,7 @@
         "运维 › 机柜管理",
         "运维 › 机柜管理 › 机柜详情",
         "运维 › 健康告警",
-        "交付 › 机柜交付"
+        "交付 › 安装任务"
       ]
     },
     {
@@ -2146,11 +2131,10 @@
       "pages": [
         "接入 › 设备发现",
         "运维 › 机柜管理 › 机柜详情",
-        "运维 › 设备管理 › 计算托盘",
+        "运维 › 设备管理 › 服务器",
         "运维 › 设备管理",
         "运维 › 设备管理 › DPU",
         "运维 › 健康告警",
-        "交付 › 机柜交付",
         "交付 › 安装任务",
         "交付 › 实例管理"
       ]
@@ -2183,7 +2167,7 @@
         "计算托盘对象"
       ],
       "pages": [
-        "交付 › 机柜交付"
+        "交付 › 安装任务"
       ]
     },
     {
@@ -2281,7 +2265,7 @@
         "计算托盘对象"
       ],
       "pages": [
-        "运维 › 设备管理 › 计算托盘",
+        "运维 › 设备管理 › 服务器",
         "运维 › 设备管理 › 交换机",
         "运维 › 设备管理 › 供电框"
       ]
@@ -2309,7 +2293,7 @@
         "探测结果"
       ],
       "pages": [
-        "运维 › 设备管理 › 计算托盘",
+        "运维 › 设备管理 › 服务器",
         "运维 › 设备管理 › 交换机",
         "运维 › 设备管理 › 供电框",
         "配置 › 固件基线"
@@ -2341,7 +2325,7 @@
       ],
       "pages": [
         "运维 › 机柜管理 › 机柜详情",
-        "运维 › 设备管理 › 计算托盘",
+        "运维 › 设备管理 › 服务器",
         "运维 › 设备管理 › 交换机",
         "运维 › 设备管理 › 供电框"
       ]
@@ -2414,7 +2398,7 @@
         "计算托盘对象"
       ],
       "pages": [
-        "运维 › 设备管理 › 计算托盘"
+        "运维 › 设备管理 › 服务器"
       ]
     },
     {
@@ -2464,7 +2448,7 @@
         "Flow 的机柜与托盘清单"
       ],
       "pages": [
-        "运维 › 设备管理 › 计算托盘",
+        "运维 › 设备管理 › 服务器",
         "运维 › 设备管理 › 交换机",
         "运维 › 设备管理 › 供电框"
       ]
@@ -2493,7 +2477,7 @@
         "机柜固件清单"
       ],
       "pages": [
-        "运维 › 设备管理 › 计算托盘",
+        "运维 › 设备管理 › 服务器",
         "运维 › 设备管理 › 交换机"
       ]
     },
@@ -2520,7 +2504,7 @@
         "组件管理器"
       ],
       "pages": [
-        "运维 › 设备管理 › 计算托盘",
+        "运维 › 设备管理 › 服务器",
         "运维 › 设备管理 › 交换机"
       ]
     },
@@ -2568,7 +2552,7 @@
         "计算托盘对象"
       ],
       "pages": [
-        "运维 › 设备管理 › 计算托盘"
+        "运维 › 设备管理 › 服务器"
       ]
     },
     {
@@ -2593,7 +2577,7 @@
         "计算托盘对象"
       ],
       "pages": [
-        "运维 › 设备管理 › 计算托盘"
+        "运维 › 设备管理 › 服务器"
       ]
     },
     {
@@ -2618,7 +2602,7 @@
         "计算托盘对象"
       ],
       "pages": [
-        "运维 › 设备管理 › 计算托盘"
+        "运维 › 设备管理 › 服务器"
       ]
     },
     {
@@ -2640,7 +2624,7 @@
         "计算托盘对象"
       ],
       "pages": [
-        "运维 › 设备管理 › 计算托盘"
+        "运维 › 设备管理 › 服务器"
       ]
     },
     {
@@ -2663,7 +2647,7 @@
         "探测结果"
       ],
       "pages": [
-        "运维 › 设备管理 › 计算托盘",
+        "运维 › 设备管理 › 服务器",
         "运维 › 设备管理 › 交换机"
       ]
     },
@@ -2689,6 +2673,7 @@
         "组件管理器"
       ],
       "pages": [
+        "运维 › 设备管理 › 服务器",
         "运维 › 设备管理 › 交换机",
         "运维 › 设备管理 › 供电框"
       ]
@@ -2809,7 +2794,7 @@
       "pages": [
         "运维 › 机柜管理",
         "运维 › 机柜管理 › 机柜详情",
-        "运维 › 设备管理 › 计算托盘",
+        "运维 › 设备管理 › 服务器",
         "运维 › 设备管理 › 交换机",
         "运维 › 设备管理 › 供电框",
         "运维 › 运维任务"
@@ -2855,12 +2840,33 @@
         "rms"
       ],
       "executedBy": "机柜状态机 → RMS",
-      "note": "机柜要在 Ready 或 Error。NVOS 更新和 NMX-C 集群配置只有这条路径提供，REST 和 Flow 都没有",
+      "note": "发起：机柜要在 Ready 或 Error。终止：只在机柜处于 Maintenance 时接受，终止后机柜进入 Error，已发给设备的请求和当前阶段的状态会被清理；重复终止不报错。NVOS 更新和 NMX-C 集群配置只有这条路径提供，REST 和 Flow 都没有",
       "source": "forge.proto:977",
       "used": true,
       "requiresNames": [
         "机柜对象",
         "RMS"
+      ],
+      "pages": [
+        "运维 › 机柜管理 › 机柜详情"
+      ]
+    },
+    {
+      "id": "rack.delete",
+      "area": "机柜级任务",
+      "surface": "Core gRPC",
+      "name": "DeleteRack / AdminForceDeleteRack",
+      "evidence": "定义",
+      "write": true,
+      "cli": "nico-admin-cli rack delete <RACK_ID>；nico-admin-cli rack force-delete",
+      "request": "机柜 ID",
+      "requires": [
+        "rack"
+      ],
+      "note": "DeleteRack 只把机柜标记为删除；AdminForceDeleteRack 立即删除并保留状态历史。两个接口都不检查机柜里还有没有设备，也不处理成员设备。配套还要 DeleteExpectedRack 删掉机柜声明",
+      "source": "crates/api-core/src/handlers/rack.rs:201",
+      "requiresNames": [
+        "机柜对象"
       ],
       "pages": [
         "运维 › 机柜管理 › 机柜详情"
@@ -2893,7 +2899,7 @@
         "系统定义"
       ],
       "pages": [
-        "交付 › 机柜交付",
+        "交付 › 安装任务",
         "配置 › 安装方案"
       ]
     },
@@ -2942,10 +2948,10 @@
       "requiresNames": [
         "计算托盘对象",
         "系统定义",
-        "租户与 VPC"
+        "默认租户与 VPC"
       ],
       "pages": [
-        "交付 › 机柜交付"
+        "交付 › 安装任务"
       ]
     },
     {
@@ -2975,8 +2981,7 @@
         "实例"
       ],
       "pages": [
-        "运维 › 设备管理 › 计算托盘",
-        "交付 › 机柜交付",
+        "运维 › 设备管理 › 服务器",
         "交付 › 安装任务",
         "交付 › 实例管理"
       ]
@@ -3007,29 +3012,6 @@
       ]
     },
     {
-      "id": "instance-type.write",
-      "area": "交付与实例",
-      "surface": "Core gRPC",
-      "name": "CreateInstanceType / AssociateMachinesWithInstanceType / CreateComputeAllocation",
-      "evidence": "定义",
-      "write": true,
-      "cli": "nico-admin-cli instance-type create；nico-admin-cli instance-type associate；nico-admin-cli compute-allocation create",
-      "request": "实例类型：名称和能力；关联：instance_type_id、machine_ids；配额：tenant_organization_id、instance_type_id、count",
-      "requires": [
-        "machine",
-        "vpc"
-      ],
-      "note": "REST 一侧的等价流程是：邀请租户、建实例类型并关联设备、建配额，之后由租户自己建实例",
-      "source": "forge.proto:761",
-      "requiresNames": [
-        "计算托盘对象",
-        "租户与 VPC"
-      ],
-      "pages": [
-        "交付 › 机柜交付"
-      ]
-    },
-    {
       "id": "health.reports",
       "area": "健康",
       "surface": "Core gRPC",
@@ -3054,7 +3036,7 @@
         "运维 › NVLink 域管理",
         "运维 › 机柜管理 › 机柜详情",
         "运维 › 健康告警",
-        "交付 › 机柜交付"
+        "交付 › 安装任务"
       ]
     },
     {
@@ -3125,7 +3107,7 @@
         },
         {
           "id": "expected-rack.write",
-          "use": "确认纳管：写入机柜声明"
+          "use": "确认纳管：写入机柜声明；删除机柜时删掉机柜声明"
         },
         {
           "id": "expected-machine.write",
@@ -3141,7 +3123,11 @@
         },
         {
           "id": "rack.maintenance",
-          "use": "重新执行机柜维护"
+          "use": "重新执行机柜维护；终止进行中的机柜维护"
+        },
+        {
+          "id": "rack.delete",
+          "use": "删除机柜"
         },
         {
           "id": "rack.bringup",
@@ -3227,7 +3213,7 @@
         },
         {
           "id": "nvlink.logical-partitions",
-          "use": "逻辑分区、租户和状态"
+          "use": "逻辑分区和状态"
         }
       ]
     },
@@ -3259,11 +3245,11 @@
     },
     {
       "id": "devices/compute",
-      "name": "运维 › 设备管理 › 计算托盘",
+      "name": "运维 › 设备管理 › 服务器",
       "calls": [
         {
           "id": "machine.list",
-          "use": "列表、状态、健康和地址"
+          "use": "列表、状态、健康和地址；机柜编号为空的是不属于机柜的服务器"
         },
         {
           "id": "device.power-state",
@@ -3316,6 +3302,10 @@
         {
           "id": "device.bmc-reset",
           "use": "重启 BMC"
+        },
+        {
+          "id": "device.decommission",
+          "use": "退役"
         },
         {
           "id": "device.power-direct",
@@ -3483,54 +3473,44 @@
       "calls": []
     },
     {
-      "id": "delivery",
-      "name": "交付 › 机柜交付",
-      "calls": [
-        {
-          "id": "rack.list",
-          "use": "机柜是否就绪"
-        },
-        {
-          "id": "machine.list",
-          "use": "按机柜筛出计算托盘"
-        },
-        {
-          "id": "host.states",
-          "use": "可交付的托盘数和不可交付的原因"
-        },
-        {
-          "id": "health.reports",
-          "use": "机柜和域的告警"
-        },
-        {
-          "id": "instance.list",
-          "use": "已交付的实例数"
-        },
-        {
-          "id": "os.list",
-          "use": "可选的安装方案"
-        },
-        {
-          "id": "instance.allocate",
-          "use": "装机并验收"
-        },
-        {
-          "id": "instance-type.write",
-          "use": "交给上层平台"
-        }
-      ]
-    },
-    {
       "id": "delivery/installs",
       "name": "交付 › 安装任务",
       "calls": [
         {
-          "id": "instance.list",
-          "use": "实例状态"
+          "id": "machine.list",
+          "use": "可选的服务器：机柜里的计算托盘和不属于机柜的服务器"
         },
         {
-          "id": "machine.list",
-          "use": "主机状态"
+          "id": "host.states",
+          "use": "每台能不能装系统，被什么挡住"
+        },
+        {
+          "id": "rack.list",
+          "use": "机柜里的设备：所在机柜是否就绪"
+        },
+        {
+          "id": "health.reports",
+          "use": "整柜泄漏和阻止分配的告警"
+        },
+        {
+          "id": "os.list",
+          "use": "已发布的安装方案，按架构列出"
+        },
+        {
+          "id": "instance.list",
+          "use": "已有的实例名称（主机名查重）和实例状态"
+        },
+        {
+          "id": "ingestion.state",
+          "use": "不属于机柜的服务器是否还在等待放行"
+        },
+        {
+          "id": "ingestion.allow",
+          "use": "不属于机柜的服务器第一次装系统时放行，由 NICo 上电接管"
+        },
+        {
+          "id": "instance.allocate",
+          "use": "逐台建实例：机器 ID、主机名和系统；一次提交在一个事务里"
         }
       ]
     },
@@ -3540,7 +3520,7 @@
       "calls": [
         {
           "id": "instance.list",
-          "use": "实例、租户和系统"
+          "use": "实例名称、系统和状态"
         },
         {
           "id": "machine.list",
@@ -3679,7 +3659,7 @@
         },
         {
           "id": "expected-machine.write",
-          "use": "机柜已确认纳管时，新匹配上的计算托盘直接写入：MAC、凭据、序列号、机柜、槽位和 DPU 策略"
+          "use": "机柜已确认纳管时，新匹配上的计算托盘直接写入：MAC、凭据、序列号、机柜、槽位和 DPU 策略。不属于机柜的服务器逐台确认纳管时写入，不带机柜，带暂停标记"
         },
         {
           "id": "expected-switch.write",
@@ -3992,12 +3972,12 @@
       "source": "crates/rack-controller/src/ready.rs:50"
     },
     {
-      "need": "机柜退役",
+      "need": "删除机柜",
       "pages": [
         "机柜详情"
       ],
-      "finding": "DeleteRack 只把机柜标记为删除，状态机进入 Deleting 后一直等待；真正删除只有强制删除，而且不处理成员设备。Flow 有退役任务，但只在 Flow 自己的接口上，REST 没有端点",
-      "options": "退役拆成明确的几步由平台编排：确认无实例、成员设备逐个退役并强制删除、删除设备声明和机柜声明、最后强制删除机柜；或者本阶段不提供机柜退役",
+      "finding": "DeleteRack 只把机柜标记为删除，不检查机柜里还有没有设备，状态机进入 Deleting 后一直等待；真正删除只有强制删除，同样不处理成员设备。命令行的说明写着“机柜不应再有关联的计算托盘、交换机和供电框”，但接口不做这项检查。Flow 有退役任务，但只在 Flow 自己的接口上，REST 没有端点",
+      "options": "机柜页只提供“删除机柜”，不提供“机柜退役”。删除的前提由平台检查并逐项显示：没有实例、成员设备都已逐台退役、没有进行中的任务。满足后平台删除机柜声明，再强制删除机柜对象。成员设备的退役是逐台设备的操作，在设备管理里做，机柜操作不代做",
       "source": "crates/api-core/src/handlers/rack.rs:201"
     },
     {
@@ -4010,31 +3990,53 @@
       "source": "docs/operations/flow/operation-runs.md:123"
     },
     {
-      "need": "交付条件里的“机柜就绪”和“NVLink 域健康”",
+      "need": "装系统前的“机柜就绪”和“无整柜泄漏”",
       "pages": [
-        "机柜交付"
+        "安装任务"
       ],
-      "finding": "NICo 分配实例时只看主机自己：状态、维护标记和阻止分配的告警。机柜的健康报告会并入主机，所以泄漏会挡住整柜；但机柜状态不是 Ready、域的健康报告有告警，都不会让分配失败",
-      "options": "这两个条件由平台在交付前检查并拦截，页面上标明是平台的规则。“可交付的托盘数”用主机状态接口里的 allocatable 得出，与 NICo 的判断保持一致",
+      "finding": "NICo 建实例时只看主机自己：状态、维护标记和阻止分配的告警。机柜的健康报告会并入主机，所以泄漏会挡住整柜；但机柜状态不是 Ready、域的健康报告有告警，都不会让建实例失败",
+      "options": "机柜里的设备，平台在选择设备时另外检查机柜是否就绪、有没有整柜泄漏、有没有进行中的任务，并在每一行写明原因；页面上标明这是平台的规则。“可以装系统”的判断用主机状态接口里的 allocatable，与 NICo 保持一致",
       "source": "crates/api-model/src/machine/mod.rs:543"
     },
     {
-      "need": "交付用的租户和 VPC 由谁创建",
+      "need": "实例用的租户和 VPC",
       "pages": [
-        "机柜交付"
+        "安装任务"
       ],
-      "finding": "Core 的创建租户和创建 VPC 接口只对站点代理放行，管理端证书调不了。现有产品只读取已有的 VPC",
-      "options": "租户和 VPC 作为部署前提，由 REST 一侧或部署步骤建好；平台只读取并在交付时选择。计算托盘的 DPU 模式决定 VPC 类型，交付向导里要按它筛选",
+      "finding": "NICo 里每个实例都要属于一个租户、接入一个网络。Core 的创建租户和创建 VPC 接口只对站点代理放行，管理端证书调不了。现有产品用一个固定的默认租户（site_network_context.py:40），只读取已有的 VPC",
+      "options": "平台不做多租户：所有实例建在站点的默认租户下，页面上不显示也不让选。默认租户和 VPC 是部署前提，由部署步骤建好。实例类型和配额是 NICo 向多个租户分发机器时用的，平台不使用",
       "source": "crates/api-core/src/auth/internal_rbac_rules.rs:75"
     },
     {
-      "need": "按机柜整柜交付",
+      "need": "一次给多台机器建实例",
       "pages": [
-        "机柜交付"
+        "安装任务"
       ],
-      "finding": "REST 的批量建实例按实例类型和数量挑设备，优先同一个 NVLink 域，不能指定机柜或设备列表。Core 的批量接口可以传入明确的设备列表，并且是一个事务",
-      "options": "按机柜交付走 Core：按机柜 ID 筛出主机，读可分配状态，再一次提交。“交给上层平台”则是建实例类型、关联设备和配额，不建实例",
+      "finding": "实例是逐台机器的：建实例的请求里每个实例带一个机器 ID。REST 的批量建实例按实例类型和数量挑设备，不能指定设备列表。Core 的批量接口可以传入明确的设备列表，并且是一个事务。机柜上没有建实例或装系统的接口",
+      "options": "走 Core：向导里选了几台就提交几个实例，每个实例明确给出机器 ID、主机名和系统，一次提交在一个事务里。机柜只是选择设备时的筛选条件，不是装系统的对象",
       "source": "crates/api-core/src/instance/mod.rs:2009"
+    },
+    {
+      "need": "主机名在哪里确定",
+      "pages": [
+        "安装任务",
+        "实例管理"
+      ],
+      "finding": "实例配置的租户部分有一个主机名字段；实例名称合法时，NICo 把它作为 cloud-init 的 local-hostname 传给系统。机器在 NICo 里自己的 DNS 名由站点的命名策略决定（默认按地址生成），那不是系统里的主机名。现有产品在建实例时逐台传主机名（executor.py:2022）",
+      "options": "主机名在新建安装任务时逐台确定，同时用作实例名称：默认按“前缀-两位序号”生成，每台可改；平台在提交前检查写法和重名。站点的命名策略不动",
+      "source": "crates/api-core/src/handlers/client_resolution.rs:512"
+    },
+    {
+      "need": "不属于机柜的服务器",
+      "pages": [
+        "设备管理",
+        "设备清单",
+        "设备发现",
+        "安装任务"
+      ],
+      "finding": "设备声明里的机柜编号是可选的，机器、交换机、供电框通过各自的机柜编号指向机柜，机柜对象里不存成员。Flow 的上线任务按机柜提交，没有机柜的服务器走不了这条路。现有产品写声明时带暂停标记（discovery.py:269），首次安装时才放行（onboarding.py:640）",
+      "options": "设备是基础对象，机柜是叠在上面的一层。不属于机柜的服务器进同一份清单，机柜和槽位留空；在设备发现里逐台确认纳管；没有上线这一步，安装任务的第一步放行，由 NICo 上电接管。机柜里的设备由上线任务放行。这是从两边的定义推出来的设计，没有在同一个环境里把两种设备一起跑过",
+      "source": "crates/rpc/proto/forge.proto:8191"
     },
     {
       "need": "供电框的槽位和序列号",

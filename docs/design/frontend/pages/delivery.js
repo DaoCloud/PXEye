@@ -1,120 +1,193 @@
 "use strict";
-/* 交付：把就绪的机器变成可用资源。合并现有的“安装任务”和“实例管理”，入口改为按机柜交付。 */
+/* 交付：给就绪的机器装系统，并管理装好的实例。
+   装系统是逐台机器的事：NICo 里一台机器建一个实例，实例名称就是装好之后系统里的主机名。机柜上没有“装系统”这个操作。
+   所以入口是“安装任务”：选设备，逐台确定主机名、安装方案和系统盘，核对后提交，每台一个实例。
+   机柜详情、服务器列表和设备发现里的“新建安装任务”打开的是同一个向导，只是预先选好了设备。
+   平台不做多租户：所有实例建在站点的默认租户下，页面上不出现租户。 */
 
-function deliveryGate(r) {
-  const free = freeTrays(r).length, p = DB.power(r);
-  if (r.state !== "Ready") return "机柜未就绪";
-  if (DB.leak(r.id)) return "机柜有整柜泄漏告警";
-  if (p.on < p.known) return "机柜成员没有全部开机";
-  if (DB.busy(r)) return "机柜有进行中的任务";
-  if (S.deliveries.some((d) => d.rack === r.id && d.done < d.total)) return "该机柜正在交付";
-  if (!free) return "没有可交付的计算托盘";
-  return "";
+/* 一台服务器现在能不能装系统：返回不能装的原因，空字符串表示可以。
+   NICo 建实例时只看这台机器自己（状态、维护标记、阻止分配的告警）；机柜未就绪、整柜泄漏、机柜有任务是平台加的检查。 */
+function installGate(t) {
+  if (t.type !== "compute") return "只有服务器能装系统";
+  if (t.instance) return "已有实例";
+  if (DB.installing(t)) return "有进行中的安装任务";
+  if (t.quarantine) return "已隔离";
+  if (t.maintenance) return "带维护标记";
+  if (DB.blocked(t)) return "有阻止分配的告警";
+  if (t.rack) {
+    const r = DB.rack(t.rack);
+    if (r.state !== "Ready") return r.state ? "所在机柜还没有就绪" : "所在机柜还没有上线";
+    if (DB.leak(r.id)) return "所在机柜有整柜泄漏告警";
+    if (DB.busy(r)) return "所在机柜有进行中的任务";
+    return t.state === "Ready" ? "" : "设备未就绪";
+  }
+  if (!t.declared) return "还没有纳管";
+  /* 不属于机柜的服务器：纳管后还没有被接管的也可以装，安装任务的第一步就是让 NICo 上电接管它。 */
+  return !t.state || t.state === "Ready" ? "" : "设备未就绪";
 }
-/* 可交付：就绪、没有隔离、没有“阻止分配”的告警（维护标记也属于这一类）。按台判断，不因为一台设备挡住整柜。 */
-function freeTrays(r) { return r.trays.filter((t) => t.type === "compute" && t.state === "Ready" && !t.quarantine && !DB.blocked(t) && !t.maintenance); }
+const servers = () => DB.trays().filter((t) => t.type === "compute");
+const osReady = (arch) => S.osTemplates.filter((o) => o.state === "已发布" && o.arch === arch);
+/* 主机名同时是 NICo 里的实例名称，所以要符合主机名的写法，并且不能和已有的实例重名。 */
+const HOST_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
+const hostTaken = (h) => S.instances.some((i) => i.host === h) || S.installs.some((b) => b.items.some((i) => i.s !== "done" && i.host === h));
+const hostProblem = (h, all) => (!h ? "请填写主机名" : !HOST_RE.test(h) ? "只能用小写字母、数字和连字符，不能以连字符开头或结尾" : all.filter((x) => x === h).length > 1 ? "和本次的另一台重名" : hostTaken(h) ? "已有同名的实例" : "");
+const ITEM_STAGE = { wait: ["等待执行", "待执行", "amber"], prep: ["准备设备", "执行中", "amber"], run: ["安装系统", "执行中", "amber"], done: ["完成", "已完成", "green"] };
+const scopeText = (list) => { const n = {}; list.forEach((t) => (n[t.rack || "未分配机柜"] = (n[t.rack || "未分配机柜"] || 0) + 1)); return Object.entries(n).map(([k, v]) => `${k} ${v} 台`).join("、"); };
 
-registerPage("delivery", {
-  module: "delivery", title: "机柜交付",
-  render() {
-    const cond = (ok, text) => badge(text, ok ? "green" : "gray");
-    return heading("机柜交付", "把就绪的计算托盘变成可用资源：按安装方案装机并验收，或交给租户和上层平台。默认按机柜批量。", button("刷新数据", "refresh")) +
-      `<div ${fp(1)}>${table(["机柜", "NICo 状态", "交付条件", "可交付 / 计算托盘", "已交付实例", "操作"], S.racks.map((r) => { const g = deliveryGate(r), n = freeTrays(r).length; return `<tr><td><strong>${r.id}</strong><span class="cell-sub">NVLink 域 ${r.domain}</span></td><td>${stateBadge(r.state)}</td>
-        <td ${fp(2)}>${cond(r.state === "Ready", "机柜就绪")} ${cond((DB.domain(r.domain) || {}).nmxc === "ok", "NVLink 域已形成")} ${DB.leak(r.id) ? badge("整柜泄漏", "red") : cond(!!r.state, "无整柜泄漏")}</td>
-        <td>${r.state === "Ready" ? n : 0}<small class="muted"> / 18</small>${r.trays.some((t) => t.maintenance) ? `<span class="cell-sub">${r.trays.filter((t) => t.maintenance).length} 台带维护标记（阻止分配），不参与交付</span>` : ""}</td><td>${DB.rackInstances(r.id).length}</td>
-        <td><span ${fp(3)}>${act("交付", "deliver-open", { primary: !g, gate: g, extra: `data-id="${r.id}"` })}</span>${g ? `<span class="cell-sub">${g}</span>` : ""}</td></tr>`; }))}</div>` +
-      `<h2 class="section-title">交付批次</h2><div ${fp(4)}>${table(["批次", "机柜", "类型", "目标", "设备进度", "操作"], S.deliveries.map((d) => `<tr><td>${code(d.id)}<span class="cell-sub">${d.at}</span></td><td>${d.rack}</td><td>${d.how}</td><td>${esc(d.target)}</td><td>完成 ${d.done} / ${d.total}<div class="progress-meter"><i style="width:${(d.done / d.total) * 100}%"></i></div></td><td>${button("逐台查看", "noop", false, 'data-go="delivery/installs"')}</td></tr>`), "还没有交付批次。")}</div>` +
-      note("交付条件：机柜就绪、NVLink 域已形成、没有整柜泄漏。带“阻止分配”告警的计算托盘（包括带维护标记的）按台排除，不会挡住整柜。平台只显示原因，不提供绕过。");
-  },
-  spec: {
-    purpose: "交付是平台价值兑现的一步。入口是机柜而不是单台设备：选一个就绪的机柜，选一种交付方式。",
-    entry: "交付 → 机柜交付", design: "5 整体操作运维流程（交付）；6.4 交付", existing: "安装任务的“新建安装任务”向导改为按机柜交付；“安装批次”表沿用",
-    points: [
-      { n: 1, name: "可交付的机柜", kind: "新增", desc: "每个机柜的状态、交付条件、可交付的计算托盘数和已交付实例数。" },
-      { n: 2, name: "交付条件", kind: "新增", desc: "三个条件逐项显示：机柜就绪、NVLink 域已形成、无整柜泄漏。不满足的显示为灰色或红色。" },
-      { n: 3, name: "交付", kind: "调整", desc: "打开两步向导。不可用时按钮禁用，下方写明原因。" },
-      { n: 4, name: "交付批次", kind: "沿用", desc: "沿用安装任务页的“安装批次”表：批次、类型、设备进度、逐台查看。" },
-    ],
-    fields: [["可交付", "NICo Core", "状态为 Ready、没有隔离、没有“阻止分配”的告警（维护标记属于这一类）、没有实例的计算托盘"], ["类型", "交付方式", "装机并验收 / 交给上层平台"]],
-    rules: ["机柜未就绪、成员没有全部开机、有整柜泄漏、有进行中的任务时不能交付。", "带“阻止分配”告警、带维护标记或已隔离的托盘按台排除，不参与交付。"],
-    dialogs: [{ name: "交付向导", desc: "步骤 1 选择方式，步骤 2 核对并确认。沿用安装向导的“步骤 N / 2”写法，去掉逐机筛选。",
-      fields: [["交付方式", "是", "装机并验收 / 交给上层平台"], ["安装方案 或 租户", "是", "只能选择已发布的方案或已有租户"], ["原因", "是", ""], ["确认所选机柜、安装方案及系统盘", "是", "勾选；沿用安装向导的确认项"], ["允许安装及重启验证", "装机时", "勾选"]] }],
-  },
-});
-registerAction("deliver-open", ({ id }) => {
-  const r = DB.rack(id), n = freeTrays(r).length;
-  modal(`交付 ${id}`, "步骤 1 / 2 · 选择方式",
-    `<p class="live-small">对象：${id} 的 ${n} 个就绪计算托盘。</p><div class="choice-cards"><label><input type="radio" name="how" value="os" checked> <b>装机并验收</b><small>按安装方案安装，完成后自动验收</small></label><label><input type="radio" name="how" value="tenant"> <b>交给上层平台</b><small>把就绪的机器分配给租户或集群平台</small></label></div>
-     <div class="live-form">${field("安装方案", `<select class="input" id="dl-os">${S.osTemplates.filter((o) => o.state === "已发布").map((o) => `<option>${o.id}</option>`).join("")}</select>`, "装机并验收时使用；只列出已发布的方案")}${field("租户", `<select class="input" id="dl-tenant">${S.tenants.map((t) => `<option>${t}</option>`).join("")}</select>`, "交给上层平台时使用")}</div>`,
-    button("取消", "close") + button("下一步", "deliver-review", true, `data-id="${id}"`), { wide: false });
-});
-registerAction("deliver-review", ({ id }) => {
-  const r = DB.rack(id), how = document.querySelector("[name=how]:checked").value, target = how === "os" ? $("#dl-os").value : $("#dl-tenant").value, n = freeTrays(r).length;
-  modal(`交付 ${id}`, "步骤 2 / 2 · 核对并确认",
-    defs([["对象", `<b>${id}</b> · ${n} 个计算托盘`], ["方式", how === "os" ? "装机并验收" : "交给上层平台"], [how === "os" ? "安装方案" : "租户", esc(target)], ["受影响的实例", "0 个"], ["并发", "按站点默认安装并发 5 台"], ["交付条件", badge("机柜就绪", "green") + " " + badge("NVLink 域健康", "green") + " " + badge("无阻止分配的告警", "green")]]) +
-    `<div class="live-form" style="margin-top:16px">${field("原因", `<input class="input" id="dl-why" value="交付训练集群">`)}</div>
-     <label class="live-check"><input type="checkbox" id="dl-c1"> 确认所选机柜、${how === "os" ? "安装方案及系统盘" : "租户"}。</label>${how === "os" ? `<label class="live-check"><input type="checkbox" id="dl-c2"> 允许安装及重启验证。</label>` : ""}`,
-    button("重新选择", "deliver-open", false, `data-id="${id}"`) + button(how === "os" ? "确认并安装" : "确认并交付", "deliver-run", true, `data-id="${id}" data-how="${how}" data-target="${esc(target)}"`), { wide: false });
-});
-registerAction("deliver-run", ({ id, how, target }) => {
-  const why = $("#dl-why").value.trim(); if (!why) return toast("请填写原因");
-  if (!$("#dl-c1").checked || ($("#dl-c2") && !$("#dl-c2").checked)) return toast("请勾选确认项");
-  const r = DB.rack(id), trays = freeTrays(r), d = { id: "batch-" + String(S.deliveries.length + 7).padStart(3, "0"), rack: id, how: how === "os" ? "装机并验收" : "交给上层平台", target, at: nowText(), done: 0, total: trays.length, trays: trays.map((t) => t.id) };
-  S.deliveries.unshift(d); const rec = addAudit(id, "交付：" + d.how, why, d.id, "已提交"); closeModal(); S.guide = Math.max(S.guide, 7);
-  const timer = setInterval(() => {
-    trays.slice(d.done, d.done + 3).forEach((t) => { t.state = "Assigned/Ready"; t.instance = `inst-${id.slice(-3).toLowerCase()}-${pad2(t.slot)}`; S.instances.push({ id: t.instance, tray: t.id, rack: id, host: `node-${id.slice(-3).toLowerCase()}-${pad2(t.slot)}`, os: how === "os" ? target.split(" · ")[0] : "由上层平台安装", tenant: how === "os" ? "—" : target, state: "Ready", ip: t.hostIp, created: nowText() }); });
-    d.done = Math.min(d.total, d.done + 3);
-    if (d.done >= d.total) { clearInterval(timer); rec.res = `验收通过 ${d.total}/${d.total}`; toast(id + "：交付完成"); }
-    render();
-  }, 900);
-  go("delivery");
-});
-
+/* ---------- 安装任务 ---------- */
 registerPage("delivery/installs", {
   module: "installs", title: "安装任务",
   render() {
-    const rows = S.deliveries.filter((d) => d.how === "装机并验收").flatMap((d) => d.trays.map((tid, i) => { const t = DB.tray(tid), done = i < d.done, run = !done && i < d.done + 3;
-      return `<tr><td><a class="link-button" data-live="install-detail" data-id="${tid}">${code(`${d.id}-${pad2(i + 1)}`)}</a><span class="cell-sub">${d.at}</span></td><td>${code(t.serial)}<span class="cell-sub live-code">${t.hostIp}</span></td><td>${code(`node-${d.rack.slice(-3).toLowerCase()}-${pad2(t.slot)}`)}</td><td>${done ? "完成" : run ? "安装系统" : "等待执行"}<span class="cell-sub">${done ? badge("已完成", "green") : run ? badge("执行中", "amber") : badge("待执行", "amber")}</span></td><td><a class="link-button">https://${t.bmcIp} ↗</a></td><td>${button("实时日志 / 记录", "install-detail", false, `data-id="${tid}"`)}</td></tr>`; }));
-    return heading("安装任务", "查看装机进度、日志和验收结果。任务由“机柜交付”创建。", button("刷新数据", "refresh") + button("前往机柜交付", "noop", true, 'data-go="delivery"')) +
-      `<div ${fp(1)}>${table(["任务 / 创建时间", "设备 / 管理地址", "目标主机名", "阶段 / 状态", "BMC 控制台", "操作"], rows, "暂无记录。在“机柜交付”里选择“装机并验收”后，任务出现在这里。")}</div>` +
-      `<div ${fp(2)}>${note("每个任务保留安装进度、BMC 串口日志和安装验收（安装器成功、主机配置、系统盘与 EFI 分区验证、网络配置、SSH 连通、GPU 环境检查、重启验收）。详情沿用现有的“物理机安装记录”。")}</div>`;
+    const f = { batch: view("insBatch", ""), st: view("insSt", "") }, free = servers().filter((t) => !installGate(t)).length;
+    const items = S.installs.flatMap((b) => b.items.map((i, n) => ({ b, i, n }))).filter(({ b, i }) => (!f.batch || b.id === f.batch) && (!f.st || (f.st === "open" ? i.s !== "done" : i.s === "done")));
+    const meter = (b) => { const done = b.items.filter((i) => i.s === "done").length; return `完成 ${done} / ${b.items.length}<div class="progress-meter"><i style="width:${(done / b.items.length) * 100}%"></i></div>`; };
+    return heading("安装任务", "给就绪的服务器装操作系统：选设备，逐台确定主机名和安装方案，装完自动验收。这里也查看每台的进度、日志和验收结果。", button("刷新数据", "refresh") + `<span ${fp(1)}>${act("新建安装任务", "install-new", { primary: true, gate: free ? "" : "现在没有可以装系统的服务器" })}</span>`) +
+      `<div ${fp(2)}>${summary([["可以装系统的服务器", free], ["进行中的批次", S.installs.filter((b) => b.items.some((i) => i.s !== "done")).length], ["正在安装", S.installs.flatMap((b) => b.items).filter((i) => i.s === "run" || i.s === "prep").length], ["已装好的实例", S.instances.length]])}</div>` +
+      `<h2 class="section-title">安装批次</h2><div ${fp(3)}>${table(["批次 / 创建时间", "设备", "安装方案", "设备进度", "原因 / 操作者", "操作"], S.installs.map((b) => `<tr><td>${code(b.id)}<span class="cell-sub">${b.at}</span></td><td>${b.items.length} 台<span class="cell-sub">${scopeText(b.items.map((i) => DB.tray(i.tray)))}</span></td><td>${[...new Set(b.items.map((i) => i.os))].map(esc).join("<br>")}</td><td>${meter(b)}</td><td>${esc(b.why)}<span class="cell-sub">${b.by}</span></td><td>${button("逐台查看", "install-batch", false, `data-id="${b.id}"`)}</td></tr>`), "还没有安装批次。点击“新建安装任务”开始。")}</div>` +
+      `<h2 class="section-title">逐台任务</h2><div class="filter-bar" ${fp(4)}>${selectField("insBatch", "批次", [["", "全部批次"], ...S.installs.map((b) => [b.id, b.id])], f.batch)}${selectField("insSt", "状态", [["", "全部"], ["open", "未完成"], ["done", "已完成"]], f.st)}<span class="live-small">${items.length} 个任务</span></div>` +
+      `<div ${fp(5)}>${table(["任务 / 创建时间", "设备 / 位置", "目标主机名", "安装方案 / 系统盘", "阶段 / 状态", "操作"], items.slice(0, 40).map(({ b, i, n }) => { const t = DB.tray(i.tray), st = ITEM_STAGE[i.s];
+        return `<tr><td><a class="link-button" data-live="install-detail" data-batch="${b.id}" data-id="${i.tray}">${code(`${b.id}-${pad2(n + 1)}`)}</a><span class="cell-sub">${b.at}</span></td><td>${code(t.serial)}<span class="cell-sub">${placeText(t)}</span></td><td>${code(i.host)}</td><td>${esc(i.os)}<span class="cell-sub">${i.disk ? "指定 " + esc(i.disk) : "按方案的规则选盘"}</span></td><td>${st[0]}<span class="cell-sub">${badge(st[1], st[2])}</span></td><td>${button("实时日志 / 记录", "install-detail", false, `data-batch="${b.id}" data-id="${i.tray}"`)}</td></tr>`; }), "没有符合筛选条件的任务。")}${items.length > 40 ? `<p class="live-small">显示前 40 个，共 ${items.length} 个。</p>` : ""}</div>` +
+      `<div ${fp(6)}>${note("每个任务保留安装进度、BMC 串口日志和安装验收（安装器成功、主机配置、系统盘与 EFI 分区验证、网络配置、SSH 连通、GPU 环境检查、重启验收）。失败的设备暂停等待处理，不影响同批其他设备。")}</div>`;
   },
   spec: {
-    purpose: "逐台查看装机的阶段、日志和验收证据。这一页是现有产品的主线页面，结构不变，只是入口改为由交付创建。",
-    entry: "交付 → 安装任务；交付批次的“逐台查看”", design: "6.4 交付", existing: "安装任务页。表头、阶段和状态用词、任务详情全部沿用；去掉“新建安装任务”按钮",
+    purpose: "装系统的入口和进度页。装系统是逐台机器的事：一台机器建一个实例，实例名称就是系统里的主机名。所以这里按台新建和跟踪，机柜只是选择设备时的一个筛选条件。",
+    entry: "交付 → 安装任务；机柜详情“装系统”一步里的“新建安装任务”；服务器列表和设备发现里的“新建安装任务”", design: "5 整体操作运维流程（交付）；6.4 交付", existing: "安装任务页。表头、阶段和状态用词、任务详情和“新建安装任务”按钮都沿用；向导改为三步",
     points: [
-      { n: 1, name: "任务表", kind: "沿用", desc: "任务 / 创建时间、设备 / 管理地址、目标主机名、阶段 / 状态、BMC 控制台、操作，与现有页面一致。" },
-      { n: 2, name: "任务详情", kind: "沿用", desc: "点击任务编号或“实时日志 / 记录”打开现有的“物理机安装记录”：状态、安装进度、实时日志、执行与恢复记录、安装验收。" },
+      { n: 1, name: "新建安装任务", kind: "调整", desc: "打开三步向导：选择设备、逐台配置、核对并确认。从机柜详情、服务器列表或设备发现进入时，向导里已经选好了设备。" },
+      { n: 2, name: "统计条", kind: "新增", desc: "现在可以装系统的服务器数、进行中的批次、正在安装的台数、已装好的实例数。" },
+      { n: 3, name: "安装批次", kind: "沿用", desc: "一次提交是一个批次：设备数量和分布、用到的安装方案、设备进度、原因和操作者。" },
+      { n: 4, name: "筛选", kind: "调整", desc: "按批次和是否完成筛选逐台任务。" },
+      { n: 5, name: "逐台任务", kind: "沿用", desc: "任务 / 创建时间、设备、目标主机名、阶段 / 状态、操作沿用；增加“位置”和“安装方案 / 系统盘”，因为这两项现在逐台确定。" },
+      { n: 6, name: "任务详情", kind: "沿用", desc: "点击任务编号或“实时日志 / 记录”打开现有的“物理机安装记录”：状态、安装进度、实时日志、执行与恢复记录、安装验收。" },
     ],
-    rules: ["阶段用词：等待执行、准备设备、安装前检查、安装系统、启动系统盘、安装验收、GPU 环境检查、重启验收、完成。", "状态用词：待执行、执行中、已完成、需处理、已终止。", "失败的设备暂停等待处理，不影响同批其他设备。"],
+    fields: [["可以装系统", "NICo 的机器状态 + 平台检查", "机器就绪、没有实例、没有隔离和维护标记、没有阻止分配的告警；机柜里的还要求机柜就绪、没有整柜泄漏、没有进行中的任务"], ["目标主机名", "新建安装任务时逐台确定", "同时是 NICo 里的实例名称；装好后是系统里的主机名"], ["安装方案", "安装方案档案", "逐台选用，架构要和设备一致"], ["系统盘", "安装方案的选盘规则，或逐台指定", "默认按方案的规则选；个别设备可以指定一块盘"], ["地址", "NICo", "主机管理地址由 NICo 分配，不在这里填写"]],
+    rules: ["装系统按台进行：一台机器一个实例。可以跨机柜选择，也可以选不属于机柜的服务器。", "主机名逐台确定：默认按“前缀 + 两位序号”生成，每一台都可以改。只能用小写字母、数字和连字符，不能和已有的实例重名。", "安装方案按架构匹配：只列出已发布、架构与设备一致的方案。", "带维护标记、已隔离或有阻止分配告警的设备不能选；机柜未就绪、有整柜泄漏或有进行中任务时，柜里的设备不能选。原因写在每一行上，平台不提供绕过。", "不属于机柜的服务器纳管后还没有被接管的也可以选：安装任务的第一步“准备设备”让 NICo 给它上电并接管，之后才写系统盘。", "所有实例建在站点的默认租户下，页面上不出现租户；平台不向其他平台分发机器。", "同时装机的台数取站点的默认安装并发。", "阶段用词：等待执行、准备设备、安装前检查、安装系统、启动系统盘、安装验收、GPU 环境检查、重启验收、完成。", "状态用词：待执行、执行中、已完成、需处理、已终止。", "失败的设备暂停等待处理，不影响同批其他设备。"],
+    dialogs: [
+      { name: "新建安装任务 · 步骤 1 选择设备", desc: "列出服务器，每一行写明现在能不能装系统和原因。范围可以选“全部可以安装的服务器”、某个机柜或“未分配机柜”，只是筛选，可以跨范围累计选择。", fields: [["范围", "否", "全部可以安装的服务器、某个机柜、未分配机柜"], ["勾选设备", "是", "不能安装的行不能勾选"]] },
+      { name: "新建安装任务 · 步骤 2 逐台配置", desc: "一台一行。上方的规则用来批量生成，表里每一格都可以单独改。", fields: [["主机名前缀、起始序号", "否", "按“前缀-两位序号”批量生成主机名"], ["安装方案（按架构）", "否", "把同一架构的设备统一设成一个方案"], ["主机名", "是，逐台", "同时是实例名称；不合规或重名时在这一行下面提示"], ["安装方案", "是，逐台", "只列出已发布、架构一致的方案"], ["系统盘", "否，逐台", "默认“按安装方案的规则选择”；可以指定这台设备的一块盘"]] },
+      { name: "新建安装任务 · 步骤 3 核对并确认", desc: "显示设备数量和分布、各方案的台数、指定了系统盘的台数、要先接管的台数和并发，以及逐台的主机名。", fields: [["原因", "是", "写入批次和审计"], ["确认所选设备、主机名、安装方案及系统盘", "是", "勾选"], ["允许安装及重启验证", "是", "勾选"]] },
+    ],
   },
 });
-registerAction("install-detail", ({ id }) => { const t = DB.tray(id); modal("物理机安装记录", t.serial, defs([["设备 / 主机名", code(t.serial)], ["本次安装目标地址", code(t.hostIp)], ["BMC 控制台", `https://${t.bmcIp} ↗`], ["Instance", t.instance ? code(t.instance) : "分配中"], ["目标盘", "唯一匹配的 NVMe"]]) + `<h3 class="section-title">安装验收</h3>` + table(["检查项", "结果"], ["安装器成功", "主机配置", "系统盘与 EFI 分区验证", "网络配置", "SSH 连通", "GPU 环境检查", "重启验收"].map((c) => `<tr><td>${c}</td><td>${t.instance ? badge("通过", "green") : badge("待执行", "gray")}</td></tr>`)), button("下载验收报告", "noop") + button("关闭", "close", true)); });
+registerAction("install-batch", ({ id }) => { S.view.insBatch = id; S.view.insSt = ""; render(); });
+registerAction("install-detail", ({ id, batch }) => {
+  const t = DB.tray(id), b = S.installs.find((x) => x.id === batch), i = b.items.find((x) => x.tray === id), done = i.s === "done";
+  modal("物理机安装记录", t.serial, defs([["设备", code(t.serial) + ` · ${typeLabel(t)}`], ["位置", placeText(t)], ["目标主机名", code(i.host)], ["实例", done ? code("inst-" + i.host) : "安装完成后建立"], ["安装方案", esc(i.os)], ["目标盘", i.disk ? "指定 " + esc(i.disk) : "按安装方案的规则选择"], ["本次安装目标地址", t.hostIp ? code(t.hostIp) : "接管后由 NICo 分配"], ["BMC 控制台", `https://${t.bmcIp} ↗`], ["阶段 / 状态", `${ITEM_STAGE[i.s][0]} · ${ITEM_STAGE[i.s][1]}`]]) +
+    `<h3 class="section-title">安装验收</h3>` + table(["检查项", "结果"], ["安装器成功", "主机配置", "系统盘与 EFI 分区验证", "网络配置", "SSH 连通", "GPU 环境检查", "重启验收"].map((c) => `<tr><td>${c}</td><td>${done ? badge("通过", "green") : badge("待执行", "gray")}</td></tr>`)), button("下载验收报告", "noop") + button("关闭", "close", true));
+});
 
+/* ---------- 新建安装任务向导 ----------
+   向导的状态放在 S.view.wiz：范围、已选的设备、主机名规则、逐台的主机名 / 安装方案 / 系统盘。 */
+const wiz = () => S.view.wiz;
+const wizList = () => Object.keys(wiz().picked).map(DB.tray).filter((t) => t && !installGate(t)).sort((a, b) => (a.rack ? 0 : 1) - (b.rack ? 0 : 1) || a.rack.localeCompare(b.rack) || a.slot - b.slot || a.id.localeCompare(b.id));
+function wizKeepPicks() { const w = wiz(); document.querySelectorAll("[data-wiz-pick]").forEach((el) => { if (el.checked) w.picked[el.dataset.wizPick] = true; else delete w.picked[el.dataset.wizPick]; }); }
+function wizKeepRows() { const w = wiz(); document.querySelectorAll("[data-wiz-host]").forEach((el) => (w.rows[el.dataset.wizHost].host = el.value.trim())); document.querySelectorAll("[data-wiz-os]").forEach((el) => (w.rows[el.dataset.wizOs].os = el.value)); document.querySelectorAll("[data-wiz-disk]").forEach((el) => (w.rows[el.dataset.wizDisk].disk = el.value)); if ($("#wiz-prefix")) { w.prefix = $("#wiz-prefix").value.trim(); w.start = Math.max(0, +$("#wiz-start").value || 0); } }
+function wizApplyRule(force) { const w = wiz(); wizList().forEach((t, n) => { const row = w.rows[t.id]; if (force || !row.host) row.host = `${w.prefix}-${pad2(w.start + n)}`; }); }
+
+registerAction("install-new", ({ rack, ids }) => {
+  const asked = (ids || "").split(",").filter(Boolean).map(DB.tray).filter(Boolean), pre = asked.filter((t) => !installGate(t)), picked = {};
+  (pre.length ? pre : rack ? DB.rack(rack).trays.filter((t) => t.type === "compute" && !installGate(t)) : []).forEach((t) => (picked[t.id] = true));
+  const one = asked.length && asked.every((t) => t.rack === asked[0].rack) ? asked[0].rack || "none" : "";
+  S.view.wiz = { scope: rack || one, picked, prefix: "", start: 1, rows: {}, why: "" };
+  installStep1();
+  if (asked.length && !pre.length) toast("所选的设备现在都不能装系统，原因见每一行");
+  else if (asked.length > pre.length) toast(`所选的 ${asked.length} 台里有 ${asked.length - pre.length} 台现在不能装系统，已去掉`);
+});
+function installStep1() {
+  const w = wiz(), all = servers(), list = all.filter((t) => (w.scope === "" ? !installGate(t) : w.scope === "none" ? !t.rack : t.rack === w.scope));
+  const hidden = w.scope === "" ? all.filter(installGate).length : 0, count = () => Object.keys(w.picked).length;
+  const opts = [["", "全部可以安装的服务器"], ...S.racks.map((r) => [r.id, r.id]), ["none", "未分配机柜"]].map(([v, text]) => `<option value="${v}" ${w.scope === v ? "selected" : ""}>${text}</option>`).join("");
+  modal("新建安装任务", "步骤 1 / 3 · 选择设备",
+    `<div class="filter-bar"><label>范围<select class="input" id="wiz-scope">${opts}</select></label><span class="live-small">装系统按台进行，一台机器一个实例。范围只是筛选，可以切换范围累计选择。已选 <b id="wiz-count">${count()}</b> 台。</span></div>` +
+    table(["选择", "设备 / 序列号", "机柜 / 位置", "架构", "NICo 状态", "能否安装"], list.map((t) => { const g = installGate(t);
+      return `<tr><td><input type="checkbox" data-wiz-pick="${t.id}" ${w.picked[t.id] && !g ? "checked" : ""} ${g ? "disabled" : ""} aria-label="选择 ${t.serial}"></td><td>${code(t.serial)}<span class="cell-sub">${typeLabel(t)} · ${esc(t.model)}</span></td><td>${placeText(t)}</td><td>${code(t.arch)}</td><td>${t.state ? stateBadge(t.state) : t.declared ? badge("已纳管", "blue") : badge("未纳管", "gray")}</td><td>${g ? badge("不能安装：" + g, "gray") : badge("可以安装", "green") + (t.state ? "" : `<span class="cell-sub">安装时先由 NICo 上电接管</span>`)}</td></tr>`; }), "这个范围里没有服务器。") +
+    (hidden ? `<p class="live-small">另有 ${hidden} 台服务器现在不能装系统。选择具体的机柜或“未分配机柜”可以看到每一台的原因。</p>` : ""),
+    button("取消", "close") + button("全选可以安装的", "install-all") + button("下一步", "install-to-2", true));
+  $("#wiz-scope").onchange = (e) => { wizKeepPicks(); w.scope = e.target.value; installStep1(); };
+  $("#overlay-root .modal-body").addEventListener("change", (e) => { if (e.target.dataset.wizPick) { wizKeepPicks(); $("#wiz-count").textContent = count(); } });
+}
+registerAction("install-all", () => { document.querySelectorAll("[data-wiz-pick]:not([disabled])").forEach((el) => (el.checked = true)); wizKeepPicks(); $("#wiz-count").textContent = Object.keys(wiz().picked).length; });
+registerAction("install-to-2", () => {
+  const w = wiz(); if ($("[data-wiz-pick]") || $("#wiz-scope")) wizKeepPicks();
+  const list = wizList(); if (!list.length) return toast("先勾选要装系统的设备");
+  Object.keys(w.picked).forEach((id) => { if (!list.some((t) => t.id === id)) delete w.picked[id]; });
+  if (!w.prefix) { const racks = [...new Set(list.map((t) => t.rack))]; w.prefix = racks.length === 1 ? (racks[0] ? "node-" + racks[0].slice(-3).toLowerCase() : "node-srv") : "node"; }
+  list.forEach((t) => { w.rows[t.id] = w.rows[t.id] || { host: "", os: (osReady(t.arch)[0] || {}).id || "", disk: "" }; });
+  wizApplyRule(false); installStep2();
+});
+function installStep2() {
+  const w = wiz(), list = wizList(), hosts = list.map((t) => w.rows[t.id].host), archs = [...new Set(list.map((t) => t.arch))];
+  modal("新建安装任务", "步骤 2 / 3 · 逐台配置",
+    `<div class="filter-bar"><label>主机名前缀<input class="input live-code" id="wiz-prefix" value="${esc(w.prefix)}"></label><label>起始序号<input class="input" id="wiz-start" type="number" min="0" value="${w.start}" style="width:96px"></label>${button("按规则重新生成", "install-rule")}` +
+      archs.map((a) => `<label>安装方案（${a}）<select class="input" data-wiz-os-all="${a}">${osReady(a).map((o) => `<option>${esc(o.id)}</option>`).join("") || "<option value=\"\">没有已发布的方案</option>"}</select></label>`).join("") + `</div>` +
+    `<p class="live-small">主机名按“前缀-两位序号”生成，每一台都可以单独改。<b>主机名同时是 NICo 里的实例名称，装好后就是系统里的主机名。</b>安装方案按设备的架构列出；系统盘默认按方案的规则选，个别设备可以指定一块盘。地址由 NICo 分配，不在这里填。</p>` +
+    table(["设备 / 位置", "架构", "主机名", "安装方案", "系统盘"], list.map((t) => { const row = w.rows[t.id], p = w.checked ? hostProblem(row.host, hosts) : "", os = osReady(t.arch);
+      return `<tr><td>${code(t.serial)}<span class="cell-sub">${placeText(t)}${t.state ? "" : " · 安装时先接管"}</span></td><td>${code(t.arch)}</td><td><input class="input live-code" data-wiz-host="${t.id}" value="${esc(row.host)}" aria-label="${t.serial} 的主机名">${p ? `<span class="cell-sub" style="color:var(--red)">${p}</span>` : ""}</td>
+        <td><select class="input" data-wiz-os="${t.id}" data-arch="${t.arch}" aria-label="${t.serial} 的安装方案">${os.map((o) => `<option ${o.id === row.os ? "selected" : ""}>${esc(o.id)}</option>`).join("") || "<option value=\"\">没有这个架构的已发布方案</option>"}</select></td>
+        <td><select class="input" data-wiz-disk="${t.id}" aria-label="${t.serial} 的系统盘"><option value="">按安装方案的规则选择</option>${t.disks.map((d) => `<option ${d === row.disk ? "selected" : ""}>${d}</option>`).join("")}</select></td></tr>`; })),
+    button("上一步", "install-back-1") + button("下一步", "install-to-3", true));
+  document.querySelectorAll("[data-wiz-os-all]").forEach((el) => { const cur = list.filter((t) => t.arch === el.dataset.wizOsAll).map((t) => w.rows[t.id].os); if (new Set(cur).size === 1) el.value = cur[0];
+    el.onchange = () => document.querySelectorAll(`[data-wiz-os][data-arch="${el.dataset.wizOsAll}"]`).forEach((s) => (s.value = el.value)); });
+}
+registerAction("install-rule", () => { wizKeepRows(); if (!wiz().prefix) return toast("先填写主机名前缀"); wizApplyRule(true); installStep2(); });
+registerAction("install-back-1", () => { wizKeepRows(); wiz().checked = false; installStep1(); });
+registerAction("install-to-3", () => {
+  wizKeepRows(); const w = wiz(), list = wizList(), hosts = list.map((t) => w.rows[t.id].host);
+  const bad = list.filter((t) => hostProblem(w.rows[t.id].host, hosts)).length, noOs = list.filter((t) => !w.rows[t.id].os).length;
+  if (bad || noOs) { w.checked = true; installStep2(); return toast(bad ? `${bad} 台的主机名需要修改` : `${noOs} 台没有可用的安装方案，先在“安装方案”里发布对应架构的方案`); }
+  const byOs = {}; list.forEach((t) => (byOs[w.rows[t.id].os] = (byOs[w.rows[t.id].os] || 0) + 1));
+  const fixed = list.filter((t) => w.rows[t.id].disk).length, cold = list.filter((t) => !t.state).length;
+  modal("新建安装任务", "步骤 3 / 3 · 核对并确认",
+    `<div class="confirm-facts">${defs([["设备", `<b>${list.length} 台</b> · ${scopeText(list)}`], ["安装方案", Object.entries(byOs).map(([k, v]) => `${esc(k)}：${v} 台`).join("<br>")], ["系统盘", fixed ? `${list.length - fixed} 台按方案的规则选盘，<b>${fixed} 台指定了系统盘</b>` : "全部按方案的规则选盘"], ...(cold ? [["要先接管", `<b>${cold} 台</b>还没有被 NICo 接管：安装任务先让 NICo 给它上电并接管，按站点策略可能清理全部磁盘`]] : []), ["受影响的实例", "0 个"], ["并发", "按站点的默认安装并发，同时 5 台"], ["会发生什么", "每台建一个实例，实例名称就是主机名；机器从网络引导安装器，<b>写系统盘</b>，装完重启并验收"]])}</div>` +
+    table(["设备 / 位置", "主机名", "安装方案", "系统盘"], list.slice(0, 8).map((t) => { const row = w.rows[t.id]; return `<tr><td>${code(t.serial)}<span class="cell-sub">${placeText(t)}</span></td><td>${code(row.host)}</td><td>${esc(row.os)}</td><td>${row.disk ? "指定 " + esc(row.disk) : "按方案的规则"}</td></tr>`; })) + (list.length > 8 ? `<p class="live-small">显示前 8 台，共 ${list.length} 台。回到上一步可以查看和修改全部。</p>` : "") +
+    `<div class="live-form" style="margin-top:14px">${field("原因", `<input class="input" id="wiz-why" value="${esc(w.why)}" placeholder="工单号或原因">`)}</div>
+     <label class="live-check"><input type="checkbox" id="wiz-c1"> 确认所选设备、主机名、安装方案及系统盘。</label><label class="live-check"><input type="checkbox" id="wiz-c2"> 允许安装及重启验证。</label>`,
+    button("上一步", "install-back-2") + button("确认并安装", "install-run", true));
+});
+registerAction("install-back-2", () => { wiz().why = $("#wiz-why").value.trim(); installStep2(); });
+registerAction("install-run", () => {
+  const w = wiz(), why = $("#wiz-why").value.trim(); if (!why) return toast("请填写原因");
+  if (!$("#wiz-c1").checked || !$("#wiz-c2").checked) return toast("请勾选确认项");
+  const list = wizList(), b = { id: "batch-" + String(S.installs.length + 6).padStart(3, "0"), at: nowText(), by: "ops-01", why, items: list.map((t) => ({ tray: t.id, host: w.rows[t.id].host, os: w.rows[t.id].os, disk: w.rows[t.id].disk, s: "wait" })) };
+  S.installs.unshift(b); const rec = addAudit("安装批次 " + b.id, `新建安装任务（${list.length} 台）`, why, "—", "已提交"); closeModal(); S.view.wiz = null; S.guide = Math.max(S.guide, 7); S.view.insBatch = b.id; S.view.insSt = "";
+  /* 模拟：同时最多 5 台。还没有被接管的服务器先经过“准备设备”，由 NICo 上电接管。 */
+  b.timer = setInterval(() => {
+    b.items.filter((i) => i.s === "run").forEach((i) => { const t = DB.tray(i.tray), o = S.osTemplates.find((x) => x.id === i.os); i.s = "done"; t.state = "Assigned/Ready"; t.instance = "inst-" + i.host; if (o) o.used++; S.instances.push({ id: t.instance, tray: t.id, rack: t.rack, host: i.host, os: i.os, state: "Ready", ip: t.hostIp, created: nowText() }); });
+    b.items.filter((i) => i.s === "prep").forEach((i) => { takeOverServer(DB.tray(i.tray)); i.s = "run"; });
+    const active = b.items.filter((i) => i.s === "run").length;
+    b.items.filter((i) => i.s === "wait").slice(0, Math.max(0, 5 - active)).forEach((i) => (i.s = DB.tray(i.tray).state ? "run" : "prep"));
+    if (b.items.every((i) => i.s === "done")) { clearInterval(b.timer); b.timer = 0; rec.res = `验收通过 ${b.items.length}/${b.items.length}`; toast(`${b.id}：${b.items.length} 台安装完成并通过验收`); }
+    render();
+  }, 1000);
+  go("delivery/installs");
+});
+
+/* ---------- 实例管理 ---------- */
 registerPage("delivery/instances", {
   module: "instances", title: "实例管理",
   render() {
     const f = { rack: view("instRack", ""), q: view("instQ", "").toLowerCase() };
-    const list = S.instances.filter((i) => (!f.rack || i.rack === f.rack) && (!f.q || [i.id, i.host, i.ip, DB.tray(i.tray).serial, i.tenant].join(" ").toLowerCase().includes(f.q)));
-    return heading("实例管理", "查看实例分配，删除实例并回收设备。", button("刷新数据", "refresh")) +
-      `<div class="filter-bar" ${fp(1)}>${selectField("instRack", "机柜", [["", "全部机柜"], ...S.racks.map((r) => [r.id, r.id])], f.rack)}${searchField("instQ", "搜索实例", view("instQ", ""), "名称、编号、序列号、主机名、IP")}<span class="live-small">${list.length} 个当前实例</span></div>` +
-      `<div ${fp(2)}>${table(["实例名称 / ID", "设备序列号 / 主机名", "实例地址 / 操作系统", "机柜 / 租户", "机器状态 / 回收进度", "操作"], list.map((i) => { const t = DB.tray(i.tray); return `<tr><td><strong>${i.host}</strong><span class="cell-sub live-code">${i.id}</span></td><td>${code(t.serial)}<span class="cell-sub">${i.host}</span></td><td>${code(i.ip)}<span class="cell-sub">${esc(i.os)}</span></td><td><a class="link-button" data-go="rack/${i.rack}">${i.rack}</a><span class="cell-sub">${esc(i.tenant)}</span></td><td>${stateBadge(i.releasing ? "回收中" : t.state)}${i.releasing ? `<span class="cell-sub">实例已移除，设备准备中</span>` : ""}</td><td><div class="inline-actions">${button("详情", "tray-detail", false, `data-id="${t.id}"`)}<span ${fp(3)}>${act("删除（退租回收）", "inst-release", { gate: i.releasing ? "正在回收" : "", extra: `data-id="${i.id}"`, compact: true })}</span></div></td></tr>`; }), "未找到匹配的实例。")}</div>` +
-      note("删除实例会发起 NICo 回收：清理磁盘并重新校验。清理完成前，这台设备不显示为可交付。");
+    const list = S.instances.filter((i) => (!f.rack || (f.rack === "none" ? !i.rack : i.rack === f.rack)) && (!f.q || [i.id, i.host, i.ip, DB.tray(i.tray).serial, i.os].join(" ").toLowerCase().includes(f.q)));
+    return heading("实例管理", "查看已经装好系统的实例，删除实例并回收设备。", button("刷新数据", "refresh") + act("新建安装任务", "install-new", { primary: true })) +
+      `<div class="filter-bar" ${fp(1)}>${selectField("instRack", "机柜", [["", "全部"], ...S.racks.map((r) => [r.id, r.id]), ["none", "未分配机柜"]], f.rack)}${searchField("instQ", "搜索实例", view("instQ", ""), "名称、编号、序列号、主机名、IP")}<span class="live-small">${list.length} 个当前实例</span></div>` +
+      `<div ${fp(2)}>${table(["实例名称 / ID", "设备序列号 / 位置", "实例地址 / 操作系统", "机器状态 / 回收进度", "操作"], list.map((i) => { const t = DB.tray(i.tray); return `<tr><td><strong>${i.host}</strong><span class="cell-sub live-code">${i.id}</span></td><td>${code(t.serial)}<span class="cell-sub">${t.rack ? `<a class="link-button" data-go="rack/${t.rack}">${t.rack}</a> 槽位 ${pad2(t.slot)}` : "未分配机柜"}</span></td><td>${code(i.ip)}<span class="cell-sub">${esc(i.os)}</span></td><td>${stateBadge(i.releasing ? "回收中" : t.state)}${i.releasing ? `<span class="cell-sub">实例已移除，设备准备中</span>` : ""}</td><td><div class="inline-actions">${button("详情", "tray-detail", false, `data-id="${t.id}"`)}<span ${fp(3)}>${act("删除（退租回收）", "inst-release", { gate: i.releasing ? "正在回收" : "", extra: `data-id="${i.id}"`, compact: true })}</span></div></td></tr>`; }), "未找到匹配的实例。")}</div>` +
+      note("实例名称就是系统里的主机名，在新建安装任务时逐台确定。删除实例会发起 NICo 回收：清理磁盘并重新校验。清理完成前，这台设备不能再装系统。");
   },
   spec: {
-    purpose: "查看已交付的实例，并在租户退租时回收设备。", entry: "交付 → 实例管理", design: "6.4 交付（释放与复用）", existing: "实例管理页。表头、回收用词和确认弹窗沿用，增加机柜和租户",
+    purpose: "查看已经装好系统的实例，并在不再使用时删除实例、回收设备。一台机器一个实例。", entry: "交付 → 实例管理", design: "6.4 交付（释放与复用）", existing: "实例管理页。表头、回收用词和确认弹窗沿用，增加机柜和位置",
     points: [
-      { n: 1, name: "筛选", kind: "调整", desc: "沿用搜索；增加按机柜筛选。" },
-      { n: 2, name: "实例表", kind: "调整", desc: "实例名称 / ID、设备序列号 / 主机名、实例地址 / 操作系统、机器状态 / 回收进度沿用；增加“机柜 / 租户”。" },
+      { n: 1, name: "筛选", kind: "调整", desc: "沿用搜索；增加按机柜筛选，可以选“未分配机柜”。" },
+      { n: 2, name: "实例表", kind: "调整", desc: "实例名称 / ID、设备序列号、实例地址 / 操作系统、机器状态 / 回收进度沿用；设备序列号下面增加机柜和位置。" },
       { n: 3, name: "删除（退租回收）", kind: "沿用", desc: "按钮名称、输入设备序列号确认、清理全部磁盘的勾选项都与现有页面一致。" },
     ],
-    rules: ["回收完成并重新校验通过前，设备不计入“可交付”。", "回收用词：回收请求已接受、实例已移除设备准备中、回收完成、设备回收失败需处理。"],
+    fields: [["实例名称", "新建安装任务时逐台确定的主机名", "同时是系统里的主机名"], ["实例地址", "NICo", "主机管理网段里分配的地址"]],
+    rules: ["一台机器同一时间只有一个实例。", "回收完成并重新校验通过前，设备不能再装系统。", "回收用词：回收请求已接受、实例已移除设备准备中、回收完成、设备回收失败需处理。", "页面上不出现租户：所有实例建在站点的默认租户下。"],
     dialogs: [{ name: "删除（退租回收）", desc: "沿用现有弹窗。", fields: [["输入设备序列号确认范围", "是", ""], ["允许清理本机全部磁盘并回收实例资源。", "是", "勾选"]] }],
   },
 });
 registerAction("inst-release", ({ id }) => {
   const i = S.instances.find((x) => x.id === id), t = DB.tray(i.tray);
-  modal("删除（退租回收）", i.host, defs([["实例名称 / ID", `${i.host} · ${code(i.id)}`], ["设备序列号", code(t.serial)], ["机柜", `${i.rack} 槽位 ${pad2(t.slot)}`], ["影响", "实例被删除；NICo 清理本机全部磁盘并重新校验"]]) +
+  modal("删除（退租回收）", i.host, defs([["实例名称 / ID", `${i.host} · ${code(i.id)}`], ["设备序列号", code(t.serial)], ["位置", placeText(t)], ["影响", "实例被删除；NICo 清理本机全部磁盘并重新校验"]]) +
     `<div class="live-form" style="margin-top:16px">${field("输入设备序列号确认范围", `<input class="input live-code" id="rl-sn" autocomplete="off" placeholder="${t.serial}">`)}</div><label class="live-check"><input type="checkbox" id="rl-ok"> 允许清理本机全部磁盘并回收实例资源。</label>`,
     button("取消", "close") + `<button class="button danger" data-live="inst-release-run" data-id="${id}">确认删除并回收</button>`, { wide: false });
 });
@@ -122,6 +195,6 @@ registerAction("inst-release-run", ({ id }) => {
   const i = S.instances.find((x) => x.id === id), t = DB.tray(i.tray);
   if ($("#rl-sn").value.trim() !== t.serial) return toast("输入的序列号与设备不一致");
   if (!$("#rl-ok").checked) return toast("请勾选确认项");
-  closeModal(); i.releasing = true; const rec = addAudit(`${i.rack} / 槽位 ${pad2(t.slot)}`, "删除（退租回收）", "租户退租", "—", "回收请求已接受"); render();
-  setTimeout(() => { S.instances = S.instances.filter((x) => x.id !== id); t.instance = ""; t.state = "Ready"; rec.res = "回收完成，重新校验通过"; toast(`${t.serial}：回收完成，可再次交付`); render(); }, 2600);
+  closeModal(); i.releasing = true; const rec = addAudit(t.rack ? placeText(t) : t.serial, "删除（退租回收）", "不再使用", "—", "回收请求已接受"); render();
+  setTimeout(() => { S.instances = S.instances.filter((x) => x.id !== id); t.instance = ""; t.state = "Ready"; rec.res = "回收完成，重新校验通过"; toast(`${t.serial}：回收完成，可以再次装系统`); render(); }, 2600);
 });

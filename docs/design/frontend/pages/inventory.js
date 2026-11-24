@@ -1,10 +1,12 @@
 "use strict";
-/* 清单：到货清单给出机柜、槽位、设备类型、序列号和设备凭据。它不含 MAC：MAC 要等设备接电后从 DHCP 得到。
+/* 清单：到货清单给出设备类型、序列号和设备凭据；机柜里的设备另有机柜和槽位。它不含 MAC：MAC 要等设备接电后从 DHCP 得到。
+   不属于机柜的服务器，机柜和槽位留空：它照样进清单、照样按序列号匹配，只是纳管在“设备发现”里逐台确认，没有上线这一步。
    所以导入后清单先保存在平台里（待匹配）；设备接电、平台读出序列号并匹配上清单里的一行（已匹配）；
    人对这个机柜确认纳管之后，声明才写进 NICo（已纳管）。纳管只是登记，不上电、不装系统。
    合并现有“设备管理”里的设备规划、U 位导入和交换机信息导入。 */
 
-const INV_COLUMNS = "rack, slot, type, serial";
+const INV_COLUMNS = "type, serial";
+const INV_RACK = "rack, slot";
 const INV_OPTIONAL = "location, bmc_user, bmc_password, nvos_user, nvos_password";
 const invState = (t) => (t.declared ? badge("已纳管", "green") : t.matched ? badge("已匹配 · 待确认纳管", "blue") : badge("待匹配", "gray"));
 const invKey = (t) => (t.declared ? "done" : t.matched ? "matched" : "todo");
@@ -14,37 +16,37 @@ registerPage("inventory", {
   module: "inventory", tab: "到货清单", title: "设备清单",
   render() {
     const f = { rack: view("invRack", ""), type: view("invType", ""), st: view("invSt", ""), q: view("invQ", "").toLowerCase() };
-    const all = DB.trays(), list = all.filter((t) => (!f.rack || t.rack === f.rack) && (!f.type || t.type === f.type) && (!f.st || invKey(t) === f.st) && (!f.q || [t.serial, t.bmcMac, t.bmcIp, t.rack].join(" ").toLowerCase().includes(f.q)));
+    const all = DB.trays(), list = all.filter((t) => (!f.rack || (f.rack === "none" ? !t.rack : t.rack === f.rack)) && (!f.type || t.type === f.type) && (!f.st || invKey(t) === f.st) && (!f.q || [t.serial, t.bmcMac, t.bmcIp, t.rack].join(" ").toLowerCase().includes(f.q)));
     const count = (r, type) => r.trays.filter((t) => t.type === type).length;
-    return heading("设备清单", "到货清单给出机柜、槽位、序列号和设备凭据。机柜接电后设备按序列号匹配上清单，确认纳管后才登记到 NICo。", button("刷新数据", "refresh") + button("下载模板", "inv-template") + act("导入清单", "inv-import", { primary: true, gate: !siteReady() ? "站点未就绪，不能导入" : !DB.planOk() ? "网络规划检查未通过，先到“网络规划”补齐子网" : "", extra: fp(1) })) +
-      `<div ${fp(2)}>${summary([["清单版本", "v" + S.inventory[0].v], ["机柜", S.racks.length], ["设备", all.length], ["已纳管", all.filter((t) => t.declared).length], ["已匹配 · 待确认纳管", all.filter((t) => t.matched && !t.declared).length], ["待匹配", all.filter((t) => !t.matched).length]])}</div>` +
+    return heading("设备清单", "到货清单给出设备类型、序列号和设备凭据，机柜里的设备另有机柜和槽位。设备接电后按序列号匹配上清单，确认纳管后才登记到 NICo。", button("刷新数据", "refresh") + button("下载模板", "inv-template") + act("导入清单", "inv-import", { primary: true, gate: !siteReady() ? "站点未就绪，不能导入" : !DB.planOk() ? "网络规划检查未通过，先到“网络规划”补齐子网" : "", extra: fp(1) })) +
+      `<div ${fp(2)}>${summary([["清单版本", "v" + S.inventory[0].v], ["机柜", S.racks.length], ["设备", `${all.length}<small>　其中未分配机柜 ${DB.servers().length}</small>`], ["已纳管", all.filter((t) => t.declared).length], ["已匹配 · 待确认纳管", all.filter((t) => t.matched && !t.declared).length], ["待匹配", all.filter((t) => !t.matched).length]])}</div>` +
       `<div ${fp(3)}>${table(["机柜", "机柜拓扑 / 厂商", "机柜规格", "计算托盘", "交换机", "供电框", "已纳管", "位置"], S.racks.map((r) => `<tr class="row-link" data-go="rack/${r.id}"><td><strong>${r.id}</strong></td><td>${code(r.topology)}<span class="cell-sub">${r.vendor}</span></td><td>${code(r.profile)}<span class="cell-sub">由拓扑和厂商推导 · NICo 已配置</span></td>${["compute", "switch", "power_shelf"].map((k) => `<td>${count(r, k)}<small class="muted"> / ${PROFILE_NEED[k]}</small></td>`).join("")}<td>${r.trays.filter((t) => t.declared).length}<small class="muted"> / ${r.trays.length}</small></td><td>${esc(r.location)}</td></tr>`))}</div>` +
-      `<h2 class="section-title">设备明细</h2><div class="filter-bar" ${fp(4)}>${selectField("invRack", "机柜", [["", "全部机柜"], ...S.racks.map((r) => [r.id, r.id])], f.rack)}${selectField("invType", "设备类型", [["", "全部类型"], ["compute", "计算托盘"], ["switch", "交换机"], ["power_shelf", "供电框"]], f.type)}${selectField("invSt", "清单状态", [["", "全部"], ["todo", "待匹配"], ["matched", "已匹配 · 待确认纳管"], ["done", "已纳管"]], f.st)}${searchField("invQ", "搜索设备", view("invQ", ""), "序列号、MAC、地址或机柜")}<span class="live-small">${list.length} 条</span></div>` +
-      `<div ${fp(5)}>${table(["设备序列号", "类型", "机柜 / 槽位", "设备凭据", "BMC MAC / 地址", "型号", "清单状态"], list.slice(0, 40).map((t) => `<tr><td>${code(t.serial)}</td><td>${TYPE_LABEL[t.type]}</td><td>${t.rack}<span class="cell-sub">槽位 ${pad2(t.slot)}</span></td><td ${fp(6)}>${t.declared ? `<span class="muted">已交给 NICo</span>` : credCell(t)}</td><td>${t.bmcMac ? code(t.bmcMac) + `<span class="cell-sub live-code">${t.bmcIp}</span>` : `<span class="muted">接电后获得</span>`}</td><td>${t.model ? esc(t.model) : `<span class="muted">发现后读取</span>`}</td><td>${invState(t)}</td></tr>`), "没有符合筛选条件的设备。")}${list.length > 40 ? `<p class="live-small">显示前 40 条，共 ${list.length} 条。</p>` : ""}</div>` +
-      note("“待匹配”：机柜还没接电，或没有读到这台设备的身份。“已匹配”：已经对上清单，还没有登记到 NICo。“已纳管”：声明已写进 NICo，设备口令由 NICo 接手；这时设备还没有上电，也没有装系统。匹配进度在“设备发现”，确认纳管和开始上线在机柜详情。");
+      `<h2 class="section-title">设备明细</h2><div class="filter-bar" ${fp(4)}>${selectField("invRack", "机柜", [["", "全部"], ...S.racks.map((r) => [r.id, r.id]), ["none", "未分配机柜"]], f.rack)}${selectField("invType", "设备类型", [["", "全部类型"], ["compute", "服务器"], ["switch", "交换机"], ["power_shelf", "供电框"]], f.type)}${selectField("invSt", "清单状态", [["", "全部"], ["todo", "待匹配"], ["matched", "已匹配 · 待确认纳管"], ["done", "已纳管"]], f.st)}${searchField("invQ", "搜索设备", view("invQ", ""), "序列号、MAC、地址或机柜")}<span class="live-small">${list.length} 条</span></div>` +
+      `<div ${fp(5)}>${table(["设备序列号", "类型", "机柜 / 槽位", "设备凭据", "BMC MAC / 地址", "型号", "清单状态"], list.slice(0, 40).map((t) => `<tr><td>${code(t.serial)}</td><td>${typeLabel(t)}</td><td>${t.rack ? `${t.rack}<span class="cell-sub">槽位 ${pad2(t.slot)}</span>` : `<span class="muted">未分配机柜</span>`}</td><td ${fp(6)}>${t.declared ? `<span class="muted">已交给 NICo</span>` : credCell(t)}</td><td>${t.bmcMac ? code(t.bmcMac) + `<span class="cell-sub live-code">${t.bmcIp}</span>` : `<span class="muted">接电后获得</span>`}</td><td>${t.model ? esc(t.model) : `<span class="muted">发现后读取</span>`}</td><td>${invState(t)}</td></tr>`), "没有符合筛选条件的设备。")}${list.length > 40 ? `<p class="live-small">显示前 40 条，共 ${list.length} 条。</p>` : ""}</div>` +
+      note("“待匹配”：设备还没接电，或没有读到这台设备的身份。“已匹配”：已经对上清单，还没有登记到 NICo。“已纳管”：声明已写进 NICo，设备口令由 NICo 接手；这时设备还没有上电，也没有装系统。匹配进度在“设备发现”。机柜里的设备在机柜详情按机柜确认纳管、开始上线；不属于机柜的服务器在“设备发现”里逐台确认纳管。");
   },
   spec: {
-    purpose: "把到货清单变成设备进入 NICo 的依据：机柜、槽位、设备类型、序列号和设备凭据。清单不要求 MAC。",
+    purpose: "把到货清单变成设备进入 NICo 的依据：设备类型、序列号和设备凭据，机柜里的设备另有机柜和槽位。清单不要求 MAC。不属于机柜的服务器也在清单里，机柜和槽位留空。",
     entry: "接入 → 设备清单 → 到货清单", design: "6.2 清单；7.1 资源与归属", existing: "设备管理 → 设备规划（导入、对比）；服务器页的“导入 U 位”和布线页的“导入交换机信息”并入本页",
     points: [
       { n: 1, name: "导入清单", kind: "调整", desc: "沿用设备规划的“校验并预览 → 保存”两步。输入是覆盖三类设备的整表，另选机柜拓扑和机柜厂商。保存只进平台，不写 NICo。" },
-      { n: 2, name: "清单概况", kind: "新增", desc: "当前版本、机柜、设备数量，以及已纳管、已匹配待确认纳管、待匹配三种状态的数量。" },
+      { n: 2, name: "清单概况", kind: "新增", desc: "当前版本、机柜、设备数量、其中不属于机柜的数量，以及已纳管、已匹配待确认纳管、待匹配三种状态的数量。" },
       { n: 3, name: "机柜与机柜规格", kind: "新增", desc: "每个机柜的拓扑、厂商、推导出的机柜规格，三类设备的清单数量与规格要求，以及已纳管的数量。点击进入机柜。" },
-      { n: 4, name: "筛选", kind: "调整", desc: "沿用设备管理的机柜、设备类型和搜索；增加“清单状态”。" },
+      { n: 4, name: "筛选", kind: "调整", desc: "沿用设备管理的机柜、设备类型和搜索；机柜里可以选“未分配机柜”；增加“清单状态”。" },
       { n: 5, name: "设备明细", kind: "调整", desc: "序列号、类型、机柜 / 槽位来自清单；BMC MAC、地址和型号在设备被发现后才有，之前显示“接电后获得”“发现后读取”。" },
       { n: 6, name: "设备凭据", kind: "新增", desc: "只显示是否已提供，不显示内容。声明写入 NICo 后，凭据交给 NICo，平台不再保存。" },
     ],
-    fields: [["机柜 / 槽位、序列号", "到货清单", "匹配设备的依据是序列号；匹配后机柜和槽位随声明写入 NICo"], ["机柜拓扑", "NICo 的站点配置", "NICo 对一种机柜硬件布局的命名，例如 gb200_nvl72r1_c2g4。可选的值来自 NICo 已配置的机柜规格，平台不维护这张表"], ["机柜规格", "NICo 按机柜拓扑和厂商推导", "规格里写着这种机柜应有几台计算托盘、交换机和供电框，以及用哪份固件清单。NICo 没有配置这个规格时，导入预览报错"], ["设备凭据", "到货清单或批次默认值", "BMC 的用户名和口令；交换机另要 NVOS 的用户名和口令"], ["BMC MAC / 地址", "NICo DHCP", "设备接电后获得"], ["型号", "读取设备身份", "发现后读取，清单里不填"], ["清单状态", "平台", "待匹配、已匹配 · 待确认纳管、已纳管。纳管是把设备登记到 NICo，不上电、不装系统"]],
-    rules: ["站点未就绪或网络规划检查未通过时不能导入。", "导入预览按新增的机柜重新计算各用途的地址是否够用。", "一台设备的凭据取行内的值；行内留空时取导入时填写的批次默认值。两处都没有的行校验失败。", "口令只在导入时提交一次，加密保存；页面、版本记录和审计里都不出现。", "移除有实例或进行中任务的设备会被拒绝。"],
-    dialogs: [{ name: "导入清单", desc: "第一步选文件、机柜拓扑、厂商和批次默认凭据；第二步确认差异并填写原因。", fields: [["到货清单文件", "是", "CSV 或 Excel；必填列 " + INV_COLUMNS + "；可选列 " + INV_OPTIONAL], ["机柜拓扑、机柜厂商", "是", "选项读自 NICo 已配置的机柜规格；两者一起决定机柜规格"], ["批次默认凭据", "否", "BMC 的用户名和口令、NVOS 的用户名和口令；行内留空的设备使用"], ["原因", "是", "写入审计和版本记录"]] }],
+    fields: [["机柜 / 槽位、序列号", "到货清单", "匹配设备的依据是序列号；匹配后机柜和槽位随声明写入 NICo。不属于机柜的服务器这两列留空，声明里不带机柜"], ["机柜拓扑", "NICo 的站点配置", "NICo 对一种机柜硬件布局的命名，例如 gb200_nvl72r1_c2g4。可选的值来自 NICo 已配置的机柜规格，平台不维护这张表"], ["机柜规格", "NICo 按机柜拓扑和厂商推导", "规格里写着这种机柜应有几台计算托盘、交换机和供电框，以及用哪份固件清单。NICo 没有配置这个规格时，导入预览报错"], ["设备凭据", "到货清单或批次默认值", "BMC 的用户名和口令；交换机另要 NVOS 的用户名和口令"], ["BMC MAC / 地址", "NICo DHCP", "设备接电后获得"], ["型号", "读取设备身份", "发现后读取，清单里不填"], ["清单状态", "平台", "待匹配、已匹配 · 待确认纳管、已纳管。纳管是把设备登记到 NICo，不上电、不装系统"]],
+    rules: ["站点未就绪或网络规划检查未通过时不能导入。", "导入预览按新增的机柜重新计算各用途的地址是否够用。", "一台设备的凭据取行内的值；行内留空时取导入时填写的批次默认值。两处都没有的行校验失败。", "口令只在导入时提交一次，加密保存；页面、版本记录和审计里都不出现。", "移除有实例或进行中任务的设备会被拒绝。", "交换机和供电框必须填机柜和槽位；只有服务器可以不属于机柜。"],
+    dialogs: [{ name: "导入清单", desc: "第一步选文件、机柜拓扑、厂商和批次默认凭据；第二步确认差异并填写原因。", fields: [["到货清单文件", "是", "CSV 或 Excel；必填列 " + INV_COLUMNS + "；机柜里的设备另填 " + INV_RACK + "；可选列 " + INV_OPTIONAL], ["机柜拓扑、机柜厂商", "是", "选项读自 NICo 已配置的机柜规格；两者一起决定机柜规格"], ["批次默认凭据", "否", "BMC 的用户名和口令、NVOS 的用户名和口令；行内留空的设备使用"], ["原因", "是", "写入审计和版本记录"]] }],
   },
 });
-registerAction("inv-template", () => toast("模板列：" + INV_COLUMNS + "；可选 " + INV_OPTIONAL));
+registerAction("inv-template", () => toast("模板列：" + INV_COLUMNS + "；机柜里的设备另填 " + INV_RACK + "；可选 " + INV_OPTIONAL));
 registerAction("inv-import", () => modal("导入清单", "步骤 1 / 2 · 一张表，一行一台设备",
   `<div class="live-form">${field("选择 Excel 或 CSV 文件", `<input class="input" value="arrival-2026-11-B.csv（示例文件）" readonly>`)}
     ${field("机柜拓扑", `<select class="input"><option>${TOPOLOGY}</option><option>gb300_nvl72r1_c2g4</option></select>`, "NICo 对机柜硬件布局的命名。选项读自 NICo 已配置的机柜规格，不在平台里维护")}${field("机柜厂商", `<select class="input"><option>${RACK_VENDOR}</option><option>NVIDIA</option><option>Lenovo</option><option>Supermicro</option></select>`, "整机厂商。和拓扑一起决定机柜规格")}
     ${field("批次默认凭据 · BMC", `<input class="input" value="admin" aria-label="BMC 用户名"><input class="input" type="password" value="demo-demo" aria-label="BMC 口令" style="margin-top:6px">`, "行内没有填凭据的设备使用")}${field("批次默认凭据 · NVOS", `<input class="input" value="admin" aria-label="NVOS 用户名"><input class="input" type="password" value="demo-demo" aria-label="NVOS 口令" style="margin-top:6px">`, "只用于交换机")}</div>
-   ${note("必填列：" + code(INV_COLUMNS) + "；可选列：" + code(INV_OPTIONAL) + "。清单里不需要 MAC 和地址。")}`,
+   ${note("必填列：" + code(INV_COLUMNS) + "；机柜里的设备另填 " + code(INV_RACK) + "，不属于机柜的服务器这两列留空；可选列：" + code(INV_OPTIONAL) + "。清单里不需要 MAC 和地址。")}`,
   button("取消", "close") + button("校验并预览", "inv-preview", true), { wide: false }));
 registerAction("inv-preview", () => {
   if (DB.rack("RACK-A03")) return modal("导入清单", "步骤 2 / 2", note("文件与当前清单一致，没有需要保存的变化。"), button("关闭", "close", true), { wide: false });

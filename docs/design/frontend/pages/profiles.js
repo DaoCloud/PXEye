@@ -25,18 +25,18 @@ registerAction("baseline-view", ({ id }) => { const b = DB.baseline(id); modal(b
 registerPage("os-templates", {
   module: "os", title: "安装方案",
   render() {
-    return heading("安装方案", "设置 OS、系统盘、分区和默认登录配置值。交付时只选择已发布的方案。", button("刷新数据", "refresh") + act("新建方案", "os-new", { primary: true, admin: true })) +
+    return heading("安装方案", "设置 OS、系统盘、分区和默认登录配置值。新建安装任务时只能选择已发布的方案。", button("刷新数据", "refresh") + act("新建方案", "os-new", { primary: true, admin: true })) +
       `<div ${fp(1)}>${table(["名称 / 版本", "默认系统 / 安装器", "分区 / 默认登录配置", "状态 / 引用", "操作"], S.osTemplates.map((o) => `<tr><td><strong>${o.id}</strong><span class="cell-sub">v1</span></td><td>Ubuntu Server 24.04 · ${o.arch}<span class="cell-sub">autoinstall</span></td><td>${o.disk}<span class="cell-sub">${o.login}</span></td><td ${fp(2)}>${stateBadge(o.state)}<span class="cell-sub">${o.used} 个实例引用</span></td><td><div class="inline-actions">${button(o.state === "草稿" ? "编辑草稿" : "查看", "os-view")}${button("复制", "os-view")}${o.state === "草稿" ? "" : button("新版本", "os-view")}</div></td></tr>`))}</div>` +
-      `<div ${fp(3)}>${note("整机柜的计算托盘同质，默认不需要逐机配置。主机名和地址由 NICo 按清单分配，不在方案里填写。")}</div>`;
+      `<div ${fp(3)}>${note("方案里只放能复用的内容，不填逐台不同的东西。主机名、每台用哪个方案、系统盘的例外，在新建安装任务时逐台确定；地址由 NICo 分配。")}</div>`;
   },
   spec: {
-    purpose: "可复用的系统安装配置。合并现有的操作系统材料和安装方案，交付时只需选一个方案。", entry: "配置 → 安装方案", design: "6.6 档案与审计", existing: "安装方案页（表头、状态、行操作沿用）与操作系统页（ISO 与 OS 版本）合并",
+    purpose: "可复用的系统安装配置。合并现有的操作系统材料和安装方案。方案按架构区分，新建安装任务时逐台选用。", entry: "配置 → 安装方案", design: "6.6 档案与审计", existing: "安装方案页（表头、状态、行操作沿用）与操作系统页（ISO 与 OS 版本）合并",
     points: [
       { n: 1, name: "方案列表", kind: "沿用", desc: "名称 / 版本、默认系统 / 安装器、分区 / 默认登录配置、状态 / 引用、操作，与安装方案页一致。" },
       { n: 2, name: "状态 / 引用", kind: "沿用", desc: "草稿、已发布、已停用。已发布的版本只读，修改要建新版本。" },
-      { n: 3, name: "不做逐机配置", kind: "调整", desc: "去掉设备覆盖设置和逐机网卡规划：整机柜的托盘同质，主机名和地址来自清单。" },
+      { n: 3, name: "不做逐机配置", kind: "调整", desc: "方案里去掉设备覆盖设置和逐机网卡规划。逐台不同的内容（主机名、用哪个方案、系统盘的例外）移到“新建安装任务”的向导里，一台一行。" },
     ],
-    rules: ["新建和发布方案需要管理角色。", "交付只能选择已发布的方案。", "编辑弹窗沿用安装方案的基本信息、系统盘选择、分区布局、默认登录配置、安装验收。"],
+    rules: ["新建和发布方案需要管理角色。", "安装任务只能选择已发布的方案，并且方案的架构要和设备一致。", "编辑弹窗沿用安装方案的基本信息、系统盘选择、分区布局、默认登录配置、安装验收。"],
   },
 });
 ["os-new", "os-view"].forEach((a) => registerAction(a, () => toast("沿用现有的安装方案弹窗，设计稿不重复展示")));
@@ -64,7 +64,7 @@ registerPage("audit", {
       { n: 4, name: "结果", kind: "沿用", desc: "已发送、已完成、结果未知、失败 / 未执行。结果未知时不自动重发。" },
     ],
     fields: [["操作者", "站点身份系统", "接入身份系统后记录到人"], ["任务", "NICo Flow", "机柜级操作对应的任务编号；单设备操作为“—”"], ["读回", "NICo Core", "执行后读回的状态"]],
-    rules: ["记录只追加，不能删除。", "导入清单、更换托盘、交付和回收也写入审计。"],
+    rules: ["记录只追加，不能删除。", "导入清单、更换托盘、新建安装任务和回收实例也写入审计。"],
   },
 });
-registerAction("audit-task", ({ task }) => { const r = S.racks.find((x) => x.tasks.some((t) => t.id === task)); if (!r) return toast("这个任务所在的机柜已退役"); S.view["rackTab:" + r.id] = "tasks"; go("rack/" + r.id); });
+registerAction("audit-task", ({ task }) => { const r = DB.groups().find((x) => x.tasks.some((t) => t.id === task)); if (!r) return toast("这个任务所在的机柜已删除"); if (r.pool) return go("tasks"); S.view["rackTab:" + r.id] = "tasks"; go("rack/" + r.id); });

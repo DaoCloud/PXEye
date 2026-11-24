@@ -8,6 +8,9 @@ const TOPOLOGY = "gb200_nvl72r1_c2g4", RACK_VENDOR = "Wiwynn";
 const PROFILE = "GB200_NVL72R1_C2G4_WIWYNN";
 const PROFILE_NEED = { compute: 18, switch: 9, power_shelf: 8 };
 const TYPE_LABEL = { compute: "计算托盘", switch: "交换机", power_shelf: "供电框" };
+/* 设备是基础对象，机柜是叠在上面的一层：服务器可以不属于任何机柜。机柜里的服务器就是计算托盘。 */
+const typeLabel = (t) => (t.type === "compute" && !t.rack ? "服务器" : TYPE_LABEL[t.type]);
+const placeText = (t) => (t.rack ? `${t.rack} / 槽位 ${String(t.slot).padStart(2, "0")}` : "未分配机柜");
 /* 新机柜上线有两条线：bringup_task 是人提交的上线任务（上电并放行计算托盘的接管）；bringup 是交换机就绪后 NICo 的机柜状态机自己走的维护阶段。
    其余是 Flow 任务的步骤：会中断业务的任务先等受影响的主机就绪，再按站点规则展开。 */
 const STAGES = {
@@ -20,7 +23,6 @@ const STAGES = {
   firmware: ["等待主机就绪", "计算托盘固件", "交换机固件"],
   tray_power: ["执行电源动作"],
   tray_firmware: ["更新组件固件"],
-  decommission: ["确认无实例", "释放与清理", "退役", "移出期望清单"],
 };
 /* 机柜状态机各阶段对应的状态原文。 */
 const BRINGUP_STATE = { 固件升级: "Maintenance(FirmwareUpgrade)", "NVOS 更新": "Maintenance(NVOSUpdate)", 上电顺序: "Maintenance(PowerSequence)", "配置 NMX-C 集群": "Maintenance(ConfigureNmxCluster)", 机柜校验: "Validating" };
@@ -53,7 +55,7 @@ function makeTray(rackId, n, slot, discovered, baseline) {
     baseline: discovered ? baseline : "", maintenance: "", quarantine: "", instance: "", lastSeen: discovered ? "2026-11-24 08:00" : "",
     history: discovered ? [["2026-11-02 09:41", type === "compute" ? "HostInit/Discovered" : "Initializing"], ["2026-11-02 10:30", "Ready"]] : [],
   };
-  if (type === "compute") Object.assign(tray, { hostMac: "", hostIp: "", nics: [], hardware: { CPU: "2 × Grace 72C", GPU: "4 × GB200", 内存: "960 GiB", 系统盘: "2 × 1.92 TB NVMe", 网卡: "2 × BlueField-3（网卡模式）" }, sku: "gb200-compute-c2g4",
+  if (type === "compute") Object.assign(tray, { arch: "aarch64", disks: ["nvme0n1 · 1.92 TB", "nvme1n1 · 1.92 TB"], hostMac: "", hostIp: "", nics: [], hardware: { CPU: "2 × Grace 72C", GPU: "4 × GB200", 内存: "960 GiB", 系统盘: "2 × 1.92 TB NVMe", 网卡: "2 × BlueField-3（网卡模式）" }, sku: "gb200-compute-c2g4",
     lldp: [{ port: "eno1", sw: "mgmt-leaf-" + pad2(n), remote: "swp" + slot }, { port: "p0", sw: "spine-" + pad2(n) + "a", remote: "Ethernet" + slot }] });
   if (type === "switch") Object.assign(tray, { nvos: [], primary: slot === 15, fabricManager: discovered ? "OK" : "" });
   if (discovered) assignAddresses(tray);
@@ -70,6 +72,18 @@ function assignAddresses(t) {
   }
   if (t.type === "switch") t.nvos = [0, 1].map((i) => ({ mac: `02:2${i}:${pad2(n)}:00:00:${hex2(s)}`, ip: `203.0.113.${(n - 1) * 40 + (s - 15) * 2 + i + 11}`, primary: i === 0, name: "eth" + i }));
 }
+/* 不属于机柜的服务器：没有槽位，没有上线这一步。纳管后不上电；第一次装系统时由 NICo 上电接管。
+   stage：ready 已接管；held 已纳管、还没有接管；matched 已匹配清单、还没有纳管。 */
+function makeServer(i, stage) {
+  const ready = stage === "ready";
+  return { id: "SRV/" + pad2(i), rack: "", n: 0, slot: 0, type: "compute", arch: "x86_64", serial: "DEMO-H-00" + pad2(i), matched: true, declared: stage !== "matched", seenSlot: 0, model: "GPU Server 8G",
+    bmcMac: `02:00:0f:00:00:${hex2(i)}`, bmcIp: `192.0.2.${241 + i}`, addrMode: "保留", state: ready ? "Ready" : "", reason: "", health: ready ? "ok" : "none", alerts: [], power: ready ? "On" : "",
+    baseline: "", maintenance: "", quarantine: "", instance: "", lastSeen: "2026-11-24 08:00", history: ready ? [["2026-11-18 10:02", "HostInit/Discovered"], ["2026-11-18 10:40", "Ready"]] : [],
+    hostMac: `02:10:0f:00:00:${hex2(i)}`, hostIp: ready ? `198.51.100.${200 + i}` : "", nics: [], sku: "gpu-server-8g", disks: ["nvme0n1 · 960 GB", "nvme1n1 · 960 GB", "nvme2n1 · 3.84 TB"],
+    hardware: { CPU: "2 × 64C x86_64", GPU: "8 × GPU", 内存: "1 TiB", 系统盘: "2 × 960 GB NVMe", 网卡: "2 × 25GbE" }, lldp: [{ port: "eno1", sw: "mgmt-leaf-09", remote: "swp" + i }] };
+}
+/* 服务器被 NICo 接管之后的样子。 */
+function takeOverServer(t) { Object.assign(t, { declared: true, state: "Ready", health: "ok", power: "On", hostIp: t.hostIp || `198.51.100.${200 + +t.id.slice(-2)}`, lastSeen: nowText(), history: [[nowText(), "HostInit/Discovered"], [nowText(), "Ready"]] }); }
 function makeRack(id, n, discovered, baseline, location) {
   const trays = []; for (let s = 1; s <= 35; s++) trays.push(makeTray(id, n, s, discovered, baseline));
   /* state 为空表示 NICo 里还没有这个机柜的对象：机柜只在清单里。 */
@@ -87,20 +101,26 @@ function freshState() {
   a01.tasks = [done("task-0039", "firmware", "固件更新 → " + BASELINES[0].id, "RACK-A01", STAGES.firmware, "2026-11-12 11:05", "升级到 11 月基线")];
   a02.tasks = [done("task-0041", "power", "机柜上电", "RACK-A02", STAGES.power_on, "2026-11-03 10:12", "计划停电后恢复")];
   const instances = [];
-  a01.trays.filter((t) => t.type === "compute").forEach((t, i) => { t.state = "Assigned/Ready"; t.instance = "inst-a01-" + pad2(i + 1); instances.push({ id: t.instance, tray: t.id, rack: "RACK-A01", host: "train-a01-" + pad2(i + 1), os: "Ubuntu 24.04 ARM64", tenant: "训练集群 A", state: "Ready", ip: t.hostIp, created: "2026-11-04 16:20" }); });
+  const OS_ARM = "Ubuntu 24.04 ARM64 · 标准系统盘", OS_X86 = "Ubuntu 24.04 x86_64 · 标准系统盘";
+  const installed = (t, host, os, at) => { t.state = "Assigned/Ready"; t.instance = "inst-" + host; instances.push({ id: t.instance, tray: t.id, rack: t.rack, host, os, state: "Ready", ip: t.hostIp, created: at }); return { tray: t.id, host, os, disk: "", s: "done" }; };
+  const batchA01 = { id: "batch-006", at: "2026-11-04 16:20", by: "ops-01", why: "训练集群 A 装机", items: a01.trays.filter((t) => t.type === "compute").map((t, i) => installed(t, "train-a01-" + pad2(i + 1), OS_ARM, "2026-11-04 16:20")) };
+  /* 不属于机柜的服务器：一台已装系统，一台已接管待装，一台已纳管还没有接管，一台刚匹配上清单。 */
+  const pool = { id: "", pool: true, state: "", trays: [makeServer(1, "ready"), makeServer(2, "ready"), makeServer(3, "held"), makeServer(4, "matched")], tasks: [], task: null };
+  const batchSrv = { id: "batch-007", at: "2026-11-18 11:05", by: "ops-02", why: "推理服务器装机", items: [installed(pool.trays[0], "infer-01", OS_X86, "2026-11-18 11:05")] };
   const sw = a01.trays.find((t) => t.slot === 18); sw.health = "warn"; sw.fabricManager = "UNKNOWN"; sw.alerts = [{ id: "SwitchUnreachable", target: sw.nvos[0].ip, msg: "NVOS 管理口不可达，Fabric Manager 状态读不到", since: "2026-11-21 03:14", cls: [] }];
   const mt = a02.trays.find((t) => t.slot === 27); mt.maintenance = "CHG-1042 更换风扇"; mt.health = "warn";
   mt.alerts = [{ id: "BmcSensor", target: "fan3", msg: "风扇 3 转速低于阈值", since: "2026-11-22 21:40", cls: [] }, { id: "Maintenance", target: "", msg: "维护标记：CHG-1042 更换风扇", since: "2026-11-22 21:55", cls: ["PreventAllocations"] }];
   const d01 = makeDomain(a01, true), d02 = makeDomain(a02, true);
-  d01.partitions = [{ id: "lp-train-a", name: "train-a", tenant: "训练集群 A", state: "Ready", physical: "nmx-part-0001", created: "2026-11-04 16:18" }];
+  d01.partitions = [{ id: "lp-train-a", name: "train-a", state: "Ready", physical: "nmx-part-0001", created: "2026-11-04 16:18" }];
   return {
     role: "操作", rms: true, flow: true, leak: false, taskSeq: 41, view: {}, guide: 1,
-    racks: [a01, a02], instances, deliveries: [], domains: [d01, d02],
+    racks: [a01, a02], pool, instances, installs: [batchSrv, batchA01], domains: [d01, d02],
     inventory: [{ v: 3, at: "2026-11-03 09:30", by: "ops-01", file: "arrival-2026-11-A.csv", note: "新增 RACK-A02（35 台）", why: "到货批次 2026-11-A" }, { v: 2, at: "2026-11-02 09:10", by: "ops-01", file: "arrival-2026-11-A.csv", note: "新增 RACK-A01（35 台）", why: "到货批次 2026-11-A" }],
     audit: [
       { at: "2026-11-22 21:55", by: "ops-02", obj: "RACK-A02 / 槽位 27", act: "设置维护标记", why: "CHG-1042 更换风扇", task: "—", res: "读回一致" },
       { at: "2026-11-12 11:05", by: "ops-01", obj: "RACK-A01", act: "固件更新 → " + BASELINES[0].id, why: "升级到 11 月基线", task: "task-0039", res: "成功，版本与基线相同" },
-      { at: "2026-11-04 16:20", by: "ops-01", obj: "RACK-A01", act: "交付：装机并验收", why: "交付训练集群 A", task: "—", res: "验收通过 18/18" },
+      { at: "2026-11-18 11:05", by: "ops-02", obj: "安装批次 batch-007", act: "新建安装任务（1 台）", why: "推理服务器装机", task: "—", res: "验收通过 1/1" },
+      { at: "2026-11-04 16:20", by: "ops-01", obj: "安装批次 batch-006", act: "新建安装任务（18 台）", why: "训练集群 A 装机", task: "—", res: "验收通过 18/18" },
       { at: "2026-11-03 10:12", by: "ops-01", obj: "RACK-A02", act: "机柜上电", why: "计划停电后恢复", task: "task-0041", res: "成功，成员全部开机" },
     ],
     /* 子网：NICo 的网络段。capacity 为可分配地址数（去掉保留地址）。vlan 只是平台记的备注，NICo 不存。 */
@@ -111,20 +131,24 @@ function freshState() {
     ],
     /* 拿到了地址、但还没有归属的端点：认证失败、读不到身份，或读到的序列号不在清单里。 */
     endpoints: [{ id: "ep-0007", mac: "02:00:ee:00:00:07", ip: "192.0.2.247", subnet: "net-oob", seen: "2026-11-24 07:41", problem: "unlisted", type: "compute", serial: "DEMO-X-0007", model: "GB200 Compute Tray" }],
-    osTemplates: [{ id: "Ubuntu 24.04 ARM64 · 标准系统盘", arch: "aarch64", disk: "唯一匹配的 NVMe，GPT / UEFI，ext4", login: "ubuntu + 公钥", state: "已发布", used: 18 }, { id: "Ubuntu 24.04 ARM64 · 大容量根分区", arch: "aarch64", disk: "容量最大的 NVMe，GPT / UEFI，XFS", login: "ubuntu + 公钥", state: "草稿", used: 0 }],
-    tenants: ["训练集群 A（NVKE）", "推理集群 B（NVKE）"],
+    osTemplates: [{ id: "Ubuntu 24.04 ARM64 · 标准系统盘", arch: "aarch64", disk: "容量最小的 NVMe，GPT / UEFI，ext4", login: "ubuntu + 公钥", state: "已发布", used: 18 }, { id: "Ubuntu 24.04 x86_64 · 标准系统盘", arch: "x86_64", disk: "容量最小的 NVMe，GPT / UEFI，ext4", login: "ubuntu + 公钥", state: "已发布", used: 1 }, { id: "Ubuntu 24.04 ARM64 · 大容量根分区", arch: "aarch64", disk: "容量最大的 NVMe，GPT / UEFI，XFS", login: "ubuntu + 公钥", state: "草稿", used: 0 }],
   };
 }
 
 let S = freshState();
 const DB = {
-  rack: (id) => S.racks.find((r) => r.id === id),
-  tray: (id) => S.racks.flatMap((r) => r.trays).find((t) => t.id === id),
-  trays: () => S.racks.flatMap((r) => r.trays),
+  /* 不属于机柜的服务器放在 S.pool 里：它不是机柜，只是让“同一时间一个任务”这类按机柜的规则有地方落。 */
+  rack: (id) => (id === "" ? S.pool : S.racks.find((r) => r.id === id)),
+  groups: () => [...S.racks, S.pool],
+  tray: (id) => DB.trays().find((t) => t.id === id),
+  trays: () => DB.groups().flatMap((r) => r.trays),
+  servers: () => S.pool.trays,
+  /* 这台设备有没有还没装完的安装任务。 */
+  installing: (t) => S.installs.some((b) => b.items.some((i) => i.tray === t.id && i.s !== "done")),
   domain: (id) => S.domains.find((d) => d.id === id),
   baseline: (id) => BASELINES.find((b) => b.id === id),
   busy: (r) => !!(r.task && r.task.status === "执行中"),
-  tasks: () => S.racks.flatMap((r) => r.tasks).sort((a, b) => (a.id < b.id ? 1 : -1)),
+  tasks: () => DB.groups().flatMap((r) => r.tasks).sort((a, b) => (a.id < b.id ? 1 : -1)),
   rackInstances: (id) => S.instances.filter((i) => i.rack === id),
   subnet: (id) => S.subnets.find((n) => n.id === id),
   roleSubnets: (role) => S.subnets.filter((n) => n.role === role),
@@ -165,6 +189,7 @@ const DB = {
       if (S.leak === r.id) out.push({ scope: "机柜", obj: r.id, rack: r.id, tray: "", id: "RackLeakDetect", target: "", msg: "机柜级泄漏。NICo 已自动对整柜强制下电", since: S.leakAt, cls: ["RackLeak", "PreventAllocations"] });
       r.trays.forEach((t) => t.alerts.forEach((a) => out.push({ scope: TYPE_LABEL[t.type], obj: `${r.id} / 槽位 ${pad2(t.slot)}`, rack: r.id, tray: t.id, id: a.id, target: a.target || "", msg: a.msg, since: a.since, cls: a.cls || [] })));
     });
+    S.pool.trays.forEach((t) => t.alerts.forEach((a) => out.push({ scope: "服务器", obj: t.serial, rack: "", tray: t.id, id: a.id, target: a.target || "", msg: a.msg, since: a.since, cls: a.cls || [] })));
     return out;
   },
   /* 整柜泄漏：只认 RackLeak 分类。一台设备的维护标记或告警不代表整柜有问题。 */
@@ -183,7 +208,7 @@ function addAudit(obj, act, why, task, res) { S.audit.unshift({ at: nowText(), b
 /* 模拟 Flow 任务：按规则的步骤推进。真实实现中任务由 Flow 持久化，页面只轮询任务状态。 */
 function startTask(rackId, kind, label, stages, opts = {}) {
   const r = DB.rack(rackId);
-  const t = { id: "task-" + String(++S.taskSeq).padStart(4, "0"), kind, label, target: opts.target || rackId, stages: stages.map((n) => ({ n, s: "wait" })), status: "执行中", by: opts.by || "ops-01", at: nowText(), end: "", reason: opts.why || "" };
+  const t = { id: "task-" + String(++S.taskSeq).padStart(4, "0"), rack: rackId, kind, label, target: opts.target || rackId, stages: stages.map((n) => ({ n, s: "wait" })), status: "执行中", by: opts.by || "ops-01", at: nowText(), end: "", reason: opts.why || "" };
   r.task = t; r.tasks.unshift(t);
   const rec = addAudit(t.target, label, opts.why, t.id, "已提交"); rec.by = t.by;
   t.timer = setInterval(() => {

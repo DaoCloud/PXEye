@@ -56,12 +56,12 @@ The generator checks the contract: a mapped page that does not exist, a page tha
 
 ## Left menu
 
-The menu goes straight to objects: each device type has its own entry, with no need to enter a rack first; the rack is the view that relates and summarises devices. A menu item with a submenu can be collapsed: clicking the text opens the page and expands it, clicking the arrow only toggles it.
+The menu goes straight to objects: the device is the base object and each device type has its own entry, with no need to enter a rack first; the rack is a layer on top of devices and holds only what NICo defines on the rack object plus a summary of its member devices. Installing an operating system is per machine, and its entry point is 安装任务, not the rack. A menu item with a submenu can be collapsed: clicking the text opens the page and expands it, clicking the arrow only toggles it.
 
 | Group | Menu items |
 | --- | --- |
-| 运维 (Operations) | 机柜管理; NVLink 域管理; 设备管理 (submenu: 计算托盘, 交换机, 供电框, DPU); 健康告警; 运维任务; 操作审计 |
-| 交付 (Delivery) | 机柜交付; 安装任务; 实例管理 |
+| 运维 (Operations) | 机柜管理; NVLink 域管理; 设备管理 (submenu: 服务器, 交换机, 供电框, DPU); 健康告警; 运维任务; 操作审计 |
+| 交付 (Delivery) | 安装任务; 实例管理 |
 | 接入 (Onboarding) | 网络规划; 设备清单; 设备发现 |
 | 配置 (Configuration) | 站点设置; 固件基线; 安装方案 |
 
