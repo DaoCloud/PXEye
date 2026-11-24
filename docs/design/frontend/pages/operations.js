@@ -46,8 +46,8 @@ registerAction("rack-bringup", ({ id }) => {
 });
 registerAction("slot-fix", ({ id }) => {
   const t = DB.tray(id), r = DB.rack(t.rack), other = r.trays.find((x) => x.slot === t.seenSlot), from = t.slot;
-  if (other && other.seenSlot === t.slot) { [t.slot, other.slot] = [other.slot, t.slot]; [t.id, other.id] = [other.id, t.id]; other.seenSlot = other.slot; } else t.slot = t.seenSlot;
-  t.seenSlot = t.slot; r.trays.sort((a, b) => a.slot - b.slot);
+  if (other && other.seenSlot === t.slot) { [t.slot, other.slot] = [other.slot, t.slot]; [t.id, other.id] = [other.id, t.id]; other.seenSlot = other.slot; other.simSlot = 0; } else t.slot = t.seenSlot;
+  t.seenSlot = t.slot; t.simSlot = 0; r.trays.sort((a, b) => a.slot - b.slot);
   S.inventory.unshift({ v: S.inventory[0].v + 1, at: nowText(), by: "ops-01", file: "（更正槽位）", note: `${r.id} ${t.serial} 槽位 ${pad2(from)} 改为 ${pad2(t.slot)}`, why: "按实测槽位更正" });
   addAudit(`${r.id} / 槽位 ${pad2(t.slot)}`, "按实测更正清单", "实测槽位与清单不同", "—", "清单已更新"); toast("清单已按实测槽位更正"); render();
 });

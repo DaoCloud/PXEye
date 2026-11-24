@@ -46,7 +46,7 @@ function makeTray(rackId, n, slot, discovered, baseline) {
   const type = slotType(slot), key = { compute: "C", switch: "S", power_shelf: "P" }[type];
   const serial = `DEMO-${key}-${rackId.slice(-3)}-${pad2(slot)}`;
   const tray = {
-    id: `${rackId}/${pad2(slot)}`, rack: rackId, n, slot, type, serial, matched: discovered, declared: discovered, seenSlot: discovered ? slot : 0,
+    id: `${rackId}/${pad2(slot)}`, rack: rackId, n, slot, type, serial, matched: discovered, declared: discovered, seenSlot: discovered && type !== "power_shelf" ? slot : 0,
     model: discovered ? { compute: "GB200 Compute Tray", switch: "NVLink Switch Tray", power_shelf: "Power Shelf" }[type] : "",
     bmcMac: "", bmcIp: "", addrMode: type === "compute" ? "保留" : "动态分配",
     state: discovered ? "Ready" : "", reason: "", health: discovered ? "ok" : "none", alerts: [], power: discovered ? "On" : "",
@@ -131,7 +131,7 @@ const DB = {
   ready: (r, type) => r.trays.filter((t) => (!type || t.type === type) && /Ready$/.test(t.state)).length,
   /* 清单与实物的差异：清单里有、但还没有任何设备读出这个序列号的行。只在机柜已有设备出现之后才算差异。 */
   absent: (r) => (r.trays.some((t) => t.matched) ? r.trays.filter((t) => !t.matched) : []),
-  /* 槽位不一致：清单里写的槽位，和 NICo 从硬件后端读到的槽位不同。 */
+  /* 槽位不一致：清单里写的槽位，和 NICo 接管设备后从硬件后端读到的槽位不同。上线之后才有。 */
   misplaced: (r) => r.trays.filter((t) => t.seenSlot && t.seenSlot !== t.slot),
   /* 机柜的电源：机柜对象没有电源状态，只能数成员。 */
   power(r) { const known = r.trays.filter((t) => t.state), on = known.filter((t) => t.power === "On").length; return { known: known.length, on, text: !known.length ? "未报告" : on === known.length ? "全部开机" : on === 0 ? "全部关机" : `${on} / ${known.length} 开机` }; },
@@ -221,20 +221,22 @@ function coreBringup(r) {
 
 /* 模拟新机柜的三段：
    1. 机柜接电（simulateDiscovery）：BMC 拿到地址，平台读取身份并按序列号匹配清单。只读，不写 NICo。
-      留下三种需要人处理的情况：一台交换机认证失败、一台计算托盘换了序列号、一个供电框没有申请地址；另有两台计算托盘插反了槽位。
+      留下三种需要人处理的情况：一台交换机认证失败、一台计算托盘换了序列号、一个供电框没有申请地址。另有两台计算托盘插反了槽位，这要到上线之后才看得出来。
    2. 确认纳管（admitRack）：平台把声明写进 NICo。NICo 登录 BMC、轮换口令；计算托盘带暂停标记，不上电、不接管。
    3. 开始上线（bringUpRack）：人提交上线任务，按顺序上电并放行计算托盘；交换机就绪后 NICo 自动做机柜维护。 */
-function matchTray(t) { assignAddresses(t); Object.assign(t, { matched: true, seenSlot: t.type === "compute" ? t.slot : 0, lastSeen: nowText(), model: { compute: "GB200 Compute Tray", switch: "NVLink Switch Tray", power_shelf: "Power Shelf" }[t.type] }); }
+function matchTray(t) { assignAddresses(t); Object.assign(t, { matched: true, lastSeen: nowText(), model: { compute: "GB200 Compute Tray", switch: "NVLink Switch Tray", power_shelf: "Power Shelf" }[t.type] }); }
 function declareTray(t) { if (!t.matched) matchTray(t); t.declared = true; }
 function takeOver(t) {
   declareTray(t);
+  /* 实测槽位是 NICo 接管设备之后向硬件后端查到的：计算托盘和交换机有，供电框没有。 */
+  if (t.type !== "power_shelf") t.seenSlot = t.simSlot || t.slot;
   Object.assign(t, { state: "Ready", health: "ok", power: "On", baseline: BASELINES[1].id, lastSeen: nowText(), history: [[nowText(), t.type === "compute" ? "HostInit/Discovered" : "Initializing"], [nowText(), "Ready"]] });
   if (t.type === "switch") t.fabricManager = "UNKNOWN";
 }
 function simulateDiscovery(rackId) {
   const r = DB.rack(rackId); if (!r || r.trays.some((t) => t.matched)) return false;
   r.trays.filter((t) => ![9, 20, 33].includes(t.slot)).forEach(matchTray);
-  const a = r.trays.find((t) => t.slot === 12), b = r.trays.find((t) => t.slot === 13); a.seenSlot = 13; b.seenSlot = 12;
+  const a = r.trays.find((t) => t.slot === 12), b = r.trays.find((t) => t.slot === 13); a.simSlot = 13; b.simSlot = 12;
   const n = r.n, ip = (s) => `192.0.2.${(n - 1) * 80 + s + 10}`, mac = (s) => `02:00:${pad2(n)}:00:00:${hex2(s)}`;
   S.endpoints.push({ id: "ep-" + rackId.slice(-3) + "-20", mac: mac(20), ip: ip(20), subnet: "net-oob", seen: nowText(), problem: "auth", type: "", serial: "", model: "", sim: rackId + "/20" });
   S.endpoints.push({ id: "ep-" + rackId.slice(-3) + "-09", mac: mac(9), ip: ip(9), subnet: "net-oob", seen: nowText(), problem: "unlisted", type: "compute", serial: "DEMO-C-" + rackId.slice(-3) + "-99", model: "GB200 Compute Tray", sim: rackId + "/09" });
