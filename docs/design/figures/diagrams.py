@@ -1,4 +1,4 @@
-"""Generate modules.svg and resources.svg (then: rsvg-convert -z 2 x.svg -o x.png)."""
+"""Generate modules.svg, resources.svg and onboarding.svg (then: rsvg-convert -z 2 x.svg -o x.png)."""
 B, G = "#1F4E79", "#44546A"
 
 class Fig:
@@ -83,3 +83,39 @@ r.arrow(d, 295, c + 222, 295, "作用于", lx=g2); r.text(g2, 317, "机柜 · �
 r.arrow(c + 220, 445, d - 2, 445, "就绪后分配", lx=g2)
 r.arrow(d + 110, 480, d + 110, 538, "交付", lx=d + 120, ly=514, anchor="start")
 r.save("resources.svg")
+
+# ---- onboarding of a new rack, by role ----
+# 列是阶段 P1–P8，行是角色。同一阶段里的活动自上而下或自下而上相连；阶段之间的先后看表头。深色是需要人确认的三处。
+STAGES = ["P1 站点准备", "P2 网络准备", "P3 清单导入", "P4 上架接线", "P5 识别匹配", "P6 纳管", "P7 上线", "P8 交付"]
+LANES = ["现场", "管理员", "操作人", "平台", "NICo"]
+CELLS = [  # (阶段, 角色, 文字, 是否人工确认点)，同一阶段按发生顺序排列
+    (0, 1, "部署与站点配置", False),
+    (1, 0, "配置网段与中继", False), (1, 1, "建立子网", False), (1, 3, "规划检查", False),
+    (2, 2, "导入到货清单", False), (2, 3, "校验并保存", False),
+    (3, 0, "上架、接线、接电", False),
+    (4, 4, "分配带外地址", False), (4, 3, "读取身份、匹配清单", False), (4, 2, "处理未匹配设备", False),
+    (5, 2, "确认纳管", True), (5, 3, "写入设备声明", False), (5, 4, "更换管理口令", False),
+    (6, 2, "开始上线", True), (6, 3, "提交上线任务", False), (6, 4, "上电、接管、机柜维护", False),
+    (7, 2, "确认交付", True), (7, 3, "建实例、装机、验收", False), (7, 4, "分配与引导", False),
+]
+LX, CW, LY, LH, BW, BH = 150, 174, 84, 96, 152, 54
+o = Fig(LX + CW * len(STAGES) + 24, LY + LH * len(LANES) + 46)
+for j, name in enumerate(LANES):
+    o.band(20, LY + j * LH, LX + CW * len(STAGES) - 16, LH - 8, name, "#F4F6F9" if j % 2 else "#EAF1F8", "#BFC9D6", B)
+for i, name in enumerate(STAGES):
+    x = LX + i * CW + (CW - BW) / 2
+    o.o.append(f'<rect x="{x}" y="22" width="{BW}" height="44" rx="8" fill="{B}"/>'
+               f'<text x="{x + BW / 2}" y="50" text-anchor="middle" font-size="14" font-weight="600" fill="#FFFFFF">{name}</text>')
+    if i: o.arrow(x - (CW - BW) + 2, 44, x - 2, 44)
+pos = {}
+for i, j, text, gate in CELLS:
+    x, y = LX + i * CW + (CW - BW) / 2, LY + j * LH + (LH - 8 - BH) / 2
+    f, c = (B, "#FFFFFF") if gate else ("#FFFFFF", "#111111")
+    o.o.append(f'<rect x="{x}" y="{y}" width="{BW}" height="{BH}" rx="8" fill="{f}" stroke="{B}" stroke-width="1.5"/>'
+               f'<text x="{x + BW / 2}" y="{y + BH / 2 + 5}" text-anchor="middle" font-size="13" font-weight="{600 if gate else 400}" fill="{c}">{text}</text>')
+    pos.setdefault(i, []).append((x + BW / 2, y))
+for i, items in pos.items():
+    for (x, y1), (_, y2) in zip(items, items[1:]):
+        o.arrow(x, y1 + BH + 1, x, y2 - 2) if y2 > y1 else o.arrow(x, y1 - 1, x, y2 + BH + 2)
+o.text(20, LY + LH * len(LANES) + 22, "深色方框是需要人确认的三处：纳管、上线、交付。同一阶段内按箭头方向依次进行，阶段之间按 P1 到 P8 的顺序。", size=12)
+o.save("onboarding.svg")

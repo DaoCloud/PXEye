@@ -3979,7 +3979,7 @@
         "机柜详情"
       ],
       "finding": "三件事已经分清。纳管：现有产品写设备声明时带暂停标记（discovery.py:269），NICo 不上电也不接管，首次安装时才放行（onboarding.py:640）。上线：Flow 有内置的上线规则，六步，其中计算托盘上电这一步会打开 NICo 的上电闸门（AllowIngestionAndPowerOn）。机柜维护：Core 的机柜状态机在就绪的交换机数不少于机柜规格里的数量时自动开始，没有等人确认的开关，顺序是固件升级、NVOS 更新、上电顺序（需要时）、配置 NMX-C 集群、校验。没有核实的是这两条线同时进行时的衔接：Flow 上线里的计算托盘固件走状态机路径时要求机柜已经在 Ready 或 Error；交换机没有上电时能否被 NICo 建立对象；计算托盘带暂停标记时机柜能否走到 Ready",
-      "options": "设计按“人确认纳管 → 人开始上线（Flow 上线任务）→ NICo 自动机柜维护”来画，三步的界限写在说明书 5.1。衔接问题要在现场版本的模拟环境里把 Flow 上线任务和机柜状态机一起跑一遍才能定；旧版本模拟环境只测过机柜状态机这一半",
+      "options": "设计按“人确认纳管 → 人开始上线（Flow 上线任务）→ NICo 自动机柜维护”来画，各阶段的定义、对设备的影响和人工确认点写在说明书 5.4 至 5.6，设计前提写在 5.9。衔接问题要在现场版本的模拟环境里把 Flow 上线任务和机柜状态机一起跑一遍才能定；旧版本模拟环境只测过机柜状态机这一半",
       "source": "rest-api/flow/internal/task/operationrules/resolver_defaults.go:775；crates/rack-controller/src/discovering.rs:65；crates/rack-controller/src/maintenance.rs:1496"
     },
     {

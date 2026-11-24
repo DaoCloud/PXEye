@@ -18,7 +18,7 @@
 | 位置 | 内容 | 维护方式 |
 | --- | --- | --- |
 | `whole-rack-operations*.md` | 设计说明书，中英两份 | 手工维护；菜单、流程、模块或门控变化时在同一个提交里更新两种语言 |
-| `figures/` | 设计说明书的四张图及其源文件 | 改源文件后重新出图，见下 |
+| `figures/` | 设计说明书的五张图及其源文件 | 改源文件后重新出图，见下 |
 | `frontend/` | 前端设计稿：可点击的页面，每个页面脚本带自己的说明。`index.html` 是对外版 | 改页面时同时改它的说明，再重新生成页面功能说明 |
 | `frontend/page-spec.zh-CN.md` | 页面功能说明 | 生成的文件，不直接修改 |
 | `frontend/internal.html` | 设计稿的实现参考版：对外版加上接口契约 | 生成的文件，不直接修改 |
@@ -40,10 +40,10 @@
 node docs/design/frontend/tools/build-spec.mjs
 ```
 
-图。架构图是手工维护的 `architecture.svg`；流程图的源文件是 `workflow.dot`；资源关系图和模块依赖图由 `diagrams.py` 生成。需要本机有 `rsvg-convert` 和 Graphviz 的 `dot`：
+图。架构图是手工维护的 `architecture.svg`；流程图的源文件是 `workflow.dot`；新机柜接入流程图、资源关系图和模块依赖图由 `diagrams.py` 生成。需要本机有 `rsvg-convert` 和 Graphviz 的 `dot`：
 
 ```bash
-cd docs/design/figures && python3 diagrams.py && for f in architecture resources modules; do rsvg-convert -z 2 $f.svg -o $f.png; done && dot -Tpng -Gdpi=200 workflow.dot -o workflow.png
+cd docs/design/figures && python3 diagrams.py && for f in architecture resources modules onboarding; do rsvg-convert -z 2 $f.svg -o $f.png; done && dot -Tpng -Gdpi=200 workflow.dot -o workflow.png
 ```
 
 图里的文字是简体中文，中英两份设计说明书共用同一组图。
