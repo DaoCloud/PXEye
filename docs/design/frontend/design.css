@@ -140,8 +140,7 @@ body.annotate .live-table-wrap { padding: 12px 0 0 12px; }
 .spec-doc ul { margin: 0; padding-left: 18px; font-size: 12.5px; line-height: 1.8; }
 @media print { .sidebar, .topbar, .guide, .app-footer { display: none !important; } .app-shell { margin-right: 0; display: block; } }
 
-/* 系统配置弹窗，以及新建安装任务的核对列表。 */
-.wiz-form.plain { padding: 0 4px 6px; }
+/* 新建安装任务的核对列表，以及系统配置弹窗里的校验提示。 */
 .wiz-lead-note { margin: 2px 0 14px; max-width: 900px; color: var(--muted); font-size: 13px; line-height: 1.7; }
 .wiz-lead-note b { color: var(--text); font-weight: 600; }
 .wiz-config tr.row-link { cursor: pointer; }
@@ -150,28 +149,5 @@ body.annotate .live-table-wrap { padding: 12px 0 0 12px; }
 .wiz-config tr.wiz-attn td:first-child { box-shadow: inset 3px 0 0 var(--red); }
 .wiz-config .live-table td { vertical-align: middle; padding-top: 10px; padding-bottom: 10px; }
 .wiz-config .live-table .cell-sub { white-space: nowrap; }
-.wiz-sec { display: grid; grid-template-columns: 96px minmax(0, 1fr); column-gap: 20px; padding: 18px 0 6px; }
-.wiz-sec + .wiz-sec { border-top: 1px solid var(--line); margin-top: 14px; }
-.wiz-sec > h4 { grid-row: 1 / span 20; margin: 6px 0 0; font-size: 14px; font-weight: 600; }
-.wiz-sec > :not(h4) { grid-column: 2; }
-.wiz-sec h5 { display: flex; align-items: baseline; gap: 10px; margin: 0 0 10px; font-size: 13px; font-weight: 600; }
-.wiz-sec h5 + .wiz-grid, .wiz-sec h5 + .wiz-nics { margin-bottom: 18px; }
-.wiz-sec h5 small { color: var(--muted); font-size: 12px; font-weight: 400; }
-.wiz-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 16px; }
-.wiz-field { display: grid; gap: 5px; align-content: start; min-width: 0; }
-.wiz-field.wide { max-width: 420px; }
-.wiz-field > span { color: var(--muted); font-size: 12px; }
-.wiz-field .input { width: 100%; height: 36px; }
-.wiz-field small { color: var(--muted); font-size: 12px; line-height: 1.55; }
-.wiz-static { display: flex; align-items: center; min-height: 36px; margin: 0; font-size: 13.5px; }
 .wiz-config .wiz-err { color: var(--red); }
 .wiz-config .wiz-err:empty { display: none; }
-.wiz-nics { display: grid; gap: 8px; }
-.wiz-nic { display: grid; grid-template-columns: minmax(0, 1.5fr) 120px minmax(0, 1.2fr) minmax(0, 1fr); gap: 10px; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-radius: 9px; background: #fbfdfc; }
-.wiz-nic > div { display: grid; gap: 2px; min-width: 0; }
-.wiz-nic strong { font-size: 13px; }
-.wiz-nic div span { color: var(--muted); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.wiz-nic .input { height: 34px; width: 100%; }
-.wiz-nic .wiz-err { grid-column: 3 / -1; font-size: 12px; }
-.wiz-muted { color: var(--muted); }
-.wiz-note { margin: 0; color: var(--muted); font-size: 12px; }
