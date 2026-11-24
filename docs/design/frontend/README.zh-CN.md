@@ -50,7 +50,7 @@ node docs/design/frontend/tools/build-spec.mjs
 | 接口契约页 | `internal.html` 顶栏的“接口契约”，或 [interface-contract.zh-CN.md](interface-contract.zh-CN.md) | 完整的组件表、资源依赖、接口清单、各页面的对照和缺口 |
 | `contract.json` | 与契约同时生成 | 给采集和回放工具读取 |
 
-每个接口带一个证据等级：**定义**表示只读过源码里的定义，**模拟**表示在模拟环境里调用过，**现场**表示在真实整机柜环境核对过。核对之后在 `contract.js` 里改这个接口的 `evidence`，再重新生成。契约对应的 NICo 源码版本写在 `contract.js` 的 `CONTRACT_SOURCE` 里，换版本时逐项重新核对。
+每个接口带一个证据等级：**定义**表示只读过源码里的定义，**调用**表示在没有整机柜硬件的 NICo 环境里实际调用过，**模拟**表示在模拟整机柜的环境里调用过，**现场**表示在真实整机柜环境核对过。实际调用过的接口写在 `contract.js` 的 `OBSERVED` 里，每条说明看到了什么、哪些没有核对；改完重新生成。契约对应的 NICo 源码版本写在 `contract.js` 的 `CONTRACT_SOURCE` 里，换版本时逐项重新核对。
 
 生成器会自检：对照里的页面不存在、页面引用了未定义的接口、接口引用了未定义的资源、定义了却没有页面使用的接口，都会列在契约末尾。
 

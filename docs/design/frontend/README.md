@@ -50,7 +50,7 @@ It is shown in three ways:
 | The interface contract page | “接口契约” in the top bar of `internal.html`, or [interface-contract.zh-CN.md](interface-contract.zh-CN.md) | The full component table, resource dependencies, interface list, per-page mapping and gaps |
 | `contract.json` | Generated together with the contract | Read by capture and replay tools |
 
-Each interface carries an evidence level: **定义** means only its definition in the source has been read, **模拟** means it has been called in a simulated environment, **现场** means it has been checked against a real whole-rack environment. After checking one, change its `evidence` in `contract.js` and regenerate. The NICo source version the contract is based on is `CONTRACT_SOURCE` in `contract.js`; recheck every item when the version changes.
+Each interface carries an evidence level: **定义** means only its definition in the source has been read, **调用** means it has actually been called in a NICo environment without whole-rack hardware, **模拟** means it has been called in an environment that simulates whole racks, **现场** means it has been checked against a real whole-rack environment. Interfaces that have actually been called are listed in `OBSERVED` in `contract.js`, each stating what was seen and what was not checked; regenerate after editing. The NICo source version the contract is based on is `CONTRACT_SOURCE` in `contract.js`; recheck every item when the version changes.
 
 The generator checks the contract: a mapped page that does not exist, a page that references an undefined interface, an interface that references an undefined resource, and an interface no page uses are all listed at the end of the contract.
 

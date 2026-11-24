@@ -3,7 +3,8 @@
     "repo": "dsx-ai-factory/infra-controller",
     "commit": "856eb1665",
     "version": "v2.5.0 之后",
-    "note": "接口、参数和字段取自这个提交的源码。换版本时逐项重新核对。"
+    "note": "接口、参数和字段取自这个提交的源码。换版本时逐项重新核对。",
+    "tested": "实际调用所用的环境运行的是提交 28e4e9824，比上面的提交早 2 个，在同一条线上。"
   },
   "components": [
     {
@@ -12,6 +13,7 @@
       "workload": "nico-api（含站点发现和各状态机）、数据库、密钥库",
       "level": "必需",
       "provides": "全部 Core gRPC：子网、设备声明、发现、设备读取与单设备操作、实例、健康报告",
+      "deploy": "随产品的 Chart 安装",
       "missing": "平台不可用",
       "source": "helm/charts/nico-api",
       "calls": [
@@ -105,6 +107,7 @@
       "workload": "nico-dhcp",
       "level": "必需",
       "provides": "给各管理网段的设备分配地址，并在 Core 里留下设备接口；设备发现从这里开始",
+      "deploy": "随 Core 的 Chart 安装",
       "missing": "新设备拿不到地址，不会被发现；已发现的设备不受影响",
       "source": "helm/charts/nico-dhcp",
       "calls": [
@@ -124,6 +127,7 @@
       "workload": "nico-pxe、nico-dns、nico-ntp",
       "level": "必需",
       "provides": "iPXE 引导、装机材料、名称解析和时间",
+      "deploy": "随 Core 的 Chart 安装",
       "missing": "不能装机；新主机走不完接管流程",
       "source": "helm/charts/nico-pxe",
       "calls": [
@@ -141,6 +145,7 @@
       "workload": "nico-hardware-health",
       "level": "必需",
       "provides": "采集 BMC 传感器和托盘泄漏检测，写成设备的健康报告",
+      "deploy": "随 Core 的 Chart 安装",
       "missing": "健康告警页只剩站点发现和手工写入的报告；托盘泄漏不会阻止分配",
       "source": "helm/charts/nico-hardware-health",
       "calls": [
@@ -160,6 +165,7 @@
       "workload": "Rack Management Service",
       "level": "整机柜",
       "provides": "整机柜里计算托盘、交换机、供电框的电源和固件；交换机的证书与口令配置、复位、退役；设备的槽位信息",
+      "deploy": "官方 Chart rack-manager；镜像从公开源码自己构建。已在没有整机柜硬件的环境里部署，Core 探测结果为已连通",
       "missing": "设备和机柜的电源、固件操作不可用；交换机过不了配置阶段，机柜走不到就绪",
       "source": "docs/configuration/rms.md",
       "calls": [
@@ -196,6 +202,7 @@
       "workload": "REST API、工作流、站点管理、站点代理、Temporal",
       "level": "整机柜",
       "provides": "机柜、托盘、NVLink 域和任务的 REST 接口；期望与实际的对账",
+      "deploy": "官方 Chart nico-rest、nico-rest-site-agent、temporal；镜像自己构建，要和 Core 同一个源码提交。已部署，接口实际调用通过",
       "missing": "机柜对账、机柜立面的槽位、任务列表不可用；机柜级任务无法提交",
       "source": "rest-api/INSTALLATION.md",
       "calls": [
@@ -234,6 +241,7 @@
       "workload": "nico-flow",
       "level": "整机柜",
       "provides": "机柜级任务的编排：上线、电源、固件、分阶段发布；机柜与托盘的清单和任务记录",
+      "deploy": "官方 Chart nico-flow；镜像自己构建，要和 Core 同一个源码提交。已部署，已从 Core 同步到清单",
       "missing": "机柜上线、机柜和域的电源与固件、运维任务不可用；单设备的状态类操作照常",
       "source": "docs/architecture/flow.md",
       "calls": [
@@ -267,9 +275,10 @@
     {
       "id": "nmxc",
       "name": "NMX-C",
-      "workload": "NMX-C 及其接入配置",
+      "workload": "交换机上的 NMX-C",
       "level": "整机柜",
       "provides": "NVLink 域的集群配置和域编号",
+      "deploy": "不在集群里部署：它运行在交换机上，由 RMS 配置，Core 通过交换机的管理地址访问",
       "missing": "NVLink 域管理没有数据；机柜上线里的 NMX-C 配置阶段无法完成",
       "source": "docs/development/machine-a-tron-nmxc-mock.md",
       "calls": [
@@ -289,6 +298,7 @@
       "workload": "nico-dsx-exchange-consumer、消息总线",
       "level": "可选",
       "provides": "把楼宇管理系统的泄漏事件写成机柜的健康报告",
+      "deploy": "Core Chart 里的一个开关；另外需要现场楼宇系统的消息总线。未部署",
       "missing": "机柜级泄漏不会进入 NICo，不会自动阻止分配；安全联锁本来就不依赖它",
       "source": "docs/operations/leak-detection-handling.md",
       "calls": [],
@@ -303,6 +313,7 @@
       "workload": "Prometheus",
       "level": "可选",
       "provides": "DHCP 的请求、应答和丢弃计数；各子网的空闲地址数",
+      "deploy": "现场已有的监控系统",
       "missing": "DHCP 服务页没有请求计数，其余不受影响",
       "source": "docs/observability/core_metrics.md",
       "calls": [
@@ -416,19 +427,68 @@
       ]
     },
     {
+      "id": "cluster-issuer",
+      "name": "集群级证书签发者",
+      "object": "ClusterIssuer vault-nico-issuer",
+      "createdBy": "在 Vault 里建一个签发角色并让 cert-manager 用它签发；RMS、Flow、站点代理和编排用数据库的证书都由它签，和 Core 的证书出自同一个站点 CA",
+      "requires": [
+        "core"
+      ],
+      "prep": "direct",
+      "note": "官方 Chart 申请的是椭圆曲线证书，签发角色要接受这种密钥。证书最长 30 天，自动续期，但 RMS 和数据库不会自动重新加载",
+      "source": "helm-prereqs/templates/vault-nico-issuer.yaml:8",
+      "requiresNames": [
+        "NICo Core"
+      ]
+    },
+    {
+      "id": "orchestration-db",
+      "name": "编排用数据库",
+      "object": "nico-pg-cluster",
+      "createdBy": "单独的 PostgreSQL，按官方的名称、账号和凭据密钥提供 REST、Flow、Temporal、Keycloak、RMS 各自的库",
+      "requires": [
+        "cluster-issuer"
+      ],
+      "prep": "direct",
+      "note": "不和 Core 的数据库共用。REST 的库要有 pg_trgm 扩展；REST 和 Flow 的账号是超级用户，Temporal 的账号可建库",
+      "source": "helm-prereqs/templates/postgresql.yaml:46",
+      "requiresNames": [
+        "集群级证书签发者"
+      ]
+    },
+    {
+      "id": "temporal",
+      "name": "Temporal",
+      "object": "temporal",
+      "createdBy": "官方 Chart 安装后，用它的管理工具建逻辑命名空间 cloud、site、flow，以及每个站点一个以站点 UUID 命名的",
+      "requires": [
+        "orchestration-db"
+      ],
+      "prep": "direct",
+      "note": "Flow 启动时要求 flow 这个逻辑命名空间已经存在。Temporal 自己的证书由 REST 的 CA 签发，不是站点 CA",
+      "source": "helm-prereqs/setup.sh:2406",
+      "requiresNames": [
+        "编排用数据库"
+      ]
+    },
+    {
       "id": "rms",
       "name": "RMS",
       "object": "Rack Management Service",
-      "createdBy": "独立部署，在站点配置 [rms] 里填它的地址",
+      "createdBy": "官方 Chart rack-manager，发布名 rack，命名空间固定为 rack-manager；镜像要从公开源码自己构建。Core 配置里的 RMS 地址默认就指向它，装好后 Core 不用重启",
       "requires": [
-        "rack-profiles"
+        "rack-profiles",
+        "cluster-issuer",
+        "orchestration-db"
       ],
       "prep": "config",
-      "prepNote": "没有硬件时接 RMS 模拟服务",
+      "prepNote": "RMS 本身可以在没有硬件时部署并连通；要让它有设备可管，需要 RMS 模拟服务或真实机柜",
       "note": "任一后端选了 rms，启动时就要求机柜规格配置里有产品系列和厂商",
       "source": "docs/configuration/rms.md:243",
       "requiresNames": [
-        "机柜规格配置"
+        "机柜规格配置",
+        "集群级证书签发者",
+        "编排用数据库"
       ]
     },
     {
@@ -460,34 +520,40 @@
       "id": "rest-site",
       "name": "REST 站点",
       "object": "Infrastructure Provider、Site、站点代理",
-      "createdBy": "部署 Temporal 并建好命名空间；调用一次 GET /infrastructure-provider/current；POST /site；再把站点注册信息写进站点代理",
+      "createdBy": "官方 Chart nico-rest 和 nico-rest-site-agent，命名空间 nico-rest。在 REST 的库里登记站点，站点代理安装时向站点管理服务换取一次性口令完成握手；之后清单上报，站点由 Pending 变为 Registered",
       "requires": [
         "core",
-        "rest-auth"
+        "rest-auth",
+        "temporal",
+        "cluster-issuer"
       ],
       "prep": "direct",
       "note": "机柜、托盘、域和任务接口都要带 siteId。站点代理上线后回报是否启用了 Flow",
       "source": "rest-api/INSTALLATION.md:773",
       "requiresNames": [
         "NICo Core",
-        "REST 身份认证"
+        "REST 身份认证",
+        "Temporal",
+        "集群级证书签发者"
       ]
     },
     {
       "id": "flow",
       "name": "Flow",
       "object": "nico-flow",
-      "createdBy": "独立部署；站点代理里配置 Flow 地址；Core 的权限表给 Flow 身份放行设备电源和固件接口",
+      "createdBy": "官方 Chart nico-flow，发布名 flow，命名空间固定为 flow；镜像要自己构建，并且和 Core 出自同一个源码提交。站点代理打开 Flow 开关后经它转发",
       "requires": [
         "rest-site",
-        "component-manager"
+        "component-manager",
+        "temporal"
       ],
       "prep": "config",
       "note": "REST 经 Temporal 和站点代理转发到 Flow。直接访问 Flow 要用双向证书，并且身份在允许名单里",
       "source": "docs/architecture/flow.md:3",
       "requiresNames": [
         "REST 站点",
-        "组件管理器"
+        "组件管理器",
+        "Temporal"
       ]
     },
     {
@@ -509,14 +575,14 @@
       "id": "nmxc",
       "name": "NMX-C 接入",
       "object": "NvlinkNmxcEndpoint",
-      "createdBy": "CreateNvlinkNmxcEndpoint：机箱序列号和 NMX-C 地址",
+      "createdBy": "机柜里的设备不需要登记：Core 取机柜里第一台就绪且 Fabric Manager 已配置的交换机的 NVOS 地址，端口 9370。只有不属于任何机柜的设备才用 CreateNvlinkNmxcEndpoint 登记（机箱序列号和地址）",
       "requires": [
         "core"
       ],
       "prep": "direct",
-      "prepNote": "没有硬件时接 NMX-C 模拟服务",
-      "note": "没有专门的状态接口，只能从机柜健康报告里的 NmxcUnreachable 判断",
-      "source": "crates/rpc/proto/forge.proto:1116",
+      "prepNote": "NMX-C 运行在交换机上，由 RMS 配置；没有交换机时只能接 NMX-C 模拟服务",
+      "note": "没有专门的状态接口，只能从机柜健康报告里的 NmxcUnreachable 判断。交换机要先由 RMS 配好，Core 才找得到 NMX-C",
+      "source": "crates/nvlink-manager/src/nmx_c_endpoint.rs:102",
       "requiresNames": [
         "NICo Core"
       ]
@@ -885,7 +951,7 @@
       "area": "站点与依赖",
       "surface": "Core gRPC",
       "name": "Version",
-      "evidence": "定义",
+      "evidence": "调用",
       "cli": "nico-admin-cli version --show-runtime-config",
       "request": "display_config 为真时带回运行配置",
       "fields": [
@@ -903,6 +969,7 @@
       "note": "运行配置里没有时间服务器、组件管理器后端和配额执行方式",
       "source": "forge.proto:36",
       "used": true,
+      "observed": "返回 build_version（形如 0.0.0-main-<提交号>）、build_date、git_sha、rust_version。带运行配置的输出没有核对",
       "requiresNames": [
         "NICo Core"
       ],
@@ -917,7 +984,7 @@
       "area": "站点与依赖",
       "surface": "Core gRPC",
       "name": "GetRmsVersion",
-      "evidence": "定义",
+      "evidence": "调用",
       "cli": "nico-admin-cli backend rms status",
       "fields": [
         "version"
@@ -929,6 +996,7 @@
       "note": "没有配置 RMS 时返回 UNAVAILABLE；30 秒超时。命令行只有在连通时退出码才是 0",
       "source": "crates/api-core/src/handlers/rms.rs:75",
       "used": true,
+      "observed": "RMS 部署之前 Core 的配置就指向它；部署后返回 status: connected 和 RMS 的版本号，Core 没有重启",
       "requiresNames": [
         "RMS"
       ],
@@ -942,7 +1010,7 @@
       "area": "站点与依赖",
       "surface": "REST",
       "name": "GET /site、GET /site/{id}",
-      "evidence": "定义",
+      "evidence": "调用",
       "cli": "nicocli site list",
       "fields": [
         "id",
@@ -959,6 +1027,7 @@
       "executedBy": "REST",
       "note": "Flow 是否可用只能从这里的 capabilities.flow 看，Core 没有对应接口",
       "source": "spec.yaml:946",
+      "observed": "返回 200。看到的字段：id、name、org、infrastructureProviderId、siteControllerVersion、siteAgentVersion、registrationToken。站点登记后先是 Pending，站点代理上报清单后约 5 分钟变为 Registered。capabilities 和 isOnline 没有核对",
       "requiresNames": [
         "REST 站点"
       ],
@@ -1095,7 +1164,7 @@
       "area": "站点与依赖",
       "surface": "REST",
       "name": "GET /task/rule",
-      "evidence": "定义",
+      "evidence": "调用",
       "cli": "nicocli rule list --site-id <SITE>",
       "request": "siteId 必填；operationType 可选（PowerControl、FirmwareControl）",
       "fields": [
@@ -1110,8 +1179,9 @@
         "operation-rule"
       ],
       "executedBy": "Flow",
-      "note": "只返回存进数据库的规则",
+      "note": "只返回存进数据库的规则；内置的默认规则不在列表里",
       "source": "spec.yaml:14592",
+      "observed": "新装的环境返回 200 和空列表，内置的默认规则确实不在里面",
       "requiresNames": [
         "操作规则"
       ],
@@ -1832,7 +1902,7 @@
       "area": "机柜与 NVLink 域",
       "surface": "REST",
       "name": "GET /rack、GET /rack/{id}",
-      "evidence": "定义",
+      "evidence": "调用",
       "cli": "nicocli rack list --site-id <SITE>",
       "request": "siteId 必填；includeComponents、name、分页可选",
       "fields": [
@@ -1851,6 +1921,7 @@
       "executedBy": "Flow",
       "note": "站点没有启用 Flow 时返回 412",
       "source": "spec.yaml:13522",
+      "observed": "返回 200 和空列表（环境里没有机柜），字段没法核对",
       "requiresNames": [
         "Flow 的机柜与托盘清单"
       ],
@@ -1864,7 +1935,7 @@
       "area": "机柜与 NVLink 域",
       "surface": "REST",
       "name": "GET /rack/{id}/validation、GET /rack/validation",
-      "evidence": "定义",
+      "evidence": "调用",
       "cli": "nicocli rack validate --site-id <SITE>",
       "request": "siteId 必填",
       "fields": [
@@ -1882,6 +1953,7 @@
       "executedBy": "Flow",
       "note": "差异类型：Missing、Unexpected、Mismatch。按 BMC MAC 比对，不比对序列号",
       "source": "spec.yaml:13745",
+      "observed": "返回 200，结构是 diffs、totalDiffs、missingCount、unexpectedCount、mismatchCount、matchCount，与这里一致。没有机柜时各计数都是 0",
       "requiresNames": [
         "Flow 的机柜与托盘清单",
         "设备声明"
@@ -1896,7 +1968,7 @@
       "area": "机柜与 NVLink 域",
       "surface": "REST",
       "name": "GET /tray、GET /tray/{id}",
-      "evidence": "定义",
+      "evidence": "调用",
       "cli": "nicocli tray list --site-id <SITE> --rack-id <RACK>",
       "request": "siteId 必填；rackId 或 rackName、type、slotId 可选",
       "fields": [
@@ -1917,8 +1989,9 @@
         "flow-inventory"
       ],
       "executedBy": "Flow",
-      "note": "机柜立面要的槽位在这里；Core 的供电框对象没有位置字段",
+      "note": "机柜立面要的槽位在这里；Core 的供电框对象没有位置字段。不属于任何机柜的普通服务器也在这个列表里",
       "source": "spec.yaml:14412",
+      "observed": "返回 200。看到的字段：id、type、name、manufacturer、model、serialNumber、description、firmwareVersion、powerState、operationStatus、leakStatus。列表里有一台不属于任何机柜的普通服务器，类型是 Compute。position、rackId、nvLinkDomainId 没有核对",
       "requiresNames": [
         "Flow 的机柜与托盘清单"
       ],
@@ -1932,7 +2005,7 @@
       "area": "机柜与 NVLink 域",
       "surface": "REST",
       "name": "GET /domain/nvlink、GET /domain/nvlink/{id}",
-      "evidence": "定义",
+      "evidence": "调用",
       "cli": "nicocli domain list --site-id <SITE>",
       "request": "siteId 必填；includeComponents 可选",
       "fields": [
@@ -1949,6 +2022,7 @@
       "executedBy": "Flow",
       "note": "nicocli 的子命令名由接口规范生成，这里的写法没有实际运行核对",
       "source": "spec.yaml:13335",
+      "observed": "返回 200 和空列表，字段没法核对",
       "requiresNames": [
         "NVLink 域"
       ],
@@ -2739,7 +2813,7 @@
       "area": "机柜级任务",
       "surface": "REST",
       "name": "GET /task、GET /rack/{id}/task、GET /tray/{id}/task、GET /task/{id}",
-      "evidence": "定义",
+      "evidence": "调用",
       "cli": "nicocli rack task get --site-id <SITE> <RACK_ID>",
       "request": "siteId 必填；activeOnly、includeReport、分页可选",
       "fields": [
@@ -2758,6 +2832,7 @@
       "executedBy": "Flow",
       "note": "任务里没有操作者和原因，这两项由平台的审计记录",
       "source": "spec.yaml:14768",
+      "observed": "返回 200 和空列表（没有提交过任务），字段没法核对",
       "requiresNames": [
         "任务"
       ],
@@ -3871,6 +3946,27 @@
       "finding": "当前生效的组件管理器后端没有读取接口；设施事件消费者是否连上也没有接口，只有它自己的指标。NMX-C 没有状态接口",
       "options": "RMS 用版本接口判断；NMX-C 从机柜健康报告里的 NmxcUnreachable 判断；设施接入读消费者的指标，读不到就显示未知，不显示正常",
       "source": "crates/api-core/src/cfg/README.md:140"
+    },
+    {
+      "need": "平台访问 REST 接口的身份",
+      "pages": [
+        "机柜管理",
+        "机柜详情",
+        "运维任务",
+        "NVLink 域管理"
+      ],
+      "finding": "REST 接口用的是身份系统签发的令牌，按组织和角色授权，和 Core 的客户端证书是两套。平台现在只有访问 Core 的证书，没有访问 REST 的身份。令牌必须从集群内的地址获取，否则签发者地址对不上",
+      "options": "给平台建一个服务账号，用客户端凭据方式取令牌并缓存、到期前刷新；组织名作为站点配置的一项。身份系统用官方的 Keycloak 还是现场已有的，按站点决定",
+      "source": "rest-api/openapi/auth.md:43"
+    },
+    {
+      "need": "依赖组件的证书到期",
+      "pages": [
+        "站点设置"
+      ],
+      "finding": "RMS、Flow、站点代理和编排用数据库的证书最长 30 天，会自动续期，但 RMS 和数据库不会自动重新加载，过期后 Core 就连不上 RMS。NICo 没有接口报告这些证书的到期时间",
+      "options": "站点概况的依赖组件里显示各证书的到期时间，数据从集群里的证书对象读；临近到期而组件还没重启时给出提示",
+      "source": "docs/configuration/rms.md:82"
     },
     {
       "need": "任务里的操作者和原因",
