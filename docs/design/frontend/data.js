@@ -55,7 +55,7 @@ function makeTray(rackId, n, slot, discovered, baseline) {
     baseline: discovered ? baseline : "", maintenance: "", quarantine: "", instance: "", lastSeen: discovered ? "2026-11-24 08:00" : "",
     history: discovered ? [["2026-11-02 09:41", type === "compute" ? "HostInit/Discovered" : "Initializing"], ["2026-11-02 10:30", "Ready"]] : [],
   };
-  if (type === "compute") Object.assign(tray, { arch: "aarch64", disks: ["nvme0n1 · 1.92 TB", "nvme1n1 · 1.92 TB"], hostMac: "", hostIp: "", nics: [], hardware: { CPU: "2 × Grace 72C", GPU: "4 × GB200", 内存: "960 GiB", 系统盘: "2 × 1.92 TB NVMe", 网卡: "2 × BlueField-3（网卡模式）" }, sku: "gb200-compute-c2g4",
+  if (type === "compute") Object.assign(tray, { arch: "aarch64", disks: ["nvme0n1 · 480 GB", "nvme1n1 · 1.92 TB"], hostMac: "", hostIp: "", nics: [], hardware: { CPU: "2 × Grace 72C", GPU: "4 × GB200", 内存: "960 GiB", 系统盘: "1 × 480 GB NVMe", 数据盘: "1 × 1.92 TB NVMe", 网卡: "2 × BlueField-3（网卡模式）" }, sku: "gb200-compute-c2g4",
     lldp: [{ port: "eno1", sw: "mgmt-leaf-" + pad2(n), remote: "swp" + slot }, { port: "p0", sw: "spine-" + pad2(n) + "a", remote: "Ethernet" + slot }] });
   if (type === "switch") Object.assign(tray, { nvos: [], primary: slot === 15, fabricManager: discovered ? "OK" : "" });
   if (discovered) assignAddresses(tray);
@@ -79,8 +79,8 @@ function makeServer(i, stage) {
   return { id: "SRV/" + pad2(i), rack: "", n: 0, slot: 0, type: "compute", arch: "x86_64", serial: "DEMO-H-00" + pad2(i), matched: true, declared: stage !== "matched", seenSlot: 0, model: "GPU Server 8G",
     bmcMac: `02:00:0f:00:00:${hex2(i)}`, bmcIp: `192.0.2.${241 + i}`, addrMode: "保留", state: ready ? "Ready" : "", reason: "", health: ready ? "ok" : "none", alerts: [], power: ready ? "On" : "",
     baseline: "", maintenance: "", quarantine: "", instance: "", lastSeen: "2026-11-24 08:00", history: ready ? [["2026-11-18 10:02", "HostInit/Discovered"], ["2026-11-18 10:40", "Ready"]] : [],
-    hostMac: `02:10:0f:00:00:${hex2(i)}`, hostIp: ready ? `198.51.100.${200 + i}` : "", nics: [], sku: "gpu-server-8g", disks: ["nvme0n1 · 960 GB", "nvme1n1 · 960 GB", "nvme2n1 · 3.84 TB"],
-    hardware: { CPU: "2 × 64C x86_64", GPU: "8 × GPU", 内存: "1 TiB", 系统盘: "2 × 960 GB NVMe", 网卡: "2 × 25GbE" }, lldp: [{ port: "eno1", sw: "mgmt-leaf-09", remote: "swp" + i }] };
+    hostMac: `02:10:0f:00:00:${hex2(i)}`, hostIp: ready ? `198.51.100.${200 + i}` : "", nics: [], sku: "gpu-server-8g", disks: ["nvme0n1 · 480 GB", "nvme1n1 · 3.84 TB", "nvme2n1 · 3.84 TB"],
+    hardware: { CPU: "2 × 64C x86_64", GPU: "8 × GPU", 内存: "1 TiB", 系统盘: "1 × 480 GB NVMe", 数据盘: "2 × 3.84 TB NVMe", 网卡: "2 × 25GbE" }, lldp: [{ port: "eno1", sw: "mgmt-leaf-09", remote: "swp" + i }] };
 }
 /* 服务器被 NICo 接管之后的样子。 */
 function takeOverServer(t) { Object.assign(t, { declared: true, state: "Ready", health: "ok", power: "On", hostIp: t.hostIp || `198.51.100.${200 + +t.id.slice(-2)}`, lastSeen: nowText(), history: [[nowText(), "HostInit/Discovered"], [nowText(), "Ready"]] }); }
@@ -110,10 +110,12 @@ function freshState() {
   const sw = a01.trays.find((t) => t.slot === 18); sw.health = "warn"; sw.fabricManager = "UNKNOWN"; sw.alerts = [{ id: "SwitchUnreachable", target: sw.nvos[0].ip, msg: "NVOS 管理口不可达，Fabric Manager 状态读不到", since: "2026-11-21 03:14", cls: [] }];
   const mt = a02.trays.find((t) => t.slot === 27); mt.maintenance = "CHG-1042 更换风扇"; mt.health = "warn";
   mt.alerts = [{ id: "BmcSensor", target: "fan3", msg: "风扇 3 转速低于阈值", since: "2026-11-22 21:40", cls: [] }, { id: "Maintenance", target: "", msg: "维护标记：CHG-1042 更换风扇", since: "2026-11-22 21:55", cls: ["PreventAllocations"] }];
+  /* 一台计算托盘换过盘：两块 NVMe 一样大，按方案的规则解析不出唯一的系统盘。用来演示安装条件检查不通过、逐台指定系统盘后通过。 */
+  const odd = a02.trays.find((t) => t.slot === 29); odd.disks = ["nvme0n1 · 1.92 TB", "nvme1n1 · 1.92 TB"]; odd.hardware = { ...odd.hardware, 系统盘: "2 × 1.92 TB NVMe（换过盘）" }; delete odd.hardware.数据盘;
   const d01 = makeDomain(a01, true), d02 = makeDomain(a02, true);
   d01.partitions = [{ id: "lp-train-a", name: "train-a", state: "Ready", physical: "nmx-part-0001", created: "2026-11-04 16:18" }];
   return {
-    role: "操作", rms: true, flow: true, leak: false, taskSeq: 41, view: {}, guide: 1,
+    role: "操作", rms: true, flow: true, leak: false, taskSeq: 41, view: {}, guide: 1, currentSystems: {},
     racks: [a01, a02], pool, instances, installs: [batchSrv, batchA01], domains: [d01, d02],
     inventory: [{ v: 3, at: "2026-11-03 09:30", by: "ops-01", file: "arrival-2026-11-A.csv", note: "新增 RACK-A02（35 台）", why: "到货批次 2026-11-A" }, { v: 2, at: "2026-11-02 09:10", by: "ops-01", file: "arrival-2026-11-A.csv", note: "新增 RACK-A01（35 台）", why: "到货批次 2026-11-A" }],
     audit: [
