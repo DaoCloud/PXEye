@@ -42,23 +42,25 @@ const hex2 = (n) => n.toString(16).padStart(2, "0");
 const slotType = (s) => (s <= 4 || s >= 32 ? "power_shelf" : s >= 15 && s <= 23 ? "switch" : "compute");
 const nowText = () => "2026-11-24 " + new Date().toTimeString().slice(0, 5);
 
-/* 清单里的一行，依次经过三个标记：matched 读到身份并对上清单；declared 已纳管（声明写进 NICo，计算托盘带暂停标记，不上电）；
-   state 有值表示上线后 NICo 已接管并建立设备对象。MAC 和地址在机柜接电后从 DHCP 得到。 */
+/* 一台设备在平台里有两份数据，和现有产品一样分开保存：
+   plan 是设备规划（导入的那一行：管理地址、管理 MAC、管理子网、BMC 规划地址），导入只保存规划，不写 NICo，也不自动纳管；
+   cfg / bmcPlan 是已纳管设备的配置，“一键匹配”把规划写进去之后才有内容。
+   三个标记：matched 已经获取到设备信息并对上规划里的序列号；declared 已纳管；state 有值表示 NICo 已接管并建立设备对象。 */
 function makeTray(rackId, n, slot, discovered, baseline) {
   const type = slotType(slot), key = { compute: "C", switch: "S", power_shelf: "P" }[type];
   const serial = `DEMO-${key}-${rackId.slice(-3)}-${pad2(slot)}`;
   const tray = {
-    id: `${rackId}/${pad2(slot)}`, rack: rackId, n, slot, type, serial, bmcPlan: "", planMac: "", matched: discovered, declared: discovered, seenSlot: discovered && type !== "power_shelf" ? slot : 0,
+    id: `${rackId}/${pad2(slot)}`, rack: rackId, n, slot, type, serial, bmcPlan: "", plan: { mip: "", mmac: "", msubnet: "", bmcIp: "" }, placed: discovered, matched: discovered, declared: discovered, seenSlot: discovered && type !== "power_shelf" ? slot : 0,
     model: discovered ? { compute: "GB200 Compute Tray", switch: "NVLink Switch Tray", power_shelf: "Power Shelf" }[type] : "",
     bmcMac: "", bmcIp: "", addrMode: type === "compute" ? "保留" : "动态分配",
     state: discovered ? "Ready" : "", reason: "", health: discovered ? "ok" : "none", alerts: [], power: discovered ? "On" : "",
     baseline: discovered ? baseline : "", maintenance: "", quarantine: "", instance: "", lastSeen: discovered ? "2026-11-24 08:00" : "",
     history: discovered ? [["2026-11-02 09:41", type === "compute" ? "HostInit/Discovered" : "Initializing"], ["2026-11-02 10:30", "Ready"]] : [],
   };
-  if (type === "compute") Object.assign(tray, { cfg: { host: "", os: "", disk: "", mip: "" }, arch: "aarch64", disks: ["nvme0n1 · 480 GB", "nvme1n1 · 1.92 TB"], hostMac: "", hostIp: "", nics: [], hardware: { CPU: "2 × Grace 72C", GPU: "4 × GB200", 内存: "960 GiB", 系统盘: "1 × 480 GB NVMe", 数据盘: "1 × 1.92 TB NVMe", 网卡: "2 × BlueField-3（网卡模式）" }, sku: "gb200-compute-c2g4",
+  if (type === "compute") Object.assign(tray, { cfg: { host: "", os: "", disk: "", mip: "", mnic: "", subnet: "" }, arch: "aarch64", disks: ["nvme0n1 · 480 GB", "nvme1n1 · 1.92 TB"], hostMac: "", hostIp: "", nics: [], hardware: { CPU: "2 × Grace 72C", GPU: "4 × GB200", 内存: "960 GiB", 系统盘: "1 × 480 GB NVMe", 数据盘: "1 × 1.92 TB NVMe", 网卡: "2 × BlueField-3（网卡模式）" }, sku: "gb200-compute-c2g4",
     lldp: [{ port: "eno1", sw: "mgmt-leaf-" + pad2(n), remote: "swp" + slot }, { port: "p0", sw: "spine-" + pad2(n) + "a", remote: "Ethernet" + slot }] });
   if (type === "switch") Object.assign(tray, { nvos: [], primary: slot === 15, fabricManager: discovered ? "OK" : "" });
-  if (discovered) assignAddresses(tray);
+  if (discovered) { assignAddresses(tray); /* 已经在用的机柜：规划已经匹配进设备配置 */ if (type === "compute") { Object.assign(tray.plan, { mip: tray.hostIp, mmac: tray.hostMac, msubnet: "198.51.100.0/24" }); Object.assign(tray.cfg, { mip: tray.hostIp, mnic: tray.hostMac, subnet: "198.51.100.0/24" }); } }
   return tray;
 }
 /* 设备通电后从 DHCP 得到的 MAC 和地址。 */
@@ -68,8 +70,6 @@ function assignAddresses(t) {
   if (t.type === "compute") {
     const c = s <= 14 ? s - 5 : s - 24 + 10;
     t.hostMac = `02:10:${pad2(n)}:00:00:${hex2(s)}`; t.hostIp = `198.51.100.${host}`;
-    /* 管理地址是设备规划时定下的，和这个网口的 MAC 对应；NICo 按它分配。 */
-    if (!t.cfg.mip) t.cfg.mip = t.hostIp;
     t.nics = [1, 2].map((i) => ({ name: "BlueField-3 · " + i, serial: `DEMO-D-${t.rack.slice(-3)}-${pad2(s)}${i}`, part: "900-9D3B6-00CV-AA0", fw: "32.45.1020", policy: "nic", mode: "Nic", mac: `02:3${i}:${pad2(n)}:00:00:${hex2(s)}`, ip: `192.0.2.${base + 45 + c * 2 + i}` }));
   }
   if (t.type === "switch") t.nvos = [0, 1].map((i) => ({ mac: `02:2${i}:${pad2(n)}:00:00:${hex2(s)}`, ip: `203.0.113.${(n - 1) * 40 + (s - 15) * 2 + i + 11}`, primary: i === 0, name: "eth" + i }));
@@ -79,9 +79,9 @@ function assignAddresses(t) {
 function makeServer(i, stage) {
   const ready = stage === "ready";
   return { id: "SRV/" + pad2(i), rack: "", n: 0, slot: 0, type: "compute", arch: "x86_64", serial: "DEMO-H-00" + pad2(i), matched: true, declared: stage !== "matched", seenSlot: 0, model: "GPU Server 8G",
-    bmcMac: `02:00:0f:00:00:${hex2(i)}`, bmcIp: `192.0.2.${241 + i}`, bmcPlan: "", planMac: `02:10:0f:00:00:${hex2(i)}`, addrMode: "保留", state: ready ? "Ready" : "", reason: "", health: ready ? "ok" : "none", alerts: [], power: ready ? "On" : "",
+    bmcMac: `02:00:0f:00:00:${hex2(i)}`, bmcIp: `192.0.2.${241 + i}`, bmcPlan: "", plan: { mip: `198.51.100.${200 + i}`, mmac: `02:10:0f:00:00:${hex2(i)}`, msubnet: "198.51.100.0/24", bmcIp: "" }, placed: true, addrMode: "保留", state: ready ? "Ready" : "", reason: "", health: ready ? "ok" : "none", alerts: [], power: ready ? "On" : "",
     baseline: "", maintenance: "", quarantine: "", instance: "", lastSeen: "2026-11-24 08:00", history: ready ? [["2026-11-18 10:02", "HostInit/Discovered"], ["2026-11-18 10:40", "Ready"]] : [],
-    hostMac: `02:10:0f:00:00:${hex2(i)}`, hostIp: ready ? `198.51.100.${200 + i}` : "", cfg: { host: "", os: "", disk: "", mip: `198.51.100.${200 + i}` }, nics: [], sku: "gpu-server-8g", disks: ["nvme0n1 · 480 GB", "nvme1n1 · 3.84 TB", "nvme2n1 · 3.84 TB"],
+    hostMac: `02:10:0f:00:00:${hex2(i)}`, hostIp: ready ? `198.51.100.${200 + i}` : "", cfg: stage === "matched" ? { host: "", os: "", disk: "", mip: "", mnic: "", subnet: "" } : { host: "", os: "", disk: "", mip: `198.51.100.${200 + i}`, mnic: `02:10:0f:00:00:${hex2(i)}`, subnet: "198.51.100.0/24" }, nics: [], sku: "gpu-server-8g", disks: ["nvme0n1 · 480 GB", "nvme1n1 · 3.84 TB", "nvme2n1 · 3.84 TB"],
     hardware: { CPU: "2 × 64C x86_64", GPU: "8 × GPU", 内存: "1 TiB", 系统盘: "1 × 480 GB NVMe", 数据盘: "2 × 3.84 TB NVMe", 网卡: "2 × 25GbE" }, lldp: [{ port: "eno1", sw: "mgmt-leaf-09", remote: "swp" + i }] };
 }
 /* 服务器被 NICo 接管之后的样子。 */
@@ -117,8 +117,11 @@ function freshState() {
   /* 另一台的 BMC 第一次检查时超时：用来演示安装条件检查发现阻断项、重新检查后通过。 */
   a02.trays.find((t) => t.slot === 30).checkFlaky = 1;
   /* BMC 地址：RACK-A01 已经按规划改成固定地址；RACK-A02 有三台填了规划、还没有更新；其余还是 DHCP 分配的地址。 */
-  a01.trays.forEach((t) => { t.bmcPlan = t.bmcIp; t.addrMode = "固定地址"; });
-  [24, 25, 26].forEach((slot, i) => (a02.trays.find((t) => t.slot === slot).bmcPlan = `192.0.2.${162 + i}`));
+  a01.trays.forEach((t) => { t.plan.bmcIp = t.bmcIp; t.bmcPlan = t.bmcIp; t.addrMode = "固定地址"; });
+  /* 这三台的规划里填了 BMC 地址，还没有“一键匹配”进设备配置，所以配置对比显示“存在差异”。 */
+  [24, 25, 26].forEach((slot, i) => (a02.trays.find((t) => t.slot === slot).plan.bmcIp = `192.0.2.${162 + i}`));
+  /* 其中一台在验证新地址时连接中断：用来演示“核对并完成同步”。 */
+  a02.trays.find((t) => t.slot === 26).bmcFlaky = 1;
   const d01 = makeDomain(a01, true), d02 = makeDomain(a02, true);
   d01.partitions = [{ id: "lp-train-a", name: "train-a", state: "Ready", physical: "nmx-part-0001", created: "2026-11-04 16:18" }];
   return {
@@ -139,7 +142,10 @@ function freshState() {
       { id: "net-host", name: "host-inband", role: "host", kind: "HostInband", cidr: "198.51.100.0/24", gateway: "198.51.100.1", vlan: "301", pool: ["198.51.100.11", "198.51.100.250"], reserved: 10, capacity: 240, mtu: 9000, state: "READY" },
     ],
     /* 拿到了地址、但还没有归属的端点：认证失败、读不到身份，或读到的序列号不在清单里。 */
-    endpoints: [{ id: "ep-0007", mac: "02:00:ee:00:00:07", ip: "192.0.2.247", subnet: "net-oob", seen: "2026-11-24 07:41", problem: "unlisted", type: "compute", serial: "DEMO-X-0007", model: "GB200 Compute Tray" }],
+    endpoints: [
+      { id: "ep-0007", mac: "02:00:ee:00:00:07", ip: "192.0.2.247", subnet: "net-oob", seen: "2026-11-24 07:41", tray: "", cred: "shared", identity: null, failed: "", truth: { kind: "compute", serial: "DEMO-X-0007", model: "GPU Server 8G" } },
+      { id: "ep-srv-04", mac: "02:00:0f:00:00:04", ip: "192.0.2.245", subnet: "net-oob", seen: "2026-11-24 07:55", tray: "SRV/04", cred: "shared", identity: { kind: "compute", serial: "DEMO-H-0004", model: "GPU Server 8G" }, failed: "" },
+    ],
     osTemplates: [{ id: "Ubuntu 24.04 ARM64 · 标准系统盘", arch: "aarch64", disk: "容量最小的 NVMe，GPT / UEFI，ext4", login: "ubuntu + 公钥", state: "已发布", used: 18 }, { id: "Ubuntu 24.04 x86_64 · 标准系统盘", arch: "x86_64", disk: "容量最小的 NVMe，GPT / UEFI，ext4", login: "ubuntu + 公钥", state: "已发布", used: 1 }, { id: "Ubuntu 24.04 ARM64 · 大容量根分区", arch: "aarch64", disk: "容量最大的 NVMe，GPT / UEFI，XFS", login: "ubuntu + 公钥", state: "草稿", used: 0 }],
   };
 }
@@ -162,8 +168,10 @@ const DB = {
   subnet: (id) => S.subnets.find((n) => n.id === id),
   roleSubnets: (role) => S.subnets.filter((n) => n.role === role),
   ready: (r, type) => r.trays.filter((t) => (!type || t.type === type) && /Ready$/.test(t.state)).length,
-  /* 清单与实物的差异：清单里有、但还没有任何设备读出这个序列号的行。只在机柜已有设备出现之后才算差异。 */
-  absent: (r) => (r.trays.some((t) => t.matched) ? r.trays.filter((t) => !t.matched) : []),
+  /* 规划与实物的差异：规划里有、但还没有纳管的行。只在机柜已有设备纳管之后才算差异。 */
+  absent: (r) => (r.trays.some((t) => t.declared) ? r.trays.filter((t) => !t.declared) : []),
+  /* 已纳管、并且已经“一键匹配”把机柜和槽位写进设备配置的成员：登记机柜时带上的就是这些。 */
+  placed: (r) => r.trays.filter((t) => t.declared && t.placed),
   /* 槽位不一致：清单里写的槽位，和 NICo 接管设备后从硬件后端读到的槽位不同。上线之后才有。 */
   misplaced: (r) => r.trays.filter((t) => t.seenSlot && t.seenSlot !== t.slot),
   /* 机柜的电源：机柜对象没有电源状态，只能数成员。 */
@@ -193,7 +201,7 @@ const DB = {
   alerts() {
     const out = [];
     S.racks.forEach((r) => {
-      const miss = {}; DB.absent(r).forEach((t) => (miss[t.type] = (miss[t.type] || 0) + 1));
+      const miss = {}; (r.state ? DB.absent(r) : []).forEach((t) => (miss[t.type] = (miss[t.type] || 0) + 1));
       if (Object.keys(miss).length) out.push({ scope: "机柜", obj: r.id, rack: r.id, tray: "", id: "MissingRackComponent", target: "", msg: "成员数量少于机柜规格：" + Object.entries(miss).map(([k, v]) => `${TYPE_LABEL[k]}少 ${v} 台`).join("，"), since: r.stateSince || nowText(), cls: [] });
       if (S.leak === r.id) out.push({ scope: "机柜", obj: r.id, rack: r.id, tray: "", id: "RackLeakDetect", target: "", msg: "机柜级泄漏。NICo 已自动对整柜强制下电", since: S.leakAt, cls: ["RackLeak", "PreventAllocations"] });
       r.trays.forEach((t) => t.alerts.forEach((a) => out.push({ scope: TYPE_LABEL[t.type], obj: `${r.id} / 槽位 ${pad2(t.slot)}`, rack: r.id, tray: t.id, id: a.id, target: a.target || "", msg: a.msg, since: a.since, cls: a.cls || [] })));
@@ -247,18 +255,21 @@ function coreBringup(r) {
     const next = b.stages.find((s) => s.s === "wait");
     if (next && !S.rms && ["固件升级", "NVOS 更新", "上电顺序", "配置 NMX-C 集群"].includes(next.n)) { next.s = "fail"; clearInterval(b.timer); b.timer = 0; setRackState(r, "Error", "RMS 不可达：" + next.n + "无法执行"); }
     else if (next) { next.s = "run"; if (r.state !== BRINGUP_STATE[next.n]) setRackState(r, BRINGUP_STATE[next.n]); }
-    else { clearInterval(b.timer); b.timer = 0; setRackState(r, "Ready"); r.baseline = BASELINES[0].id; r.trays.forEach((t) => t.state && (t.baseline = BASELINES[0].id)); const d = DB.domain(r.domain); Object.assign(d, makeDomain(r, true)); S.guide = Math.max(S.guide, 6); if (window.toast) toast(`${r.id}：NICo 已完成上线，机柜就绪`); }
+    else { clearInterval(b.timer); b.timer = 0; setRackState(r, "Ready"); r.baseline = BASELINES[0].id; r.trays.forEach((t) => t.state && (t.baseline = BASELINES[0].id)); const d = DB.domain(r.domain); Object.assign(d, makeDomain(r, true)); S.guide = Math.max(S.guide, 7); if (window.toast) toast(`${r.id}：NICo 已完成上线，机柜就绪`); }
     if (window.render) render();
   }, 1500);
   return true;
 }
 
-/* 模拟新机柜的三段：
-   1. 机柜接电（simulateDiscovery）：BMC 拿到地址，平台读取身份并按序列号匹配清单。只读，不写 NICo。
-      留下三种需要人处理的情况：一台交换机认证失败、一台计算托盘换了序列号、一个供电框没有申请地址。另有两台计算托盘插反了槽位，这要到上线之后才看得出来。
-   2. 确认纳管（admitRack）：平台把声明写进 NICo。NICo 登录 BMC、轮换口令；计算托盘带暂停标记，不上电、不接管。
-   3. 开始上线（bringUpRack）：人提交上线任务，按顺序上电并放行计算托盘；交换机就绪后 NICo 自动做机柜维护。 */
-function matchTray(t) { assignAddresses(t); Object.assign(t, { matched: true, lastSeen: nowText(), model: { compute: "GB200 Compute Tray", switch: "NVLink Switch Tray", power_shelf: "Power Shelf" }[t.type] }); }
+/* 模拟新机柜的几段，和现有产品的流程一致：
+   1. 机柜接电（simulateDiscovery）：BMC 从 DHCP 拿到地址，出现在“设备发现”的列表里。这时平台不知道它是哪台设备。
+      留下几种情况：一台交换机的口令和别的不一样、一个供电框没有申请地址。另有两台计算托盘插反了槽位，这要到上线之后才看得出来。
+   2. 获取设备信息（identifyEndpoint）：人输入 BMC 的用户名和口令，平台读出类型、序列号和型号。只读。
+   3. 加入纳管设备（enrollEndpoint）：服务器的声明写进 NICo，带暂停标记，不上电；交换机和供电框先在平台本地纳管。
+   4. 一键匹配（applyPlan）：把规划里的管理口、BMC 规划地址、机柜和槽位写进已纳管设备的配置。
+   5. 登记机柜（admitRack）：整柜新增的一步，把机柜声明写入 NICo，并把本柜已纳管的交换机和供电框同步为 NICo 声明。
+   6. 开始上线（bringUpRack）：人提交上线任务，按顺序上电并放行计算托盘；交换机就绪后 NICo 自动做机柜维护。 */
+function matchTray(t) { if (t.rack) assignAddresses(t); Object.assign(t, { matched: true, lastSeen: nowText(), model: t.model || { compute: "GB200 Compute Tray", switch: "NVLink Switch Tray", power_shelf: "Power Shelf" }[t.type] }); }
 function declareTray(t) { if (!t.matched) matchTray(t); t.declared = true; }
 function takeOver(t) {
   declareTray(t);
@@ -267,22 +278,54 @@ function takeOver(t) {
   Object.assign(t, { state: "Ready", health: "ok", power: "On", baseline: BASELINES[1].id, lastSeen: nowText(), history: [[nowText(), t.type === "compute" ? "HostInit/Discovered" : "Initializing"], [nowText(), "Ready"]] });
   if (t.type === "switch") t.fabricManager = "UNKNOWN";
 }
+/* 机柜接电：每台设备的 BMC 拿到一个地址，成为一个还没有归属的端点。cred 是这台设备实际用的那组口令。 */
 function simulateDiscovery(rackId) {
-  const r = DB.rack(rackId); if (!r || r.trays.some((t) => t.matched)) return false;
-  r.trays.filter((t) => ![9, 20, 33].includes(t.slot)).forEach(matchTray);
+  const r = DB.rack(rackId); if (!r || r.trays.some((t) => t.matched) || S.endpoints.some((e) => e.tray && e.tray.startsWith(rackId + "/"))) return false;
   const a = r.trays.find((t) => t.slot === 12), b = r.trays.find((t) => t.slot === 13); a.simSlot = 13; b.simSlot = 12;
   const n = r.n, ip = (s) => `192.0.2.${(n - 1) * 80 + s + 10}`, mac = (s) => `02:00:${pad2(n)}:00:00:${hex2(s)}`;
-  S.endpoints.push({ id: "ep-" + rackId.slice(-3) + "-20", mac: mac(20), ip: ip(20), subnet: "net-oob", seen: nowText(), problem: "auth", type: "", serial: "", model: "", sim: rackId + "/20" });
-  S.endpoints.push({ id: "ep-" + rackId.slice(-3) + "-09", mac: mac(9), ip: ip(9), subnet: "net-oob", seen: nowText(), problem: "unlisted", type: "compute", serial: "DEMO-C-" + rackId.slice(-3) + "-99", model: "GB200 Compute Tray", sim: rackId + "/09" });
+  r.trays.filter((t) => t.slot !== 33).forEach((t) => S.endpoints.push({ id: `ep-${rackId.slice(-3)}-${pad2(t.slot)}`, mac: mac(t.slot), ip: ip(t.slot), subnet: "net-oob", seen: nowText(), tray: t.id, cred: t.slot === 20 ? "other" : "shared", identity: null, failed: "" }));
   return true;
 }
-function admitRack(rackId) {
-  const r = DB.rack(rackId); r.admit = true; r.admitAt = nowText();
-  r.trays.filter((t) => t.matched && !t.declared).forEach(declareTray);
+/* 获取设备信息：用给出的凭据登录这个端点的 BMC。口令对不上的返回认证失败；读到的序列号在规划里有的，记到那一行上。 */
+function identifyEndpoint(e, cred) {
+  if (e.cred !== cred) { e.failed = "认证失败：用户名或密码不对"; return false; }
+  const t = e.tray && DB.tray(e.tray); e.failed = "";
+  e.identity = t ? { kind: t.type, serial: t.serial, model: t.model || { compute: "GB200 Compute Tray", switch: "NVLink Switch Tray", power_shelf: "Power Shelf" }[t.type] } : e.truth;
+  if (t) matchTray(t);
+  return true;
 }
+/* 加入纳管设备。规划里有的设备记到它那一行上；规划里没有的也可以纳管，成为一台不属于机柜、没有规划的服务器。 */
+function enrollEndpoint(e) {
+  let t = e.tray && DB.tray(e.tray);
+  if (!t) { t = makeServer(S.pool.trays.length + 1, "held"); Object.assign(t, { serial: e.identity.serial, model: e.identity.model, bmcMac: e.mac, bmcIp: e.ip, hostMac: "", plan: { mip: "", mmac: "", msubnet: "", bmcIp: "" }, cfg: { host: "", os: "", disk: "", mip: "", mnic: "", subnet: "" }, noPlan: true }); S.pool.trays.push(t); }
+  S.endpoints = S.endpoints.filter((x) => x.id !== e.id); declareTray(t);
+  return t;
+}
+/* 规划和设备配置的差异：一键匹配要写的内容，也是“配置对比”的依据。机柜和槽位是整柜新增的两项。 */
+function planDiff(t) {
+  const out = [], add = (field, before, after) => { if (after && before !== after) out.push({ field, before: before || "—", after }); };
+  if (t.type === "compute") { add("管理 MAC / 启动口", t.cfg.mnic, t.plan.mmac); add("管理 IP", t.cfg.mip, t.plan.mip); add("管理子网", t.cfg.subnet, t.plan.msubnet); }
+  add(t.type === "power_shelf" ? "PMC IP" : "BMC IP", t.bmcPlan, t.plan.bmcIp);
+  if (t.rack && !t.placed) { out.push({ field: "机柜", before: "—", after: t.rack }); out.push({ field: "槽位", before: "—", after: pad2(t.slot) }); }
+  return out;
+}
+function applyPlan(t) {
+  const changes = planDiff(t);
+  if (t.type === "compute") Object.assign(t.cfg, { mnic: t.plan.mmac || t.cfg.mnic, mip: t.plan.mip || t.cfg.mip, subnet: t.plan.msubnet || t.cfg.subnet });
+  if (t.plan.bmcIp) t.bmcPlan = t.plan.bmcIp;
+  t.placed = true;
+  /* 机柜已经登记并上线过的：后来才纳管、匹配的成员自动补进机柜，由 NICo 上电接管。 */
+  const r = t.rack && DB.rack(t.rack);
+  if (r && r.admit && r.up && t.declared && !t.state && !DB.busy(r)) { takeOver(t); if (r.state === "Discovering" && !(r.bring && r.bring.timer)) coreBringup(r); }
+  return changes;
+}
+/* 配置对比：用词沿用现有产品。 */
+const planState = (t) => (t.noPlan ? ["没有规划", "gray"] : !t.declared ? ["未纳管", "gray"] : planDiff(t).length ? ["存在差异", "amber"] : ["配置一致", "green"]);
+/* 登记机柜：整柜新增。机柜声明写入 NICo；本柜已纳管的交换机和供电框同步为 NICo 声明。 */
+function admitRack(rackId) { const r = DB.rack(rackId); r.admit = true; r.admitAt = nowText(); }
 /* 上线任务：按步骤上电。交换机上电并就绪后，NICo 的机柜状态机自己开始维护。 */
 function bringUpRack(rackId, why) {
-  const r = DB.rack(rackId), of = (type) => r.trays.filter((t) => t.declared && t.type === type); r.up = true;
+  const r = DB.rack(rackId), of = (type) => DB.placed(r).filter((t) => t.type === type); r.up = true;
   setRackState(r, "Discovering");
   return startTask(rackId, "bringup", "机柜上线", STAGES.bringup_task, { why,
     onStage: (n) => {
@@ -290,16 +333,6 @@ function bringUpRack(rackId, why) {
       if (n === "计算托盘上电并放行接管") of("compute").forEach((t) => Object.assign(t, { state: "HostInit/WaitingForDiscovery", power: "On", health: "none", history: [[nowText(), "HostInit/WaitingForDiscovery"]] }));
       if (n === "交换机上电") of("switch").forEach((t) => Object.assign(t, { state: "Initializing", power: "On", health: "none", history: [[nowText(), "Initializing"]] }));
     },
-    onDone: () => { r.trays.filter((t) => t.declared).forEach(takeOver); coreBringup(r); },
+    onDone: () => { DB.placed(r).forEach(takeOver); coreBringup(r); },
     readback: () => `成员电源：${DB.power(r).text}；交换机就绪 ${DB.ready(r, "switch")} / ${PROFILE_NEED.switch}` });
-}
-/* 一个端点匹配上清单里的一行之后：机柜还没纳管就只记为已匹配；已纳管就写入声明；机柜已经上线过的，纳管后直接上电接管。 */
-function matchEndpoint(epId, trayId, patch) {
-  const e = S.endpoints.find((x) => x.id === epId), t = DB.tray(trayId), r = DB.rack(t.rack);
-  if (e) S.endpoints = S.endpoints.filter((x) => x.id !== epId);
-  Object.assign(t, patch || {});
-  if (!r.admit) return matchTray(t);
-  if (!r.up || DB.busy(r)) return declareTray(t);
-  takeOver(t);
-  if (r.state === "Discovering" && !(r.bring && r.bring.timer)) coreBringup(r);
 }

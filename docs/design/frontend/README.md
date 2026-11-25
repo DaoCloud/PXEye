@@ -35,12 +35,13 @@ Feature point types: **沿用** (kept) is the same as the existing product page,
 
 ## Interface contract (implementation reference)
 
-The interface contract is an internal implementation reference and is not used for external presentation. Only `internal.html` loads it. All of it is in `contract.js`; the page scripts contain no interfaces. It answers four questions:
+The interface contract is an internal implementation reference and is not used for external presentation. Only `internal.html` loads it. All of it is in `contract.js`; the page scripts contain no interfaces. It answers five questions:
 
 - **What has to be deployed for a function.** The component table lists what each component provides and which functions are unavailable without it. Which components an interface needs is derived from its kind, its executor and its prerequisite resources; no separate mapping is maintained.
 - **Which interfaces a page calls.** Each interface records its kind (Core gRPC, REST, metric), the matching command line, the request parameters, the fields used, what executes it, and where it is defined in the NICo source. `PAGE_CALLS` records which interfaces each page uses and what for.
 - **What must exist before a page has data.** The NICo resources form a dependency graph. Each resource states how it comes into being, what it depends on, and how to prepare it without a real whole rack.
 - **What the design needs and NICo does not provide directly.** The gap table records what the source actually does and the options for handling it.
+- **Which of the platform's own backend endpoints are kept from the existing product.** `PLATFORM_APIS` lists, page by page, the endpoints between a page and the platform backend, and how each relates to the existing product: kept, extended or new. Device import, device discovery, system configuration and OS installation keep the existing product's endpoints.
 
 It is shown in three ways:
 

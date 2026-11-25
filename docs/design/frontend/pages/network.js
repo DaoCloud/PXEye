@@ -90,7 +90,7 @@ registerPage("network/leases", {
     return heading("地址分配", "查看每个地址分给了哪台设备的哪个接口。", button("刷新数据", "refresh")) +
       `<div class="filter-bar" ${fp(1)}>${selectField("leaseNet", "子网", [["", "全部子网"], ...S.subnets.map((n) => [n.id, n.name])], f.net)}${selectField("leaseKind", "设备类型", [["", "全部类型"], ["compute", "服务器"], ["switch", "交换机"], ["power_shelf", "供电框"]], f.kind)}${searchField("leaseQ", "搜索", view("leaseQ", ""), "地址、MAC、序列号或机柜")}<span class="live-small">${list.length} 个地址</span></div>` +
       `<div ${fp(2)}>${table(["地址", "MAC", "子网", "设备 / 序列号", "接口", "机柜 / 位置", "分配方式", "最近 DHCP"], list.slice(0, 40).map((i) => `<tr><td>${code(i.ip)}</td><td>${code(i.mac)}</td><td>${subnetLink(i.subnet)}</td><td><a class="link-button" data-live="tray-detail" data-id="${i.tray.id}">${code(i.tray.serial)}</a><span class="cell-sub">${typeLabel(i.tray)}</span></td><td>${i.iface}</td><td>${i.tray.rack ? `<a class="link-button" data-go="rack/${i.tray.rack}">${i.tray.rack}</a>` : `<span class="muted">未分配机柜</span>`}${i.tray.rack ? `<span class="cell-sub">槽位 ${pad2(i.tray.slot)}</span>` : ""}</td><td ${fp(3)}>${i.mode}</td><td>${code(i.tray.lastSeen)}</td></tr>`), "没有符合筛选条件的地址。")}${list.length > 40 ? `<p class="live-small">显示前 40 个，共 ${list.length} 个。</p>` : ""}</div>` +
-      (S.endpoints.length ? note(`另有 ${S.endpoints.length} 个地址还没有归属到设备，在<a class="link-button" data-go="discovery">设备发现</a>里处理。`) : "");
+      (S.endpoints.length ? note(`另有 ${S.endpoints.length} 个地址已经分配、设备还没有纳管，在<a class="link-button" data-go="discovery">设备发现</a>里获取设备信息并纳管。`) : "");
   },
   spec: {
     purpose: "按地址查设备。排查地址冲突、确认某台设备拿到了哪个地址时使用。", entry: "接入 → 网络规划 → 地址分配", design: "6.7 网络", existing: "网络管理里的“子网地址分配”弹窗扩展为页签",

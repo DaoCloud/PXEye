@@ -12,11 +12,15 @@ const fwVersion = (t) => (t.baseline && FW_PART[t.type] ? DB.baseline(t.baseline
 /* NICo 只能判断版本和基线是否相同，不能判断高低；供电框没有可读的固件版本。 */
 const fwCell = (t) => (fwVersion(t) ? code(fwVersion(t)) + `<span class="cell-sub">${DB.drift(t) ? badge("与基线不同", "amber") : badge("与基线相同", "green")}</span>` : "—");
 const fmBadge = (v) => ({ OK: badge("正常", "green"), NOT_OK: badge("异常", "red") })[v] || badge("未知", "gray");
-const placeCell = (t) => (t.rack ? `<a class="link-button" data-go="rack/${t.rack}">${t.rack}</a><span class="cell-sub">槽位 ${pad2(t.slot)}</span>` : `<span class="muted">未分配机柜</span>`);
+/* 机柜和槽位下面带一行“配置对比”：规划和设备配置不一样时提示去一键匹配。用词沿用现有产品。 */
+const planTag = (t) => { const s = planState(t); return s[0] === "配置一致" ? "" : `<span class="cell-sub">${badge(s[0] === "存在差异" ? "与规划有差异" : s[0], s[1])}</span>`; };
+const placeCell = (t) => (t.rack ? `<a class="link-button" data-go="rack/${t.rack}">${t.rack}</a><span class="cell-sub">槽位 ${pad2(t.slot)}</span>` : `<span class="muted">未分配机柜</span>`) + planTag(t);
 /* 页面和类型的名称：服务器页同时列出机柜里的计算托盘和不属于机柜的服务器。 */
 const PAGE_LABEL = { compute: "服务器", switch: "交换机", power_shelf: "供电框" };
-const stateCell = (t) => (t.state ? stateBadge(t.state) : t.declared ? badge(t.rack ? "已纳管 · 等待上线" : "已纳管 · 首次安装时接管", "blue") : badge("未纳管", "gray")) + (t.reason ? `<span class="cell-sub">${esc(t.reason)}</span>` : "");
-const absent = (t) => (t.state ? "" : t.declared ? (t.rack ? "已纳管，还没有上线，不能操作。" : "已纳管，NICo 还没有接管：第一次装系统时接管，之后才能操作。") : "还没有纳管，不能操作。");
+/* 已纳管、NICo 还没有建立对象的设备处在哪一步：等一键匹配、等登记机柜、等上线；不属于机柜的服务器等第一次装系统。 */
+const heldStep = (t) => { const r = t.rack && DB.rack(t.rack); return !t.rack ? "首次安装时接管" : !t.placed ? "待一键匹配" : !r.admit ? "待登记机柜" : "等待上线"; };
+const stateCell = (t) => (t.state ? stateBadge(t.state) : t.declared ? badge("已纳管 · " + heldStep(t), "blue") : badge("未纳管", "gray")) + (t.reason ? `<span class="cell-sub">${esc(t.reason)}</span>` : "");
+const absent = (t) => (t.state ? "" : t.declared ? (t.rack ? `已纳管，NICo 还没有接管（${heldStep(t)}），不能操作。` : "已纳管，NICo 还没有接管：第一次装系统时接管，之后才能操作。") : "还没有纳管，不能操作。");
 /* 行操作：运行状态、电源快捷入口、全部操作。电源快捷入口只是预选了动作的同一个操作对话框。 */
 const rowActions = (t, mark = "") => `<div class="inline-actions" ${mark}>${act(t.power === "On" ? "关机" : "上电", "tray-op", { compact: true, gate: absent(t), extra: `data-id="${t.id}" data-action="${t.power === "On" ? "power-off" : "power-on"}"` })}${act("操作", "tray-op", { compact: true, gate: absent(t), extra: `data-id="${t.id}"` })}${t.type === "compute" ? act("系统配置", "server-config", { compact: true, extra: `data-id="${t.id}"` }) : ""}</div>`;
 
@@ -40,25 +44,25 @@ function devicePage(type) {
     module: type, title: label,
     render() {
       const f = { rack: view(K("rack"), ""), st: view(K("st"), ""), q: view(K("q"), "").toLowerCase() };
-      const all = DB.trays().filter((t) => t.type === type), checked = S.view.checked || {};
+      const all = DB.trays().filter((t) => t.type === type && t.declared), checked = S.view.checked || {};
       const list = all.filter((t) => (!f.rack || (f.rack === "none" ? !t.rack : t.rack === f.rack)) && (!f.q || [t.serial, t.rack, t.bmcIp, t.bmcMac, t.hostIp, ...(t.nvos || []).map((x) => x.ip), t.state, t.instance].join(" ").toLowerCase().includes(f.q)) &&
-        (!f.st || (f.st === "attention" && DB.needsAttention(t)) || (f.st === "alerting" && t.alerts.length) || (f.st === "absent" && !t.state) || (f.st === "drift" && DB.drift(t))));
+        (!f.st || (f.st === "attention" && DB.needsAttention(t)) || (f.st === "alerting" && t.alerts.length) || (f.st === "absent" && !t.state) || (f.st === "plan" && planState(t)[0] === "存在差异") || (f.st === "drift" && DB.drift(t))));
       const picked = Object.keys(checked).filter((k) => checked[k] && DB.tray(k) && DB.tray(k).type === type);
       const mark = (name) => ({ "运行状态": fp(6), ...(hasFw ? { [cols[cols.length - 1][0]]: fp(5) } : {}) })[name] || "";
       return heading(label, text.sub, button("刷新数据", "refresh") + button("按机柜查看", "noop", false, 'data-go="racks"')) +
-        `<div ${fp(1)}>${summary([["设备总数", all.length], ...(type === "compute" ? [["未分配机柜", all.filter((t) => !t.rack).length]] : []), ["NICo 已建立对象", all.filter((t) => t.state).length], ["需要处理", all.filter(DB.needsAttention).length], ...(hasFw ? [["固件与基线不同", all.filter(DB.drift).length]] : [])])}</div>` +
-        `<div class="filter-bar" ${fp(2)}>${selectField(K("rack"), "机柜", [["", "全部"], ...S.racks.map((r) => [r.id, r.id]), ...(type === "compute" ? [["none", "未分配机柜"]] : [])], f.rack)}${selectField(K("st"), "状态", [["", "全部"], ["attention", "需要处理"], ["alerting", "有健康告警"], ["absent", "NICo 未建立对象"], ...(hasFw ? [["drift", "固件与基线不同"]] : [])], f.st)}${searchField(K("q"), "搜索", view(K("q"), ""), "序列号、机柜、状态、MAC 或 IP")}</div>` +
-        `<div class="device-status-action-bar" ${fp(3)}>${act(`批量操作（${picked.length}）`, "tray-batch", { gate: picked.length ? "" : "先勾选设备" })}<span ${fp(9)}>${act(`更新 BMC 地址（${picked.length}）`, "bmc-update", { gate: picked.length ? "" : "先勾选设备" })}</span>${type === "compute" ? `<span ${fp(8)}>${act(picked.length ? `为所选 ${picked.length} 台新建安装任务` : "新建安装任务", "install-new", { extra: `data-ids="${picked.join(",")}"` })}</span>` : ""}<span class="live-small">勾选设备后批量操作，一次最多 10 台。</span></div>` +
+        `<div ${fp(1)}>${summary([["纳管设备", all.length], ["与规划有差异", all.filter((t) => planState(t)[0] === "存在差异").length], ...(type === "compute" ? [["未分配机柜", all.filter((t) => !t.rack).length]] : []), ["NICo 已建立对象", all.filter((t) => t.state).length], ["需要处理", all.filter(DB.needsAttention).length], ...(hasFw ? [["固件与基线不同", all.filter(DB.drift).length]] : [])])}</div>` +
+        `<div class="filter-bar" ${fp(2)}>${selectField(K("rack"), "机柜", [["", "全部"], ...S.racks.map((r) => [r.id, r.id]), ...(type === "compute" ? [["none", "未分配机柜"]] : [])], f.rack)}${selectField(K("st"), "状态", [["", "全部"], ["attention", "需要处理"], ["alerting", "有健康告警"], ["absent", "NICo 未建立对象"], ["plan", "与规划有差异"], ...(hasFw ? [["drift", "固件与基线不同"]] : [])], f.st)}${searchField(K("q"), "搜索", view(K("q"), ""), "序列号、机柜、状态、MAC 或 IP")}</div>` +
+        `<div class="device-status-action-bar" ${fp(3)}>${act(`批量操作（${picked.length}）`, "tray-batch", { gate: picked.length ? "" : "先勾选设备" })}<span ${fp(11)}>${act(`一键匹配（${picked.length}）`, "plan-match", { gate: picked.length ? "" : "先勾选设备" })}</span><span ${fp(9)}>${act(`更新 BMC 地址（${picked.length}）`, "bmc-update", { gate: picked.length ? "" : "先勾选设备" })}</span>${type === "compute" ? `<span ${fp(8)}>${act(picked.length ? `为所选 ${picked.length} 台新建安装任务` : "新建安装任务", "install-new", { extra: `data-ids="${picked.join(",")}"` })}</span>` : ""}<span class="live-small">勾选后操作：批量操作一次最多 10 台，一键匹配 50 台。</span></div>` +
         `<div ${fp(4)}>${table(["选择", "设备 / 序列号", "机柜 / 位置", ...cols.map((c) => c[0]), "操作"], list.map((t, i) =>
-          `<tr><td><input type="checkbox" data-check="${t.id}" ${checked[t.id] ? "checked" : ""} ${t.state || t.declared ? "" : "disabled"} aria-label="选择 ${t.serial}"></td><td><a class="link-button" data-live="tray-detail" data-id="${t.id}">${code(t.serial)}</a><span class="cell-sub">${t.model}</span></td><td>${placeCell(t)}</td>${cols.map((c) => `<td ${i === 0 ? mark(c[0]) : ""}>${c[1](t)}</td>`).join("")}<td>${rowActions(t, i === 0 ? fp(7) : "")}</td></tr>`), `没有符合筛选条件的${label}。`)}</div>` +
+          `<tr><td><input type="checkbox" data-check="${t.id}" ${checked[t.id] ? "checked" : ""} aria-label="选择 ${t.serial}"></td><td><a class="link-button" data-live="tray-detail" data-id="${t.id}">${code(t.serial)}</a><span class="cell-sub">${t.model}</span></td><td>${placeCell(t)}</td>${cols.map((c) => `<td ${i === 0 ? mark(c[0]) : ""}>${c[1](t)}</td>`).join("")}<td>${rowActions(t, i === 0 ? fp(7) : "")}</td></tr>`), `没有符合筛选条件的${label}。`)}</div>` +
         `<div ${fp(10)}>${bmcHistory()}</div>` +
-        note("运行状态由 NICo 状态机回报。“需要处理”指状态机最近一次处理失败或有健康告警。没有收到报告显示为未报告，不显示为正常。");
+        note("这里只列出已纳管的设备；只在规划里、还没有纳管的在“设备清单”里。运行状态由 NICo 状态机回报。“需要处理”指状态机最近一次处理失败或有健康告警。没有收到报告显示为未报告，不显示为正常。");
     },
     spec: {
       purpose: `直接面向${label}运维：不需要先找到它在哪个机柜。地址、状态和固件在表里一眼可见，电源等操作在行上一步发起。` + (type === "compute" ? "服务器是基础对象，可以不属于任何机柜；机柜里的服务器就是计算托盘，两种都在这一页。" : ""),
-      entry: `运维 → 设备管理 → ${label}；设备管理的类型卡片；机柜详情的设备页签`, design: "6.3 机柜与设备；9 操作设计", existing: `${text.old}。统计条、筛选、表头、行操作和“需要处理”的规则沿用`,
+      entry: `运维 → 设备管理 → ${label}；设备管理的类型卡片；机柜详情的设备页签`, design: "6.3 机柜与设备；9 操作设计", existing: `${text.old}（纳管设备）。统计条、筛选、表头、行操作、一键匹配、更新 BMC 地址和“需要处理”的规则沿用`,
       points: [
-        { n: 1, name: "统计条", kind: "调整", desc: type === "compute" ? "设备总数、NICo 已建立对象、需要处理沿用；“未填写机柜”改名“未分配机柜”，表示不属于任何机柜的服务器；增加“固件与基线不同”。" : hasFw ? "设备总数、NICo 已建立对象、需要处理沿用；“未填写机柜”换成“固件与基线不同”，因为交换机都在机柜里。" : "设备总数、NICo 已建立对象、需要处理沿用；去掉“未填写机柜”，因为供电框都在机柜里。" },
+        { n: 1, name: "统计条", kind: "调整", desc: "这一页只列已纳管的设备，所以第一项是纳管设备数；增加“与规划有差异”。" + (type === "compute" ? "NICo 已建立对象、需要处理沿用；“未填写机柜”改名“未分配机柜”，表示不属于任何机柜的服务器；增加“固件与基线不同”。" : hasFw ? "NICo 已建立对象、需要处理沿用；“未填写机柜”换成“固件与基线不同”，因为交换机都在机柜里。" : "NICo 已建立对象、需要处理沿用；去掉“未填写机柜”，因为供电框都在机柜里。") },
         { n: 2, name: "筛选", kind: "沿用", desc: "机柜、状态（全部、需要处理、有健康告警、NICo 未建立对象）和搜索。" + (type === "compute" ? "机柜里可以选“未分配机柜”。" : "") + (hasFw ? "状态里增加“固件与基线不同”。" : "") },
         { n: 3, name: "批量操作", kind: "沿用", desc: "勾选后对最多 10 台执行同一个动作，逐台检查、逐台出结果。" },
         { n: 4, name: `${label}表`, kind: "沿用", desc: `设备 / 序列号、机柜 / 位置、运行状态、健康沿用；电源和实例显示在运行状态下面，维护标记和隔离显示在健康下面，这样“操作”一列不用横向滚动就能看到。地址列是${text.addr}；专有列是${text.own}。点击序列号打开运行状态。` },
@@ -67,11 +71,13 @@ function devicePage(type) {
         { n: 7, name: "行操作", kind: "调整", desc: "点序列号打开运行状态；“上电 / 关机”是预选了电源动作的快捷入口；“操作”打开完整的操作对话框，两者用同一个对话框和同一套检查。" + (type === "compute" ? "服务器另有“系统配置”：这台机器下次装系统用的主机名、安装方案和系统盘。" : "") },
         ...(type === "compute" ? [{ n: 8, name: "新建安装任务", kind: "新增", desc: "打开“安装任务”的向导。勾选了服务器时预先选中它们；没有勾选时从选择设备开始。" }] : []),
         { n: 9, name: "更新 BMC 地址", kind: "沿用", desc: "沿用现有产品。勾选设备后打开：逐台列出当前地址和规划地址，规划地址可以直接在表里改；确认后把 BMC 改成规划的固定地址。也可以只保存规划、不动设备。" },
-        { n: 10, name: "近期 BMC 地址更新", kind: "沿用", desc: "每次提交一行：提交时间、设备、进度、原因和操作者，可以再打开看每个接口走到四步里的哪一步。没有更新过时不显示。" },
+        { n: 10, name: "近期 BMC 地址更新", kind: "沿用", desc: "每次提交一行：提交时间、设备、进度、原因和操作者，可以再打开看每个接口走到四步里的哪一步；有接口需要处理时标出来。没有更新过时不显示。" },
+        { n: 11, name: "一键匹配", kind: "沿用", desc: "沿用现有产品。勾选已纳管的设备，把设备规划里同一序列号那一行写进设备配置：" + (type === "compute" ? "启动网卡 MAC、管理 IP、管理子网、BMC 规划地址" : type === "switch" ? "BMC 规划地址" : "PMC 规划地址") + "，整柜另外写机柜和槽位。结果逐台列出：已更新、无变化、未匹配，以及改了哪些项。规划和设备配置不一样的设备，在“机柜 / 位置”下面标“与规划有差异”。" },
       ],
-      fields: [["BMC 地址", "NICo 回报的当前地址 + 平台保存的规划地址", "下面一行写明它和规划的关系：DHCP 分配（没有规划）、待改为某个地址、正在改、已按规划"], ["机柜 / 位置", "到货清单", type === "compute" ? "链接到机柜详情；不属于机柜的服务器显示“未分配机柜”" : "链接到机柜详情，那里是关联与汇总视图"], ["地址", "NICo Core", text.addr], ...(hasFw ? [[cols[cols.length - 1][0], "NICo 读到的版本对比推荐基线", "版本，以及与基线相同 / 与基线不同"]] : []), ...(type === "compute" ? [["实例", "NICo Core", "有实例的托盘操作前会提示影响"]] : type === "switch" ? [["NVOS 管理口", "NICo Core", "主口的地址和口的数量"], ["Fabric Manager", "NICo Core", "NICo 回报 OK、NOT_OK、UNKNOWN，显示为正常、异常、未知"]] : [["序列号", "到货清单", "NICo 的供电框对象不带序列号，这里显示清单里的"]])],
-      rules: ["“需要处理”只用 NICo 的信号：处理失败、有健康告警。", "还没有纳管的设备不能勾选。已纳管但 NICo 还没有建立对象的设备可以勾选，只能更新 BMC 地址，不能做电源等操作。", "BMC 地址：设备接电时拿到的是 DHCP 地址池里的任意一个地址；纳管之后才能按规划更新。规划地址要在带外管理子网内，不能是网关，不能和已有地址或其他设备的规划重复。", "更新 BMC 地址是人手动发起的，不会自动执行。通过检查的设备依次走四步：检查地址与身份、更新 BMC、验证新地址、同步管理记录；没通过的写明原因，不执行。地址切换时管理连接可能短暂中断；不触发装机，不影响主机上运行的系统。", ...(type === "compute" ? ["不属于机柜的服务器没有“上线”这一步：纳管后不上电，第一次装系统时由 NICo 上电接管。", "系统配置是一台服务器下次装系统时用的配置。可以改的是管理地址、主机名、安装方案和系统盘，每一项都有默认值，不填也能装；启动网卡只显示，其他网口不管理也不显示。入口在设备清单、这一页和新建安装任务的核对列表里，是同一个弹窗、同一份数据。第一次装机和以后重装用的是同一份，改一次一直有效。", "退役是逐台设备的操作。有实例的服务器不能退役。"] : []), type === "compute" ? "有实例的服务器，关机等操作要输入序列号确认。" : `${label}的高风险操作按整柜实例计算影响；机柜上还有已分配的计算托盘时不能退役。`, "只读角色的操作按钮禁用。"],
-      dialogs: [{ name: "更新 BMC 地址", desc: "沿用现有产品的流程。第一屏逐台列出设备、接口（BMC 或 PMC 及其 MAC）、当前地址、规划地址和检查结果；规划地址是输入框，改了立即重新检查。确认后进入进度：上面是汇总（已完成几步、几个接口已更新），下面每个接口一张卡片，显示“旧地址 → 新地址”和四步各自的状态。关闭窗口后继续执行。", fields: [["规划地址", "是，逐台", "可以直接在表里改；一次最多 50 台"], ["原因", "开始更新时", "写入审计"], ["只保存规划", "否", "只记下规划地址，不动设备"], ["确认并开始更新", "否", "只对通过检查的设备执行，按钮上写明台数"]] },
+      fields: [["BMC 地址", "NICo 回报的当前地址 + 平台保存的规划地址", "下面一行写明它和规划的关系：DHCP 分配（没有规划）、待改为某个地址、正在改、已按规划"], ["机柜 / 位置", "设备规划，一键匹配后写进设备配置", (type === "compute" ? "链接到机柜详情；不属于机柜的服务器显示“未分配机柜”" : "链接到机柜详情，那里是关联与汇总视图") + "。下面一行是配置对比：与规划有差异、没有规划；一致时不显示"], ["地址", "NICo Core", text.addr], ...(hasFw ? [[cols[cols.length - 1][0], "NICo 读到的版本对比推荐基线", "版本，以及与基线相同 / 与基线不同"]] : []), ...(type === "compute" ? [["实例", "NICo Core", "有实例的托盘操作前会提示影响"]] : type === "switch" ? [["NVOS 管理口", "NICo Core", "主口的地址和口的数量"], ["Fabric Manager", "NICo Core", "NICo 回报 OK、NOT_OK、UNKNOWN，显示为正常、异常、未知"]] : [["序列号", "设备发现时从 PMC 读到的", "NICo 的供电框对象不带序列号，这里显示平台保存的"]])],
+      rules: ["这一页只列已纳管的设备。只在规划里、还没有纳管的设备在“设备清单”里；纳管在“设备发现”里做。", "“需要处理”只用 NICo 的信号：处理失败、有健康告警。", "已纳管但 NICo 还没有建立对象的设备，运行状态写明它在等哪一步：待一键匹配、待登记机柜、等待上线，不属于机柜的服务器是首次安装时接管。这时可以一键匹配、更新 BMC 地址和改系统配置，不能做电源等操作。", "一键匹配只改平台里的设备配置，不动设备，也不写 NICo；一次 1–50 台。规划改了之后要再匹配一次。BMC 规划地址匹配进来之后还没有生效，要另外执行“更新 BMC 地址”。",  "BMC 地址：设备接电时拿到的是 DHCP 地址池里的任意一个地址；纳管之后才能按规划更新。规划地址要在带外管理子网内，不能是网关，不能和已有地址或其他设备的规划重复。", "更新 BMC 地址是人手动发起的，不会自动执行。一次 1–256 台。通过检查的设备依次走四步：检查地址与身份、更新 BMC、验证新地址、同步管理记录；没通过的写明原因，不执行。中断时有两个恢复入口：更新请求还没有发给设备的，“重新检查并更新”；BMC 已经在用新地址、只是管理记录没有同步完的，“核对并完成同步”。地址切换时管理连接可能短暂中断；不触发装机，不影响主机上运行的系统。", ...(type === "compute" ? ["不属于机柜的服务器没有“上线”这一步：纳管后不上电，第一次装系统时由 NICo 上电接管。", "系统配置是一台服务器下次装系统时用的配置，字段沿用现有产品：启动网卡 MAC、管理 IP、管理子网、主机名、当前安装方案、下次安装系统盘和设备覆盖设置。每一项都有默认值，不填也能装；其他网口不管理也不显示。入口在设备清单、这一页和新建安装任务的核对列表里，是同一个弹窗、同一份数据。第一次装机和以后重装用的是同一份，改一次一直有效。", "退役是逐台设备的操作。有实例的服务器不能退役。"] : []), type === "compute" ? "有实例的服务器，关机等操作要输入序列号确认。" : `${label}的高风险操作按整柜实例计算影响；机柜上还有已分配的计算托盘时不能退役。`, "只读角色的操作按钮禁用。"],
+      dialogs: [{ name: "一键匹配结果", desc: "沿用现有产品。勾选设备后点“一键匹配”立即执行，然后显示结果：SN、结果（已更新、无变化、未匹配）、配置变化（每一项从什么改成什么）、原因。" },
+        { name: "更新 BMC 地址", desc: "沿用现有产品的流程。第一屏逐台列出设备、接口（BMC 或 PMC 及其 MAC）、当前地址、规划地址和检查结果；规划地址是输入框，改了立即重新检查。确认后进入进度：上面是汇总（已完成几步、几个接口已更新），下面每个接口一张卡片，显示“旧地址 → 新地址”和四步各自的状态。某个接口中断时，卡片上写明停在哪里，并给出“重新检查并更新”或“核对并完成同步”。关闭窗口后继续执行。", fields: [["规划地址", "是，逐台", "可以直接在表里改；一次最多 256 台"], ["原因", "开始更新时", "写入审计"], ["只保存规划", "否", "只记下规划地址，不动设备"], ["确认并开始更新", "否", "只对通过检查的设备执行，按钮上写明台数"]] },
         { name: "操作对话框（单台与批量共用）", desc: "选对象、选动作、写原因，一个弹窗完成。逐台显示检查结果，只对通过的目标执行。现有的“设备操作 → 确认操作 → 操作结果”三步合成一步，结果进入任务或审计。",
         fields: [["动作", "是", "按设备类型列出，名称与风险等级沿用现有操作目录；从“上电 / 关机”进入时已预选"], ["固件基线", "仅固件更新", "只能选择基线，取代现有的“目标版本”“组件”“强制刷写”"], ["原因", "是", ""], ["输入序列号", "高风险时", "单台输入序列号；批量输入台数"]] }],
     },
@@ -83,7 +89,7 @@ Object.keys(DEVICE_ROUTE).forEach((type) => registerPage(DEVICE_ROUTE[type], dev
 registerPage("devices", {
   module: "devices", title: "设备管理",
   render() {
-    const q = view("devQ", "").trim().toLowerCase(), trays = DB.trays();
+    const q = view("devQ", "").trim().toLowerCase(), trays = DB.trays().filter((t) => t.declared);
     const hit = (t) => [t.serial, t.rack, t.bmcIp, t.bmcMac, t.hostIp, t.hostMac, ...(t.nvos || []).map((x) => x.ip), t.instance].join(" ").toLowerCase().includes(q);
     const list = q ? trays.filter(hit) : trays.filter(DB.needsAttention);
     const card = (type) => { const all = trays.filter((t) => t.type === type); return `<a class="device-card" data-go="${DEVICE_ROUTE[type]}"><strong>${PAGE_LABEL[type]}</strong><b>${all.length}</b><span>${all.filter(DB.needsAttention).length ? badge(all.filter(DB.needsAttention).length + " 台需要处理", "amber") : badge("无需处理", "green")}　${FW_PART[type] && all.filter(DB.drift).length ? badge(all.filter(DB.drift).length + " 台固件与基线不同", "gray") : ""}${type === "compute" ? "　" + badge(`机柜内 ${all.filter((t) => t.rack).length} · 未分配机柜 ${all.filter((t) => !t.rack).length}`, "gray") : ""}</span></a>`; };
@@ -144,9 +150,17 @@ registerPage("devices/dpu", {
 /* ---------- 托盘运行状态（抽屉） ---------- */
 registerAction("tray-detail", ({ id }) => {
   const t = DB.tray(id), r = DB.rack(t.rack), d = DB.domain(r.domain), base = DB.baseline(t.baseline), rec = BASELINES[0];
-  /* 不属于机柜的服务器：没有上线这一步，纳管在设备发现里逐台确认，第一次装系统时接管。 */
-  if (!t.state && !t.rack) return modal(t.serial, "服务器 · 运行状态", note(t.declared ? "这台服务器已经纳管，不属于任何机柜。NICo 已接手它的 BMC 口令，但没有给它上电，也没有建立设备对象。<b>它没有“上线”这一步：第一次装系统时，NICo 才给它上电并接管。</b>" : "这台服务器已经匹配上清单，还没有纳管。它不属于任何机柜，在“设备发现”里逐台确认纳管。") + defs([["清单里的序列号", code(t.serial)], ["机柜", "未分配机柜"], ["BMC MAC 与地址", code(t.bmcMac) + " · " + code(t.bmcIp)], ["设备凭据", t.declared ? "已交给 NICo" : "已提供，不显示"]]), button("关闭", "close") + (t.declared ? act("新建安装任务", "install-new", { primary: true, extra: `data-ids="${t.id}"` }) : button("去设备发现", "close-go", true, 'data-to="discovery"')), { drawer: true });
-  if (!t.state) return modal(t.serial, `${TYPE_LABEL[t.type]} · 运行状态`, note(t.declared ? `这台设备已经纳管（${t.rack} 槽位 ${pad2(t.slot)}），还没有上线：NICo 已接手它的 BMC 口令，但没有给它上电，也没有建立设备对象。在机柜详情开始上线。` : t.matched ? `这台设备已经匹配上清单（${t.rack} 槽位 ${pad2(t.slot)}），还没有纳管。在机柜详情确认纳管。` : `这台设备在到货清单中（${t.rack} 槽位 ${pad2(t.slot)}），还没有读到它的身份。机柜接电并匹配上之后才能纳管。`) + defs([["清单里的序列号", code(t.serial)], ["BMC MAC 与地址", t.bmcIp ? code(t.bmcMac) + " · " + code(t.bmcIp) : "接电后获得"], ["设备凭据", t.declared ? "已交给 NICo" : "已提供，不显示"]]), button("关闭", "close") + (t.matched ? button("去机柜详情", "close-go", true, `data-to="rack/${t.rack}"`) : button("去设备发现", "discovery-rack", true, `data-rack="${t.rack}"`)), { drawer: true });
+  /* NICo 还没有建立对象的设备：写明它在流程的哪一步、下一步去哪里做。 */
+  if (!t.state) {
+    const facts = defs([["设备序列号", code(t.serial)], ["机柜 / 位置", placeText(t)], ["BMC MAC 与地址", t.bmcIp ? code(t.bmcMac) + " · " + code(t.bmcIp) : "接电后获得"], ["配置对比", badge(...planState(t))], ["设备凭据", t.declared ? (t.type === "compute" || (r && r.admit) ? "已交给 NICo" : "已保存在平台，登记机柜时交给 NICo") : "已提供，不显示"]]);
+    const step = heldStep(t), text = !t.declared ? "这台设备还没有纳管。在“设备发现”里获取设备信息并加入纳管设备。"
+      : !t.rack ? "这台服务器已经纳管，不属于任何机柜。它的声明已写入 NICo 并带暂停标记：NICo 没有给它上电，也没有建立设备对象。<b>它没有“上线”这一步：第一次装系统时，NICo 才给它上电并接管。</b>"
+      : step === "待一键匹配" ? `这台设备已经纳管，规划里它在 ${t.rack} 槽位 ${pad2(t.slot)}，但规划还没有写进设备配置。在设备列表里勾选它，点“一键匹配”。`
+      : step === "待登记机柜" ? `这台设备已经纳管并匹配规划（${t.rack} 槽位 ${pad2(t.slot)}）。${t.type === "compute" ? "它的声明已写入 NICo 并带暂停标记。" : "它现在只在平台本地纳管，登记机柜时同步为 NICo 声明。"}下一步在机柜详情登记机柜。`
+      : `这台设备已经随机柜登记到 NICo（${t.rack} 槽位 ${pad2(t.slot)}），还没有上线：NICo 没有给它上电，也没有建立设备对象。在机柜详情开始上线。`;
+    const next = !t.declared ? button("去设备发现", "close-go", true, 'data-to="discovery"') : !t.rack ? act("新建安装任务", "install-new", { primary: true, extra: `data-ids="${t.id}"` }) : step === "待一键匹配" ? "" : button("去机柜详情", "close-go", true, `data-to="rack/${t.rack}"`);
+    return modal(t.serial, `${typeLabel(t)} · 运行状态`, note(text) + facts, button("关闭", "close") + (t.type === "compute" && t.declared ? act("系统配置", "server-config", { extra: `data-id="${t.id}"` }) : "") + next, { drawer: true });
+  }
   const partKeys = { compute: ["计算托盘 BMC", "计算托盘 UEFI"], switch: ["交换机 BMC"], power_shelf: [] }[t.type];
   let body = defs([["NICo 对象 ID", code("obj-" + t.serial.toLowerCase())], ["机柜 / 位置", t.rack ? `${t.rack} · 槽位 ${pad2(t.slot)}` : "未分配机柜"], ["运行状态", stateBadge(t.state) + (t.reason ? ` <span class="live-small">${esc(t.reason)}</span>` : "")], ["电源", powerText(t.power)], ["BMC 地址", code(t.bmcIp) + " · " + code(t.bmcMac) + " · " + t.addrMode + (t.bmcPlan && t.bmcPlan !== t.bmcIp ? ` · 规划 ${code(t.bmcPlan)}，待更新` : t.bmcPlan ? " · 已按规划" : " · 未规划") + ` <button class="link-button" data-live="bmc-update" data-ids="${t.id}">更新 BMC 地址</button>`], ["健康", healthBadge(t.health)], ["最近报告", code(t.lastSeen)]]);
   body += `<h3 class="section-title">健康告警</h3>` + table(["告警", "说明", "开始时间", "分类"], t.alerts.map((a) => `<tr><td>${code(a.id)}${a.target ? `<span class="cell-sub live-code">${esc(a.target)}</span>` : ""}</td><td>${esc(a.msg)}</td><td>${code(a.since)}</td><td>${alertClass(a) || "—"}</td></tr>`), "当前没有健康告警。");
@@ -165,9 +179,27 @@ registerAction("tray-detail", ({ id }) => {
   modal(t.serial, `${typeLabel(t)} · 运行状态 · ${placeText(t)}`, body, button("关闭", "close") + (t.type === "compute" ? act("系统配置", "server-config", { extra: `data-id="${t.id}"` }) : "") + act("操作", "tray-op", { primary: true, extra: `data-id="${t.id}"` }), { drawer: true });
 });
 
+/* ---------- 一键匹配 ----------
+   沿用现有产品：勾选已纳管的设备，把设备规划里同一序列号那一行写进设备的配置。
+   写的是服务器的启动网卡 MAC、管理 IP、管理子网，以及 BMC（供电框是 PMC）的规划地址；整柜另外写机柜和槽位。
+   只改平台本地的设备配置：不动设备，不写 NICo。BMC 的规划地址要生效，另外执行“更新 BMC 地址”。 */
+registerAction("plan-match", () => {
+  const current = (PAGES[route().id] || {}).module, list = Object.keys(S.view.checked || {}).filter((k) => S.view.checked[k]).map(DB.tray).filter((t) => t && t.type === current && t.declared);
+  if (!list.length) return toast("先勾选设备");
+  if (list.length > 50) return toast("一键匹配一次最多 50 台");
+  const rows = list.map((t) => { if (t.noPlan) return { t, res: ["未匹配", "gray"], changes: [], why: "设备规划里没有这个序列号" }; const changes = applyPlan(t); return { t, res: changes.length ? ["已更新", "green"] : ["无变化", "gray"], changes, why: "" }; });
+  const n = rows.filter((r) => r.changes.length).length;
+  addAudit(list.length === 1 ? list[0].serial : `${list.length} 台设备`, "一键匹配", "—", "—", `${n} 台的设备配置已按规划更新`); S.view.checked = {}; S.guide = Math.max(S.guide, 6); render();
+  modal("一键匹配结果", `已更新 ${n} · 无变化 ${rows.filter((r) => r.res[0] === "无变化").length} · 未匹配 ${rows.filter((r) => r.res[0] === "未匹配").length}`,
+    table(["SN", "结果", "配置变化", "原因"], rows.map((r) => `<tr><td><strong class="live-code">${r.t.serial}</strong><span class="cell-sub">${typeLabel(r.t)}</span></td><td>${badge(...r.res)}</td><td>${r.changes.length ? r.changes.map((c) => `<div class="match-change"><span>${c.field}</span><b>${c.before === "—" ? "" : `<s>${esc(c.before)}</s> → `}${esc(c.after)}</b></div>`).join("") : "—"}</td><td>${esc(r.why) || "—"}</td></tr>`)) +
+    note("一键匹配只改平台里的设备配置，没有动设备，也没有写 NICo。<b>BMC 规划地址还没有生效</b>：勾选设备后点“更新 BMC 地址”。机柜里的设备匹配之后，到机柜详情登记机柜。"),
+    button("关闭", "close", true));
+  $("#overlay-root .modal").classList.add("wiz-config");
+});
+
 /* ---------- BMC 地址：规划与更新 ----------
    沿用现有产品的“更新 BMC 地址”。设备接电时 BMC 从 DHCP 拿到的是地址池里随便一个地址；纳管之后，按规划把它改成固定地址。
-   规划地址可以随到货清单带进来，也可以在这里逐台填。更新是人手动发起的：勾选设备，核对“当前地址 → 规划地址”，确认后执行四步：
+   规划地址随设备规划带进来（一键匹配），也可以在这里逐台填。更新是人手动发起的：勾选设备，核对“当前地址 → 规划地址”，确认后执行四步：
    检查地址与身份、更新 BMC、验证新地址、同步管理记录。关掉弹窗后继续执行，可以从近期记录再看进度。 */
 const oobSubnet = () => DB.roleSubnets("oob")[0];
 const bmcRole = (t) => (t.type === "power_shelf" ? "PMC" : "BMC");
@@ -197,7 +229,7 @@ function bmcCheck(t, plan, plans) {
 registerAction("bmc-update", ({ ids }) => {
   const current = (PAGES[route().id] || {}).module, list = (ids ? ids.split(",") : Object.keys(S.view.checked || {}).filter((k) => S.view.checked[k] && DB.tray(k) && DB.tray(k).type === current)).map(DB.tray).filter(Boolean);
   if (!list.length) return toast("先勾选设备");
-  if (list.length > 50) return toast("一次最多 50 台");
+  if (list.length > 256) return toast("一次最多 256 台");
   S.view.bmcDraft = { ids: list.map((t) => t.id), plans: Object.fromEntries(list.map((t) => [t.id, t.bmcPlan || ""])), why: "" }; bmcDialog();
 });
 function bmcDialog() {
@@ -226,26 +258,34 @@ registerAction("bmc-update-run", () => {
   if (!bmcSavePlans()) return;
   const job = { id: "bmc-" + String(S.bmcJobs.length + 1).padStart(4, "0"), at: nowText(), by: "ops-01", why, rows: pass.map((t) => ({ tray: t.id, serial: t.serial, role: bmcRole(t), mac: t.bmcMac, from: t.bmcIp, to: t.bmcPlan, at: 0 })) };
   S.bmcJobs.unshift(job); S.view.bmcDraft = null; S.view.checked = {}; const rec = addAudit(pass.length === 1 ? pass[0].serial : `${pass.length} 台设备`, "更新 BMC 地址", why, job.id, "已提交");
-  /* 模拟：每个接口依次走四步。真实实现里每一步由服务端执行，页面只轮询进度。 */
+  job.rec = rec; bmcTick(job);
+  bmcShowProgress(job.id);
+});
+/* 模拟：每个接口依次走四步。真实实现里每一步由服务端执行，页面只轮询进度。 */
+function bmcTick(job) {
+  const rec = job.rec;
   job.timer = setInterval(() => {
-    job.rows.forEach((r) => { if (r.at >= BMC_PHASES.length) return; r.at++; if (r.at === BMC_PHASES.length) { const t = DB.tray(r.tray); if (t) { t.bmcIp = r.to; t.addrMode = "固定地址"; } } });
+    job.rows.forEach((r) => { if (r.at >= BMC_PHASES.length || r.stuck) return; const dev = DB.tray(r.tray); if (r.at === 2 && dev && dev.bmcFlaky) { dev.bmcFlaky = 0; r.stuck = "sync"; return; } r.at++; if (r.at === BMC_PHASES.length) { const t = DB.tray(r.tray); if (t) { t.bmcIp = r.to; t.addrMode = "固定地址"; } } });
     if (job.rows.every((r) => r.at >= BMC_PHASES.length)) { clearInterval(job.timer); job.timer = 0; rec.res = `${job.rows.length} 个接口已更新并验证`; toast(`BMC 地址更新完成：${job.rows.length} 个接口`); }
+    else if (job.rows.every((r) => r.at >= BMC_PHASES.length || r.stuck)) { clearInterval(job.timer); job.timer = 0; rec.res = `${job.rows.filter((r) => r.stuck).length} 个接口需要处理`; }
     if (S.view.bmcOpen === job.id && $("#bmc-progress")) $("#bmc-progress").innerHTML = bmcProgress(job); else if (!S.view.modal) render();
   }, 1100);
-  bmcShowProgress(job.id); 
-});
+}
+/* 恢复入口，名称沿用现有产品。“核对并完成同步”：BMC 已经在用新地址，只是管理记录没有同步完，核对后补做这一步。
+   “重新检查并更新”：更新请求还没有发给设备就中断了，从检查重新开始。 */
+registerAction("bmc-recover", ({ id, tray }) => { const job = S.bmcJobs.find((j) => j.id === id), r = job.rows.find((x) => x.tray === tray); if (r.stuck === "unsent") r.at = 0; r.stuck = ""; addAudit(r.serial, r.at ? "核对并完成同步" : "重新检查并更新", "—", job.id, "已提交"); if (!job.timer) bmcTick(job); if ($("#bmc-progress")) $("#bmc-progress").innerHTML = bmcProgress(job); });
 const BMC_DETAIL = ["正在检查规划、地址占用与设备身份…", "正在关闭 DHCP 并写入固定地址…", "正在用新地址登录并核对序列号…", "正在把新地址同步到 NICo 的管理记录…", "已完成：BMC 使用规划的固定地址"];
 function bmcProgress(job) {
-  const total = job.rows.length * BMC_PHASES.length, done = job.rows.reduce((n, r) => n + r.at, 0), finished = job.rows.filter((r) => r.at >= BMC_PHASES.length).length, running = finished < job.rows.length;
-  return `<div class="bmc-progress-summary"><div><span class="bmc-eyebrow">BMC 地址更新</span><strong>${running ? "正在执行" : "更新完成"}</strong><span class="live-small">已完成 ${done} / ${total} 个步骤 · ${finished} / ${job.rows.length} 个接口已更新</span></div><span class="bmc-summary-dot ${running ? "running" : "completed"}" aria-hidden="true"></span></div><progress class="bmc-progress-meter" value="${done}" max="${total}" aria-label="已完成步骤"></progress>
+  const total = job.rows.length * BMC_PHASES.length, done = job.rows.reduce((n, r) => n + r.at, 0), finished = job.rows.filter((r) => r.at >= BMC_PHASES.length).length, stuck = job.rows.filter((r) => r.stuck).length, running = finished + stuck < job.rows.length;
+  return `<div class="bmc-progress-summary"><div><span class="bmc-eyebrow">BMC 地址更新</span><strong>${running ? "正在执行" : stuck ? "需要处理" : "更新完成"}</strong><span class="live-small">已完成 ${done} / ${total} 个步骤 · ${finished} / ${job.rows.length} 个接口已更新</span></div><span class="bmc-summary-dot ${running ? "running" : "completed"}" aria-hidden="true"></span></div><progress class="bmc-progress-meter" value="${done}" max="${total}" aria-label="已完成步骤"></progress>
     <div class="bmc-progress-cards">${job.rows.map((r) => `<section class="bmc-progress-card"><header><div><strong>${r.serial}</strong><span class="live-small">${r.role} · ${r.mac}</span></div><div class="bmc-address-change"><span>${r.from}</span><span class="bmc-address-arrow" aria-hidden="true">→</span><strong>${r.to}</strong></div></header>
-      <ol class="bmc-stepper" aria-label="BMC 地址更新步骤">${BMC_PHASES.map((label, i) => { const st = i < r.at ? "completed" : i === r.at ? "running" : "waiting"; return `<li class="bmc-step ${st}" ${st === "running" ? 'aria-current="step"' : ""}><span class="bmc-step-dot" aria-hidden="true"></span><span class="bmc-step-label">${label}</span><span class="bmc-step-status">${{ completed: "已完成", running: "进行中", waiting: "待执行" }[st]}</span></li>`; }).join("")}</ol>
-      <div class="bmc-operation-detail" role="status">${BMC_DETAIL[r.at]}</div></section>`).join("")}</div>`;
+      <ol class="bmc-stepper" aria-label="BMC 地址更新步骤">${BMC_PHASES.map((label, i) => { const st = i < r.at ? "completed" : i === r.at ? (r.stuck ? "failed" : "running") : "waiting"; return `<li class="bmc-step ${st}" ${st === "running" ? 'aria-current="step"' : ""}><span class="bmc-step-dot" aria-hidden="true"></span><span class="bmc-step-label">${label}</span><span class="bmc-step-status">${{ completed: "已完成", running: "进行中", waiting: "待执行", failed: "未完成" }[st]}</span></li>`; }).join("")}</ol>
+      <div class="bmc-operation-detail" role="status">${r.stuck === "sync" ? `BMC 已经在用新地址 ${r.to}，但同步管理记录没有完成：验证新地址时连接中断。　${act("核对并完成同步", "bmc-recover", { compact: true, extra: `data-id="${job.id}" data-tray="${r.tray}"` })}` : r.stuck === "unsent" ? `更新请求还没有发给设备就中断了，BMC 仍是原地址 ${r.from}。　${act("重新检查并更新", "bmc-recover", { compact: true, extra: `data-id="${job.id}" data-tray="${r.tray}"` })}` : BMC_DETAIL[r.at]}</div></section>`).join("")}</div>`;
 }
 function bmcShowProgress(id) { const job = S.bmcJobs.find((j) => j.id === id); S.view.bmcOpen = id; modal("更新 BMC 地址", "关闭窗口后继续执行；可从近期更新记录再次查看。", `<div id="bmc-progress" aria-live="polite">${bmcProgress(job)}</div>`, button("关闭", "close", true)); render(); }
 registerAction("bmc-progress", ({ id }) => bmcShowProgress(id));
 /* 近期 BMC 地址更新：每次提交一行，可以再打开看进度。 */
 function bmcHistory() {
   return S.bmcJobs.length ? `<h2 class="section-title">近期 BMC 地址更新</h2>` + table(["提交时间", "设备", "进度", "原因 / 操作者", "操作"], S.bmcJobs.slice(0, 10).map((j) => { const done = j.rows.filter((r) => r.at >= BMC_PHASES.length).length;
-    return `<tr><td>${code(j.at)}</td><td>${esc(j.rows.slice(0, 4).map((r) => r.serial).join("、"))}${j.rows.length > 4 ? ` 等 ${j.rows.length} 台` : ""}</td><td>${done === j.rows.length ? badge("已完成", "green") : badge("执行中", "amber")} ${done} / ${j.rows.length} 个接口完成</td><td>${esc(j.why)}<span class="cell-sub">${j.by}</span></td><td>${button("查看进度", "bmc-progress", false, `data-id="${j.id}"`)}</td></tr>`; })) : "";
+    return `<tr><td>${code(j.at)}</td><td>${esc(j.rows.slice(0, 4).map((r) => r.serial).join("、"))}${j.rows.length > 4 ? ` 等 ${j.rows.length} 台` : ""}</td><td>${done === j.rows.length ? badge("已完成", "green") : j.rows.some((r) => r.stuck) ? badge("需要处理", "red") : badge("执行中", "amber")} ${done} / ${j.rows.length} 个接口完成</td><td>${esc(j.why)}<span class="cell-sub">${j.by}</span></td><td>${button("查看进度", "bmc-progress", false, `data-id="${j.id}"`)}</td></tr>`; })) : "";
 }

@@ -151,3 +151,14 @@ body.annotate .live-table-wrap { padding: 12px 0 0 12px; }
 .wiz-config .wiz-err { color: var(--red); }
 .wiz-config .wiz-err:empty { display: none; }
 .wiz-config .bmc-plan { width: 190px; height: 32px; }
+/* 系统配置弹窗：两段小标题和收起的设备覆盖设置。 */
+.cfg-section { margin: 16px 0 8px; font-size: 14px; }
+.cfg-section small { margin-left: 10px; font-weight: 400; color: var(--muted); font-size: 12px; }
+.cfg-override { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
+.cfg-override summary { cursor: pointer; font-weight: 600; font-size: 14px; }
+.cfg-override .live-form { margin-top: 10px; }
+/* 一键匹配结果：每项变化一行，字段名在左、值在右。 */
+.match-change { display: flex; gap: 10px; align-items: baseline; font-size: 12px; line-height: 1.7; }
+.match-change span { color: var(--muted); min-width: 108px; }
+.match-change b { font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace); font-weight: 500; }
+.match-change s { color: var(--muted); }

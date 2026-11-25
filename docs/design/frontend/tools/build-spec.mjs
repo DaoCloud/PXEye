@@ -47,7 +47,7 @@ const c = vm.runInContext(`({ source: CONTRACT_SOURCE, prep: PREP_LABEL, areas: 
   resources: resourceChain(NICO_RESOURCES.map((r) => r.id)).map((r) => Object.assign({}, r, { requiresNames: (r.requires || []).map((id) => (resourceById(id) || { name: id }).name) })),
   calls: NICO_CALLS.map((x) => Object.assign({}, x, { requiresNames: (x.requires || []).map((id) => (resourceById(id) || { name: id }).name), pages: callUsers(x.id).map((p) => pageName(p)) })),
   components: NICO_COMPONENTS.map((k) => ({ id: k.id, name: k.name, workload: k.workload, level: k.level, provides: k.provides, deploy: k.deploy, missing: k.missing, source: k.source, calls: componentCalls(k).map((x) => x.id), pages: k.id === 'core' ? ['全部调用 NICo 的页面'] : componentPages(k).map((p) => pageName(p)) })),
-  gaps: CONTRACT_GAPS })`, ctx);
+  gaps: CONTRACT_GAPS, platform: PLATFORM_APIS.map((a) => Object.assign({}, a, { pageName: pageName(PAGES[a.page]) })) })`, ctx);
 const code = (v) => (v ? "`" + v + "`" : "—");
 let doc = `# 整机柜运维接口契约\n\n[设计稿说明](README.zh-CN.md) · [页面功能说明](page-spec.zh-CN.md) · [设计文档](../README.zh-CN.md)\n\n本文件由 \`tools/build-spec.mjs\` 从 \`contract.js\` 生成，不要直接修改。它是内部实现参考，不用于对外展示；可点击的版本是 \`internal.html\`。\n\n` +
   `每个页面调用 NICo 的哪些接口、对应什么命令行、用到哪些字段，以及要让页面有数据必须先准备好哪些资源。接口、参数和字段取自 NICo 源码 \`${c.source.repo}\` 的提交 \`${c.source.commit}\`（${c.source.version}）。${c.source.note}\n\n` +
@@ -59,12 +59,13 @@ for (const area of [...c.areas, "其他"]) {
   const list = c.calls.filter((x) => (area === "其他" ? !c.areas.includes(x.area) : x.area === area));
   if (list.length) doc += `\n## 接口：${area}\n\n${tbl(["接口", "类型", "命令行", "请求参数", "用到的字段", "前置资源", "执行方", "使用的页面", "证据", "实测", "说明", "出处"], list.map((x) => [code(x.name), x.surface + (x.write ? " · 写" : " · 读"), code(x.cli), x.request || "—", (x.fields || []).join("、") || "—", x.requiresNames.join("、") || "—", x.executedBy || "Core", x.pages.join("；") || "—", (x.evidence || "定义") + (x.used ? "；现有产品已调用" : ""), x.observed || "—", x.note || "", code(x.source)]))}\n`;
 }
+doc += `\n## 平台后端接口：沿用现有产品的哪些，新增哪些\n\n设备导入、设备发现、系统配置、装系统这四段沿用现有产品的流程和接口；整机柜只追加字段，或新增机柜这一层的接口。沿用 = 请求和响应都不变；扩展 = 接口不变，多了字段或适用范围；新增 = 现有产品没有。\n\n${tbl(["页面", "接口", "与现有产品的关系", "用途", "变化"], c.platform.map((a) => [a.pageName, code(a.method + " " + a.path), a.status, a.use, a.change || "—"]))}\n`;
 doc += `\n## 缺口：设计需要、NICo 没有直接提供\n\n${c.gaps.length ? tbl(["设计需要", "涉及页面", "源码里的情况", "可选的处理", "出处"], c.gaps.map((g) => [g.need, (g.pages || []).join("、"), g.finding, g.options, code(g.source)])) : "没有记录缺口。"}\n`;
 doc += `\n## 各页面用到的接口\n`;
 for (const p of pages) doc += `\n### ${p.name}\n\n${p.calls.length ? tbl(["用途", "接口", "类型", "命令行", "用到的字段"], p.calls.map((x) => [x.use, code(x.name), x.surface + (x.write ? " · 写" : " · 读"), code(x.cli), x.fields.join("、") || "—"])) : "不调用 NICo，数据由平台自己保存。"}\n`;
 if (c.problems.length) doc += `\n## 自检问题\n\n${c.problems.map((p) => `- ${p}`).join("\n")}\n`;
 fs.writeFileSync(path.join(root, "interface-contract.zh-CN.md"), doc);
-fs.writeFileSync(path.join(root, "contract.json"), JSON.stringify({ source: c.source, components: c.components, resources: c.resources, calls: c.calls, pages: pages.map((p) => ({ id: p.id, name: p.name, calls: p.calls.map((x) => ({ id: x.id, use: x.use })) })), gaps: c.gaps }, null, 2) + "\n");
+fs.writeFileSync(path.join(root, "contract.json"), JSON.stringify({ source: c.source, components: c.components, resources: c.resources, calls: c.calls, pages: pages.map((p) => ({ id: p.id, name: p.name, calls: p.calls.map((x) => ({ id: x.id, use: x.use })) })), platform: c.platform, gaps: c.gaps }, null, 2) + "\n");
 console.log("实现参考版入口 → internal.html");
 console.log(`契约：组件 ${c.components.length}，资源 ${c.resources.length}，接口 ${c.calls.length}，缺口 ${c.gaps.length}，自检问题 ${c.problems.length} → interface-contract.zh-CN.md、contract.json`);
 console.log(`页面 ${pages.length}，功能点 ${points.length}（沿用 ${count("沿用")} / 调整 ${count("调整")} / 新增 ${count("新增")}） → page-spec.zh-CN.md`);

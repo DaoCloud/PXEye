@@ -7,11 +7,13 @@ DESIGN_EXT.guide.push((page) => contractHtml(page));
 const LEVEL_KIND = { 必需: "keep", 整机柜: "change", 可选: "new" };
 /* 页面说明面板：当前页面用到的 NICo 接口，以及要让它有数据必须先具备的资源。 */
 const surfaceBadge = (c) => `<span class="kind ${c.write ? "change" : "keep"}">${esc(c.surface)} · ${c.write ? "写" : "读"}</span>`;
+const API_KIND = { 沿用: "keep", 扩展: "change", 新增: "new" };
+const platformHtml = (page) => { const apis = platformApis(page.id); return apis.length ? `<h3>平台后端接口</h3><p class="live-small">沿用 = 和现有产品一样；扩展 = 接口不变，多了字段或范围；新增 = 现有产品没有。</p>${apis.map((a) => `<div class="guide-call"><b>${esc(a.use)}</b><div class="live-code">${a.method} ${esc(a.path)}</div><span class="kind ${API_KIND[a.status]}">${a.status}</span>${a.change ? `<div class="guide-cli">${esc(a.change)}</div>` : ""}</div>`).join("")}` : ""; };
 function contractHtml(page) {
   const list = pageCalls(page), chain = pageResources(page);
-  if (!list.length) return `<h3>NICo 接口</h3><p>这个页面不调用 NICo，数据由平台自己保存。</p>`;
+  if (!list.length) return platformHtml(page) + `<h3>NICo 接口</h3><p>这个页面不调用 NICo，数据由平台自己保存。</p>`;
   const parts = pageComponents(page);
-  return `<h3>需要的组件</h3><p>${parts.map((k) => `<b>${esc(k.name)}</b><span class="kind ${LEVEL_KIND[k.level]}">${esc(k.level)}</span>`).join("　")}</p>
+  return platformHtml(page) + `<h3>需要的组件</h3><p>${parts.map((k) => `<b>${esc(k.name)}</b><span class="kind ${LEVEL_KIND[k.level]}">${esc(k.level)}</span>`).join("　")}</p>
     <h3>NICo 接口</h3>${list.map((x) => x.call
       ? `<div class="guide-call"><b>${esc(x.use)}</b><div class="live-code">${esc(x.call.name)}</div>${surfaceBadge(x.call)}${x.call.cli ? `<div class="guide-cli live-code">${esc(x.call.cli)}</div>` : ""}</div>`
       : `<div class="guide-call"><b>${esc(x.use)}</b><div class="live-code">${esc(x.id)}</div><span class="kind new">契约中未定义</span></div>`).join("")}
@@ -37,6 +39,7 @@ registerPage("contract", {
       CALL_AREAS.map((area) => { const list = NICO_CALLS.filter((c) => c.area === area); return list.length ? `<section class="call-table"><h2>接口：${area}</h2>${callTable(list)}</section>` : ""; }).join("") +
       (NICO_CALLS.some((c) => !CALL_AREAS.includes(c.area)) ? `<section><h2>接口：其他</h2>${callTable(NICO_CALLS.filter((c) => !CALL_AREAS.includes(c.area)))}</section>` : "") +
       `<section><h2>各页面用到的接口</h2>${table(["页面", "需要的组件", "读", "写", "接口与用途"], pagesByNav().map((p) => { const list = pageCalls(p); return `<tr><td><a class="link-button" data-go="${p.id === "rack" ? "rack/RACK-A01" : p.id}">${esc(pageName(p))}</a></td><td>${pageComponents(p).map((k) => esc(k.name)).join("、") || "—"}</td><td>${list.filter((x) => x.call && !x.call.write).length}</td><td>${list.filter((x) => x.call && x.call.write).length}</td><td>${list.length ? list.map((x) => `${esc(x.use)}：<span class="live-code">${esc(x.call ? x.call.name : x.id)}</span>`).join("<br>") : "不调用 NICo，数据由平台自己保存"}</td></tr>`; }))}</section>` +
+      `<section><h2>平台后端接口：沿用现有产品的哪些，新增哪些</h2><p class="live-small">设备导入、设备发现、系统配置、装系统这四段沿用现有产品的流程和接口；整机柜只追加字段，或新增机柜这一层的接口。沿用 ${PLATFORM_APIS.filter((a) => a.status === "沿用").length} 个，扩展 ${PLATFORM_APIS.filter((a) => a.status === "扩展").length} 个，新增 ${PLATFORM_APIS.filter((a) => a.status === "新增").length} 个。</p>${table(["页面", "接口", "与现有产品的关系", "用途", "变化"], PLATFORM_APIS.map((a) => `<tr><td>${esc(pageName(PAGES[a.page]))}</td><td><span class="live-code">${a.method} ${esc(a.path)}</span></td><td><span class="kind ${API_KIND[a.status]}">${a.status}</span></td><td>${esc(a.use)}</td><td>${esc(a.change || "—")}</td></tr>`))}</section>` +
       `<section><h2>缺口：设计需要、NICo 没有直接提供</h2>${table(["设计需要", "涉及页面", "源码里的情况", "可选的处理", "出处"], CONTRACT_GAPS.map((g) => `<tr><td><strong>${esc(g.need)}</strong></td><td>${esc((g.pages || []).join("、"))}</td><td>${esc(g.finding)}</td><td>${esc(g.options)}</td><td>${code(g.source || "")}</td></tr>`), "没有记录缺口。")}</section>` +
       (problems.length ? `<section><h2>自检问题</h2><ul>${problems.map((p) => `<li>${esc(p)}</li>`).join("")}</ul></section>` : "") + `</div>`;
   },

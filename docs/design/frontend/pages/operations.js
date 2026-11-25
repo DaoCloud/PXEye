@@ -2,7 +2,7 @@
 /* 操作：机柜和设备的写操作，以及它们共用的门控。
    规则（设计说明书第 8、9 章）：
    - 机柜页只放 NICo 在机柜对象上定义的操作：上线、电源、固件、期望与实际校验、机柜维护（重新执行、终止）、删除机柜。
-     “确认纳管”是对本机柜全部已匹配设备的批量纳管：NICo 里纳管是逐台设备的声明，机柜自身只有一条机柜声明。装系统是逐台机器的事，在“安装任务”里。
+     “登记机柜”把机柜声明和成员关系写入 NICo：设备的纳管在设备发现里逐台或批量完成，机柜自身只有一条机柜声明。装系统是逐台机器的事，不是机柜的操作。
    - 交换机就绪后的机柜维护不是任务：它由 NICo 的机柜状态机自动进行。进行中可以终止，终止后机柜停在 Error；停在 Error 时提供“重新执行机柜维护”。
    - 会跨多台设备排序的电源和固件操作提交为 Flow 任务；单设备的状态类操作直接调用 Core 并读回。
    - 同一机柜同一时间只有一个进行中的任务。
@@ -10,7 +10,7 @@
 
 /* 机柜级门控：返回不可用的原因，空字符串表示可用。 */
 function rackGate(r, kind) {
-  if (kind === "bringup") return !r.admit ? "先确认纳管" : r.up ? "已经上线过" : DB.busy(r) ? "该机柜有进行中的任务" : !S.flow ? "Flow 未就绪，上线任务不可用" : !S.rms ? "RMS 未就绪，无法上电" : "";
+  if (kind === "bringup") return !r.admit ? "先登记机柜" : r.up ? "已经上线过" : DB.busy(r) ? "该机柜有进行中的任务" : !S.flow ? "Flow 未就绪，上线任务不可用" : !S.rms ? "RMS 未就绪，无法上电" : "";
   if (!r.state) return r.admit ? "机柜还没有上线" : "NICo 里还没有这个机柜的对象";
   if (DB.busy(r)) return "该机柜有进行中的任务，同一机柜同时只能有一个任务";
   if (kind === "remaint") return !S.rms ? "RMS 未就绪，机柜维护无法执行" : r.state !== "Error" ? "只在机柜停在 Error 时使用" : "";
@@ -31,19 +31,21 @@ function readiness(r, what) {
 const RULE_NOTE = "顺序、等待时间和重试由站点的操作规则决定；站点没有自定义规则时使用 NICo 内置的默认规则。这里不填写。";
 
 /* ---------- 机柜操作 ---------- */
+/* 登记机柜：整柜新增的一步。设备的纳管在“设备发现”里逐台或批量完成，规划在“设备管理”里一键匹配进设备配置；
+   这里把机柜声明写入 NICo，并把本柜已纳管、已匹配的成员带上机柜和槽位：交换机和供电框这时才同步为 NICo 声明。 */
 registerAction("rack-admit", ({ id }) => {
-  const r = DB.rack(id), got = r.trays.filter((t) => t.matched), sw = got.filter((t) => t.type === "switch").length, diff = DB.absent(r).length + DB.misplaced(r).length;
-  confirmOperation({ title: "确认纳管", target: `${id} 的 ${got.length} 台已匹配设备`, action: "逐台登记到 NICo，并写入这个机柜的机柜声明", stages: ["写入机柜声明", "逐台写入设备声明", "NICo 登录 BMC 并更换口令"], why: "到货核对完成", submit: "确认纳管", sub: "这是对本机柜设备的批量纳管，不是机柜自身的操作。纳管只是登记：不上电、不动磁盘、不装系统。",
-    extra: defs([["已匹配", `${got.length} / ${r.trays.length} 台，其中交换机 ${sw} / ${PROFILE_NEED.switch}`], ["清单核对的差异", diff ? `${diff} 项，纳管后仍可处理` : "没有"], ["待处理的端点", S.endpoints.length ? `${S.endpoints.length} 个，之后匹配上的会自动纳管` : "没有"], ["地址", "不变。纳管之后，可以在设备管理里按规划更新 BMC 地址"]]) +
-      doList(ADMIT_DO, ADMIT_NOT) + note("<b>纳管后设备的 BMC 口令由 NICo 接手</b>，清单里的出厂口令不再有效，平台也不再保存。要把设备交还，逐台退役。", "warning"),
-    run: (why) => { admitRack(id); addAudit(id, "确认纳管", why, "—", `${got.length} 台已纳管，设备未上电`); S.guide = Math.max(S.guide, 5); toast(`${id}：${got.length} 台已纳管。下一步：开始上线`); } });
+  const r = DB.rack(id), got = DB.placed(r), by = (type) => got.filter((t) => t.type === type).length, loose = r.trays.filter((t) => t.declared && !t.placed).length, miss = r.trays.filter((t) => !t.declared).length;
+  confirmOperation({ title: "登记机柜", target: id, action: `把机柜声明写入 NICo，并带上已纳管、已匹配规划的 ${got.length} 台成员`, stages: ["写入机柜声明", "同步交换机和供电框的声明", "更新计算托盘声明里的机柜和槽位"], why: "到货核对完成", submit: "登记机柜", sub: "登记只是把机柜和成员关系告诉 NICo：不上电、不动磁盘、不装系统。",
+    extra: defs([["带上的成员", `${got.length} / ${r.trays.length} 台：计算托盘 ${by("compute")}、交换机 ${by("switch")} / ${PROFILE_NEED.switch}、供电框 ${by("power_shelf")}`], ["已纳管、还没有一键匹配", loose ? `${loose} 台，这次不带上；匹配之后会自动补进这个机柜` : "没有"], ["规划里有、还没有纳管", miss ? `${miss} 台，纳管并匹配之后会自动补进这个机柜` : "没有"], ["地址", "不变。按规划更新 BMC 地址在设备管理里另外做"]]) +
+      doList(ADMIT_DO, ADMIT_NOT) + note("<b>交换机和供电框的 BMC 口令从这一步起由 NICo 接手</b>，规划里的出厂口令不再有效，平台也不再保存。计算托盘的口令在纳管时已经交给 NICo。要把设备交还，逐台退役。", "warning"),
+    run: (why) => { admitRack(id); addAudit(id, "登记机柜", why, "—", `机柜声明已写入，带上 ${got.length} 台成员，设备未上电`); S.guide = Math.max(S.guide, 6); toast(`${id}：机柜已登记。下一步：开始上线`); } });
 });
 registerAction("rack-bringup", ({ id }) => {
-  const r = DB.rack(id), n = r.trays.filter((t) => t.declared).length;
-  confirmOperation({ title: "开始上线", target: id, action: `给已纳管的 ${n} 台设备上电，并让 NICo 接管`, stages: STAGES.bringup_task, why: "新机柜上线", submit: "开始上线", high: true, confirmText: id, sub: "提交为一个上线任务。上线不装操作系统，装系统在“安装任务”里逐台确认。",
+  const r = DB.rack(id), n = DB.placed(r).length;
+  confirmOperation({ title: "开始上线", target: id, action: `给已登记的 ${n} 台成员上电，并让 NICo 接管`, stages: STAGES.bringup_task, why: "新机柜上线", submit: "开始上线", high: true, confirmText: id, sub: "提交为一个上线任务。上线不装操作系统，装系统在“安装任务”里逐台确认。",
     extra: doList(UP_DO, UP_NOT) + note("<b>对设备的影响：</b>设备会上电并重启；计算托盘的 BIOS 设置会被修改并锁定；<b>按站点策略可能清理全部磁盘，包括非系统盘</b>；固件与期望版本不同时会被更新。主机管理地址在计算托盘第一次从网络启动时分配。", "warning") +
       note("任务完成后，交换机就绪数达到机柜规格要求时，NICo 自动开始机柜维护（固件升级、NVOS 更新、上电顺序、配置 NMX-C 集群、机柜校验）。这一段不是任务，顺序不能调整；进行中可以终止，终止后机柜停在 Error。全部完成后机柜状态为 Ready，柜里的计算托盘才能装系统。"),
-    run: (why) => { bringUpRack(id, why); S.guide = Math.max(S.guide, 5); S.view["rackTab:" + id] = "tasks"; } });
+    run: (why) => { bringUpRack(id, why); S.guide = Math.max(S.guide, 6); S.view["rackTab:" + id] = "tasks"; } });
 });
 registerAction("slot-fix", ({ id }) => {
   const t = DB.tray(id), r = DB.rack(t.rack), other = r.trays.find((x) => x.slot === t.seenSlot), from = t.slot;
@@ -118,7 +120,7 @@ registerAction("rack-delete-run", ({ id }) => {
   addAudit(id, "删除机柜", why, "—", "机柜对象已删除"); toast(id + " 已删除"); go("racks");
 });
 registerAction("task-cancel", ({ id }) => { cancelTask(id); render(); });
-registerAction("discovery-rack", ({ rack }) => { S.view.dsRack = rack; S.view.dsRes = ""; go("discovery"); });
+registerAction("discovery-rack", () => { closeModal(); go("discovery"); });
 
 /* ---------- 设备操作目录 ----------
    名称与现有产品的操作对话框一致。via: "Flow" 提交为任务；"Core" 立即执行并读回。 */
@@ -185,11 +187,11 @@ registerAction("tray-op-submit", ({ ids, action }) => {
     pass.forEach((t) => { a.apply(t, pick, why); addAudit(t.rack ? placeText(t) : t.serial, a.label, why, "—", a.unknown ? "未知：NICo 无读回方式，未自动重发" : a.readback); });
     toast(a.unknown ? `${a.label}已发送，结果未知` : `${a.label}完成，读回一致`);
   }
-  S.view.checked = {}; S.guide = Math.max(S.guide, 9); render();
+  S.view.checked = {}; S.guide = Math.max(S.guide, 10); render();
 });
 
 /* ---------- 模拟控制（只在设计稿中存在） ---------- */
-registerAction("sim-discover", () => { if (simulateDiscovery("RACK-A03")) { S.guide = 4; S.view["rackTab:RACK-A03"] = "check"; toast("RACK-A03 已接电：32 台匹配上清单，新增 2 个待处理的端点。下一步到机柜详情确认纳管"); go("discovery"); } });
+registerAction("sim-discover", () => { if (simulateDiscovery("RACK-A03")) { S.guide = 4; S.view["rackTab:RACK-A03"] = "check"; toast("RACK-A03 已接电：34 个 BMC 拿到了地址，出现在设备发现里。下一步：获取设备信息，加入纳管设备"); go("discovery"); } });
 /* 整柜泄漏：NICo 自动对整柜强制下电，页面只是如实显示。告警清除后设备保持关机。 */
 registerAction("sim-leak", () => {
   const r = DB.rack("RACK-A01");

@@ -1,10 +1,11 @@
 "use strict";
 /* 接口契约：页面与 NICo 之间的约定。
-   五张表，来源只有这一个文件：
+   六张表，来源只有这一个文件：
    - NICO_RESOURCES：NICo 里的资源，以及它们之间的依赖。回答“这个页面要有数据，必须先有什么”。
    - NICO_CALLS：页面用到的 NICo 接口：属于哪一类接口、请求参数、用到的字段、对应的命令行、前置资源。
    - CONTRACT_GAPS：设计需要、但 NICo 没有直接提供的东西，以及待定的处理方式。
    - PAGE_CALLS：每个页面用到哪些接口和用途。
+   - PLATFORM_APIS：页面和平台自己的后端之间的接口，以及它和现有产品的关系：沿用、扩展、新增。
    - NICO_COMPONENTS：要部署的组件。每个组件提供什么、哪些接口和页面离不开它、缺了它会怎样。
    这个文件只由实现参考版（internal.html）加载；对外版（index.html）不加载它。
 
@@ -268,8 +269,8 @@ Object.entries(OBSERVED_PARTIAL).forEach(([id, text]) => { const c = NICO_CALLS.
 
 /* ================= 缺口 =================
    分三类：NICo 没有的（要由平台补或者改设计）、两条路径要选一条的、源码里对不上要实测的。 */
-G("到货清单里的槽位写入 NICo 的期望清单", ["设备清单"], "Core 的设备声明没有槽位字段。REST 的设备声明有 slotId、trayIdx、hostId，存在 REST 自己的数据库里，并以 slot_id、tray_idx、host_id 三个标签写进 Core 的 metadata。实际位置来自 RMS 或 BMC 的探测报告，不来自声明", "走 Core 时把槽位写成同样的三个 metadata 标签，与 REST 保持一致；或者设备声明改走 REST", "rest-api/db/pkg/db/model/common.go:100");
-G("到货清单没有 MAC：设备的身份由平台读取", ["设备发现", "设备清单"], "NICo 的设备声明以 BMC 的 MAC 为键，没有 MAC 就写不进去；NICo 也不会去读一个没有声明的地址背后是什么设备。Core 的站点发现在设备有声明之后才比对序列号，结果只是一个计数指标和一条 SerialNumberMismatch 告警", "平台自己做：对拿到地址但没有归属的接口，用清单里的凭据读设备 BMC 的 Redfish，得到设备类型、序列号和型号，按序列号匹配清单后再写声明。现有产品已有这套读取（discovery.py、device_identity.py），但没有在 GB200/GB300 的计算托盘、NVLink 交换机和供电框上验证过分类是否正确。清单里的口令按批还是按台、每台不同时如何避免触发登录锁定，待确认", "crates/site-explorer/src/lib.rs:1046");
+G("设备规划里的槽位写入 NICo 的期望清单", ["设备清单", "机柜详情"], "Core 的设备声明没有槽位字段。REST 的设备声明有 slotId、trayIdx、hostId，存在 REST 自己的数据库里，并以 slot_id、tray_idx、host_id 三个标签写进 Core 的 metadata。实际位置来自 RMS 或 BMC 的探测报告，不来自声明", "走 Core 时把槽位写成同样的三个 metadata 标签，与 REST 保持一致；或者设备声明改走 REST", "rest-api/db/pkg/db/model/common.go:100");
+G("设备的身份由平台读取，再写声明", ["设备发现", "设备清单"], "NICo 的设备声明以 BMC 的 MAC 为键，没有 MAC 就写不进去；NICo 也不会去读一个没有声明的地址背后是什么设备。Core 的站点发现在设备有声明之后才比对序列号，结果只是一个计数指标和一条 SerialNumberMismatch 告警", "沿用现有产品的做法：对拿到地址但没有归属的接口，人在设备发现里输入 BMC 的用户名和密码（单台，或 1–50 台共用一组），平台读设备 BMC 的 Redfish 得到设备类型、序列号和型号，人核对后加入纳管设备。读取在现有产品里已有（equipment.py 的 identify、identify_many），但没有在 GB200/GB300 的计算托盘、NVLink 交换机和供电框上验证过分类是否正确；批量读取时口令不一致的设备只试一次，避免触发登录锁定", "crates/site-explorer/src/lib.rs:1046");
 G("交换机 NVOS 管理口的 MAC 从哪来", ["设备发现"], "交换机声明至少要一个 NVOS 管理口的 MAC，多于一个时要标主口。NVOS 管理口自己也会申请地址，但 NICo 不知道哪个 NVOS 口属于哪台交换机", "设计按“从交换机的 BMC 读出 NVOS 管理口的 MAC”写，读不到时人工关联。这个读取现有代码里没有，要在模拟环境或真实设备上验证", "crates/api-db/src/expected_switch.rs");
 G("对账里的“未声明的设备”", ["设备发现", "机柜详情"], "没有一个接口能列全。GetAllUnexpectedMachines 只含探测成功的主机 BMC；探测失败的、交换机和供电框都不在里面。未声明的主机 BMC 因为没有凭据，通常就是探测失败", "用设备接口列表里没有归属的记录，加上探测结果，由平台与声明对比得出", "crates/api-db/src/expected_machine.rs:292");
 G("“没有收到 DHCP 请求”按子网定位", ["网络规划", "设备发现"], "NICo 不记录每个子网或每个中继最近一次收到请求的时间和次数。DHCP 的指标只按报文类型和丢弃原因分；接口上只有该设备最近一次请求的时间", "DHCP 服务页的“最近请求”改成从设备接口的 last_dhcp 按子网汇总得出：只能反映拿到过地址的设备。完全没有请求到达的情况，页面只能提示去看中继配置和 DHCP 的丢弃计数", "crates/dhcp-server/src/metrics.rs:496");
@@ -281,7 +282,7 @@ G("依赖组件的证书到期", ["站点设置"], "RMS、Flow、站点代理和
 G("任务里的操作者和原因", ["运维任务", "操作审计"], "Flow 的任务只有描述、规则和阶段报告，没有操作者和原因字段。REST 有自己的审计接口，记录的是调用它的账号", "操作者和原因由平台审计保存，用任务编号关联；提交时把原因写进任务的 description", "rest-api/openapi/spec.yaml:28731");
 G("单台设备电源走任务还是直接执行", ["设备管理"], "两条路径都能用：REST 的托盘电源提交为 Flow 任务，可取消、有阶段；Core 的设备电源接口立即执行。供电框在 Core 里另有一个走状态机的专用接口。现有产品用的是 Core 的直接接口", "设计稿目前写的是走任务。建议保持：有 Flow 时走任务，电源动作因此受“同一机柜只有一个任务”的约束；Flow 不可用时这些操作不可用，不悄悄改走直接接口", "crates/api-core/src/handlers/component_manager.rs:3244");
 G("设备声明和机柜读取走 Core 还是走 REST", ["设备清单", "机柜管理", "机柜详情"], "REST 和 Core 是两套存储，靠工作流和定时任务同步；REST 的资源编号是它自己的 UUID。机柜的状态机状态只在 Core，任务计数、槽位和对账只在 REST", "写入只走 Core。读取分工：状态、健康、历史读 Core；槽位、对账、任务读 REST。两边用机柜 ID 和 BMC MAC 关联，页面上不显示 REST 的编号", "rest-api/api/pkg/api/handler/expectedrack.go:161");
-G("新机柜的纳管、上线和机柜维护怎么衔接", ["机柜详情"], "三件事已经分清。纳管：现有产品写设备声明时带暂停标记（discovery.py:269），NICo 不上电也不接管，首次安装时才放行（onboarding.py:640）。上线：Flow 有内置的上线规则，六步，其中计算托盘上电这一步会打开 NICo 的上电闸门（AllowIngestionAndPowerOn）。机柜维护：Core 的机柜状态机在就绪的交换机数不少于机柜规格里的数量时自动开始，没有等人确认的开关，顺序是固件升级、NVOS 更新、上电顺序（需要时）、配置 NMX-C 集群、校验。没有核实的是这两条线同时进行时的衔接：Flow 上线里的计算托盘固件走状态机路径时要求机柜已经在 Ready 或 Error；交换机没有上电时能否被 NICo 建立对象；计算托盘带暂停标记时机柜能否走到 Ready", "设计按“人确认纳管 → 人开始上线（Flow 上线任务）→ NICo 自动机柜维护”来画，各阶段的定义、对设备的影响和人工确认点写在说明书 5.4 至 5.6，设计前提写在 5.9。衔接问题要在现场版本的模拟环境里把 Flow 上线任务和机柜状态机一起跑一遍才能定；旧版本模拟环境只测过机柜状态机这一半", "rest-api/flow/internal/task/operationrules/resolver_defaults.go:775；crates/rack-controller/src/discovering.rs:65；crates/rack-controller/src/maintenance.rs:1496");
+G("新机柜的纳管、上线和机柜维护怎么衔接", ["机柜详情"], "几件事已经分清。纳管：沿用现有产品，服务器写设备声明时带暂停标记（discovery.py:269），NICo 不上电也不接管，首次安装时才放行（onboarding.py:640）；交换机和供电框只在平台本地纳管，现有产品里“同步至 NICo”的入口是关着的（equipment.py 的 sync_preview、sync_apply）。登记机柜：整柜新增，打开这个入口，把本柜已纳管的交换机和供电框同步为 NICo 声明，并写机柜声明、给计算托盘的声明补上机柜和槽位。上线：Flow 有内置的上线规则，六步，其中计算托盘上电这一步会打开 NICo 的上电闸门（AllowIngestionAndPowerOn）。机柜维护：Core 的机柜状态机在就绪的交换机数不少于机柜规格里的数量时自动开始，没有等人确认的开关，顺序是固件升级、NVOS 更新、上电顺序（需要时）、配置 NMX-C 集群、校验。没有核实的是这两条线同时进行时的衔接：Flow 上线里的计算托盘固件走状态机路径时要求机柜已经在 Ready 或 Error；交换机没有上电时能否被 NICo 建立对象；计算托盘带暂停标记时机柜能否走到 Ready", "设计按“设备发现里纳管 → 设备管理里一键匹配 → 登记机柜 → 人开始上线（Flow 上线任务）→ NICo 自动机柜维护”来画，各阶段的定义、对设备的影响和人工确认点写在说明书 5.4 至 5.6，设计前提写在 5.9。衔接问题要在现场版本的模拟环境里把 Flow 上线任务和机柜状态机一起跑一遍才能定；旧版本模拟环境只测过机柜状态机这一半", "rest-api/flow/internal/task/operationrules/resolver_defaults.go:775；crates/rack-controller/src/discovering.rs:65；crates/rack-controller/src/maintenance.rs:1496");
 G("更换设备后机柜重新发现", ["机柜详情"], "文档说更换托盘会让机柜因 topology_changed 回到 Discovering，但源码里没有找到设置这个标志的非测试代码。更换的实际步骤是：打上待更换标记并等 NVLink 隔离完成、强制删除旧设备、改设备声明、等新设备被发现", "更换设备做成平台编排的分步流程，每步读回；机柜状态是否变化以实测为准，页面不预先承诺", "crates/rack-controller/src/ready.rs:50");
 G("删除机柜", ["机柜详情"], "DeleteRack 只把机柜标记为删除，不检查机柜里还有没有设备，状态机进入 Deleting 后一直等待；真正删除只有强制删除，同样不处理成员设备。命令行的说明写着“机柜不应再有关联的计算托盘、交换机和供电框”，但接口不做这项检查。Flow 有退役任务，但只在 Flow 自己的接口上，REST 没有端点", "机柜页只提供“删除机柜”，不提供“机柜退役”。删除的前提由平台检查并逐项显示：没有实例、成员设备都已逐台退役、没有进行中的任务。满足后平台删除机柜声明，再强制删除机柜对象。成员设备的退役是逐台设备的操作，在设备管理里做，机柜操作不代做", "crates/api-core/src/handlers/rack.rs:201");
 G("跨机柜的固件分阶段发布", ["固件基线"], "一个 NVL72 机柜就是一个 NVLink 域，所以没有“域内按机柜分批”。Flow 的分阶段发布目标是站点内所有符合条件的机柜，按百分比抽取，不能传入机柜列表；只调用过它的列表接口，返回空", "这一版不设计：域级电源、域级固件和分阶段发布都已从设计稿里去掉。以后作为站点级功能单独设计", "docs/operations/flow/operation-runs.md:123");
@@ -289,8 +290,8 @@ G("装系统前的“机柜就绪”和“无整柜泄漏”", ["安装任务"],
 G("实例用的租户和 VPC", ["安装任务"], "NICo 里每个实例都要属于一个租户、接入一个网络。Core 的创建租户和创建 VPC 接口只对站点代理放行，管理端证书调不了。现有产品用一个固定的默认租户（site_network_context.py:40），只读取已有的 VPC", "平台不做多租户：所有实例建在站点的默认租户下，页面上不显示也不让选。默认租户和 VPC 是部署前提，由部署步骤建好。实例类型和配额是 NICo 向多个租户分发机器时用的，平台不使用", "crates/api-core/src/auth/internal_rbac_rules.rs:75");
 G("一次给多台机器建实例", ["安装任务"], "实例是逐台机器的：建实例的请求里每个实例带一个机器 ID。REST 的批量建实例按实例类型和数量挑设备，不能指定设备列表。Core 的批量接口可以传入明确的设备列表，并且是一个事务。机柜上没有建实例或装系统的接口", "走 Core：向导里选了几台就提交几个实例，每个实例明确给出机器 ID、主机名和系统，一次提交在一个事务里。机柜只是选择设备时的筛选条件，不是装系统的对象", "crates/api-core/src/instance/mod.rs:2009");
 G("安装条件检查由谁做", ["安装任务"], "NICo 建实例时只检查主机状态。现有产品在提交前自己做一组检查（execution.py:387、onboarding.py:960、onboarding.py:1120）：设备规划与地址占用、引导方式、既有实例与目标盘基线、BMC 认证与序列号、管理地址与安装网络配置、安装材料的 HTTP 可达与长度。还没有接入的设备把“就绪”和“目标盘”推迟到执行前。页面把这些归成三组显示：设备身份、安装配置、操作系统材料", "整机柜方向照搬这组检查和页面。其中 BMC 认证是平台直接读设备的 BMC，不经 NICo；材料检查是平台对自己的材料服务的请求；主机状态、实例和地址占用读 NICo。选盘规则解析不出唯一的系统盘时，检查不通过，在向导里逐台指定", "crates/api-model/src/machine/mod.rs:543");
-G("主机名在哪里确定", ["安装任务", "实例管理"], "实例配置的租户部分有一个主机名字段；实例名称合法时，NICo 把它作为 cloud-init 的 local-hostname 传给系统。机器在 NICo 里自己的 DNS 名由站点的命名策略决定（默认按地址生成），那不是系统里的主机名。现有产品在建实例时逐台传主机名（executor.py:2022）", "主机名在新建安装任务时逐台确定，同时用作实例名称。它是设备系统配置里的一项：没有填时平台按管理地址生成（node-加上把点换成连字符的地址），可以逐台改；平台在提交前检查写法和重名。站点的命名策略不动", "crates/api-core/src/handlers/client_resolution.rs:512");
-G("主机的网络配置在哪里确定", ["安装任务"], "NICo 给主机管理口分配地址，分配方式有动态、固定、保留三种，接口已有分配后再改声明不会改地址。现有产品在设备的系统配置里逐台保存：启动网卡 MAC、管理 IP、管理子网，以及其他网口各自的 IP、子网和网关；装机时把这些写进系统的网络配置，不含 Bond、VLAN 和 IPv6（现有产品的设备管理使用指南第 6 节）", "只取管理口：管理地址在设备规划时和启动网口的 MAC 对应（到货清单可带 management_ip 一列），在系统配置和安装向导里只读显示。其他网口平台不管理，也不显示，装好后由使用者自己配置。规划的管理地址如何落到 NICo 的地址分配上（改声明还是固定租约），沿用现有产品的做法，没有在整机柜环境里核对", "docs/provisioning/expected-machine-interfaces.md");
+G("主机名在哪里确定", ["安装任务", "实例管理"], "实例配置的租户部分有一个主机名字段；实例名称合法时，NICo 把它作为 cloud-init 的 local-hostname 传给系统。机器在 NICo 里自己的 DNS 名由站点的命名策略决定（默认按地址生成），那不是系统里的主机名。现有产品在建实例时逐台传主机名（executor.py:2022）", "主机名是设备系统配置里的一项，同时用作实例名称。默认值沿用现有产品的规则：host-<序列号小写>-<设备记录编号前 8 位>。现有产品要打开系统配置保存一次才写入；整机柜设计里没有填时直接用默认值，可以逐台改。平台在提交前检查写法和重名。站点的命名策略不动", "crates/api-core/src/handlers/client_resolution.rs:512");
+G("主机的网络配置在哪里确定", ["安装任务"], "NICo 给主机管理口分配地址，分配方式有动态、固定、保留三种，接口已有分配后再改声明不会改地址。现有产品在设备的系统配置里逐台保存：启动网卡 MAC、管理 IP、管理子网，以及其他网口各自的 IP、子网和网关；装机时把这些写进系统的网络配置，不含 Bond、VLAN 和 IPv6（现有产品的设备管理使用指南第 6 节）", "沿用现有产品的字段，只取管理口：设备规划里的 management_ip、management_mac、management_subnet 在一键匹配时写进系统配置的管理 IP、启动网卡 MAC、管理子网，可以在系统配置里改。其他网口平台不管理，也不显示，装好后由使用者自己配置。规划的管理地址如何落到 NICo 的地址分配上，沿用现有产品安装任务里“同步设备规划”这一阶段的做法，没有在整机柜环境里核对", "docs/provisioning/expected-machine-interfaces.md");
 G("BMC 按规划改址", ["设备管理"], "设备接电时 BMC 从地址池动态拿地址；接口已有分配后，再改设备声明不会改变它的地址。现有产品的做法：在设备上保存规划地址，纳管之后由人发起“更新 BMC 地址”，平台直接经 Redfish 关闭 BMC 的 DHCP、写入固定地址，用新地址核对身份，再把新地址同步为 NICo 里这个接口的静态分配；不创建也不修改交换机和供电框的原生声明（现有产品的设备管理使用指南“保存配置与更新地址”一节）", "整机柜方向照搬页面和四步流程，三类设备都适用；规划地址可以随到货清单的 bmc_ip 列带入。同步到 NICo 用的具体接口沿用现有产品，没有在整机柜环境里核对；RMS 管理的设备改址后 RMS 一侧是否需要跟着更新，也没有核对", "docs/provisioning/expected-machine-interfaces.md");
 G("不属于机柜的服务器", ["设备管理", "设备清单", "设备发现", "安装任务"], "设备声明里的机柜编号是可选的，机器、交换机、供电框通过各自的机柜编号指向机柜，机柜对象里不存成员。Flow 的上线任务按机柜提交，没有机柜的服务器走不了这条路。现有产品写声明时带暂停标记（discovery.py:269），首次安装时才放行（onboarding.py:640）", "设备是基础对象，机柜是叠在上面的一层。不属于机柜的服务器进同一份清单，机柜和槽位留空；在设备发现里逐台确认纳管；没有上线这一步，安装任务的第一步放行，由 NICo 上电接管。机柜里的设备由上线任务放行。这是从两边的定义推出来的设计，没有在同一个环境里把两种设备一起跑过", "crates/rpc/proto/forge.proto:8191");
 G("供电框的槽位和序列号", ["设备管理", "机柜详情"], "Core 的供电框对象没有位置字段，也没有序列号字段；交换机的序列号取自探测报告", "供电框的槽位读 REST 的托盘，序列号读设备声明或探测报告", "crates/rpc/proto/forge.proto:3087");
@@ -338,34 +339,16 @@ const PAGE_CALLS = {
     ["interface.addresses", "分配方式，按地址反查归属"],
   ],
   "inventory": [
+    ["rack-profile.list", "导入预览：核对规划里的机柜拓扑和厂商能推导出已配置的机柜规格"],
+    ["segment.list", "导入预览：各用途的地址够不够"],
+    ["expected-machine.list", "配置对比：哪些服务器已经纳管"],
     ["os.list", "系统配置：这种架构已发布的安装方案"],
     ["interface.addresses", "系统配置：管理地址有没有被占用"],
-    ["rack-profile.list", "核对清单里的机柜拓扑和厂商能推导出已配置的机柜规格"],
-    ["rack-group.list", "哪些机柜组已经写入"],
-    ["expected-rack.list", "哪些机柜的声明已经写入"],
-    ["expected-machine.list", "哪些计算托盘已经写入 NICo"],
-    ["expected-switch.list", "哪些交换机已经写入 NICo"],
-    ["expected-shelf.list", "哪些供电框已经写入 NICo"],
-    ["segment.list", "导入预览：各用途的地址够不够"],
   ],
   "discovery": [
-    ["interface.list", "拿到了地址、但还没有归属的接口，以及最近一次申请地址的时间"],
-    ["expected-machine.write", "机柜已确认纳管时，新匹配上的计算托盘直接写入：MAC、凭据、序列号、机柜、槽位和 DPU 策略。不属于机柜的服务器逐台确认纳管时写入，不带机柜，带暂停标记"],
-    ["expected-switch.write", "机柜已确认纳管时，新匹配上的交换机直接写入：BMC 与 NVOS 管理口的 MAC、两组凭据"],
-    ["expected-shelf.write", "机柜已确认纳管时，新匹配上的供电框直接写入"],
-    ["expected-domain.write", "机柜的声明齐了之后写入 NVLink 域声明"],
-    ["expected-machine.list", "计算托盘声明走到了哪一步"],
-    ["expected-switch.list", "交换机声明走到了哪一步"],
-    ["expected-shelf.list", "供电框声明走到了哪一步"],
-    ["explorer.endpoints", "NICo 的探测结果和失败原因"],
-    ["explorer.managed-hosts", "主机的接管进度"],
-    ["explorer.unexpected", "NICo 探测到、但没有声明的主机"],
-    ["explorer.retry", "重新探测、清除探测错误"],
-    ["ingestion.state", "是否在等待放行"],
-    ["ingestion.allow", "放行等待中的主机"],
-    ["machine.list", "计算托盘的状态"],
-    ["switch.list", "交换机的状态"],
-    ["shelf.list", "供电框的状态"],
+    ["interface.list", "发现的端点：带外网段里拿到了地址、还没有归属的接口，以及最近一次申请地址的时间"],
+    ["expected-machine.write", "加入纳管设备（服务器）：写入 MAC、凭据、序列号和 DPU 策略，带暂停标记（default_pause_ingestion_and_poweron），不上电、不接管。这时不带机柜和槽位"],
+    ["expected-machine.list", "哪些服务器已经纳管"],
     ["explorer.last-run", "最近一次扫描"],
   ],
   "racks": [
@@ -378,11 +361,21 @@ const PAGE_CALLS = {
     ["rack.list", "状态、所在阶段、原因与健康"],
     ["rack-profile.list", "机柜规格和它要求的各类设备数量"],
     ["rack.history", "状态历史"],
-    ["rack-group.write", "确认纳管：写入机柜组"],
-    ["expected-rack.write", "确认纳管：写入机柜声明；删除机柜时删掉机柜声明"],
-    ["expected-machine.write", "确认纳管：写入已匹配的计算托盘，带暂停标记（default_pause_ingestion_and_poweron），不上电、不接管"],
-    ["expected-switch.write", "确认纳管：写入已匹配的交换机"],
-    ["expected-shelf.write", "确认纳管：写入已匹配的供电框"],
+    ["rack-group.write", "登记机柜：写入机柜组"],
+    ["expected-rack.write", "登记机柜：写入机柜声明；删除机柜时删掉机柜声明"],
+    ["expected-rack.list", "机柜声明有没有写入"],
+    ["expected-machine.write", "登记机柜：更新已纳管计算托盘的声明，补上机柜和槽位；暂停标记不变"],
+    ["expected-switch.write", "登记机柜：把本柜已纳管的交换机同步为 NICo 声明：BMC 与 NVOS 管理口的 MAC、两组凭据、机柜和槽位"],
+    ["expected-shelf.write", "登记机柜：把本柜已纳管的供电框同步为 NICo 声明"],
+    ["expected-domain.write", "登记机柜：成员声明写完之后写入 NVLink 域声明"],
+    ["rack-group.list", "机柜组有没有写入"],
+    ["expected-switch.list", "交换机声明走到了哪一步"],
+    ["expected-shelf.list", "供电框声明走到了哪一步"],
+    ["explorer.endpoints", "NICo 对成员 BMC 的探测结果和失败原因"],
+    ["explorer.managed-hosts", "主机的接管进度"],
+    ["explorer.unexpected", "NICo 探测到、但没有声明的主机"],
+    ["explorer.retry", "重新探测、清除探测错误"],
+    ["ingestion.state", "计算托盘是否在等待放行"],
     ["rack.maintenance", "重新执行机柜维护；终止进行中的机柜维护"],
     ["rack.delete", "删除机柜"],
     ["rack.bringup", "开始上线：提交上线任务。内置规则六步：供电框上电、计算托盘上电并放行接管、计算托盘固件、交换机上电、核对交换机固件、计算托盘重启"],
@@ -510,6 +503,50 @@ const PAGE_CALLS = {
     ["os.write", "新建、修改和停用方案"],
   ],
 };
+
+/* ================= 平台后端接口 =================
+   页面和平台自己的后端之间的接口。设备导入、设备发现、系统配置、装系统这四段沿用现有产品（主线分支）的流程和接口，
+   整机柜只在上面追加字段或新增机柜这一层的接口。status：沿用 = 请求和响应都不变；扩展 = 接口不变，多了字段或适用范围；新增 = 现有产品没有。
+   路径取自主线分支的 src/pxeye/api/commands.py 和 queries.py。 */
+const PLATFORM_APIS = [];
+const P = (page, status, method, path, use, change = "") => PLATFORM_APIS.push({ page, status, method, path, use, change });
+/* 设备清单（设备规划） */
+P("inventory", "沿用", "GET", "/api/equipment-planning", "规划列表和配置对比");
+P("inventory", "扩展", "GET", "/api/equipment-planning/template", "下载模板", "原有 14 列之后追加 slot、nvos_username、nvos_password");
+P("inventory", "扩展", "POST", "/api/equipment-planning/preview", "校验并预览：待新增、待更新、无变化、校验失败", "请求多了机柜拓扑和厂商；响应多了机柜规格检查和地址余量检查。预览 15 分钟内有效");
+P("inventory", "沿用", "POST", "/api/equipment-planning/import", "保存导入规划。只写平台本地的规划，不写 NICo");
+P("inventory", "扩展", "POST", "/api/equipment-planning/save", "编辑规划 / 新增规划", "多了 slot 和交换机系统凭据");
+P("inventory", "沿用", "POST", "/api/device-plans/save", "行上的“系统配置”，和设备管理里的是同一份");
+/* 设备发现 */
+P("discovery", "沿用", "GET", "/api/equipment", "发现的端点（来自 NICo 的设备接口：带外网段、最近一次申请地址、还没有归属）");
+P("discovery", "沿用", "POST", "/api/equipment/identify", "获取设备信息：用输入的 BMC 用户名和密码读类型、序列号和型号。只读；结果 15 分钟内有效");
+P("discovery", "沿用", "POST", "/api/equipment/identify-many", "批量获取设备信息：1–50 个端点共用一组凭据，同时读取 4 台");
+P("discovery", "沿用", "POST", "/api/equipment/enroll", "加入纳管设备。服务器：写 NICo 的主机声明，带暂停标记；交换机和供电框：只在平台本地纳管");
+/* 设备管理：一键匹配、BMC 地址 */
+P("devices/compute", "扩展", "POST", "/api/equipment-planning/match", "一键匹配：把规划写进已纳管设备的配置，1–50 台", "原来只比较机柜，现在把机柜和槽位也写进设备配置；适用范围加上交换机和供电框");
+P("devices/compute", "沿用", "POST", "/api/equipment/address-save", "只保存 BMC 规划地址");
+P("devices/compute", "扩展", "POST", "/api/equipment/batch-redfish-preview", "更新 BMC 地址之前的检查：{device_ids, scope: \"bmc\"}，1–256 台", "供电框走 PMC");
+P("devices/compute", "沿用", "POST", "/api/equipment/batch-redfish-apply", "确认并开始更新：{preflight_id, confirm}。四步：检查地址与身份、更新 BMC、验证新地址、同步管理记录");
+P("devices/compute", "沿用", "GET", "/api/equipment/bmc-jobs/{id}", "BMC 地址更新的进度");
+P("devices/compute", "沿用", "POST", "/api/equipment/bmc-restart-unsent", "恢复：重新检查并更新");
+P("devices/compute", "沿用", "POST", "/api/equipment/bmc-finish-sync", "恢复：核对并完成同步");
+P("devices/compute", "沿用", "GET", "/api/device-plans", "系统配置：读取");
+P("devices/compute", "沿用", "POST", "/api/device-plans/save", "系统配置：保存。只写平台本地，不写 NICo；每次保存一个版本");
+/* 机柜：登记机柜是整柜新增的一步 */
+P("rack", "扩展", "POST", "/api/equipment/sync-preview", "登记机柜之前的检查：本柜已纳管、已匹配的交换机和供电框", "现有产品里这个入口是关着的；整机柜打开它，并带上机柜和槽位");
+P("rack", "扩展", "POST", "/api/equipment/sync-apply", "登记机柜：把交换机和供电框同步为 NICo 声明", "同上；同一次操作里先写机柜组和机柜声明，再更新计算托盘声明里的机柜和槽位");
+P("rack", "新增", "POST", "/api/racks/{id}/register", "登记机柜的入口：写机柜组、机柜声明，调用上面两个接口完成成员同步，最后写 NVLink 域声明");
+P("rack", "新增", "POST", "/api/racks/{id}/bringup", "开始上线：提交上线任务");
+P("rack", "新增", "POST", "/api/racks/{id}/operations", "机柜电源、固件更新、重新执行与终止机柜维护、删除机柜");
+P("rack", "新增", "GET", "/api/racks、/api/racks/{id}", "机柜列表和详情：NICo 状态、成员汇总、清单核对、任务");
+/* 安装任务 */
+P("delivery/installs", "沿用", "GET", "/api/devices", "选择设备：可选的服务器和安装条件（自动准备、可预检、待准备）");
+P("delivery/installs", "沿用", "POST", "/api/devices/current-system/query", "查询当前系统");
+P("delivery/installs", "扩展", "POST", "/api/batches/preflight", "安装条件检查。结果 15 分钟内有效；提交时已过 14 分钟的要重新检查", "机柜里的服务器多三项平台检查：机柜就绪、没有整柜泄漏、机柜没有进行中的任务");
+P("delivery/installs", "沿用", "POST", "/api/batches", "提交：{preflight_id, request_key, confirm_serials, confirm_disk, confirm_reboot, cleanup_scope}，并发 1–50，默认 5。提交时冻结每台的系统配置版本");
+P("delivery/installs", "沿用", "GET", "/api/batches、/api/tasks", "批次、逐台任务、阶段、验收和处理问题的入口");
+P("delivery/installs", "沿用", "POST", "/api/device-plans/save", "核对配置时点一行打开的“系统配置”");
+const platformApis = (pageId) => PLATFORM_APIS.filter((a) => a.page === pageId || (a.page === "devices/compute" && ["devices/switch", "devices/power-shelf"].includes(pageId) && !/device-plans/.test(a.path)));
 
 /* ================= 组件 =================
    回答“这个功能需要部署什么”。一个接口需要某个组件，按三条规则判断，三条都由接口自己的记录推出，不另外维护对照：

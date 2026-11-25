@@ -175,20 +175,20 @@ function specHtml(spec) {
     ${(spec.dialogs || []).map((d) => `<h3>弹窗：${esc(d.name)}</h3><p>${esc(d.desc)}</p>${d.fields ? `<table class="guide-table" style="margin-top:6px"><thead><tr><th>输入</th><th>必填</th><th>说明</th></tr></thead><tbody>${d.fields.map((f) => `<tr><td><b>${esc(f[0])}</b></td><td>${esc(f[1])}</td><td>${esc(f[2] || "")}</td></tr>`).join("")}</tbody></table>` : ""}`).join("")}`;
 }
 const GUIDE_STEPS = [
-  ["站点设置", "检查依赖组件是否就绪", "site"], ["网络规划", "规划各类设备的网段与 DHCP 地址池", "network"], ["设备清单", "导入到货清单，确认差异", "inventory"],
-  ["设备发现", "模拟机柜接电，处理匹配不上清单的端点", "discovery"], ["机柜上线", "确认纳管，开始上线，跟踪任务和机柜维护", "rack/RACK-A03"], ["安装任务", "选设备，逐台确定主机名和安装方案，装系统并验收", "delivery/installs"],
+  ["站点设置", "检查依赖组件是否就绪", "site"], ["网络规划", "规划各类设备的网段与 DHCP 地址池", "network"], ["设备清单", "导入设备规划：校验并预览，保存", "inventory"],
+  ["设备发现", "模拟机柜接电，获取设备信息，加入纳管设备", "discovery"], ["一键匹配", "在设备管理里勾选已纳管的设备，把规划写进设备配置", "devices/compute"], ["机柜上线", "登记机柜，开始上线，跟踪任务和机柜维护", "rack/RACK-A03"], ["安装任务", "选设备，核对系统配置，检查后装系统并验收", "delivery/installs"],
   ["健康告警", "告警、阻止分配与整柜泄漏", "health"], ["设备管理", "从菜单直接进入交换机：看地址、固件，上下电", "devices/switch"], ["NVLink 域管理", "NMX-C、域健康与 NVLink 分区", "domains"], ["操作审计", "每次操作的记录", "audit"],
 ];
 function renderGuide(page, arg) {
   const tab = view("guideTab", "spec"), a03 = DB.rack("RACK-A03");
   const sim = `<h3>讲解主线</h3><ol class="guide-steps">${GUIDE_STEPS.map(([t, d, h], i) => `<li class="${S.guide === i + 1 ? "now" : ""}" data-guide="${i + 1}" data-go="${h}">${i + 1}. ${t}<small>${d}</small></li>`).join("")}</ol>
     <h3>模拟现场与 NICo 的变化</h3><div class="guide-sim">
-      <button class="button compact" data-live="sim-discover" ${a03 && !a03.trays.some((t) => t.matched) ? "" : `disabled title="${a03 ? "已接电" : "先导入清单"}"`}>RACK-A03 接电</button>
+      <button class="button compact" data-live="sim-discover" ${a03 && !a03.trays.some((t) => t.matched) && !S.endpoints.some((e) => e.tray.startsWith("RACK-A03/")) ? "" : `disabled title="${a03 ? "已接电" : "先导入规划"}"`}>RACK-A03 接电</button>
       <button class="button compact" data-live="sim-leak">${S.leak ? "清除泄漏告警" : "触发整柜泄漏（RACK-A01）"}</button>
       <button class="button compact" data-live="sim-rms">${S.rms ? "RMS 不可用" : "恢复 RMS"}</button>
       <button class="button compact" data-live="sim-flow">${S.flow ? "Flow 不可用" : "恢复 Flow"}</button>
       <button class="button compact" data-live="sim-reset">重置示例数据</button></div>
-    <p class="muted" style="margin-top:12px">任务和 NICo 上线的进度用定时器模拟，每个阶段约一秒，不代表真实耗时。接电后到机柜详情依次“确认纳管”“开始上线”。上线任务跑完后让 RMS 不可用，可以看到机柜维护停在 Error 以及“重新执行机柜维护”。</p>`;
+    <p class="muted" style="margin-top:12px">任务和 NICo 上线的进度用定时器模拟，每个阶段约一秒，不代表真实耗时。接电后依次：在设备发现里获取设备信息并纳管（示例凭据随便填；密码以 other 开头表示另一组凭据），在设备管理里一键匹配，再到机柜详情“登记机柜”“开始上线”。上线任务跑完后让 RMS 不可用，可以看到机柜维护停在 Error 以及“重新执行机柜维护”。</p>`;
   const name = page.crumb ? page.crumb(arg) : page.tab || page.title;
   if (S.view.guide === false) { $("#guide").innerHTML = `<button class="guide-handle" data-design="guide" aria-label="展开页面说明" title="展开页面说明">${CHEVRON}<span>页面说明</span></button>`; return; }
   $("#guide").innerHTML = `<div class="guide-head"><div class="guide-title"><div><h2>${esc(name)}</h2><p>${navPath(page).join(" › ") || "汇总"} · 页面说明随页面一起维护</p></div>
@@ -222,6 +222,7 @@ function boot() {
     if (e.target.dataset.design === "role") { S.role = e.target.value; return render(); }
     if (e.target.dataset.filter && e.target.tagName === "SELECT") { S.view[e.target.dataset.filter] = e.target.value; render(); }
     if (e.target.dataset.check) { const set = (S.view.checked = S.view.checked || {}); set[e.target.dataset.check] = e.target.checked; render(); }
+    if (e.target.dataset.epCheck) { const set = (S.view.epChecked = S.view.epChecked || {}); set[e.target.dataset.epCheck] = e.target.checked; render(); }
   });
   document.addEventListener("input", (e) => {
     if (e.target.dataset.filter && e.target.tagName === "INPUT") {
