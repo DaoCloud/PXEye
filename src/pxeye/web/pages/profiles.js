@@ -190,6 +190,7 @@ async function profileEditor(id, copy = false) {
     "选择规则",
     [
       ["unique", "唯一匹配磁盘"],
+      ["identical", "同规格多块取其一"],
       ["smallest", "容量最小磁盘"],
       ["largest", "容量最大磁盘"],
     ],

@@ -23,7 +23,9 @@ def normalize_storage(value=None):
     if not isinstance(value, dict) or set(value) - set(DEFAULT_STORAGE):
         raise ValueError("磁盘规则含未知字段。")
     rule = DEFAULT_STORAGE | value
-    if rule["selection"] not in ("unique", "largest", "smallest") or rule["disk_type"] not in (
+    if rule["selection"] not in ("unique", "identical", "largest", "smallest") or rule[
+        "disk_type"
+    ] not in (
         "any",
         "nvme",
     ):
@@ -69,9 +71,12 @@ def storage_label(value=None):
 def selection_label(value=None):
     r = normalize_storage(value)
     parts = [
-        {"unique": "唯一匹配磁盘", "largest": "容量最大磁盘", "smallest": "容量最小磁盘"}[
-            r["selection"]
-        ]
+        {
+            "unique": "唯一匹配磁盘",
+            "identical": "同规格多块取其一",
+            "largest": "容量最大磁盘",
+            "smallest": "容量最小磁盘",
+        }[r["selection"]]
     ]
     if r["disk_type"] == "nvme":
         parts.append("仅 NVMe")
@@ -139,6 +144,15 @@ def select_disk(disks, storage=None, explicit=None):
                 d["size_bytes"] for d in matches
             )
             matches = [d for d in matches if d["size_bytes"] == extreme]
+        if len(matches) > 1 and r["selection"] == "identical":
+            # Interchangeable disks only: Scout reports no slot for SATA/SAS, so the
+            # serial is the one stable key that keeps repeated checks on the same disk.
+            specs = {(d.get("model", ""), d.get("size_bytes")) for d in matches}
+            if len(specs) != 1 or next(iter(specs))[0] in ("", "NO_MODEL"):
+                raise ValueError(
+                    "系统盘规则匹配到规格不同的多块磁盘；请收窄型号或容量规则，或在设备规划指定具体盘。"
+                )
+            matches = [min(matches, key=lambda d: d["serial"])]
         if len(matches) != 1:
             raise ValueError(
                 "系统盘规则"

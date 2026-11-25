@@ -51,7 +51,7 @@ A custom ISO still needs a supported unattended installer. NICo's Scout boot art
 
 ## Installation profiles
 
-Profiles are PXEye composition resources, not a native NICo resource of the same name. Reuse OS selection and installation defaults. Select the system disk using a unique match, capacity ordering, bus constraints, model/serial glob filters and capacity bounds. Define GPT/UEFI partitions with EFI plus ext4 or XFS root storage.
+Profiles are PXEye composition resources, not a native NICo resource of the same name. Reuse OS selection and installation defaults. Select the system disk using a unique match, one of several identical disks, capacity ordering, bus constraints, model/serial glob filters and capacity bounds. Define GPT/UEFI partitions with EFI plus ext4 or XFS root storage.
 
 Explicit device settings override profile defaults where applicable. Task creation freezes the resolved configuration and its sources. Boot interface and disk identity are resolved for the specific machine rather than assuming a universal interface name or disk path. Ambiguous selection blocks writing.
 

@@ -27,7 +27,7 @@ Open **Configuration → Installation profiles (配置 → 安装方案)** to sh
 | Profile name / description (方案名称 / 说明) | Required name, at most 100 characters; description at most 1000. |
 | Architecture (架构) | Select `x86_64` or `aarch64` when creating a profile from the built-in template. Existing and copied profiles retain their architecture. |
 | Default OS (默认 OS) | Publishing requires a registered, enabled Ubuntu Server OS matching the profile architecture. |
-| Selection rule / candidate scope (选择规则 / 候选范围) | Unique match, smallest or largest capacity; all disks or NVMe only. An explicit device disk takes precedence. |
+| Selection rule / candidate scope (选择规则 / 候选范围) | Unique match, one of several identical disks, smallest or largest capacity; all disks or NVMe only. **One of several identical disks (同规格多块取其一)** is for a device with several candidate disks of the same model and capacity: the disk whose serial number sorts first is used and the others are left untouched; no disk is selected when the candidates differ. An explicit device disk takes precedence. |
 | Serial / model patterns (序列号 / 型号规则) | Optional; `*` matches any characters, `?` one character. Case-sensitive; all filters apply together. |
 | Minimum / maximum capacity (最小 / 最大容量) | Optional GiB values. Capacity rules require complete Scout size data; minimum must not exceed maximum. |
 | Root filesystem (根分区格式) | `ext4` or `XFS`. |
@@ -88,7 +88,7 @@ Expand **Advanced settings (高级设置)**:
 | Login | User `operator`, SSH key login, an actual complete public key |
 | Timezone / NTP | `Asia/Shanghai` / `192.0.2.123` (replace with the actual service) |
 
-Click **New profile**, select `aarch64` and enter these values. If `OS-*` matches multiple disks, select a specific disk in device system configuration before creating a task.
+Click **New profile**, select `aarch64` and enter these values. If `OS-*` matches multiple disks, select a specific disk in device system configuration before creating a task; when those disks share one model and capacity, the selection rule **One of several identical disks (同规格多块取其一)** also works.
 
 ## 5. Notes
 
