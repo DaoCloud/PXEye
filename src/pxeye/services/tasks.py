@@ -272,6 +272,9 @@ class TaskCoordinator:
                         "normal_reboot": report.get("checks", {}).get("normal_reboot") is True,
                         "unattended_standard_boot_certified": False,
                     }
+                    if current.get("execution_device"):
+                        # Without this the next task finds no device to reinstall.
+                        self.executor.register_installed(current)
                     current.setdefault("events", []).append(
                         {
                             "at": now,

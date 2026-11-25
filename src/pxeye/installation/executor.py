@@ -2252,9 +2252,7 @@ print('NORMAL_REBOOT_REQUESTED')
             "unattended_standard_boot_certified": False,
         }
         (folder / "receipt.json").write_text(json.dumps(task["receipt"], indent=2))
-        (self.adapter.identity / (device["serial"] + ".known_hosts")).write_text(known.read_text())
-        (self.adapter.identity / (device["serial"] + ".known_hosts")).chmod(0o600)
-        self.adapter.remember_connection(device, task)
+        self.register_installed(task, device, known)
         self.event(
             task,
             "completed",
@@ -2289,6 +2287,16 @@ print('NORMAL_REBOOT_REQUESTED')
             "firstboot",
             "串口结束日志不完整；已通过本轮可信 SSH、目标盘安装成功日志、任务回执及完整验收确认安装结果。",
         )
+
+    def register_installed(self, task, device=None, known=None):
+        """Keep the installed device, its address and SSH identity for later tasks."""
+        device = device or self.task_device(task)
+        known = known or self.adapter.data / "tasks" / task["id"] / "known_hosts"
+        if known.exists():  # absent only when the SSH identity itself was waived
+            saved = self.adapter.identity / (device["serial"] + ".known_hosts")
+            saved.write_text(known.read_text())
+            saved.chmod(0o600)
+        self.adapter.remember_connection(device, task)
 
     def task_device(self, task):
         if task.get("execution_device"):

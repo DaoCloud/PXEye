@@ -711,6 +711,16 @@ class ExternalManualAcceptance(unittest.TestCase):
         self.assertIsNone(self.store.active("SERVER"))
         self.assertEqual(self.calls, ["GetHostBootIntent", "GetHostBootIntent"])
 
+    def test_manual_completion_registers_a_first_installed_device(self):
+        registered = []
+        self.coordinator.executor = SimpleNamespace(register_installed=registered.append)
+        self.task["execution_device"] = {"serial": "SERVER"}
+        self.store.save(self.task)
+        self.status["cleanup_complete"] = True
+        result = self.coordinator.reconcile_acceptance_skips(self.task)
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual([task["id"] for task in registered], ["task"])
+
     def test_stale_failed_cancelled_or_wrong_purpose_status_cannot_complete(self):
         for status in (
             {"generation": "other"},
