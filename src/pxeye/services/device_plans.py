@@ -253,6 +253,49 @@ class DevicePlans:
         }
         return serial, record
 
+    def follow_bound_subnets(self, record):
+        """A bound subnet is the only source of a host port's mask and gateway.
+
+        The editor only selects a subnet, so a mask that arrived with the
+        declaration must not survive as a second, uneditable copy.
+        """
+        bindings = {
+            mac.lower(): network
+            for mac, network in (record["intent"].get("network_bindings") or {}).items()
+        }
+        if not bindings:
+            return
+        try:
+            networks = {n["id"]: n for n in self.resources.networks()}
+        except Exception:
+            # Planning stays available while Core is unreachable; the
+            # installation check still compares the address with the subnet.
+            return
+        for nic in record["machine"].get("interfaces", []):
+            network = networks.get(bindings.get(nic.get("mac_address", "").lower()))
+            if not network or nic.get("role") == "host_bmc" or not nic.get("fixed_ip"):
+                continue
+            address = ipaddress.ip_address(nic["fixed_ip"])
+            prefix = next(
+                (
+                    p
+                    for p in network["prefixes"]
+                    if address.version == 4 and address in ipaddress.ip_network(p["prefix"])
+                ),
+                None,
+            )
+            if not prefix:
+                raise ValueError(
+                    "网卡 "
+                    + nic["mac_address"]
+                    + " 的规划 IP 不属于所选子网；请先调整规划地址或重新选择子网。"
+                )
+            nic["fixed_mask"] = str(ipaddress.ip_network(prefix["prefix"]).netmask)
+            if prefix.get("gateway"):
+                nic["fixed_gateway"] = prefix["gateway"]
+            else:
+                nic.pop("fixed_gateway", None)
+
     def installation_selection(
         self, serial, hostname, profile_id=None, disk_serial=None, revision=None
     ):
@@ -341,6 +384,7 @@ class DevicePlans:
                 r["serial"]: json.loads(r["data"]) for r in db.execute("SELECT * FROM device_plans")
             }
             serial, record = self.prepare(body, records)
+            self.follow_bound_subnets(record)
             records[serial] = record
             self.validate_conflicts(records)
             self.put(db, serial, record)

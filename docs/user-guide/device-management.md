@@ -60,7 +60,7 @@ Under **Managed devices**, click the server's **System configuration (系统配�
 | Device name / rack ID (设备名称 / 机柜 ID) | Name is for display. Use an actual NICo Rack ID, rather than the CSV's rack display name. |
 | BMC username / password (BMC 用户名 / 密码) | Valid controller credentials; empty password preserves the existing one. Maintain these separately from OS credentials. |
 | Planned BMC IP / policy / subnet (BMC 规划 IP / 地址策略 / 子网) | Use the actual plan. Fixed addresses must be in the corresponding subnet; apply BMC updates separately after saving. |
-| Boot NIC MAC / management IP / subnet (启动网卡 MAC / 管理 IP / 管理子网) | Choose the actual PXE / OS management port and an existing HostInband range. |
+| Boot NIC MAC / management IP / subnet (启动网卡 MAC / 管理 IP / 管理子网) | Choose the actual PXE / OS management port and an existing HostInband range. Saving takes the mask and gateway from the selected subnet and is refused when the management IP is outside it. |
 | Hostname (主机名) | 1–63 lowercase letters, digits or `-`; first and last characters must be letters or digits, such as `gpu-01`. |
 | Current installation profile (当前安装方案) | A published, active [Installation profile](installation-profiles.md) version. |
 | Next installation disk (下次安装系统盘) | First installation can use profile rules; reinstallation can retain the current disk. Alternatively choose a disk from collected hardware. |
