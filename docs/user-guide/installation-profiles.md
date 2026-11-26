@@ -30,9 +30,11 @@ Open **Configuration → Installation profiles (配置 → 安装方案)** to sh
 | Selection rule / candidate scope (选择规则 / 候选范围) | Unique match, one of several identical disks, smallest or largest capacity; all disks or NVMe only. **One of several identical disks (同规格多块取其一)** is for a device with several candidate disks of the same model and capacity: the disk whose serial number sorts first is used and the others are left untouched; no disk is selected when the candidates differ. An explicit device disk takes precedence. |
 | Serial / model patterns (序列号 / 型号规则) | Optional; `*` matches any characters, `?` one character. Case-sensitive; all filters apply together. |
 | Minimum / maximum capacity (最小 / 最大容量) | Optional GiB values. Capacity rules require complete Scout size data; minimum must not exceed maximum. |
+| Layout (布局方式) | **Direct partition (直接分区)**, the default: the root filesystem sits directly on a partition. **LVM**: a `2048` MiB `/boot` partition follows the EFI partition, the remaining space becomes one volume group, and the root filesystem sits on a logical volume. |
 | Root filesystem (根分区格式) | `ext4` or `XFS`. |
 | EFI partition (EFI 分区) | Integer `512–4096` MiB; default `1024`. |
-| Root partition (根分区) | Empty uses remaining space; fixed size is at least `20` GiB, leaving excess unallocated. |
+| Root partition (根分区) | Empty uses remaining space; a fixed size is at least `20` GiB. With direct partitions the excess stays unallocated; with LVM it stays in the volume group for later growth. |
+| Volume group / root logical volume name (卷组名 / 根逻辑卷名) | LVM only, default `ubuntu-vg` / `ubuntu-lv`. Start with a letter, digit or underscore; use only letters, digits and `_ . + -`; at most 63 characters. |
 | OS username (OS 用户名) | Ordinary user, at most 32 characters. Start with a lowercase letter or `_`; subsequent characters may include lowercase letters, digits, `_` and `-`. Cannot be `root`. |
 | Login mode / default password (登录方式 / 默认密码) | SSH password or key login. Supply a password in the profile or per device; empty preserves an existing password. **Default password handling (默认密码处理)** can explicitly clear it. |
 | SSH public keys (SSH 公钥) | One complete key per line. Key login requires valid keys in the final configuration. |
@@ -93,7 +95,8 @@ Click **New profile**, select `aarch64` and enter these values. If `OS-*` matche
 ## 5. Notes
 
 - Built-in templates use Flat network mode. A copied profile retains its source architecture and configuration; create another profile to use a different architecture.
-- Supported layout is single-disk GPT / UEFI, EFI and root, without swap. The page does not create RAID, LVM, multi-disk layouts or custom scripts.
+- Supported layout is single-disk GPT / UEFI, EFI and root, without swap. The LVM layout creates one volume group and one root logical volume only. The page does not create RAID, additional logical volumes, multi-disk layouts or custom scripts.
+- With LVM, the installation stops before writing the disk when another disk already carries a volume group of the same name. Use a different volume group name or deal with that disk first.
 - No match, tied matches or incomplete size data will not select a disk arbitrarily. Narrow the rule or choose a disk per device.
 - **Inherit selected profile (继承所选方案)** uses the specific selected version; device overrides take precedence.
 - Publishing does not install servers; created tasks retain snapshots. Password login requires a password in the profile or device configuration.

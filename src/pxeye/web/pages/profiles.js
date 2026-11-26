@@ -204,6 +204,14 @@ async function profileEditor(id, copy = false) {
     ],
     storage.disk_type,
   )}${inputField("profile-disk-serial", "序列号规则（可选）", storage.serial_pattern || "", 'placeholder="例如 S6Z*"')}${inputField("profile-disk-model", "型号规则（可选）", storage.model_pattern || "", 'placeholder="例如 Samsung*"')}${inputField("profile-disk-min", "最小容量（GiB，可选）", storage.min_gib ?? "", 'type="number" min="1" step="any"')}${inputField("profile-disk-max", "最大容量（GiB，可选）", storage.max_gib ?? "", 'type="number" min="1" step="any"')}</div><p class="live-small">全部条件同时匹配；* 匹配任意字符，? 匹配单个字符，区分大小写。设备指定盘优先；无匹配或并列时需指定磁盘。按容量选择需有完整容量信息，当前 Scout 可能仅提供 NVMe 容量。</p><h4>分区布局</h4><div class="live-editor-grid">${selectField(
+    "profile-layout",
+    "布局方式",
+    [
+      ["direct", "直接分区"],
+      ["lvm", "LVM"],
+    ],
+    storage.layout || "direct",
+  )}${selectField(
     "profile-root-fstype",
     "根分区格式",
     [
@@ -211,7 +219,7 @@ async function profileEditor(id, copy = false) {
       ["xfs", "XFS"],
     ],
     storage.root_fstype || "ext4",
-  )}${inputField("profile-efi", "EFI 分区（MiB）", storage.efi_mib, 'type="number" min="512" max="4096" step="1"')}${inputField("profile-root", "根分区（GiB，留空用剩余空间）", storage.root_gib ?? "", 'type="number" min="20" step="any"')}</div><p class="live-small">单盘 GPT，无 swap。指定根分区大小后，多余空间不分配。重装沿用原系统盘。</p></section><section class="subsection"><h3>默认登录配置</h3><div class="live-editor-grid">${inputField("profile-user", "OS 用户名", s.username)}${selectField(
+  )}${inputField("profile-efi", "EFI 分区（MiB）", storage.efi_mib, 'type="number" min="512" max="4096" step="1"')}${inputField("profile-root", "根分区（GiB，留空用剩余空间）", storage.root_gib ?? "", 'type="number" min="20" step="any"')}${inputField("profile-vg", "卷组名（仅 LVM）", storage.vg_name || "ubuntu-vg", 'maxlength="63"')}${inputField("profile-lv", "根逻辑卷名（仅 LVM）", storage.lv_name || "ubuntu-lv", 'maxlength="63"')}</div><p class="live-small">单盘 GPT，无 swap。直接分区：根文件系统建在分区上，指定大小后多余空间不分配。LVM：另建 2048 MiB 的 /boot 分区，其余空间作为卷组，根在逻辑卷上；指定大小后多余空间留在卷组里，可用于以后扩容。其他磁盘上已有同名卷组时安装会在写盘前停止。重装沿用原系统盘。</p></section><section class="subsection"><h3>默认登录配置</h3><div class="live-editor-grid">${inputField("profile-user", "OS 用户名", s.username)}${selectField(
     "profile-mode",
     "登录方式",
     [
@@ -282,6 +290,9 @@ async function profileSave({ action } = {}) {
       gpu_environment_check: $("#profile-gpu-check").checked,
       custom_files: profileFilesValue(),
       storage: {
+        layout: $("#profile-layout").value,
+        vg_name: $("#profile-vg").value.trim(),
+        lv_name: $("#profile-lv").value.trim(),
         root_fstype: $("#profile-root-fstype").value,
         selection: $("#profile-disk-selection").value,
         disk_type: $("#profile-disk-type").value,

@@ -35,6 +35,14 @@ def resolve_disk(serial):
     return sorted(paths, key=lambda p: (not p.name.startswith("wwn-"), str(p)))[0]
 
 
+def backing_disks(source):
+    """Whole disks under a mounted device, through partitions and logical volumes."""
+    rows = subprocess.check_output(
+        ["lsblk", "-srno", "NAME,TYPE", str(source)], text=True, timeout=20
+    ).splitlines()
+    return sorted({row.split()[0] for row in rows if row.split()[1:] == ["disk"]})
+
+
 def disk_layout(disk):
     return {k: disk.get(k) for k in ("type", "fstype", "wwn", "serial")} | {
         "children": [disk_layout(c) for c in disk.get("children", [])]

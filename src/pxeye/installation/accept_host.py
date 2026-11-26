@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from pxeye.installation.disk_identity import resolve_disk, disk_layout
+    from pxeye.installation.disk_identity import backing_disks, resolve_disk, disk_layout
 
     CTX = {}  # Injected alongside the disk identity helpers by the executor.
 
@@ -65,10 +65,28 @@ def check_disk(context):
         target = resolve_disk(device["disk_serial"]).resolve(strict=True)
     else:
         target = Path("/dev/disk/by-id/wwn-" + device["disk_wwn"]).resolve(strict=True)
-    assert (
-        Path("/dev/" + command(["lsblk", "-no", "PKNAME", root["source"]])).resolve() == target
-    ), "WRONG_ROOT_DISK"
+    assert backing_disks(root["source"]) == [target.name], "WRONG_ROOT_DISK"
     storage = device.get("storage") or {}
+    lvm = storage.get("layout") == "lvm"
+    fixed_bytes = 0
+    if lvm:
+        names = command(
+            ["lvs", "--noheadings", "--separator", "|", "-o", "vg_name,lv_name", root["source"]]
+        )
+        assert names.strip().split("|") == [storage["vg_name"], storage["lv_name"]], (
+            "ROOT_VOLUME_NAME_MISMATCH"
+        )
+        boot = json.loads(command(["findmnt", "-J", "/boot"]))["filesystems"][0]
+        assert (
+            boot["fstype"] == "ext4"
+            and Path("/dev/" + command(["lsblk", "-no", "PKNAME", boot["source"]])).resolve()
+            == target
+        ), "WRONG_BOOT_PARTITION"
+        fixed_bytes = int(command(["blockdev", "--getsize64", boot["source"]]))
+    else:
+        assert not command(["lsblk", "-no", "TYPE", root["source"]]).startswith("lvm"), (
+            "ROOT_LAYOUT_MISMATCH"
+        )
     expected_fstype = storage.get("root_fstype", "ext4")
     assert root["fstype"] == expected_fstype, "ROOT_FILESYSTEM_MISMATCH"
     root_uuid = command(["blkid", "-s", "UUID", "-o", "value", root["source"]])
@@ -80,6 +98,7 @@ def check_disk(context):
     )
     esp_uuid = command(["blkid", "-s", "PARTUUID", "-o", "value", esp])
     partition_layout = {
+        "layout": "lvm" if lvm else "direct",
         "root_fstype": root["fstype"],
         "root_bytes": int(command(["blockdev", "--getsize64", root["source"]])),
         "efi_bytes": int(command(["blockdev", "--getsize64", esp])),
@@ -91,17 +110,20 @@ def check_disk(context):
         assert partition_layout["efi_bytes"] == storage.get("efi_mib", 1024) * 1024**2, (
             "EFI_SIZE_MISMATCH"
         )
+        # Logical volumes are rounded to 4 MiB extents and the group keeps its own metadata.
+        slack = (16 if lvm else 0) * 1024**2
         if storage.get("root_gib") is not None:
-            assert (
-                abs(partition_layout["root_bytes"] - int(storage["root_gib"] * 1024**3)) <= 1024**2
+            assert abs(partition_layout["root_bytes"] - int(storage["root_gib"] * 1024**3)) <= max(
+                1024**2, slack // 4
             ), "ROOT_SIZE_MISMATCH"
         else:
             unused = (
                 partition_layout["disk_bytes"]
                 - partition_layout["efi_bytes"]
+                - fixed_bytes
                 - partition_layout["root_bytes"]
             )
-            assert 0 <= unused <= 8 * 1024**2, "ROOT_REMAINING_SPACE_MISMATCH"
+            assert 0 <= unused <= 8 * 1024**2 + slack, "ROOT_REMAINING_SPACE_MISMATCH"
     if old:
         assert esp_uuid != old["esp_partuuid"], "OLD_ESP_REUSED"
     boot_next = list(Path("/sys/firmware/efi/efivars").glob("BootNext-*"))

@@ -2,7 +2,12 @@
 
 import unittest
 
-from pxeye.installation.storage_policy import normalize_storage, select_disk
+from pxeye.installation.storage_policy import (
+    apply_partition_layout,
+    minimum_disk_bytes,
+    normalize_storage,
+    select_disk,
+)
 
 
 def disk(serial, model="SSD 480G", size=None):
@@ -46,3 +51,67 @@ class IdenticalDiskTests(unittest.TestCase):
             select_disk([], {"selection": "identical"})
         with self.assertRaisesRegex(ValueError, "选择方式无效"):
             normalize_storage({"selection": "first"})
+
+
+class LvmLayoutTests(unittest.TestCase):
+    def template(self):
+        from pxeye.installation.profile_template import generic_ubuntu
+        import yaml
+
+        return yaml.safe_load(generic_ubuntu({}, "nico", "", "UTC", "")["user_data"])["autoinstall"]
+
+    def test_saved_profiles_without_a_layout_stay_direct(self):
+        rule = normalize_storage({"selection": "unique", "efi_mib": 1024})
+        self.assertEqual((rule["layout"], rule["vg_name"]), ("direct", "ubuntu-vg"))
+        before = self.template()
+        after = self.template()
+        apply_partition_layout(after, {"efi_mib": 1024})
+        before["storage"]["config"][1]["size"] = 1024**3
+        self.assertEqual(after["storage"], before["storage"])
+
+    def test_lvm_layout_puts_root_on_one_logical_volume(self):
+        ai = self.template()
+        apply_partition_layout(
+            ai, {"layout": "lvm", "vg_name": "sysvg", "lv_name": "root", "root_gib": 100}
+        )
+        config = {x["id"]: x for x in ai["storage"]["config"]}
+        self.assertEqual(
+            [x["id"] for x in ai["storage"]["config"]],
+            ["os-disk", "efi", "efi-format", "boot", "boot-format", "pv", "vg", "lv-root"]
+            + ["root-format", "root-mount", "boot-mount", "efi-mount"],
+        )
+        self.assertEqual(config["boot"]["size"], 2048 * 1024**2)
+        self.assertEqual((config["pv"]["size"], config["pv"]["number"]), (-1, 3))
+        self.assertEqual((config["vg"]["name"], config["vg"]["devices"]), ("sysvg", ["pv"]))
+        self.assertEqual(
+            (config["lv-root"]["name"], config["lv-root"]["volgroup"], config["lv-root"]["size"]),
+            ("root", "vg", 100 * 1024**3),
+        )
+        self.assertEqual(config["root-format"]["volume"], "lv-root")
+        self.assertTrue(config["efi"]["grub_device"])
+
+    def test_switching_back_restores_the_direct_structure(self):
+        direct = self.template()
+        apply_partition_layout(direct, {"root_fstype": "xfs"})
+        ai = self.template()
+        apply_partition_layout(ai, {"layout": "lvm"})
+        apply_partition_layout(ai, {"layout": "lvm", "vg_name": "other"})
+        self.assertEqual(
+            next(x for x in ai["storage"]["config"] if x["type"] == "lvm_volgroup")["name"], "other"
+        )
+        apply_partition_layout(ai, {"root_fstype": "xfs"})
+        self.assertEqual(ai["storage"], direct["storage"])
+
+    def test_lvm_needs_room_for_boot_and_names_are_checked(self):
+        self.assertEqual(
+            minimum_disk_bytes({"layout": "lvm"}) - minimum_disk_bytes({}), (2048 + 16) * 1024**2
+        )
+        small = [disk("S1", size=22 * 1024**3)]
+        self.assertEqual(select_disk(small, {})["serial"], "S1")
+        with self.assertRaisesRegex(ValueError, "容量不足"):
+            select_disk(small, {"layout": "lvm"})
+        for bad in ({"vg_name": "-vg"}, {"lv_name": "snapshot1"}, {"vg_name": "a b"}):
+            with self.assertRaisesRegex(ValueError, "名称"):
+                normalize_storage({"layout": "lvm"} | bad)
+        with self.assertRaisesRegex(ValueError, "分区布局"):
+            normalize_storage({"layout": "raid"})

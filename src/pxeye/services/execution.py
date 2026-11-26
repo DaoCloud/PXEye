@@ -18,7 +18,7 @@ from pxeye.clients.errors import ConfigurationError
 from pxeye.clients.redfish import RedfishClient
 from pxeye.clients.ssh import SSHClient
 from pxeye.clients.process import run
-from pxeye.installation.storage_policy import scout_disks, select_disk
+from pxeye.installation.storage_policy import minimum_disk_bytes, scout_disks, select_disk
 from pxeye.installation.scripts import script_source
 from pxeye.common import sha, atomic_json
 
@@ -315,12 +315,14 @@ print(json.dumps({'serial':Path('/sys/class/dmi/id/product_serial').read_text().
  'hostname':cmd(['hostname']),'boot_id':Path('/proc/sys/kernel/random/boot_id').read_text().strip(),
  'root_uuid':cmd(['blkid','-s','UUID','-o','value',root['source']]),
  'esp_partuuid':cmd(['blkid','-s','PARTUUID','-o','value',cmd(['findmnt','-no','SOURCE','/boot/efi'])]),
- 'root_parent':cmd(['lsblk','-no','PKNAME',root['source']]),
+ 'root_disks':sorted({r.split()[0] for r in cmd(['lsblk','-srno','NAME,TYPE',root['source']]).splitlines() if r.split()[1:]==['disk']}),
  'disks':json.loads(cmd(['lsblk','-J','-o','NAME,TYPE,FSTYPE,WWN,SERIAL,MOUNTPOINTS']))['blockdevices'],
  'host_key':Path('/etc/ssh/ssh_host_ed25519_key.pub').read_text().strip(),
  'interfaces':json.loads(cmd(['ip','-j','address']))}))
 """
         host = json.loads(self.ssh(device, script, known=known))
+        # A root on a logical volume still has exactly one disk underneath it.
+        host["root_parent"] = host["root_disks"][0] if len(host["root_disks"]) == 1 else ""
         if host["serial"] != device["serial"]:
             raise RuntimeError("SSH 返回的主机 SN 与登记不匹配。")
         if device.get("disk_serial"):
@@ -664,9 +666,9 @@ print(json.dumps({'serial':Path('/sys/class/dmi/id/product_serial').read_text().
             "disk_serial": device["disk_serial"],
             "boot_mac": device["boot_mac"],
             "disk_id": disk["id"],
-            "minimum_bytes": int(
-                ((device.get("storage", {}).get("root_gib") or 20) * 1024**3)
-                + ((device.get("storage", {}).get("efi_mib", 1024) + 8) * 1024**2)
+            "minimum_bytes": minimum_disk_bytes(device.get("storage")),
+            "volume_group": next(
+                (x["name"] for x in ai["storage"]["config"] if x["type"] == "lvm_volgroup"), None
             ),
         }
         code = (
@@ -680,6 +682,12 @@ assert any(p.read_text().strip().lower()==CTX['boot_mac'].lower() for p in Path(
 target=resolve_disk(CTX['disk_serial'])
 assert int(subprocess.check_output(['blockdev','--getsize64',str(target)],text=True,timeout=20)) >= CTX['minimum_bytes'], 'SYSTEM_DISK_TOO_SMALL_FOR_PARTITIONS'
 disks=json.loads(subprocess.check_output(['lsblk','-J','-o','NAME,TYPE,FSTYPE,WWN,SERIAL'],text=True,timeout=20))['blockdevices']
+if CTX['volume_group']:
+    # A volume group of the same name on another disk would make vgcreate fail after
+    # partitioning has started; the target disk's own old group is wiped by the installer.
+    rows=subprocess.check_output(['pvs','--noheadings','--separator','|','-o','pv_name,vg_name'],text=True,timeout=30).splitlines()
+    elsewhere=sorted({d for pv,vg in (r.strip().split('|') for r in rows if '|' in r) if vg==CTX['volume_group'] for d in backing_disks(pv) if d!=target.resolve().name})
+    assert not elsewhere, 'VOLUME_GROUP_NAME_ON_OTHER_DISK:'+','.join(elsewhere)
 before={'task_id':CTX['task_id'],'serial':CTX['serial'],'disk_serial':CTX['disk_serial'],'target':str(target),'target_name':target.resolve().name,'disks':disks}
 Path('/run/nico-disks-before.json').write_text(json.dumps(before))
 path=Path('/autoinstall.yaml'); config=yaml.safe_load(path.read_text())
