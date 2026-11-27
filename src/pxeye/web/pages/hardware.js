@@ -202,7 +202,7 @@ function renderDeviceDetail(w, scroll = 0) {
   }
   const foot =
     (state.installReviewReturn
-      ? button("返回安装核对", "return-install-review")
+      ? button(installReviewReturnLabel(), "return-install-review")
       : "") + button("关闭", "close");
   modal("设备详情", w.serial, body, foot);
   $(".modal-body").scrollTop = scroll;
@@ -227,9 +227,12 @@ async function openReferencedPlan(id, mac) {
     const back = document.querySelector('.modal-footer [data-live="close"]');
     if (back) {
       back.dataset.live = "return-install-review";
-      back.textContent = "返回安装核对";
+      back.textContent = installReviewReturnLabel();
     }
   }
+}
+function installReviewReturnLabel() {
+  return state.installReviewReturn?.step === 1 ? "返回选择设备" : "返回安装核对";
 }
 function restoreInstallReview(returnTo = state.installReviewReturn) {
   const w = returnTo;
@@ -239,6 +242,11 @@ function restoreInstallReview(returnTo = state.installReviewReturn) {
   w.check = null;
   w.checkError = null;
   w.checking = false;
+  if (w.step === 1) {
+    // Opened from the device list: return to it with the selection untouched.
+    batchWizard();
+    return readCurrentSystems(w).catch((error) => toast(error.message));
+  }
   w.step = 2;
   w.entries = w.selected.map((serial) => {
     const d = state.resources.devices.find((d) => d.serial === serial);

@@ -970,10 +970,10 @@ async function saveDevice() {
     returnTo
       ? () => {
           state.wizard = returnTo;
-          returnTo.step = 2;
           returnTo.check = null;
           returnTo.checkError = null;
-          returnTo.checking = true;
+          // Only the review step re-checks; the device list just comes back.
+          returnTo.checking = returnTo.step === 2;
           batchWizard();
         }
       : null,
