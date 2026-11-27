@@ -160,7 +160,7 @@ class InstallProfiles:
         settings.pop("login_ref", None)
         settings.pop("allow_overrides", None)
         settings["storage"] = normalize_storage(settings.get("storage"))
-        settings.setdefault("gpu_environment_check", False)
+        settings["gpu_environment_check"] = False
         settings.setdefault("custom_files", [])
         allocation = row.get("allocation", {})
         vpc = allocation.get("network", {}).get("auto_config", {}).get("vpc_id", "")
@@ -310,7 +310,9 @@ class InstallProfiles:
                 s[k] = copy.deepcopy(config[k])
         if type(s.get("gpu_environment_check", False)) is not bool:
             raise ValueError("GPU 环境检查开关必须为布尔值。")
-        s.setdefault("gpu_environment_check", False)
+        # Retired: the field stays for stored profiles, exports and task records,
+        # but a profile can no longer turn the check on.
+        s["gpu_environment_check"] = False
         s["custom_files"] = normalize_custom_files(s.get("custom_files", []))
         # Reject template collisions at save time as well as publish/render time.
         template_ai = yaml.safe_load(previous["template"]["user_data"])["autoinstall"]
@@ -648,9 +650,9 @@ class InstallProfiles:
             dns_checks=s["dns_checks"],
             http_checks=s["http_checks"],
         )
-        # Do not change the frozen effective configuration of historical profiles.
-        if "gpu_environment_check" in s:
-            values["gpu_environment_check"] = s["gpu_environment_check"]
+        # Retired check: versions published with it enabled no longer request it.
+        # Tasks already created keep their own frozen value.
+        values["gpu_environment_check"] = False
         if require:
             if problems:
                 raise ValueError("；".join(problems))

@@ -63,7 +63,7 @@ Save hostname `gpu-01`, management address `192.0.2.10`, a published Ubuntu prof
 - A failed device pauses while the others continue. Do not create duplicate tasks to bypass a pending issue.
 - Created tasks use snapshots; later device or profile edits do not automatically change the current installation. Removing an interface address does not remove its requirement from this attempt; acceptance reports the missing address.
 - System disk and EFI partition verification reads the root disk, EFI partition and partition layout over SSH. It does not change firmware boot order.
-- Start acceptance records base checks separately. An interface mismatch does not stop the remaining read-only checks. After each collection round, the acceptance panel shows passing checks and failure details. Required failures block GPU checking and reboot acceptance unless explicitly skipped.
+- Start acceptance records base checks separately. An interface mismatch does not stop the remaining read-only checks. After each collection round, the acceptance panel shows passing checks and failure details. Required failures block reboot acceptance unless explicitly skipped.
 - Queued/running tasks or an allocated Instance do not indicate a completed OS installation; review installation and boot acceptance results.
 
 Related: [Device management](device-management.md) · [Operating systems](operating-systems.md) · [Installation profiles](installation-profiles.md) · [Install your first server](../getting-started.md)
@@ -77,14 +77,6 @@ Running acceptance applies skips on its next check. A paused task completes auto
 
 The acceptance report records each skipped item, operator, time and preceding check result. Manual completion performs no additional hardware verification and supplies no missing disk, reboot or BMC evidence. Skipping does not change the installation plan; continued acceptance still requires task binding and trusted SSH transport.
 
-### Optional GPU environment check
+### Installation acceptance checks
 
-Enable GPU environment check under Installation acceptance in an installation profile, then save and publish a new version. The flag is frozen with the task; historical profiles default to disabled and show Skipped. The check runs only after base installation acceptance and before normal reboot acceptance. It reads deployment results; it never launches GPU tests or provisioning scripts.
-
-The producer must atomically publish `/var/lib/metal-deployer/state.json` using a temporary file and rename. Maximum size is 256 KiB. Use integer schema=1, a nonempty iso_version and the first-boot `/proc/sys/kernel/random/boot_id`. An optional task_id from `/etc/nico-installation.json` must match when present. started_at and updated_at must be timezone-qualified ISO 8601 timestamps belonging to this installation; synchronize node clocks.
-
-Use pending/running/success/failed for overall and stage status. Supply a nonempty stages list with unique names; a nonempty current_stage must name a listed stage. Terminal stages require integer rc, and success requires rc=0. Optional start/end/log fields are supported; log paths are display-only. Acceptance requires overall=success and every stage success/rc=0. Failure, invalid protocol or identity mismatch requires attention. Missing files and transient SSH outages are polled approximately every 10 seconds, with a 20-second SSH limit and a 60-minute wait budget per acceptance attempt. updated_at alone is not a hang detector.
-
-Success evidence is saved before normal reboot. Reboot acceptance uses that evidence rather than requiring the historical state file to match the new boot ID. Continue acceptance only observes again; it does not reinstall or rerun scripts. Final acceptance cannot pass without the required pre-reboot success evidence.
-
-Acceptance labels follow: Installer success → Host configuration → System disk and EFI partition verification → Network configuration → SSH connectivity → DNS / HTTP / NTP connectivity → GPU environment check (optional) → Reboot acceptance. System disk and EFI partition verification checks root/ESP placement rather than reconfiguring firmware. Existing required/advisory service policies are unchanged. This state file is a custom deployment protocol, not the standard cloud-init status.
+Acceptance labels follow: Installer success → Host configuration → System disk and EFI partition verification → Network configuration → SSH connectivity → DNS / HTTP / NTP connectivity → Reboot acceptance. System disk and EFI partition verification checks root/ESP placement (and, for the LVM layout, the volume group, logical volume and `/boot`) rather than reconfiguring firmware. Existing required/advisory service policies are unchanged.

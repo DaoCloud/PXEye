@@ -874,6 +874,7 @@ function detail(id) {
       normal_reboot: "重启验收",
     },
   )
+    .filter(([k]) => k !== "gpu_environment" || t.gpu_environment_check === true)
     .map(([k, v]) => {
       const skip = t.acceptance_skips?.[k];
       const canSkip =
