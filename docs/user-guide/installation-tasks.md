@@ -28,7 +28,7 @@ The wizard uses saved device configuration and has two steps: **Select devices (
 | CPU | Scout models take precedence. Before first installation, use Get device information or Refresh device details in Device Management to read processor information supported by the BMC. Refreshing the wizard reads existing records without starting Scout. |
 | Hostname / management address | Read from device configuration. The wizard shows the bound management subnet and prefix even on first installation. Without a binding, the address must match a unique HostInband prefix, independently of the DHCP pool. |
 | System disk | Shows the explicit disk or profile selection. When selection awaits Scout, check the later result and cleanup scope. |
-| Concurrency | Read from [Site settings](site-settings.md) and frozen when the batch is created. |
+| Concurrency | Read from [Site settings](site-settings.md). It is the site-wide limit on devices installing at the same time, shared by all batches. Devices over the limit wait in submission order and start as slots free up; a changed value applies to devices still waiting. |
 | Execution confirmation | Confirm devices, addresses and disks, and allow installation and reboot. Initial onboarding cleanup also requires confirmation for all disks. |
 
 ## 3. Actions
@@ -65,6 +65,7 @@ Save hostname `gpu-01`, management address `192.0.2.10`, a published Ubuntu prof
 - System disk and EFI partition verification reads the root disk, EFI partition and partition layout over SSH. It does not change firmware boot order.
 - Start acceptance records base checks separately. An interface mismatch does not stop the remaining read-only checks. After each collection round, the acceptance panel shows passing checks and failure details. Required failures block reboot acceptance unless explicitly skipped.
 - Queued/running tasks or an allocated Instance do not indicate a completed OS installation; review installation and boot acceptance results.
+- While devices are installing you can submit further batches and continue acceptance, retry or close other tasks that need attention; a batch only records one submission and need not finish first. A device that needs attention gives up its slot. Site configuration such as networks, installation profiles, and device discovery and enrollment still waits until nothing is installing or queued.
 
 Related: [Device management](device-management.md) · [Operating systems](operating-systems.md) · [Installation profiles](installation-profiles.md) · [Install your first server](../getting-started.md)
 

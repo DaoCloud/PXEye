@@ -196,7 +196,8 @@ class CommandRoutes:
                     body["profile_id"],
                     body["disk_serial"],
                     body["revision"],
-                )
+                ),
+                during_installs=True,
             )
             return self.respond(200, {"status": "saved"})
         if path == "/api/device-plans/bulk-preview":
@@ -341,7 +342,8 @@ class CommandRoutes:
             if self.app.store.active(body["device"]):
                 raise ValueError("设备已有活动任务或待处理现场。")
             check = self.app.configure(
-                lambda: self.app.adapter.preflight(body["device"], body["hostname"])
+                lambda: self.app.adapter.preflight(body["device"], body["hostname"]),
+                during_installs=True,
             )
             check["id"] = uuid.uuid4().hex
             self.app.store.preflight(check["id"], check)

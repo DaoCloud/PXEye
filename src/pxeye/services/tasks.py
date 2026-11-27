@@ -6,7 +6,6 @@ import os
 import threading
 import time
 import uuid
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from contextlib import nullcontext
 from pxeye.installation.executor import terminal_installer_failure
@@ -34,7 +33,13 @@ class TaskCoordinator:
         self.executor, self.resources = executor, resources
         self.onboarding, self.device_config = onboarding, device_config
         self.os_library = os_library
+        # Held only for a check, a claim or a configuration change. Running
+        # installations no longer hold it: each task is owned on its own below.
         self.worker_lock = threading.Lock()
+        self.owned = {}  # task id -> Event, set when the thread working on it lets go
+        self.installing = set()  # owned tasks that count against the site limit
+        self.owned_lock = threading.Lock()
+        self.dispatch_lock = threading.Lock()
         self.discovery_status = discovery_status
 
     def install_concurrency(self):
@@ -42,6 +47,56 @@ class TaskCoordinator:
         if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 50:
             return 5
         return value
+
+    def installs_busy(self):
+        """True while any task is being worked on or is waiting for a free slot."""
+        with self.owned_lock:
+            if self.owned:
+                return True
+        return bool(self.store.queued())
+
+    def own(self, task_id, *, counted=False):
+        """Make this thread the only one working on a task; False if someone already is."""
+        with self.owned_lock:
+            if task_id in self.owned:
+                return False
+            self.owned[task_id] = threading.Event()
+            if counted:
+                self.installing.add(task_id)
+            return True
+
+    def disown(self, task_id):
+        with self.owned_lock:
+            done = self.owned.pop(task_id, None)
+            self.installing.discard(task_id)
+        if done:
+            done.set()
+
+    def begin(self, task_id, *, counted=False):
+        """Own a task for an operator action.
+
+        Resource operations hold worker_lock for their whole duration, so taking
+        it for this instant keeps them and task work from overlapping.
+        """
+        if not self.worker_lock.acquire(blocking=False):
+            raise ValueError("已有核对或配置操作执行中，请稍后再试。")
+        try:
+            if not self.own(task_id, counted=counted):
+                raise ValueError("该任务正在执行中，请稍后再试。")
+        finally:
+            self.worker_lock.release()
+
+    def spawn(self, task_id, work, name):
+        """Run work for an owned task in its own thread, then free it and refill slots."""
+
+        def run():
+            try:
+                work()
+            finally:
+                self.disown(task_id)
+                self.start_queue()
+
+        threading.Thread(target=run, daemon=True, name=name).start()
 
     def recovery_observation_active(self, task):
         """Whether a restarted worker should keep observing this accepted install attempt."""
@@ -167,7 +222,7 @@ class TaskCoordinator:
             task.get("status") != "needs_attention"
             or task.get("stage") not in ("firstboot", "gpu_check", "reboot")
             or not task.get("acceptance_skips")
-            or not self.worker_lock.acquire(blocking=False)
+            or not self.own(task["id"])
         ):
             return task
         try:
@@ -288,7 +343,7 @@ class TaskCoordinator:
                 )
                 return current
         finally:
-            self.worker_lock.release()
+            self.disown(task["id"])
 
     def close_task(self, task_id, body, actor):
         """Request cooperative closure for any unfinished task."""
@@ -315,25 +370,29 @@ class TaskCoordinator:
                 )
                 db.execute("UPDATE tasks SET data=? WHERE id=?", (json.dumps(task), task_id))
 
-        # If no worker owns the coordinator, finish synchronously. Otherwise
-        # the running worker observes close_request at its next bounded poll.
-        if self.worker_lock.acquire(blocking=False):
-            task = self.store.get(task_id)
+        # If nothing is working on this task, finish now. Otherwise its own
+        # worker observes close_request at its next bounded poll and lets go;
+        # other tasks are not waited for.
+        def finish():
             try:
-                task = self.executor.finish_close_requested(task)
+                current = self.store.get(task_id)
+                if current:
+                    self.executor.finish_close_requested(current)
             finally:
-                self.worker_lock.release()
-            if self.store.queued():
-                self.start_queue()
+                self.disown(task_id)
+            self.start_queue()
+
+        if self.own(task_id):
+            finish()
         else:
 
             def finish_when_idle():
-                with self.worker_lock:
-                    current = self.store.get(task_id)
-                    if current:
-                        self.executor.finish_close_requested(current)
-                if self.store.queued():
-                    self.start_queue()
+                while not self.own(task_id):
+                    with self.owned_lock:
+                        done = self.owned.get(task_id)
+                    if done:
+                        done.wait(30)
+                finish()
 
             threading.Thread(
                 target=finish_when_idle,
@@ -343,107 +402,110 @@ class TaskCoordinator:
         return self.task_view(self.store.get(task_id))
 
     def start_recovered(self, task_ids, auto_repair=None):
+        """Pick interrupted tasks back up, each in its own thread.
+
+        They were already running before the restart, so they start at once and
+        count against the site limit; waiting tasks follow as slots free up.
+        """
         auto_repair = auto_repair or set()
+        for task_id in task_ids:
+            if self.own(task_id, counted=True):
+                self.spawn(
+                    task_id,
+                    lambda task_id=task_id: self.recover_one(task_id, auto_repair),
+                    "resume-observation-" + task_id,
+                )
+        self.start_queue()
 
-        def work():
-            with self.worker_lock:
-                for task_id in task_ids:
-                    task = self.store.get(task_id)
-                    if not task or task["status"] != "needs_attention":
-                        continue
-                    if task.get("close_request"):
-                        self.executor.finish_close_requested(task)
-                        continue
-                    if task_id in auto_repair:
-                        try:
-                            self.executor.automatic_boot_recovery(task)
-                        except Exception as error:
-                            task = self.store.get(task_id) or task
-                            task["error"] = "自动恢复停止：" + str(error)
-                            self.store.save(task)
-                            continue
-                        task = self.store.get(task_id) or task
-                    recovery = task.get("automatic_recovery") or {}
-                    if recovery.get("state") == "config_requesting":
-                        try:
-                            self.executor.reconcile_interrupted_boot_recovery(task)
-                        except RuntimeError as error:
-                            task["automatic_recovery_observation_error"] = str(error)
-                            self.store.save(task)
-                        task = self.store.get(task_id) or task
-                    if not self.recovery_observation_active(task):
-                        continue
-                    remaining = max(
-                        0, task.get("observation_deadline", time.time() + 600) - time.time()
+    def recover_one(self, task_id, auto_repair):
+        task = self.store.get(task_id)
+        if not task or task["status"] != "needs_attention":
+            return
+        if task.get("close_request"):
+            self.executor.finish_close_requested(task)
+            return
+        if task_id in auto_repair:
+            try:
+                self.executor.automatic_boot_recovery(task)
+            except Exception as error:
+                task = self.store.get(task_id) or task
+                task["error"] = "自动恢复停止：" + str(error)
+                self.store.save(task)
+                return
+            task = self.store.get(task_id) or task
+        recovery = task.get("automatic_recovery") or {}
+        if recovery.get("state") == "config_requesting":
+            try:
+                self.executor.reconcile_interrupted_boot_recovery(task)
+            except RuntimeError as error:
+                task["automatic_recovery_observation_error"] = str(error)
+                self.store.save(task)
+            task = self.store.get(task_id) or task
+        if not self.recovery_observation_active(task):
+            return
+        remaining = max(0, task.get("observation_deadline", time.time() + 600) - time.time())
+        deadline = time.monotonic() + remaining
+        # Wait read-only until this same attempt has trustworthy identity.
+        while time.monotonic() < deadline:
+            # Installer events are written by the HTTP request thread.  Reload the
+            # task so recovery progress and any concurrent state change are never
+            # hidden by the object captured before the reboot.
+            task = self.store.get(task_id) or task
+            if task.get("close_request"):
+                self.executor.finish_close_requested(task)
+                break
+            if task.get("status") not in ("needs_attention", "running"):
+                break
+            remaining = max(0, task.get("observation_deadline", time.time()) - time.time())
+            deadline = max(deadline, time.monotonic() + remaining)
+            if not task.get("automatic_recovery") and self.executor.can_start_automatic_recovery(
+                task
+            ):
+                try:
+                    self.executor.automatic_boot_recovery(task)
+                except RuntimeError as error:
+                    task["automatic_recovery_observation_error"] = str(error)
+                    self.store.save(task)
+                task = self.store.get(task_id) or task
+            try:
+                self.executor.observe_automatic_recovery(task)
+            except RuntimeError as error:
+                task["automatic_recovery_observation_error"] = str(error)
+                self.store.save(task)
+            recovery = task.get("automatic_recovery") or {}
+            if (
+                task.get("status") == "needs_attention"
+                and recovery.get("state") == "completed"
+                and task.get("installer_progress", {}).get("started")
+            ):
+                task["status"] = "running"
+                task["error"] = None
+                self.executor.event(
+                    task,
+                    "install",
+                    "自动启动恢复完成，安装器正在运行。",
+                )
+            if self.executor.can_resume(task):
+                recovery = task.get("automatic_recovery") or {}
+                if recovery.get("state") in (
+                    "waiting_installation",
+                    "waiting_installation_retry",
+                    "waiting_standard_pxe_retry",
+                ):
+                    recovery["state"] = "completed"
+                    recovery["completed_at"] = time.time()
+                    self.executor.recovery_step(
+                        recovery,
+                        "installation",
+                        "completed",
+                        "已取得本轮安装身份，进入系统验收。",
                     )
-                    deadline = time.monotonic() + remaining
-                    # Wait read-only until this same attempt has trustworthy identity.
-                    while time.monotonic() < deadline:
-                        # Installer events are written by the HTTP request thread.  Reload the
-                        # task so recovery progress and any concurrent state change are never
-                        # hidden by the object captured before the reboot.
-                        task = self.store.get(task_id) or task
-                        if task.get("close_request"):
-                            self.executor.finish_close_requested(task)
-                            break
-                        if task.get("status") not in ("needs_attention", "running"):
-                            break
-                        remaining = max(
-                            0, task.get("observation_deadline", time.time()) - time.time()
-                        )
-                        deadline = max(deadline, time.monotonic() + remaining)
-                        if not task.get(
-                            "automatic_recovery"
-                        ) and self.executor.can_start_automatic_recovery(task):
-                            try:
-                                self.executor.automatic_boot_recovery(task)
-                            except RuntimeError as error:
-                                task["automatic_recovery_observation_error"] = str(error)
-                                self.store.save(task)
-                            task = self.store.get(task_id) or task
-                        try:
-                            self.executor.observe_automatic_recovery(task)
-                        except RuntimeError as error:
-                            task["automatic_recovery_observation_error"] = str(error)
-                            self.store.save(task)
-                        recovery = task.get("automatic_recovery") or {}
-                        if (
-                            task.get("status") == "needs_attention"
-                            and recovery.get("state") == "completed"
-                            and task.get("installer_progress", {}).get("started")
-                        ):
-                            task["status"] = "running"
-                            task["error"] = None
-                            self.executor.event(
-                                task,
-                                "install",
-                                "自动启动恢复完成，安装器正在运行。",
-                            )
-                        if self.executor.can_resume(task):
-                            recovery = task.get("automatic_recovery") or {}
-                            if recovery.get("state") in (
-                                "waiting_installation",
-                                "waiting_installation_retry",
-                                "waiting_standard_pxe_retry",
-                            ):
-                                recovery["state"] = "completed"
-                                recovery["completed_at"] = time.time()
-                                self.executor.recovery_step(
-                                    recovery,
-                                    "installation",
-                                    "completed",
-                                    "已取得本轮安装身份，进入系统验收。",
-                                )
-                            task["status"] = "running"
-                            task["error"] = None
-                            self.store.save(task)
-                            self.executor.resume(task)
-                            break
-                        time.sleep(10)
-            if self.store.queued():
-                self.start_queue()
-
-        threading.Thread(target=work, daemon=True, name="resume-observation").start()
+                task["status"] = "running"
+                task["error"] = None
+                self.store.save(task)
+                self.executor.resume(task)
+                break
+            time.sleep(10)
 
     @staticmethod
     def installation_mode(observed):
@@ -603,7 +665,7 @@ class TaskCoordinator:
                 check.pop("execution_device", None)
             return public
 
-        return self.configure(check_all)
+        return self.configure(check_all, during_installs=True)
 
     def submit_batch(self, body, owner, actor):
         if set(body) - {
@@ -715,45 +777,36 @@ class TaskCoordinator:
             )
             return self.store.batch(key)
 
-        result = self.configure(claim)
+        result = self.configure(claim, during_installs=True)
         self.start_queue()
         return result
 
     def start_queue(self):
-        if not self.worker_lock.acquire(blocking=False):
-            return
+        """Start waiting tasks, oldest first, while the site limit has free slots.
 
-        def work():
-            try:
-                while True:
-                    queued = self.store.queued()
-                    if not queued:
+        The limit is read each time, so a changed site setting applies to
+        whatever is still waiting. A batch is only how tasks were submitted.
+        """
+        with self.dispatch_lock:
+            limit = self.install_concurrency()
+            for task in self.store.queued():
+                with self.owned_lock:
+                    if len(self.installing) >= limit:
                         break
-                    first = queued[0]
-                    batch_id = first.get("batch_id")
-                    if not batch_id:
-                        self.executor.run(first)
-                        continue
-                    batch = self.store.batch(batch_id)
-                    batch_tasks = [task for task in queued if task.get("batch_id") == batch_id]
-                    limit = (batch or {}).get("max_concurrency", 1)
-                    if (
-                        isinstance(limit, bool)
-                        or not isinstance(limit, int)
-                        or not 1 <= limit <= 50
-                    ):
-                        limit = 1
-                    with ThreadPoolExecutor(
-                        max_workers=min(limit, len(batch_tasks)),
-                        thread_name_prefix="installation",
-                    ) as pool:
-                        futures = [pool.submit(self.executor.run, task) for task in batch_tasks]
-                        for future in futures:
-                            future.result()
-            finally:
-                self.worker_lock.release()
+                if not self.own(task["id"], counted=True):
+                    continue  # already picked up, or an operator action holds it
+                self.spawn(task["id"], lambda task=task: self.run_queued(task), task["id"])
 
-        threading.Thread(target=work, daemon=True, name="installation-queue").start()
+    def run_queued(self, task):
+        try:
+            self.executor.run(task)
+        except Exception as error:
+            # The executor reports its own failures. If one escapes before it
+            # could, park the task so the queue cannot pick it up forever.
+            current = self.store.get(task["id"]) or task
+            if current.get("status") == "queued":
+                current.update(status="needs_attention", error="任务未能启动：" + str(error))
+                self.store.save(current)
 
     def os_lock(self):
         library = getattr(self, "os_library", None)
@@ -763,10 +816,17 @@ class TaskCoordinator:
         with self.os_lock():
             return action()
 
-    def configure(self, action):
+    def configure(self, action, *, during_installs=False):
+        """Run one check, claim or configuration change at a time.
+
+        Site configuration still waits until nothing is installing or queued.
+        Steps that belong to installing itself pass during_installs=True.
+        """
         if not self.worker_lock.acquire(blocking=False):
-            raise ValueError("已有安装或资源操作执行中，请稍后再试。")
+            raise ValueError("已有核对或配置操作执行中，请稍后再试。")
         try:
+            if not during_installs and self.installs_busy():
+                raise ValueError("已有安装或资源操作执行中，请稍后再试。")
             with self.os_lock():
                 return action()
         finally:
@@ -774,6 +834,9 @@ class TaskCoordinator:
 
     def apply_network(self, sid):
         if not self.worker_lock.acquire(blocking=False):
+            raise ValueError("已有安装或资源应用任务执行中。")
+        if self.installs_busy():
+            self.worker_lock.release()
             raise ValueError("已有安装或资源应用任务执行中。")
         try:
             result = self.resources.apply_network(sid)
@@ -825,7 +888,7 @@ class TaskCoordinator:
                 ).fetchone()
             if row:
                 return json.loads(row["data"])
-            raise ValueError("已有任务执行中，请等待该任务完成。")
+            raise ValueError("已有核对或配置操作执行中，请稍后再试。")
         try:
             with self.os_lock():
                 plan = self.resources.execution_plan(body["device"])
@@ -861,21 +924,11 @@ class TaskCoordinator:
                     "source": "nico-ui",
                 }
                 task, created = self.store.claim(body["preflight_id"], task, body["request_key"])
-            if created:
-
-                def work():
-                    try:
-                        self.executor.run(task)
-                    finally:
-                        self.worker_lock.release()
-
-                threading.Thread(target=work, daemon=True, name=task["id"]).start()
-            else:
-                self.worker_lock.release()
-            return task
-        except Exception:
+        finally:
             self.worker_lock.release()
-            raise
+        if created:
+            self.start_queue()
+        return task
 
     def ensure_executable(self, serial):
         device = next((d for d in self.resources.devices() if d["serial"] == serial), None)
@@ -915,7 +968,7 @@ class TaskCoordinator:
             self.store.preflight(result["id"], result, lifetime=900)
             return {k: v for k, v in result.items() if k != "owner"}
 
-        return self.configure(check)
+        return self.configure(check, during_installs=True)
 
     def continue_preparation(self, task_id, body, owner, actor):
         if (
@@ -1000,7 +1053,7 @@ class TaskCoordinator:
                 )
             return task
 
-        task = self.configure(claim)
+        task = self.configure(claim, during_installs=True)
         self.start_queue()
         return task
 
@@ -1014,7 +1067,7 @@ class TaskCoordinator:
             self.store.preflight(result["id"], result)
             return {k: v for k, v in result.items() if k != "owner"}
 
-        return self.configure(check)
+        return self.configure(check, during_installs=True)
 
     def restart_install(self, task_id, body, owner, actor):
         if (
@@ -1063,7 +1116,7 @@ class TaskCoordinator:
                 )
             return task
 
-        result = self.configure(claim)
+        result = self.configure(claim, during_installs=True)
         self.start_queue()
         return result
 
@@ -1077,7 +1130,7 @@ class TaskCoordinator:
             self.store.preflight(result["id"], result)
             return {k: v for k, v in result.items() if k != "owner"}
 
-        return self.configure(check)
+        return self.configure(check, during_installs=True)
 
     def retry_install(self, task_id, body, owner, actor):
         if (
@@ -1161,7 +1214,7 @@ class TaskCoordinator:
                 )
             return task
 
-        result = self.configure(claim)
+        result = self.configure(claim, during_installs=True)
         self.start_queue()
         return result
 
@@ -1217,8 +1270,8 @@ class TaskCoordinator:
             or body["confirm_reboot"] is not True
         ):
             raise ValueError("请确认设备 SN 和继续首启/普通重启范围。")
-        if not self.worker_lock.acquire(blocking=False):
-            raise ValueError("已有任务执行中。")
+        # Other devices may be installing; only this task must be free.
+        self.begin(task_id)
         try:
             task = self.store.get(task_id)
             if task is None or task["status"] != "needs_attention":
@@ -1255,15 +1308,8 @@ class TaskCoordinator:
                 }
             )
             self.store.save(task)
-
-            def work():
-                try:
-                    self.executor.resume(task)
-                finally:
-                    self.worker_lock.release()
-
-            threading.Thread(target=work, daemon=True, name=task["id"] + "-acceptance").start()
-            return task
         except Exception:
-            self.worker_lock.release()
+            self.disown(task_id)
             raise
+        self.spawn(task_id, lambda: self.executor.resume(task), task["id"] + "-acceptance")
+        return task

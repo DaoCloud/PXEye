@@ -383,7 +383,7 @@ function batchWizard() {
     if (w.checkError)
       body += `<div class="live-error">${esc(w.checkError)}</div>`;
     if (w.check?.passed)
-      body += `<div class="live-note live-warning">将安装 ${w.entries.length} 台设备，应用规划地址、覆盖所选系统盘并重启验证。本批最多并发 ${w.check.max_concurrency} 台；失败设备暂停，其余设备继续。</div><div class="live-form"><label class="live-check"><input type="checkbox" id="batch-confirm-disk">确认所选设备、管理地址及系统盘。</label><label class="live-check"><input type="checkbox" id="batch-confirm-reboot">允许安装及重启验证。</label>${w.check.checks.some((c) => c.impact?.cleanup_scope === "all_disks") ? '<label class="live-check live-warning"><input type="checkbox" id="batch-confirm-cleanup">允许需接入设备清理全部磁盘（含非系统盘，清单待核对），并执行站点凭据和固件配置。</label>' : ""}</div>`;
+      body += `<div class="live-note live-warning">将安装 ${w.entries.length} 台设备，应用规划地址、覆盖所选系统盘并重启验证。站点同时最多安装 ${w.check.max_concurrency} 台，超出的设备排队，有空位时自动开始；失败设备暂停，其余设备继续。</div><div class="live-form"><label class="live-check"><input type="checkbox" id="batch-confirm-disk">确认所选设备、管理地址及系统盘。</label><label class="live-check"><input type="checkbox" id="batch-confirm-reboot">允许安装及重启验证。</label>${w.check.checks.some((c) => c.impact?.cleanup_scope === "all_disks") ? '<label class="live-check live-warning"><input type="checkbox" id="batch-confirm-cleanup">允许需接入设备清理全部磁盘（含非系统盘，清单待核对），并执行站点凭据和固件配置。</label>' : ""}</div>`;
     foot =
       `<div class="batch-review-actions">${button("重新选择设备", "batch-back")}${button(
         w.check ? "更新状态" : "重试检查",
@@ -554,7 +554,7 @@ async function batchDetail(batch) {
   state.batches = state.batches.map((x) => (x.id === id ? b : x));
   state.wizard = { resource: "batch-detail", id };
   const body =
-    `<div class="live-note">${installMode(b.mode)} · ${b.tasks.length} 台 · 并发执行 ${b.max_concurrency} 台。失败设备暂停，等待处理。</div>` +
+    `<div class="live-note">${installMode(b.mode)} · ${b.tasks.length} 台 · 按站点并发上限排队执行。失败设备暂停，等待处理。</div>` +
     table(
       ["设备", "主机名 / 地址", "阶段 / 状态", "操作"],
       b.tasks.map(

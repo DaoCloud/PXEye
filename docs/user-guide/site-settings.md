@@ -36,7 +36,7 @@ When discovery is enabled and automatic machine creation is off, choose **Enable
 | --- | --- |
 | Site name (站点名称) | Required, 1–100 characters; identifies the site in the UI. |
 | Core HTTPS address (Core HTTPS 地址) | Full `https://host:port`, without API paths, queries or fragments. PXEye must reach it and its current mTLS identity must be accepted. |
-| Default installation concurrency (默认安装并发) | Integer `1–50`, default `5`; choose according to control-plane and network capacity. |
+| Default installation concurrency (默认安装并发) | Integer `1–50`, default `5`; the site-wide limit on devices installing at the same time, shared by all batches. Choose according to control-plane and network capacity. |
 
 Other information is read-only:
 
@@ -83,7 +83,7 @@ PXEye does not require DHCP topology or relay address inputs. For routed clients
 1. Click **Refresh data (刷新数据)** and inspect site, Core address, certificate validity, directories and services.
 2. Click **Edit site (编辑站点)**, change name, Core address or concurrency, and **Verify and save (验证并保存)**.
 3. When switching Core, the service reads the new Core with the current mTLS identity. Failure leaves settings unchanged. Running or pending-issue installation tasks block switching Core.
-4. Review the saved settings and refresh the relevant resource pages. New batches use the saved concurrency.
+4. Review the saved settings and refresh the relevant resource pages. The saved limit applies at once, including to devices still waiting.
 
 ## 5. Example
 
@@ -93,7 +93,7 @@ PXEye does not require DHCP topology or relay address inputs. For routed clients
 | Core HTTPS address | `https://nico-api.nico-system.svc.cluster.local:1079` (only for clusters actually using this Service) |
 | Default installation concurrency | `3` |
 
-New batches run at most three devices concurrently. Existing batches retain their original concurrency.
+The site then installs at most three devices at the same time. Devices already installing are unaffected; waiting devices start in order under the new limit.
 
 ## 6. Notes
 

@@ -693,6 +693,8 @@ class Application:
             self._bind_core_services()
             self._create_coordinator()
             self.profiles.import_legacy()
+        # A higher limit applies to devices that are already waiting.
+        self.coordinator.start_queue()
         return {"status": "saved", "detail": "站点设置已应用。", "site": self.site_information()}
 
     def task_view(self, task):
@@ -724,8 +726,8 @@ class Application:
     def plan(self, action):
         return self.coordinator.plan(action)
 
-    def configure(self, action):
-        return self.coordinator.configure(action)
+    def configure(self, action, *, during_installs=False):
+        return self.coordinator.configure(action, during_installs=during_installs)
 
     def apply_network(self, sid):
         return self.coordinator.apply_network(sid)
